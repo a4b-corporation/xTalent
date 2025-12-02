@@ -1,0 +1,3374 @@
+# Core Module (CO) - Ontology
+# Version: 2.0 - Enhanced with Enterprise Best Practices
+# Last Updated: 2025-12-01
+# Module: Core Organization & People Management
+# Description: Foundational entities for organizational structure, people, jobs, and positions
+# Enhancements: Work Relationship, Person Types, Supervisory Org, Staffing Model Flexibility,
+#               Skill Gap Analysis, Data Classification, Explicit Dotted Line Reporting
+
+module: Core
+code: CO
+description: |
+  Core module provides foundational entities for managing organizational structures,
+  people (workers), employment relationships, job definitions, positions, and facilities.
+  This is the backbone of the HR system that other modules depend on.
+
+# =============================================================================
+# MODULE STRUCTURE
+# =============================================================================
+
+sub_modules:
+  
+  Common:
+    description: "Master data and reference tables"
+    entities:
+      - CodeList
+      - Currency
+      - TimeZone
+      - Industry
+      - ContactType
+      - RelationshipGroup
+      - RelationshipType
+      - TalentMarket
+      - SkillMaster
+      - CompetencyMaster
+  
+  Geographic:
+    description: "Geographic master data"
+    entities:
+      - Country
+      - AdminArea
+  
+  LegalEntity:
+    description: "Legal entity (company) structure"
+    entities:
+      - EntityType
+      - Entity
+      - EntityProfile
+      - EntityRepresentative
+      - EntityLicense
+      - EntityBankAccount
+  
+  BusinessUnit:
+    description: "Operational organizational units"
+    entities:
+      - UnitType
+      - Unit
+      - UnitTag
+  
+  OrganizationRelation:
+    description: "Dynamic organizational relationships"
+    entities:
+      - RelationSchema
+      - RelationType
+      - RelationEdge
+  
+  Person:
+    description: "Worker (people) master data"
+    entities:
+      - Worker
+      - Contact
+      - Address
+      - Document
+      - BankAccount
+      - WorkerRelationship
+      - WorkerQualification
+      - WorkerSkill
+      - WorkerCompetency
+      - WorkerInterest
+  
+  Employment:
+    description: "Employment relationships and assignments"
+    entities:
+      - WorkRelationship
+      - Employee
+      - Contract
+      - Assignment
+      - EmployeeIdentifier
+      - GlobalAssignment
+  
+  JobPosition:
+    description: "Job and position structures"
+    entities:
+      - TaxonomyTree
+      - JobTaxonomy
+      - JobTree
+      - Job
+      - JobProfile
+      - JobLevel
+      - JobGrade
+      - Position
+  
+  Career:
+    description: "Career paths and progression"
+    entities:
+      - CareerPath
+      - CareerStep
+      - JobProgression
+  
+  Facility:
+    description: "Physical locations and facilities"
+    entities:
+      - Place
+      - Location
+      - WorkLocation
+  
+  TalentMarket:
+    description: "Internal talent marketplace"
+    entities:
+      - Opportunity
+      - OpportunitySkill
+      - OpportunityApplication
+
+# =============================================================================
+# ENTITY DEFINITIONS
+# =============================================================================
+
+entities:
+
+  # ===========================================================================
+  # COMMON SCHEMA - Master Data
+  # ===========================================================================
+
+  CodeList:
+    description: |
+      Multi-purpose lookup table for system-wide code values.
+      Supports grouping, localization, and temporal validity.
+    attributes:
+      id:
+        type: UUID
+        required: true
+        description: "Unique identifier"
+      group_code:
+        type: string
+        required: true
+        maxLength: 50
+        description: "Code group (e.g., GENDER, MARITAL_STATUS, EMPLOYEE_TYPE)"
+      code:
+        type: string
+        required: true
+        maxLength: 50
+        description: "Code value (e.g., M, F, SINGLE, MARRIED)"
+      display_en:
+        type: string
+        maxLength: 100
+        description: "English display text"
+      display_local:
+        type: string
+        maxLength: 100
+        description: "Local language display text"
+      sort_order:
+        type: integer
+        default: 0
+        description: "Display order within group"
+      metadata:
+        type: jsonb
+        description: "Additional attributes (e.g., color, icon, custom fields)"
+      effective_start_date:
+        type: date
+        required: true
+      effective_end_date:
+        type: date
+        required: false
+      is_current_flag:
+        type: boolean
+        default: true
+    relationships:
+      usedByManyEntities:
+        description: "Referenced by various entities for code values"
+    constraints:
+      - name: "unique_group_code"
+        type: unique
+        fields: [group_code, code]
+    businessRules:
+      - "Code values are immutable - use SCD Type 2 for changes"
+      - "group_code should follow naming convention: UPPERCASE_UNDERSCORE"
+
+  Currency:
+    description: |
+      ISO-4217 currency master data with decimal precision.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      code:
+        type: string
+        required: true
+        maxLength: 3
+        description: "ISO-4217 currency code (e.g., USD, VND, EUR)"
+      name:
+        type: string
+        maxLength: 100
+      symbol:
+        type: string
+        maxLength: 10
+        description: "Currency symbol (e.g., $, ₫, €)"
+      decimal_digits:
+        type: integer
+        description: "Number of decimal places (e.g., 2 for USD, 0 for VND)"
+      metadata:
+        type: jsonb
+        description: "Additional info (minor_unit, symbol_position)"
+      effective_start_date:
+        type: date
+        required: true
+      effective_end_date:
+        type: date
+      is_current_flag:
+        type: boolean
+        default: true
+    constraints:
+      - name: "unique_currency_code"
+        type: unique
+        fields: [code]
+
+  TimeZone:
+    description: |
+      IANA time zone database for global time management.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      tzid:
+        type: string
+        required: true
+        maxLength: 100
+        description: "IANA timezone ID (e.g., Asia/Ho_Chi_Minh)"
+      offset_hours:
+        type: decimal
+        precision: [4, 2]
+        description: "UTC offset in hours (e.g., +07.00)"
+      abbreviation:
+        type: string
+        maxLength: 10
+        description: "Timezone abbreviation (e.g., ICT, EST)"
+      metadata:
+        type: jsonb
+        description: "DST rules and other info"
+      effective_start_date:
+        type: date
+        required: true
+      effective_end_date:
+        type: date
+      is_current_flag:
+        type: boolean
+        default: true
+    constraints:
+      - name: "unique_tzid"
+        type: unique
+        fields: [tzid]
+
+  Industry:
+    description: |
+      Hierarchical industry classification (ISIC/NAICS).
+      Supports multi-level industry taxonomy.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      code:
+        type: string
+        required: true
+        maxLength: 50
+      name:
+        type: string
+        maxLength: 255
+      parent_id:
+        type: UUID
+        required: false
+        description: "Parent industry for hierarchy"
+      metadata:
+        type: jsonb
+        description: "Sector code, level, additional classification"
+      effective_start_date:
+        type: date
+        required: true
+      effective_end_date:
+        type: date
+      is_current_flag:
+        type: boolean
+        default: true
+    relationships:
+      parent:
+        target: Industry
+        cardinality: "0..1"
+        description: "Parent industry"
+      children:
+        target: Industry
+        cardinality: "0..*"
+        description: "Child industries"
+    constraints:
+      - name: "unique_industry_code"
+        type: unique
+        fields: [code]
+
+  ContactType:
+    description: |
+      Defines types of contact methods (phone, email, IM, social).
+      Includes validation rules and input masks.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      code:
+        type: string
+        required: true
+        maxLength: 50
+        description: "Contact type code (e.g., MOBILE, WORK_EMAIL, LINKEDIN)"
+      name:
+        type: string
+        maxLength: 100
+      channel_category:
+        type: enum
+        values: [PHONE, EMAIL, IM, SOCIAL]
+        description: "Contact channel category"
+      validation_regex:
+        type: string
+        maxLength: 255
+        description: "Regex pattern for validation"
+      input_mask:
+        type: string
+        maxLength: 50
+        description: "Input mask for UI"
+      icon:
+        type: string
+        maxLength: 50
+        description: "Icon identifier for UI"
+      sort_order:
+        type: integer
+        default: 0
+      metadata:
+        type: jsonb
+      effective_start_date:
+        type: date
+        required: true
+      effective_end_date:
+        type: date
+      is_current_flag:
+        type: boolean
+        default: true
+    constraints:
+      - name: "unique_contact_type_code"
+        type: unique
+        fields: [code]
+
+  RelationshipGroup:
+    description: |
+      Groups relationship types (e.g., FAMILY, FINANCIAL_DEPENDENT, PROJECT).
+    attributes:
+      id:
+        type: UUID
+        required: true
+      code:
+        type: string
+        required: true
+        maxLength: 50
+      name:
+        type: string
+        maxLength: 100
+      description:
+        type: text
+    relationships:
+      hasTypes:
+        target: RelationshipType
+        cardinality: "0..*"
+    constraints:
+      - name: "unique_rel_group_code"
+        type: unique
+        fields: [code]
+
+  RelationshipType:
+    description: |
+      Defines types of relationships between workers (family, dependency, etc.).
+      Supports inverse relationships and dependency flags.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      group_id:
+        type: UUID
+        required: true
+        description: "Relationship group"
+      code:
+        type: string
+        required: true
+        maxLength: 50
+        description: "Relationship code (e.g., FATHER, DAUGHTER, SPOUSE)"
+      name:
+        type: string
+        maxLength: 100
+      inverse_type_id:
+        type: UUID
+        description: "Inverse relationship (e.g., FATHER <-> SON)"
+      dependency_flag:
+        type: boolean
+        default: false
+        description: "Indicates financial dependency"
+      sort_order:
+        type: integer
+        default: 0
+      metadata:
+        type: jsonb
+        description: "Degree of relationship, household info"
+      effective_start_date:
+        type: date
+        required: true
+      effective_end_date:
+        type: date
+      is_current_flag:
+        type: boolean
+        default: true
+    relationships:
+      belongsToGroup:
+        target: RelationshipGroup
+        cardinality: "1"
+      inverseType:
+        target: RelationshipType
+        cardinality: "0..1"
+    constraints:
+      - name: "unique_rel_type_code"
+        type: unique
+        fields: [code]
+
+  TalentMarket:
+    description: |
+      Talent market definition for multi-market organizations.
+      Supports hierarchical market structure and market-specific configurations.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      code:
+        type: string
+        required: true
+        maxLength: 50
+      name_vi:
+        type: string
+        maxLength: 100
+      name_en:
+        type: string
+        maxLength: 100
+      currency_code:
+        type: string
+        maxLength: 3
+        description: "Default currency for this market"
+      parent_id:
+        type: UUID
+        description: "Parent market for hierarchy"
+      is_cumulative_seniority:
+        type: boolean
+        default: false
+        description: "Whether to accumulate seniority across entities in market"
+      status:
+        type: enum
+        values: [ACTIVE, INACTIVE]
+        default: ACTIVE
+      effective_start_date:
+        type: date
+        required: true
+      effective_end_date:
+        type: date
+      is_current_flag:
+        type: boolean
+        default: true
+    relationships:
+      parent:
+        target: TalentMarket
+        cardinality: "0..1"
+      children:
+        target: TalentMarket
+        cardinality: "0..*"
+      parameters:
+        target: TalentMarketParameter
+        cardinality: "0..*"
+      localizations:
+        target: TalentMarketLocalization
+        cardinality: "0..*"
+
+  SkillMaster:
+    description: |
+      Master catalog of skills across the organization.
+      Supports categorization and proficiency scales.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      skill_code:
+        type: string
+        required: true
+        maxLength: 50
+      skill_name:
+        type: string
+        maxLength: 255
+      category_id:
+        type: UUID
+        description: "Skill category"
+      description:
+        type: text
+      proficiency_scale_code:
+        type: string
+        maxLength: 50
+        description: "Proficiency scale (e.g., 1-5, BEGINNER-EXPERT)"
+      metadata:
+        type: jsonb
+      is_active:
+        type: boolean
+        default: true
+      effective_start_date:
+        type: date
+        required: true
+      effective_end_date:
+        type: date
+      is_current_flag:
+        type: boolean
+        default: true
+    relationships:
+      category:
+        target: SkillCategory
+        cardinality: "0..1"
+      usedByWorkers:
+        target: WorkerSkill
+        cardinality: "0..*"
+      requiredByJobs:
+        target: JobProfileSkill
+        cardinality: "0..*"
+    constraints:
+      - name: "unique_skill_code"
+        type: unique
+        fields: [skill_code]
+
+  CompetencyMaster:
+    description: |
+      Master catalog of behavioral competencies.
+      Used for performance assessment and development.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      competency_code:
+        type: string
+        required: true
+        maxLength: 50
+      competency_name:
+        type: string
+        maxLength: 255
+      category_id:
+        type: UUID
+      description:
+        type: text
+      scale_code:
+        type: string
+        maxLength: 50
+        description: "Rating scale for this competency"
+      metadata:
+        type: jsonb
+      is_active:
+        type: boolean
+        default: true
+    relationships:
+      category:
+        target: CompetencyCategory
+        cardinality: "0..1"
+      assessedForWorkers:
+        target: WorkerCompetency
+        cardinality: "0..*"
+    constraints:
+      - name: "unique_competency_code"
+        type: unique
+        fields: [competency_code]
+
+  # ===========================================================================
+  # GEOGRAPHIC SCHEMA
+  # ===========================================================================
+
+  Country:
+    description: |
+      ISO-3166 country master data.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      code_alpha2:
+        type: string
+        required: true
+        maxLength: 2
+        description: "ISO-3166 alpha-2 code (e.g., VN, US, FR)"
+      name_en:
+        type: string
+        maxLength: 255
+      native_name:
+        type: string
+        maxLength: 255
+      metadata:
+        type: jsonb
+        description: "Alpha-3, numeric code, region, phone prefix"
+      effective_start_date:
+        type: date
+        required: true
+      effective_end_date:
+        type: date
+      is_current_flag:
+        type: boolean
+        default: true
+    relationships:
+      adminAreas:
+        target: AdminArea
+        cardinality: "0..*"
+    constraints:
+      - name: "unique_country_alpha2"
+        type: unique
+        fields: [code_alpha2]
+
+  AdminArea:
+    description: |
+      Administrative areas (province/state, district, ward) within countries.
+      Supports hierarchical structure (3 levels typical).
+    attributes:
+      id:
+        type: UUID
+        required: true
+      parent_id:
+        type: UUID
+        description: "Parent admin area (null for top level)"
+      country_id:
+        type: UUID
+        required: true
+      level:
+        type: integer
+        description: "1=Province/State, 2=District, 3=Ward/Commune"
+      code:
+        type: string
+        maxLength: 20
+      name_en:
+        type: string
+        maxLength: 255
+      native_name:
+        type: string
+        maxLength: 255
+      latitude:
+        type: decimal
+        precision: [9, 6]
+      longitude:
+        type: decimal
+        precision: [9, 6]
+      metadata:
+        type: jsonb
+        description: "Type, population, postal codes"
+      effective_start_date:
+        type: date
+        required: true
+      effective_end_date:
+        type: date
+      is_current_flag:
+        type: boolean
+        default: true
+    relationships:
+      country:
+        target: Country
+        cardinality: "1"
+      parent:
+        target: AdminArea
+        cardinality: "0..1"
+      children:
+        target: AdminArea
+        cardinality: "0..*"
+    constraints:
+      - name: "unique_country_level_code"
+        type: unique
+        fields: [country_id, level, code]
+
+  # ===========================================================================
+  # LEGAL ENTITY SCHEMA
+  # ===========================================================================
+
+  EntityType:
+    description: |
+      Types of legal entities (COMPANY, BRANCH, SUBSIDIARY, etc.).
+    attributes:
+      id:
+        type: UUID
+        required: true
+      code:
+        type: string
+        required: true
+        maxLength: 50
+      name:
+        type: string
+        maxLength: 100
+      level_order:
+        type: integer
+        description: "Hierarchical level"
+      metadata:
+        type: jsonb
+        description: "Allowed parent types, constraints"
+      effective_start_date:
+        type: date
+        required: true
+      effective_end_date:
+        type: date
+      is_current_flag:
+        type: boolean
+        default: true
+    constraints:
+      - name: "unique_entity_type_code"
+        type: unique
+        fields: [code, effective_start_date]
+
+  Entity:
+    description: |
+      Legal entity (company, branch, subsidiary).
+      Supports hierarchical structure for corporate groups.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      code:
+        type: string
+        required: true
+        maxLength: 50
+        description: "Unique legal entity code"
+      name_vi:
+        type: string
+        maxLength: 150
+        description: "Vietnamese name"
+      name_en:
+        type: string
+        maxLength: 150
+        description: "English name"
+      type_id:
+        type: UUID
+        required: true
+      parent_id:
+        type: UUID
+        description: "Parent legal entity"
+      path:
+        type: string
+        maxLength: 255
+        description: "Hierarchical path (e.g., /parent/child)"
+      effective_start_date:
+        type: date
+        required: true
+      effective_end_date:
+        type: date
+      is_current_flag:
+        type: boolean
+        default: true
+    relationships:
+      type:
+        target: EntityType
+        cardinality: "1"
+      parent:
+        target: Entity
+        cardinality: "0..1"
+      children:
+        target: Entity
+        cardinality: "0..*"
+      profile:
+        target: EntityProfile
+        cardinality: "0..1"
+      representatives:
+        target: EntityRepresentative
+        cardinality: "0..*"
+      licenses:
+        target: EntityLicense
+        cardinality: "0..*"
+      bankAccounts:
+        target: EntityBankAccount
+        cardinality: "0..*"
+      businessUnits:
+        target: Unit
+        cardinality: "0..*"
+    constraints:
+      - name: "unique_entity_code"
+        type: unique
+        fields: [code, effective_start_date]
+    businessRules:
+      - "Entity code must be unique across all legal entities"
+      - "Path must reflect actual hierarchy"
+      - "SCD Type 2 for tracking changes over time"
+
+  EntityProfile:
+    description: |
+      Extended profile information for legal entities.
+      Includes addresses, contacts, tax info, and branding.
+    attributes:
+      legal_entity_id:
+        type: UUID
+        required: true
+        description: "Primary key and foreign key to Entity"
+      logo_url:
+        type: string
+        maxLength: 255
+      legal_name_local:
+        type: string
+        maxLength: 255
+        description: "Full legal name in local language"
+      legal_name_en:
+        type: string
+        maxLength: 255
+      group_name:
+        type: string
+        maxLength: 255
+        description: "Corporate group name"
+      address1_country_code:
+        type: string
+        maxLength: 2
+      address1_admin_area_id:
+        type: UUID
+      address1_street:
+        type: string
+        maxLength: 255
+      address1_postal_code:
+        type: string
+        maxLength: 20
+      address2_country_code:
+        type: string
+        maxLength: 2
+      address2_admin_area_id:
+        type: UUID
+      address2_street:
+        type: string
+        maxLength: 255
+      address2_postal_code:
+        type: string
+        maxLength: 20
+      phone:
+        type: string
+        maxLength: 50
+      fax:
+        type: string
+        maxLength: 50
+      email:
+        type: string
+        maxLength: 100
+      email_suffix:
+        type: string
+        maxLength: 100
+        description: "Corporate email domain (e.g., @company.com)"
+      website:
+        type: string
+        maxLength: 255
+      tagline:
+        type: string
+        maxLength: 255
+      is_head_office:
+        type: boolean
+        default: false
+      is_member:
+        type: boolean
+        default: true
+        description: "Member of corporate group"
+      ceo_worker_id:
+        type: UUID
+        description: "CEO worker reference"
+      tax_id:
+        type: string
+        maxLength: 50
+      insurance_type_code:
+        type: string
+        maxLength: 50
+      description:
+        type: text
+      metadata:
+        type: jsonb
+      active:
+        type: boolean
+        default: true
+    relationships:
+      entity:
+        target: Entity
+        cardinality: "1"
+      ceo:
+        target: Worker
+        cardinality: "0..1"
+
+  EntityRepresentative:
+    description: |
+      Legal representatives and authorized signatories of legal entities.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      legal_entity_id:
+        type: UUID
+        required: true
+      rep_type_code:
+        type: string
+        maxLength: 50
+        description: "LEGAL_REP, AUTH_REP, CEO"
+      worker_id:
+        type: UUID
+        required: true
+      document_id:
+        type: UUID
+        description: "Authorization document"
+      metadata:
+        type: jsonb
+        description: "Decision number, notes"
+      effective_start_date:
+        type: date
+        required: true
+      effective_end_date:
+        type: date
+      is_current_flag:
+        type: boolean
+        default: true
+    relationships:
+      entity:
+        target: Entity
+        cardinality: "1"
+      worker:
+        target: Worker
+        cardinality: "1"
+      document:
+        target: Document
+        cardinality: "0..1"
+    constraints:
+      - name: "unique_entity_rep_type_date"
+        type: unique
+        fields: [legal_entity_id, rep_type_code, effective_start_date]
+
+  EntityLicense:
+    description: |
+      Business licenses and registrations for legal entities.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      legal_entity_id:
+        type: UUID
+        required: true
+      license_number:
+        type: string
+        maxLength: 100
+      issue_date:
+        type: date
+      issued_by:
+        type: string
+        maxLength: 255
+      metadata:
+        type: jsonb
+        description: "Attachments, notes"
+      effective_start_date:
+        type: date
+        required: true
+      effective_end_date:
+        type: date
+      is_current_flag:
+        type: boolean
+        default: true
+    relationships:
+      entity:
+        target: Entity
+        cardinality: "1"
+    constraints:
+      - name: "unique_entity_license"
+        type: unique
+        fields: [legal_entity_id, license_number, effective_start_date]
+
+  EntityBankAccount:
+    description: |
+      Bank accounts owned by legal entities.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      legal_entity_id:
+        type: UUID
+        required: true
+      bank_name:
+        type: string
+        maxLength: 255
+      account_number:
+        type: string
+        maxLength: 100
+      account_holder:
+        type: string
+        maxLength: 255
+      currency_code:
+        type: string
+        maxLength: 3
+      is_primary:
+        type: boolean
+        default: false
+      metadata:
+        type: jsonb
+    relationships:
+      entity:
+        target: Entity
+        cardinality: "1"
+    constraints:
+      - name: "unique_entity_account"
+        type: unique
+        fields: [legal_entity_id, account_number]
+
+  # ===========================================================================
+  # BUSINESS UNIT SCHEMA
+  # ===========================================================================
+
+  UnitType:
+    description: |
+      Types of business units (DIVISION, DEPARTMENT, TEAM, SUPERVISORY, etc.).
+      Includes SUPERVISORY type for Supervisory Organization (reporting hierarchy).
+    attributes:
+      id:
+        type: UUID
+        required: true
+      code:
+        type: string
+        required: true
+        maxLength: 50
+        description: "Unit type code: DIVISION, DEPARTMENT, TEAM, SUPERVISORY, COST_CENTER, MATRIX"
+      name:
+        type: string
+        maxLength: 100
+      level_order:
+        type: integer
+      is_supervisory:
+        type: boolean
+        default: false
+        description: "True if this is a supervisory organization type (for reporting/approval hierarchy)"
+      metadata:
+        type: jsonb
+        description: "Allowed child types, constraints, security implications"
+      effective_start_date:
+        type: date
+        required: true
+      effective_end_date:
+        type: date
+      is_current_flag:
+        type: boolean
+        default: true
+    constraints:
+      - name: "unique_unit_type_code"
+        type: unique
+        fields: [code]
+    businessRules:
+      - "SUPERVISORY type units define reporting hierarchy and approval chains"
+      - "Supervisory organizations can differ from operational (DIVISION/DEPARTMENT) structure"
+      - "Security permissions often tied to supervisory organization membership"
+
+  Unit:
+    description: |
+      Business unit (operational organizational unit).
+      Supports hierarchical structure and links to legal entities.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      code:
+        type: string
+        required: true
+        maxLength: 50
+      name:
+        type: string
+        maxLength: 150
+      type_id:
+        type: UUID
+        required: true
+      parent_id:
+        type: UUID
+        description: "Parent business unit"
+      legal_entity_code:
+        type: string
+        maxLength: 50
+        description: "Associated legal entity code"
+      path:
+        type: string
+        maxLength: 255
+      status_code:
+        type: string
+        maxLength: 50
+        description: "ACTIVE, INACTIVE, PENDING"
+      metadata:
+        type: jsonb
+        description: "Region, cost center, custom attributes"
+      effective_start_date:
+        type: date
+        required: true
+      effective_end_date:
+        type: date
+      is_current_flag:
+        type: boolean
+        default: true
+    relationships:
+      type:
+        target: UnitType
+        cardinality: "1"
+      parent:
+        target: Unit
+        cardinality: "0..1"
+      children:
+        target: Unit
+        cardinality: "0..*"
+      tags:
+        target: UnitTag
+        cardinality: "0..*"
+      positions:
+        target: Position
+        cardinality: "0..*"
+    constraints:
+      - name: "unique_unit_code"
+        type: unique
+        fields: [parent_id, code]
+    businessRules:
+      - "Unit code must be unique within same parent"
+      - "Path must reflect hierarchy"
+      - "Legal entity code must reference valid Entity.code"
+
+  UnitTag:
+    description: |
+      Flexible tagging system for business units.
+    attributes:
+      bu_id:
+        type: UUID
+        required: true
+      tag_code:
+        type: string
+        required: true
+        maxLength: 50
+        description: "Tag from code list (e.g., STRATEGIC, REVENUE_GENERATING)"
+      assigned_at:
+        type: date
+        default: current_date
+    relationships:
+      unit:
+        target: Unit
+        cardinality: "1"
+    constraints:
+      - name: "unique_unit_tag"
+        type: unique
+        fields: [bu_id, tag_code]
+
+  # ===========================================================================
+  # ORGANIZATION RELATION SCHEMA
+  # ===========================================================================
+
+  RelationSchema:
+    description: |
+      Defines custom organizational relationship schemas (e.g., financial hierarchy, risk chain).
+    attributes:
+      id:
+        type: UUID
+        required: true
+      code:
+        type: string
+        required: true
+        maxLength: 50
+        description: "Schema code (e.g., FIN_HIER, RISK_CHAIN)"
+      name:
+        type: string
+        maxLength: 150
+      root_scope:
+        type: enum
+        values: [LE, BU]
+        description: "Starting point: Legal Entity or Business Unit"
+      metadata:
+        type: jsonb
+        description: "Rules, max depth, constraints"
+      is_active:
+        type: boolean
+        default: true
+    relationships:
+      edges:
+        target: RelationEdge
+        cardinality: "0..*"
+    constraints:
+      - name: "unique_relation_schema_code"
+        type: unique
+        fields: [code]
+
+  RelationType:
+    description: |
+      Types of organizational relationships.
+      Explicit support for solid line vs dotted line reporting in matrix organizations.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      code:
+        type: string
+        required: true
+        maxLength: 50
+        description: |
+          Relationship type codes:
+          - OWNERSHIP: Legal ownership/shareholding
+          - REPORTING_SOLID_LINE: Direct reporting relationship (primary)
+          - REPORTING_DOTTED_LINE: Secondary/matrix reporting relationship
+          - FUNCTIONAL: Functional relationship without direct reporting
+          - MATRIX: Matrix organization relationship
+          - DELEGATION: Delegated authority
+      name:
+        type: string
+        maxLength: 150
+      relationship_category:
+        type: enum
+        values: [STRUCTURAL, REPORTING, FUNCTIONAL, FINANCIAL]
+        description: "Category of relationship"
+      is_primary_reporting:
+        type: boolean
+        default: false
+        description: "True for primary reporting relationships (solid line)"
+      affects_approval_chain:
+        type: boolean
+        default: false
+        description: "Whether this relationship affects approval workflows"
+      metadata:
+        type: jsonb
+        description: "Workflow rules, security implications, reporting requirements"
+      is_active:
+        type: boolean
+        default: true
+    constraints:
+      - name: "unique_relation_type_code"
+        type: unique
+        fields: [code]
+    businessRules:
+      - "REPORTING_SOLID_LINE represents primary reporting relationship"
+      - "REPORTING_DOTTED_LINE for matrix/secondary reporting"
+      - "Only one SOLID_LINE relationship allowed per unit/position"
+      - "Multiple DOTTED_LINE relationships allowed for matrix structures"
+
+  RelationEdge:
+    description: |
+      Dynamic organizational relationship edges (multi-graph).
+      Connects business units and/or legal entities based on schema.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      schema_id:
+        type: UUID
+        required: true
+      from_bu_id:
+        type: UUID
+        description: "Source business unit"
+      to_bu_id:
+        type: UUID
+        description: "Target business unit"
+      from_le_id:
+        type: UUID
+        description: "Source legal entity"
+      to_le_id:
+        type: UUID
+        description: "Target legal entity"
+      rel_type_id:
+        type: UUID
+        required: true
+      metadata:
+        type: jsonb
+        description: "Weight, percentage, custom attributes"
+      effective_start_date:
+        type: date
+        required: true
+      effective_end_date:
+        type: date
+      is_current_flag:
+        type: boolean
+        default: true
+    relationships:
+      schema:
+        target: RelationSchema
+        cardinality: "1"
+      relationType:
+        target: RelationType
+        cardinality: "1"
+      fromBU:
+        target: Unit
+        cardinality: "0..1"
+      toBU:
+        target: Unit
+        cardinality: "0..1"
+      fromLE:
+        target: Entity
+        cardinality: "0..1"
+      toLE:
+        target: Entity
+        cardinality: "0..1"
+    constraints:
+      - name: "unique_relation_edge"
+        type: unique
+        fields: [schema_id, from_bu_id, to_bu_id, rel_type_id]
+    businessRules:
+      - "Must have either BU or LE endpoints (not both null)"
+      - "Endpoints must match schema root_scope"
+
+  # ===========================================================================
+  # PERSON SCHEMA - Worker Master Data
+  # ===========================================================================
+
+  Worker:
+    description: |
+      Core person entity representing any individual in the system.
+      Immutable ID throughout lifetime, supports multiple employment relationships.
+      Enhanced with Person Type classification for system-wide categorization.
+    attributes:
+      id:
+        type: UUID
+        required: true
+        description: "Immutable worker ID"
+      person_type_code:
+        type: enum
+        values: [EMPLOYEE, CONTRACTOR, CONTINGENT, NON_WORKER, PENDING, FORMER]
+        required: true
+        description: |
+          System person type determines available features and workflows:
+          - EMPLOYEE: Regular employee with full HR features
+          - CONTRACTOR: Independent contractor (limited HR features)
+          - CONTINGENT: Temporary/contingent worker
+          - NON_WORKER: Participates in activities but not employed (e.g., board members)
+          - PENDING: Pending hire/onboarding
+          - FORMER: Former employee (separated)
+      first_name:
+        type: string
+        required: true
+        maxLength: 100
+      middle_name:
+        type: string
+        maxLength: 100
+      last_name:
+        type: string
+        required: true
+        maxLength: 100
+      preferred_name:
+        type: string
+        maxLength: 100
+      date_of_birth:
+        type: date
+        required: true
+      gender_code:
+        type: string
+        maxLength: 50
+        description: "Gender code from code list"
+      nationality_code:
+        type: string
+        maxLength: 2
+        description: "ISO-3166 country code"
+      marital_status_code:
+        type: string
+        maxLength: 50
+      data_classification:
+        type: jsonb
+        description: |
+          Security classification for data protection:
+          {
+            "sensitivity_level": "CONFIDENTIAL",
+            "encryption_required": true,
+            "pii_fields": ["date_of_birth", "nationality_code"],
+            "access_scope": "SELF_AND_HR",
+            "retention_years": 7
+          }
+      metadata:
+        type: jsonb
+        description: "Ethnicity, religion, blood type, avatar URL"
+      created_at:
+        type: timestamp
+      updated_at:
+        type: timestamp
+    relationships:
+      contacts:
+        target: Contact
+        cardinality: "0..*"
+      addresses:
+        target: Address
+        cardinality: "0..*"
+      documents:
+        target: Document
+        cardinality: "0..*"
+      bankAccounts:
+        target: BankAccount
+        cardinality: "0..*"
+      relationships:
+        target: WorkerRelationship
+        cardinality: "0..*"
+      qualifications:
+        target: WorkerQualification
+        cardinality: "0..*"
+      skills:
+        target: WorkerSkill
+        cardinality: "0..*"
+      competencies:
+        target: WorkerCompetency
+        cardinality: "0..*"
+      interests:
+        target: WorkerInterest
+        cardinality: "0..*"
+      workRelationships:
+        target: WorkRelationship
+        cardinality: "0..*"
+        description: "All work relationships for this worker"
+      employments:
+        target: Employee
+        cardinality: "0..*"
+        description: "DEPRECATED - use workRelationships instead"
+      photo:
+        target: Photo
+        cardinality: "0..1"
+    businessRules:
+      - "Worker ID is immutable and unique for lifetime"
+      - "Person type determines system behavior and available features"
+      - "NON_WORKER type cannot have assignments, absences, or talent records"
+      - "FORMER type retains historical data but locked from changes"
+      - "One worker can have multiple work relationships (different legal entities or types)"
+      - "Personal data is centralized, employment data is separate"
+      - "PII fields must be encrypted at rest per data_classification metadata"
+
+  Contact:
+    description: |
+      Contact information for workers (phone, email, IM, social media).
+    attributes:
+      id:
+        type: UUID
+        required: true
+      worker_id:
+        type: UUID
+        required: true
+      contact_type_code:
+        type: string
+        required: true
+        maxLength: 50
+        description: "Contact type from ContactType master"
+      contact_value:
+        type: string
+        maxLength: 255
+      is_primary:
+        type: boolean
+        default: false
+      metadata:
+        type: jsonb
+      effective_start_date:
+        type: date
+        required: true
+      effective_end_date:
+        type: date
+      is_current_flag:
+        type: boolean
+        default: true
+    relationships:
+      worker:
+        target: Worker
+        cardinality: "1"
+    businessRules:
+      - "Only one primary contact per type per worker"
+      - "Contact value must match validation regex from ContactType"
+
+  Address:
+    description: |
+      Physical addresses for workers (home, permanent, temporary).
+    attributes:
+      id:
+        type: UUID
+        required: true
+      worker_id:
+        type: UUID
+        required: true
+      address_type_code:
+        type: string
+        maxLength: 50
+        description: "HOME, PERMANENT, TEMPORARY"
+      admin_area_id:
+        type: UUID
+        required: true
+        description: "Smallest admin area (ward/commune)"
+      street_line:
+        type: string
+        maxLength: 255
+      postal_code:
+        type: string
+        maxLength: 20
+      is_primary:
+        type: boolean
+        default: false
+      metadata:
+        type: jsonb
+      effective_start_date:
+        type: date
+        required: true
+      effective_end_date:
+        type: date
+      is_current_flag:
+        type: boolean
+        default: true
+    relationships:
+      worker:
+        target: Worker
+        cardinality: "1"
+      adminArea:
+        target: AdminArea
+        cardinality: "1"
+
+  Document:
+    description: |
+      Identity and legal documents for workers (ID card, passport, visa, etc.).
+    attributes:
+      id:
+        type: UUID
+        required: true
+      worker_id:
+        type: UUID
+        required: true
+      doc_type_code:
+        type: string
+        maxLength: 50
+        description: "ID_CARD, PASSPORT, VISA, DRIVER_LICENSE"
+      doc_number:
+        type: string
+        maxLength: 100
+      issue_date:
+        type: date
+      expiry_date:
+        type: date
+      issuing_country:
+        type: string
+        maxLength: 2
+      is_primary:
+        type: boolean
+        default: false
+      file_url:
+        type: string
+        maxLength: 255
+        description: "Document scan/photo URL"
+      metadata:
+        type: jsonb
+    relationships:
+      worker:
+        target: Worker
+        cardinality: "1"
+
+  BankAccount:
+    description: |
+      Personal bank accounts for workers (salary payment).
+    attributes:
+      id:
+        type: UUID
+        required: true
+      worker_id:
+        type: UUID
+        required: true
+      bank_name:
+        type: string
+        maxLength: 255
+      account_number:
+        type: string
+        maxLength: 100
+      account_holder:
+        type: string
+        maxLength: 255
+      currency_code:
+        type: string
+        maxLength: 3
+      is_primary:
+        type: boolean
+        default: false
+      metadata:
+        type: jsonb
+    relationships:
+      worker:
+        target: Worker
+        cardinality: "1"
+
+  WorkerRelationship:
+    description: |
+      Relationships between workers (family, dependents, emergency contacts).
+      Supports various relationship types and flags (dependency, beneficiary, visa sponsor).
+    attributes:
+      id:
+        type: UUID
+        required: true
+      worker_id:
+        type: UUID
+        required: true
+        description: "Primary worker"
+      related_worker_id:
+        type: UUID
+        description: "Related worker if in system"
+      full_name:
+        type: string
+        maxLength: 255
+        description: "Name if not linked to worker"
+      relation_code:
+        type: string
+        required: true
+        maxLength: 50
+      is_emergency:
+        type: boolean
+        default: false
+      dependency_flag:
+        type: boolean
+        default: false
+        description: "Financial dependent"
+      beneficiary_flag:
+        type: boolean
+        default: false
+        description: "Insurance/benefit beneficiary"
+      visa_sponsor_flag:
+        type: boolean
+        default: false
+        description: "Visa/relocation sponsor"
+      metadata:
+        type: jsonb
+        description: "DOB, notes, additional info"
+      effective_start_date:
+        type: date
+        required: true
+      effective_end_date:
+        type: date
+      is_current_flag:
+        type: boolean
+        default: true
+    relationships:
+      worker:
+        target: Worker
+        cardinality: "1"
+      relatedWorker:
+        target: Worker
+        cardinality: "0..1"
+      contacts:
+        target: WorkerRelationshipContact
+        cardinality: "0..*"
+
+  WorkerQualification:
+    description: |
+      Educational qualifications, certifications, languages, and skills of workers.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      worker_id:
+        type: UUID
+        required: true
+      qual_type_code:
+        type: string
+        maxLength: 50
+        description: "EDU, CERT, LANG, SKILL"
+      name:
+        type: string
+        maxLength: 255
+      institution:
+        type: string
+        maxLength: 255
+      start_date:
+        type: date
+      end_date:
+        type: date
+      level_or_score:
+        type: string
+        maxLength: 50
+      metadata:
+        type: jsonb
+        description: "Field of study, grade, file URL"
+      effective_start_date:
+        type: date
+        required: true
+      effective_end_date:
+        type: date
+      is_current_flag:
+        type: boolean
+        default: true
+    relationships:
+      worker:
+        target: Worker
+        cardinality: "1"
+
+  WorkerSkill:
+    description: |
+      Skills possessed by workers with proficiency levels.
+      Links to skill master catalog.
+      Enhanced with skill gap analysis tracking (target vs current proficiency).
+    attributes:
+      id:
+        type: UUID
+        required: true
+      worker_id:
+        type: UUID
+        required: true
+      skill_id:
+        type: UUID
+        required: true
+      proficiency_level:
+        type: integer
+        description: "Current proficiency: 1-5 or per scale"
+      target_proficiency_level:
+        type: integer
+        description: "Target proficiency level (for gap analysis)"
+      proficiency_gap:
+        type: integer
+        computed: true
+        description: "Calculated: target_proficiency_level - proficiency_level"
+      estimated_gap_months:
+        type: decimal
+        precision: [5, 1]
+        description: "Estimated time (in months) to close the skill gap"
+      years_experience:
+        type: decimal
+        precision: [4, 1]
+      last_used_date:
+        type: date
+      source_code:
+        type: string
+        maxLength: 50
+        description: "SELF, MANAGER, CERT, ASSESS"
+      verified_flag:
+        type: boolean
+        default: false
+      verified_date:
+        type: date
+        description: "When skill was verified"
+      verified_by_worker_id:
+        type: UUID
+        description: "Who verified this skill"
+      metadata:
+        type: jsonb
+        description: "Training programs, certifications, development plans"
+      effective_start_date:
+        type: date
+        required: true
+      effective_end_date:
+        type: date
+      is_current_flag:
+        type: boolean
+        default: true
+    relationships:
+      worker:
+        target: Worker
+        cardinality: "1"
+      skill:
+        target: SkillMaster
+        cardinality: "1"
+    constraints:
+      - name: "unique_worker_skill"
+        type: unique
+        fields: [worker_id, skill_id, effective_start_date]
+
+  WorkerCompetency:
+    description: |
+      Behavioral competency assessments for workers.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      worker_id:
+        type: UUID
+        required: true
+      competency_id:
+        type: UUID
+        required: true
+      rating_value:
+        type: decimal
+        precision: [5, 2]
+      rating_scale_code:
+        type: string
+        maxLength: 50
+      assessed_date:
+        type: date
+      assessed_by_worker_id:
+        type: UUID
+        description: "Assessor"
+      source_code:
+        type: string
+        maxLength: 50
+        description: "SELF, MGR, 360, SURVEY"
+      metadata:
+        type: jsonb
+      effective_start_date:
+        type: date
+        required: true
+      effective_end_date:
+        type: date
+      is_current_flag:
+        type: boolean
+        default: true
+    relationships:
+      worker:
+        target: Worker
+        cardinality: "1"
+      competency:
+        target: CompetencyMaster
+        cardinality: "1"
+      assessedBy:
+        target: Worker
+        cardinality: "0..1"
+
+  WorkerInterest:
+    description: |
+      Career interests and preferences of workers.
+      Used for internal mobility and talent marketplace.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      worker_id:
+        type: UUID
+        required: true
+      interest_type_code:
+        type: string
+        maxLength: 50
+        description: "ROLE, LOCATION, SKILL, PROJECT"
+      interest_value:
+        type: string
+        maxLength: 255
+        description: "Specific interest (e.g., 'Data Science', 'Singapore')"
+      priority_rank:
+        type: integer
+      metadata:
+        type: jsonb
+      effective_start_date:
+        type: date
+        required: true
+      effective_end_date:
+        type: date
+      is_current_flag:
+        type: boolean
+        default: true
+    relationships:
+      worker:
+        target: Worker
+        cardinality: "1"
+
+  # ===========================================================================
+  # EMPLOYMENT SCHEMA
+  # ===========================================================================
+
+  WorkRelationship:
+    description: |\
+      Overall working relationship between a Worker and the Organization.
+      Separates the high-level work relationship from specific employment contract details.
+      One worker can have multiple work relationships (e.g., employee in Entity A, contractor in Entity B).
+      Best practice from Workday/Oracle: separation of work relationship from employment details.
+    attributes:
+      id:
+        type: UUID
+        required: true
+        description: "Unique work relationship identifier"
+      worker_id:
+        type: UUID
+        required: true
+        description: "Reference to Worker"
+      legal_entity_code:
+        type: UUID
+        required: true
+        description: "Legal entity with which worker has relationship"
+      relationship_type_code:
+        type: enum
+        values: [EMPLOYEE, CONTRACTOR, CONTINGENT_WORKER, INTERN, VOLUNTEER]
+        required: true
+        description: |\
+          Type of work relationship:
+          - EMPLOYEE: Regular employment relationship
+          - CONTRACTOR: Independent contractor
+          - CONTINGENT_WORKER: Temporary/agency worker
+          - INTERN: Internship
+          - VOLUNTEER: Volunteer (unpaid)
+      is_primary_relationship:
+        type: boolean
+        default: false
+        description: "Primary work relationship if worker has multiple"
+      status_code:
+        type: enum
+        values: [ACTIVE, INACTIVE, TERMINATED, SUSPENDED]
+        default: ACTIVE
+        description: "Current status of work relationship"
+      start_date:
+        type: date
+        required: true
+        description: "Start of work relationship (may differ from hire date)"
+      end_date:
+        type: date
+        description: "End of work relationship"
+      termination_reason_code:
+        type: string
+        maxLength: 50
+        description: "Reason for termination (if applicable)"
+      rehire_eligible_flag:
+        type: boolean
+        default: true
+        description: "Eligible for rehire"
+      data_classification:
+        type: jsonb
+        description: |\
+          Security classification:
+          {
+            "sensitivity_level": "INTERNAL",
+            "access_scope": "MANAGER_AND_HR"
+          }
+      metadata:
+        type: jsonb
+        description: "Additional relationship attributes"
+      created_at:
+        type: timestamp
+      updated_at:
+        type: timestamp
+    relationships:
+      worker:
+        target: Worker
+        cardinality: "1"
+      legalEntity:
+        target: Entity
+        cardinality: "1"
+      employmentDetails:
+        target: Employee
+        cardinality: "0..1"
+        description: "Employment contract details (if relationship type is EMPLOYEE)"
+      contracts:
+        target: Contract
+        cardinality: "0..*"
+        description: "All contracts under this work relationship"
+      assignments:
+        target: Assignment
+        cardinality: "0..*"
+        description: "All job assignments under this work relationship"
+    constraints:
+      - name: "unique_worker_entity_relationship"
+        type: unique
+        fields: [worker_id, legal_entity_code, relationship_type_code, start_date]
+    businessRules:
+      - "One worker can have multiple work relationships (different entities or types)"
+      - "Only one primary work relationship allowed per worker at a time"
+      - "EMPLOYEE type relationships must have corresponding Employee record"
+      - "CONTRACTOR/CONTINGENT types may skip Employee record and link directly to contracts"
+      - "Termination date must be >= start date"
+      - "Cannot delete work relationship with active assignments"
+
+  Employee:
+
+    description: |
+      Employment contract details for workers with EMPLOYEE-type work relationships.
+      Enhanced to reference WorkRelationship per best practices.
+      NOTE: Employee is now a specialized detail record, WorkRelationship is the primary relationship entity.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      work_relationship_id:
+        type: UUID
+        required: true
+        description: "Reference to work relationship (must be EMPLOYEE type)"
+      worker_id:
+        type: UUID
+        required: true
+        description: "Denormalized from work relationship for query performance"
+      legal_entity_code:
+        type: string
+        required: true
+        maxLength: 50
+        description: "Legal entity employing the worker"
+      employee_code:
+        type: string
+        required: true
+        maxLength: 50
+        description: "Employee number (unique within legal entity)"
+      worker_category_code:
+        type: string
+        maxLength: 50
+        description: "DEPRECATED - use WorkRelationship.relationship_type_code"
+      employee_class_code:
+        type: string
+        maxLength: 50
+        description: "Employee classification (REGULAR, PROBATION, etc.)"
+      employee_type_code:
+        type: string
+        maxLength: 50
+        description: "DEPRECATED - use category and class"
+      status_code:
+        type: string
+        maxLength: 50
+        description: "ACTIVE, TERMINATED, SUSPENDED"
+      hire_date:
+        type: date
+        required: true
+      termination_date:
+        type: date
+      probation_end_date:
+        type: date
+        description: "End of probation period"
+      seniority_date:
+        type: date
+        description: "Date for seniority calculation"
+      metadata:
+        type: jsonb
+        description: "Probation status, benefits eligibility, custom fields"
+      created_at:
+        type: timestamp
+      updated_at:
+        type: timestamp
+    relationships:
+      workRelationship:
+        target: WorkRelationship
+        cardinality: "1"
+        description: "Parent work relationship"
+      worker:
+        target: Worker
+        cardinality: "1"
+        description: "Denormalized link to worker"
+      contracts:
+        target: Contract
+        cardinality: "0..*"
+      assignments:
+        target: Assignment
+        cardinality: "0..*"
+      identifiers:
+        target: EmployeeIdentifier
+        cardinality: "0..*"
+      globalAssignments:
+        target: GlobalAssignment
+        cardinality: "0..*"
+    constraints:
+      - name: "unique_employee_code"
+        type: unique
+        fields: [legal_entity_code, employee_code]
+      - name: "unique_work_relationship"
+        type: unique
+        fields: [work_relationship_id]
+    businessRules:
+      - "Employee record MUST reference a WorkRelationship with type = EMPLOYEE"
+      - "Employee code must be unique within legal entity"
+      - "One worker can have multiple employee records (via different work relationships)"
+      - "Hire date must be <= first assignment start date"
+      - "Worker_id must match work_relationship.worker_id"
+
+  Contract:
+    description: |
+      Employment contracts for employees.
+      Supports contract hierarchy (parent-child for renewals).
+    attributes:
+      id:
+        type: UUID
+        required: true
+      employee_id:
+        type: UUID
+        required: true
+      contract_type_code:
+        type: string
+        maxLength: 50
+        description: "PERMANENT, FIXED_TERM, PROBATION"
+      work_schedule_type_code:
+        type: string
+        maxLength: 50
+        description: "FULL_TIME, PART_TIME, FLEXIBLE"
+      supplier_id:
+        type: UUID
+        description: "Vendor for outsourced workers"
+      primary_flag:
+        type: boolean
+        default: false
+      parent_contract_id:
+        type: UUID
+        description: "Parent contract for renewals"
+      document_id:
+        type: UUID
+        description: "Contract document file"
+      is_main:
+        type: boolean
+        default: true
+      contract_number:
+        type: string
+        maxLength: 100
+      start_date:
+        type: date
+        required: true
+      end_date:
+        type: date
+      metadata:
+        type: jsonb
+        description: "Terms, appendices, special clauses"
+      created_at:
+        type: timestamp
+      updated_at:
+        type: timestamp
+    relationships:
+      employee:
+        target: Employee
+        cardinality: "1"
+      parentContract:
+        target: Contract
+        cardinality: "0..1"
+      supplier:
+        target: VendorCompany
+        cardinality: "0..1"
+      document:
+        target: Document
+        cardinality: "0..1"
+
+  Assignment:
+    description: |\
+      Assignment of employee/worker to work in a business unit.
+      Supports flexible staffing models: Position-based (strict headcount) or Job-based (flexible).
+      Enhanced to support both WorkRelationship and Employee references.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      work_relationship_id:
+        type: UUID
+        required: false
+        description: "Direct link to work relationship (for non-employee workers)"
+      employee_id:
+        type: UUID
+        required: false
+        description: "Link to employee (for EMPLOYEE-type work relationships)"
+      staffing_model_code:
+        type: enum
+        values: [POSITION_BASED, JOB_BASED]
+        required: true
+        description: |\
+          Staffing model determines assignment structure:
+          - POSITION_BASED: Assignment to a specific budgeted position (strict headcount control)
+          - JOB_BASED: Assignment directly to a job without position (flexible staffing)
+      position_id:
+        type: UUID
+        required: false
+        description: "Position assigned to (required if POSITION_BASED, null if JOB_BASED)"
+      job_id:
+        type: UUID
+        required: false
+        description: "Direct job link (for JOB_BASED model or denormalized from position.job_id)"
+      business_unit_id:
+        type: UUID
+        required: true
+      primary_location_id:
+        type: UUID
+        description: "Primary work location"
+      status_code:
+        type: string
+        maxLength: 50
+        description: "ACTIVE, SUSPENDED, ENDED"
+      assignment_category_code:
+        type: string
+        maxLength: 50
+        description: "Assignment category (REGULAR, TEMPORARY, PROJECT)"
+      is_primary_assignment:
+        type: boolean
+        default: false
+        description: "Primary assignment if worker has multiple concurrent assignments"
+      fte:
+        type: decimal
+        precision: [4, 2]
+        description: "Full-time equivalent"
+      supervisor_assignment_id:
+        type: UUID
+        description: "Direct supervisor's assignment (solid line reporting)"
+      dotted_line_supervisor_id:
+        type: UUID
+        description: "Dotted line supervisor (matrix reporting)"
+      work_pattern_code:
+        type: string
+        maxLength: 50
+        description: "Work schedule pattern"
+      reason_code:
+        type: string
+        maxLength: 50
+        description: "Assignment change reason (HIRE, TRANSFER, PROMOTION, etc.)"
+      start_date:
+        type: date
+        required: true
+      end_date:
+        type: date
+      metadata:
+        type: jsonb
+        description: "Additional assignment attributes, custom fields"
+      created_at:
+        type: timestamp
+      updated_at:
+        type: timestamp
+    relationships:
+      workRelationship:
+        target: WorkRelationship
+        cardinality: "0..1"
+        description: "Parent work relationship (for non-employee workers)"
+      employee:
+        target: Employee
+        cardinality: "0..1"
+        description: "Parent employee record (for employee workers)"
+      position:
+        target: Position
+        cardinality: "0..1"
+        description: "Position (if POSITION_BASED staffing)"
+      job:
+        target: Job
+        cardinality: "0..1"
+        description: "Job (if JOB_BASED, or denormalized from position)"
+      businessUnit:
+        target: Unit
+        cardinality: "1"
+      primaryLocation:
+        target: WorkLocation
+        cardinality: "0..1"
+      supervisor:
+        target: Assignment
+        cardinality: "0..1"
+        description: "Solid line supervisor assignment"
+      dottedLineSupervisor:
+        target: Assignment
+        cardinality: "0..1"
+        description: "Dotted line supervisor (matrix)"
+    constraints:
+      - name: "assignment_must_have_worker_reference"
+        type: check
+        condition: "work_relationship_id IS NOT NULL OR employee_id IS NOT NULL"
+    businessRules:
+      - "POSITION_BASED model requires position_id, JOB_BASED allows direct job_id without position"
+      - "If staffing_model = POSITION_BASED, position_id must NOT be null"
+      - "If staffing_model = JOB_BASED, position_id must be null, job_id can be specified"
+      - "One work relationship/employee can have multiple assignments (different periods or concurrent)"
+      - "Only one primary assignment per work relationship/employee at a time"
+      - "Supervisor must have active assignment in same or parent unit"
+      - "Dotted line supervisor represents matrix/secondary reporting (does not affect primary approval chain)"
+      - "Either work_relationship_id OR employee_id must be specified, not both for same assignment"
+
+  EmployeeIdentifier:
+    description: |
+      Alternative identifiers for employees (payroll ID, badge number, legacy IDs).
+    attributes:
+      id:
+        type: UUID
+        required: true
+      employee_id:
+        type: UUID
+        required: true
+      id_type_code:
+        type: string
+        maxLength: 50
+        description: "PAYROLL_ID, BADGE, LEGACY_SYSTEM_ID"
+      id_value:
+        type: string
+        maxLength: 100
+      is_primary:
+        type: boolean
+        default: false
+      effective_start_date:
+        type: date
+        required: true
+      effective_end_date:
+        type: date
+      is_current_flag:
+        type: boolean
+        default: true
+    relationships:
+      employee:
+        target: Employee
+        cardinality: "1"
+    constraints:
+      - name: "unique_employee_identifier"
+        type: unique
+        fields: [employee_id, id_type_code, id_value]
+
+  GlobalAssignment:
+    description: |
+      International assignments (expatriate, secondment).
+      Tracks home and host entities, payroll country, and allowances.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      employee_id:
+        type: UUID
+        required: true
+      home_entity_id:
+        type: UUID
+        required: true
+        description: "Home legal entity"
+      host_entity_id:
+        type: UUID
+        required: true
+        description: "Host legal entity"
+      assignment_type_code:
+        type: string
+        maxLength: 30
+        description: "LONG_TERM, SHORT_TERM, ROTATION"
+      home_country_code:
+        type: string
+        maxLength: 2
+      host_country_code:
+        type: string
+        maxLength: 2
+      payroll_country_code:
+        type: string
+        maxLength: 2
+      shadow_payroll_flag:
+        type: boolean
+        default: false
+      housing_allowance_amt:
+        type: decimal
+        precision: [14, 2]
+      cola_factor:
+        type: decimal
+        precision: [6, 3]
+        description: "Cost of living adjustment factor"
+      mobility_policy_code:
+        type: string
+        maxLength: 30
+      start_date:
+        type: date
+        required: true
+      end_date:
+        type: date
+      metadata:
+        type: jsonb
+      effective_start_date:
+        type: date
+        required: true
+      effective_end_date:
+        type: date
+      is_current_flag:
+        type: boolean
+        default: true
+    relationships:
+      employee:
+        target: Employee
+        cardinality: "1"
+      homeEntity:
+        target: Entity
+        cardinality: "1"
+      hostEntity:
+        target: Entity
+        cardinality: "1"
+
+  # ===========================================================================
+  # JOB & POSITION SCHEMA
+  # ===========================================================================
+
+  TaxonomyTree:
+    description: |\
+      Job taxonomy tree structure (corporate or BU-specific).
+      Supports multiple independent taxonomy trees for different organizational contexts.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      code:
+        type: string
+        required: true
+        maxLength: 50
+        description: "Taxonomy tree code (e.g., CORP_TAX, BU_ENG_TAX)"
+      name:
+        type: string
+        required: true
+        maxLength: 150
+      owner_type:
+        type: enum
+        values: [CORPORATE, BUSINESS_UNIT]
+        required: true
+        description: "Corporate-wide or BU-specific taxonomy"
+      owner_id:
+        type: UUID
+        description: "Business unit ID if BU-specific"
+      is_active:
+        type: boolean
+        default: true
+      metadata:
+        type: jsonb
+        description: "Taxonomy rules, inheritance settings"
+      created_at:
+        type: timestamp
+      updated_at:
+        type: timestamp
+    constraints:
+      - name: "unique_taxonomy_tree_code"
+        type: unique
+        fields: [code]
+    businessRules:
+      - "Corporate taxonomy is default for all BUs"
+      - "BU can override with own taxonomy tree"
+      - "Jobs link to taxonomy nodes for classification"
+
+  JobTaxonomy:
+    description: |\
+      Nodes in job taxonomy tree (job families, sub-families, functions).
+      Hierarchical classification of jobs.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      tree_id:
+        type: UUID
+        required: true
+        description: "Parent taxonomy tree"
+      code:
+        type: string
+        required: true
+        maxLength: 50
+      name:
+        type: string
+        required: true
+        maxLength: 150
+      parent_id:
+        type: UUID
+        description: "Parent taxonomy node"
+      level:
+        type: integer
+        description: "Hierarchy level (1=family, 2=sub-family, 3=function)"
+      path:
+        type: string
+        maxLength: 500
+        description: "Materialized path"
+      sort_order:
+        type: integer
+      is_active:
+        type: boolean
+        default: true
+      metadata:
+        type: jsonb
+      effective_start_date:
+        type: date
+        required: true
+      effective_end_date:
+        type: date
+      is_current_flag:
+        type: boolean
+        default: true
+    relationships:
+      tree:
+        target: TaxonomyTree
+        cardinality: "1"
+      parent:
+        target: JobTaxonomy
+        cardinality: "0..1"
+    constraints:
+      - name: "unique_taxonomy_code_per_tree"
+        type: unique
+        fields: [tree_id, code, effective_start_date]
+    businessRules:
+      - "Taxonomy typically 3 levels: Family → Sub-family → Function"
+      - "Path enables efficient subtree queries"
+      - "Jobs link to lowest applicable taxonomy node"
+
+  JobTree:
+    description: |\
+      Job hierarchy tree (corporate or BU-specific).
+      Supports multiple independent job trees with inheritance.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      code:
+        type: string
+        required: true
+        maxLength: 50
+      name:
+        type: string
+        required: true
+        maxLength: 150
+      owner_type:
+        type: enum
+        values: [CORPORATE, BUSINESS_UNIT]
+        required: true
+      owner_id:
+        type: UUID
+        description: "Business unit ID if BU-specific"
+      parent_tree_id:
+        type: UUID
+        description: "Parent tree for inheritance (BU tree inherits from corporate)"
+      is_active:
+        type: boolean
+        default: true
+      metadata:
+        type: jsonb
+        description: "Inheritance rules, override settings"
+      created_at:
+        type: timestamp
+      updated_at:
+        type: timestamp
+    constraints:
+      - name: "unique_job_tree_code"
+        type: unique
+        fields: [code]
+    businessRules:
+      - "Corporate job tree is default"
+      - "BU job trees can inherit from corporate tree"
+      - "Jobs in BU tree can override corporate job attributes"
+
+  Job:
+    description: |\
+      Job definition (role, responsibilities, requirements).
+      Can exist in corporate or BU-specific job trees with inheritance.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      tree_id:
+        type: UUID
+        required: true
+        description: "Job tree this job belongs to"
+      code:
+        type: string
+        required: true
+        maxLength: 50
+      name:
+        type: string
+        required: true
+        maxLength: 200
+      parent_job_id:
+        type: UUID
+        description: "Parent job in hierarchy"
+      taxonomy_id:
+        type: UUID
+        description: "Job taxonomy classification"
+      job_family_id:
+        type: UUID
+        description: "Shortcut to job family (denormalized from taxonomy)"
+      level_id:
+        type: UUID
+        description: "Job level/seniority"
+      grade_id:
+        type: UUID
+        description: "Job grade/band"
+      job_type_code:
+        type: string
+        maxLength: 50
+        description: "INDIVIDUAL_CONTRIBUTOR, MANAGER, EXECUTIVE"
+      flsa_status_code:
+        type: string
+        maxLength: 50
+        description: "EXEMPT, NON_EXEMPT (US labor law)"
+      path:
+        type: string
+        maxLength: 500
+        description: "Materialized path in job tree"
+      sort_order:
+        type: integer
+      is_active:
+        type: boolean
+        default: true
+      metadata:
+        type: jsonb
+        description: "Custom attributes, override flags"
+      effective_start_date:
+        type: date
+        required: true
+      effective_end_date:
+        type: date
+      is_current_flag:
+        type: boolean
+        default: true
+    relationships:
+      tree:
+        target: JobTree
+        cardinality: "1"
+      parentJob:
+        target: Job
+        cardinality: "0..1"
+      taxonomy:
+        target: JobTaxonomy
+        cardinality: "0..1"
+      level:
+        target: JobLevel
+        cardinality: "0..1"
+      grade:
+        target: JobGrade
+        cardinality: "0..1"
+      profile:
+        target: JobProfile
+        cardinality: "0..1"
+    constraints:
+      - name: "unique_job_code_per_tree"
+        type: unique
+        fields: [tree_id, code, effective_start_date]
+    businessRules:
+      - "Jobs form hierarchy (parent-child)"
+      - "Child jobs can inherit attributes from parent"
+      - "BU jobs can override corporate job attributes"
+      - "Job family shortcut for performance (denormalized)"
+      - "Level and grade determine compensation range"
+
+  JobProfile:
+    description: |\
+      Detailed job profile including responsibilities, requirements, competencies, and skills.
+      One-to-one with Job.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      job_id:
+        type: UUID
+        required: true
+      summary:
+        type: text
+        description: "Job summary/overview"
+      responsibilities:
+        type: jsonb
+        description: "Array of key responsibilities"
+      requirements:
+        type: jsonb
+        description: "Education, experience, certifications required"
+      physical_requirements:
+        type: jsonb
+        description: "Physical demands (lifting, standing, etc.)"
+      work_environment:
+        type: jsonb
+        description: "Work conditions, travel requirements"
+      success_factors:
+        type: jsonb
+        description: "Key success factors"
+      metadata:
+        type: jsonb
+      effective_start_date:
+        type: date
+        required: true
+      effective_end_date:
+        type: date
+      is_current_flag:
+        type: boolean
+        default: true
+    relationships:
+      job:
+        target: Job
+        cardinality: "1"
+      requiredSkills:
+        target: JobProfileSkill
+        cardinality: "0..*"
+      requiredCompetencies:
+        target: JobProfileCompetency
+        cardinality: "0..*"
+    businessRules:
+      - "One profile per job (1:1 relationship)"
+      - "Profile defines what the job requires"
+      - "Used for job matching, recruiting, performance"
+
+  JobProfileSkill:
+    description: "Required skills for a job with proficiency levels"
+    attributes:
+      id:
+        type: UUID
+        required: true
+      job_profile_id:
+        type: UUID
+        required: true
+      skill_id:
+        type: UUID
+        required: true
+      required_proficiency_level:
+        type: integer
+        required: true
+        description: "Minimum proficiency required (1-5)"
+      is_mandatory:
+        type: boolean
+        default: true
+        description: "Must-have vs nice-to-have"
+      weight:
+        type: decimal
+        precision: [3, 2]
+        description: "Importance weight (0.0-1.0)"
+    relationships:
+      jobProfile:
+        target: JobProfile
+        cardinality: "1"
+      skill:
+        target: SkillMaster
+        cardinality: "1"
+
+  JobProfileCompetency:
+    description: "Required competencies for a job with expected levels"
+    attributes:
+      id:
+        type: UUID
+        required: true
+      job_profile_id:
+        type: UUID
+        required: true
+      competency_id:
+        type: UUID
+        required: true
+      required_level:
+        type: integer
+        required: true
+        description: "Expected competency level (1-5)"
+      is_mandatory:
+        type: boolean
+        default: true
+      weight:
+        type: decimal
+        precision: [3, 2]
+    relationships:
+      jobProfile:
+        target: JobProfile
+        cardinality: "1"
+      competency:
+        target: CompetencyMaster
+        cardinality: "1"
+
+  JobLevel:
+    description: |\
+      Job level/seniority classification (e.g., Junior, Mid, Senior, Principal).
+      Used for career progression and compensation.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      code:
+        type: string
+        required: true
+        maxLength: 50
+      name:
+        type: string
+        required: true
+        maxLength: 100
+      level_order:
+        type: integer
+        required: true
+        description: "Numeric order (1=lowest, higher=more senior)"
+      description:
+        type: text
+      typical_years_experience:
+        type: integer
+        description: "Typical years of experience"
+      is_management:
+        type: boolean
+        default: false
+        description: "Management level flag"
+      is_executive:
+        type: boolean
+        default: false
+        description: "Executive level flag"
+      is_active:
+        type: boolean
+        default: true
+      metadata:
+        type: jsonb
+      effective_start_date:
+        type: date
+        required: true
+      effective_end_date:
+        type: date
+      is_current_flag:
+        type: boolean
+        default: true
+    constraints:
+      - name: "unique_job_level_code"
+        type: unique
+        fields: [code, effective_start_date]
+    businessRules:
+      - "Levels ordered by seniority (level_order)"
+      - "Used for career progression paths"
+      - "Linked to compensation ranges"
+
+  JobGrade:
+    description: |\
+      Job grade/band for compensation management.
+      Links jobs to salary ranges and benefits.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      code:
+        type: string
+        required: true
+        maxLength: 50
+      name:
+        type: string
+        required: true
+        maxLength: 100
+      grade_order:
+        type: integer
+        required: true
+        description: "Numeric order (1=lowest grade)"
+      min_salary:
+        type: decimal
+        precision: [14, 2]
+        description: "Minimum salary for grade"
+      mid_salary:
+        type: decimal
+        precision: [14, 2]
+        description: "Midpoint salary"
+      max_salary:
+        type: decimal
+        precision: [14, 2]
+        description: "Maximum salary for grade"
+      currency_code:
+        type: string
+        maxLength: 3
+      is_active:
+        type: boolean
+        default: true
+      metadata:
+        type: jsonb
+        description: "Benefits, allowances, grade-specific rules"
+      effective_start_date:
+        type: date
+        required: true
+      effective_end_date:
+        type: date
+      is_current_flag:
+        type: boolean
+        default: true
+    constraints:
+      - name: "unique_job_grade_code"
+        type: unique
+        fields: [code, effective_start_date]
+    businessRules:
+      - "Grades ordered by compensation level"
+      - "Salary ranges define compensation boundaries"
+      - "Used by Total Rewards module for pay decisions"
+
+  Position:
+    description: |\
+      Budgeted position instance (headcount).
+      Represents a specific position in organizational structure for POSITION_BASED staffing.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      code:
+        type: string
+        required: true
+        maxLength: 50
+        description: "Position code (unique)"
+      name:
+        type: string
+        required: true
+        maxLength: 200
+      job_id:
+        type: UUID
+        required: true
+        description: "Job this position is for"
+      business_unit_id:
+        type: UUID
+        required: true
+        description: "Owning business unit"
+      reports_to_position_id:
+        type: UUID
+        description: "Reporting position (supervisor)"
+      location_id:
+        type: UUID
+        description: "Primary work location"
+      fte:
+        type: decimal
+        precision: [4, 2]
+        default: 1.0
+        description: "Full-time equivalent (1.0 = full-time)"
+      max_incumbents:
+        type: integer
+        default: 1
+        description: "Maximum number of people in this position"
+      current_incumbents:
+        type: integer
+        default: 0
+        description: "Current number of assignments"
+      status_code:
+        type: string
+        maxLength: 50
+        description: "ACTIVE, FROZEN, ELIMINATED"
+      position_type_code:
+        type: string
+        maxLength: 50
+        description: "REGULAR, TEMPORARY, CONTRACT"
+      is_budgeted:
+        type: boolean
+        default: true
+        description: "Budgeted position flag"
+      budget_year:
+        type: integer
+        description: "Fiscal year budgeted"
+      cost_center_code:
+        type: string
+        maxLength: 50
+      path:
+        type: string
+        maxLength: 500
+        description: "Reporting hierarchy path"
+      metadata:
+        type: jsonb
+      effective_start_date:
+        type: date
+        required: true
+      effective_end_date:
+        type: date
+      is_current_flag:
+        type: boolean
+        default: true
+    relationships:
+      job:
+        target: Job
+        cardinality: "1"
+      businessUnit:
+        target: Unit
+        cardinality: "1"
+      reportsTo:
+        target: Position
+        cardinality: "0..1"
+      location:
+        target: WorkLocation
+        cardinality: "0..1"
+      assignments:
+        target: Assignment
+        cardinality: "0..*"
+    constraints:
+      - name: "unique_position_code"
+        type: unique
+        fields: [code, effective_start_date]
+    businessRules:
+      - "Position is instance of a Job in specific BU"
+      - "Used for POSITION_BASED staffing model"
+      - "Positions form reporting hierarchy (reports_to)"
+      - "max_incumbents allows job sharing (typically 1)"
+      - "Vacancy exists when current_incumbents < max_incumbents"
+      - "Frozen positions cannot be filled"
+      - "Eliminated positions are historical only"
+
+  # ===========================================================================
+  # FACILITY SCHEMA
+  # ===========================================================================
+
+  Place:
+    description: |\
+      Generic geographic place or point of interest (building, campus, virtual).
+      Foundation for work locations and facility management.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      code:
+        type: string
+        required: true
+        maxLength: 50
+        description: "Place code (unique)"
+      name:
+        type: string
+        maxLength: 150
+      place_type:
+        type: enum
+        values: [BUILDING, CAMPUS, FLOOR, ROOM, OUTDOOR, VIRTUAL]
+        description: "Type of place"
+      country_id:
+        type: UUID
+        description: "Country reference"
+      admin_area_id:
+        type: UUID
+        description: "Administrative area reference"
+      address_line1:
+        type: string
+        maxLength: 255
+      address_line2:
+        type: string
+        maxLength: 255
+      postal_code:
+        type: string
+        maxLength: 20
+      latitude:
+        type: decimal
+        precision: [9, 6]
+      longitude:
+        type: decimal
+        precision: [9, 6]
+      timezone_id:
+        type: UUID
+        description: "Timezone reference"
+      description:
+        type: text
+      metadata:
+        type: jsonb
+        description: "Building info, amenities, security"
+      is_active:
+        type: boolean
+        default: true
+      effective_start_date:
+        type: date
+        required: true
+      effective_end_date:
+        type: date
+      is_current_flag:
+        type: boolean
+        default: true
+    relationships:
+      country:
+        target: Country
+        cardinality: "0..1"
+      adminArea:
+        target: AdminArea
+        cardinality: "0..1"
+      timeZone:
+        target: TimeZone
+        cardinality: "0..1"
+      locations:
+        target: Location
+        cardinality: "0..*"
+      workLocations:
+        target: WorkLocation
+        cardinality: "0..*"
+    constraints:
+      - name: "unique_place_code"
+        type: unique
+        fields: [code]
+
+  Location:
+    description: |\
+      Specific location within a place (office, meeting room, workspace).
+      Supports granular space management and capacity tracking.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      code:
+        type: string
+        required: true
+        maxLength: 50
+      name:
+        type: string
+        maxLength: 150
+      place_id:
+        type: UUID
+        required: true
+        description: "Parent place"
+      parent_location_id:
+        type: UUID
+        description: "Parent location (for hierarchy)"
+      location_type:
+        type: enum
+        values: [OFFICE, MEETING_ROOM, WORKSPACE, COMMON_AREA, STORAGE, FACILITY]
+      floor_number:
+        type: string
+        maxLength: 10
+      room_number:
+        type: string
+        maxLength: 20
+      capacity:
+        type: integer
+        description: "Max capacity"
+      area_sqm:
+        type: decimal
+        precision: [10, 2]
+      description:
+        type: text
+      metadata:
+        type: jsonb
+        description: "Features, booking rules"
+      is_active:
+        type: boolean
+        default: true
+      effective_start_date:
+        type: date
+        required: true
+      effective_end_date:
+        type: date
+      is_current_flag:
+        type: boolean
+        default: true
+    relationships:
+      place:
+        target: Place
+        cardinality: "1"
+      parentLocation:
+        target: Location
+        cardinality: "0..1"
+      childLocations:
+        target: Location
+        cardinality: "0..*"
+      workLocations:
+        target: WorkLocation
+        cardinality: "0..*"
+    constraints:
+      - name: "unique_location_code_in_place"
+        type: unique
+        fields: [place_id, code]
+
+  WorkLocation:
+    description: |\
+      Work location assignment linking employees to physical or virtual locations.
+      Supports hybrid, remote, and onsite work models.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      code:
+        type: string
+        required: true
+        maxLength: 50
+      name:
+        type: string
+        maxLength: 150
+      location_id:
+        type: UUID
+        description: "Physical location (null for remote)"
+      place_id:
+        type: UUID
+        description: "Place reference (denormalized)"
+      work_model:
+        type: enum
+        values: [ONSITE, REMOTE, HYBRID, FLEXIBLE]
+        required: true
+      is_primary:
+        type: boolean
+        default: true
+        description: "Primary work location flag"
+      description:
+        type: text
+      metadata:
+        type: jsonb
+        description: "Work model details, policies"
+      is_active:
+        type: boolean
+        default: true
+      effective_start_date:
+        type: date
+        required: true
+      effective_end_date:
+        type: date
+      is_current_flag:
+        type: boolean
+        default: true
+    relationships:
+      location:
+        target: Location
+        cardinality: "0..1"
+      place:
+        target: Place
+        cardinality: "0..1"
+      assignments:
+        target: Assignment
+        cardinality: "0..*"
+    constraints:
+      - name: "unique_work_location_code"
+        type: unique
+        fields: [code]
+    businessRules:
+      - "Hybrid model requires primary location"
+      - "Remote model may not have physical location"
+      - "Used by Assignment.primary_location_id"
+
+
+# =============================================================================
+# DESIGN PATTERNS
+# =============================================================================
+
+patterns:
+  
+  hierarchical_data:
+    description: "Hierarchical structures with parent-child relationships"
+    applies_to:
+      - Industry
+      - Entity (legal entity hierarchy)
+      - Unit (business unit hierarchy)
+      - AdminArea (geographic hierarchy)
+      - Job (job hierarchy)
+      - JobTaxonomy (taxonomy tree)
+      - Position (reporting structure)
+    implementation:
+      - "parent_id field for self-referencing"
+      - "path field for materialized path"
+      - "Closure table for complex queries (e.g., TalentMarketHierarchy)"
+  
+  scd_type2:
+    description: "Slowly Changing Dimension Type 2 for historical tracking"
+    applies_to: "Most master data entities"
+    implementation:
+      - "effective_start_date and effective_end_date"
+      - "is_current_flag for current record"
+      - "Unique constraint on natural key + effective_start_date"
+  
+  multi_tree:
+    description: "Multiple independent trees for same entity type"
+    applies_to:
+      - JobTree (corporate vs BU job trees)
+      - TaxonomyTree (corporate vs BU taxonomy)
+    implementation:
+      - "tree_id to identify which tree"
+      - "Cross-tree mapping tables (xmap) for consolidation"
+  
+  flexible_classification:
+    description: "Flexible tagging and categorization"
+    applies_to:
+      - UnitTag (business unit tags)
+      - PositionTag (position tags)
+    implementation:
+      - "Separate tag tables with many-to-many relationships"
+      - "Tags from code list for consistency"
+  
+  separation_of_concerns:
+    description: "Separation of person data from employment data (Enhanced 4-level model)"
+    implementation:
+      - "Worker: immutable person identity with person_type classification"
+      - "WorkRelationship: overall work relationship with organization (NEW - best practice from Workday/Oracle)"
+      - "Employee: employment contract details (one work relationship, one employee record)"
+      - "Assignment: job assignment with flexible staffing models (one employee/work relationship, many assignments)"
+    rationale: |\
+      This 4-level separation provides:
+      - Clear distinction between work relationship vs employment contract
+      - Support for non-employee workers (contractors, contingent) without Employee record
+      - Flexibility for one worker to have multiple concurrent relationships
+      - Better alignment with leading HR systems (Workday, SAP SuccessFactors, Oracle HCM)
+  
+  staffing_model_flexibility:
+    description: "Support for both Position-based and Job-based staffing"
+    applies_to:
+      - Assignment
+    implementation:
+      - "POSITION_BASED: strict headcount control, budgeted positions, one-to-one position-to-person mapping"
+      - "JOB_BASED: flexible staffing, multiple people same job, no pre-defined position requirement"
+      - "Hybrid: organization can use both models for different parts of workforce"
+    rationale: |\
+      Different business needs require different approaches:
+      - Corporate roles → POSITION_BASED (strict budgets)
+      - Hourly/contingent workers → JOB_BASED (flexible capacity)
+      - Project-based roles → JOB_BASED (dynamic team sizes)
+  
+  matrix_organization_support:
+    description: "Support for matrix organizations with solid and dotted line reporting"
+    applies_to:
+      - Assignment (supervisor_assignment_id, dotted_line_supervisor_id)
+      - RelationType (REPORTING_SOLID_LINE, REPORTING_DOTTED_LINE)
+      - UnitType (SUPERVISORY for approval hierarchy)
+    implementation:
+      - "Solid line: primary reporting, affects approval chain"
+      - "Dotted line: secondary/functional reporting, informational only"
+      - "Supervisory organizations: separate from operational structure for security/approvals"
+  
+  data_classification_security:
+    description: "Field-level data classification for privacy and compliance"
+    applies_to:
+      - Worker (PII data)
+      - WorkRelationship
+      - All entities with sensitive data
+    implementation:
+      - "data_classification JSONB field with sensitivity_level, encryption_required, pii_fields, access_scope"
+      - "GDPR/CCPA compliance support"
+      - "Role-based access control based on data classification"
+  
+  skill_gap_analysis:
+    description: "Target proficiency levels and gap tracking for development planning"
+    applies_to:
+      - WorkerSkill
+    implementation:
+      - "target_proficiency_level: desired skill level"
+      - "proficiency_gap: computed field (target - current)"
+      - "estimated_gap_months: time estimate to close gap"
+      - "Links to training programs and development plans"
+
+# =============================================================================
+# BUSINESS RULES SUMMARY
+# =============================================================================
+
+business_rules:
+  
+  organizational_structure:
+    - "Legal entities form corporate group hierarchy"
+    - "Business units form operational hierarchy with types: DIVISION, DEPARTMENT, TEAM, SUPERVISORY, COST_CENTER, MATRIX"
+    - "SUPERVISORY type units define reporting/approval hierarchy (can differ from operational structure)"
+    - "BU must link to legal entity via code"
+    - "Dynamic relationships via org_relation schema"
+    - "Solid line vs dotted line reporting explicitly modeled for matrix organizations"
+  
+  person_employment:
+    - "Worker ID is immutable for lifetime"
+    - "Worker has person_type: EMPLOYEE, CONTRACTOR, CONTINGENT, NON_WORKER, PENDING, FORMER"
+    - "Person type determines available system features and workflows"
+    - "One worker can have multiple work relationships (different entities or relationship types)"
+    - "WorkRelationship is primary relationship entity (NEW - separates relationship from contract details)"
+    - "Employee record only for EMPLOYEE-type work relationships (contains contract details)"
+    - "One work relationship can have multiple assignments (over time or concurrent)"
+    - "Only one active primary assignment per work relationship at a time"
+    - "NON_WORKER and FORMER types have restricted capabilities"
+  
+  job_position:
+    - "Jobs are defined in trees (corporate or BU-specific)"
+    - "Jobs can inherit or override from parent"
+    - "Positions are instances of jobs in specific BUs (POSITION_BASED staffing)"
+    - "JOB_BASED staffing allows direct job assignment without position"
+    - "Position can have multiple incumbents (max_incumbents)"
+    - "Assignment supports both POSITION_BASED and JOB_BASED staffing models"
+  
+  temporal_validity:
+    - "Most entities use SCD Type 2"
+    - "effective_start_date and effective_end_date define validity"
+    - "is_current_flag marks current version"
+    - "Historical data is never deleted"
+  
+  data_quality:
+    - "Codes must be unique within scope"
+    - "Paths must reflect actual hierarchy"
+    - "Foreign key references must be valid"
+    - "Dates must be logically consistent (start <= end)"
+    - "PII fields encrypted per data_classification metadata"
+    - "Access controls enforced based on data sensitivity levels"
+
+# =============================================================================
+# INTEGRATION POINTS
+# =============================================================================
+
+integrations:
+  
+  internal_modules:
+    - module: "Time & Attendance (TA)"
+      entities: [Worker, Employee, Assignment, Position, Unit]
+      purpose: "Shift scheduling, attendance tracking"
+    
+    - module: "Total Rewards (TR)"
+      entities: [Employee, Assignment, Job, JobLevel, JobGrade]
+      purpose: "Compensation, benefits, job evaluation"
+    
+    - module: "Payroll (PR)"
+      entities: [Employee, Assignment, BankAccount, GlobalAssignment]
+      purpose: "Payroll processing, tax calculation"
+    
+    - module: "Talent Management (TM)"
+      entities: [Worker, Employee, Position, Job, Skill, Competency]
+      purpose: "Performance, succession, learning"
+  
+  external_systems:
+    - system: "HRIS Legacy Systems"
+      purpose: "Data migration, synchronization"
+      entities: [Worker, Employee, Assignment]
+    
+    - system: "Identity Provider (SSO)"
+      purpose: "Authentication, user provisioning"
+      entities: [Worker, Employee]
+    
+    - system: "Background Check Services"
+      purpose: "Pre-employment screening"
+      entities: [Worker, Document]
+
+# =============================================================================
+# VERSION HISTORY
+# =============================================================================
+
+versionHistory:
+  - version: "2.0"
+    date: "2025-12-01"
+    changes:
+      - "✨ MAJOR: Added WorkRelationship entity (best practice from Workday/Oracle)"
+      - "✨ NEW: Person Type classification (EMPLOYEE, CONTRACTOR, CONTINGENT, NON_WORKER, PENDING, FORMER)"
+      - "✨ NEW: Supervisory Organization support (SUPERVISORY unit type)"
+      - "✨ ENHANCED: Assignment supports flexible staffing models (POSITION_BASED vs JOB_BASED)"
+      - "✨ ENHANCED: Explicit solid line vs dotted line reporting for matrix organizations"
+      - "✨ NEW: Skill gap analysis (target proficiency, gap tracking, development planning)"
+      - "✨ NEW: Data classification metadata for security and compliance (GDPR/CCPA)"
+      - "📝 UPDATED: Employee now references WorkRelationship (4-level hierarchy)"
+      - "📝 UPDATED: Assignment enhanced with work_relationship_id, staffing_model_code, dotted_line_supervisor"
+      - "📝 UPDATED: RelationType with explicit REPORTING_SOLID_LINE and REPORTING_DOTTED_LINE"
+      - "📝 UPDATED: UnitType with is_supervisory flag"
+      - "📝 UPDATED: WorkerSkill with target_proficiency_level, proficiency_gap, estimated_gap_months"
+      - "📝 UPDATED: Design patterns and business rules to reflect enhancements"
+    rationale: |\
+      Based on comparative analysis with leading HR systems (Workday, SAP SuccessFactors, Oracle HCM Cloud),
+      identified 8 key areas for improvement to reach enterprise-level standards. This version implements all
+      HIGH and MEDIUM priority recommendations from comprehensive best practices review.
+    breaking_changes:
+      - "Employee now requires work_relationship_id (migration required)"
+      - "Assignment can reference either work_relationship_id OR employee_id"
+      - "Worker.person_type_code is now required"
+    migration_notes:
+      - "Create WorkRelationship records for all existing Employee records"
+      - "Populate Worker.person_type_code based on worker_category_code"
+      - "Update Assignment records with appropriate staffing_model_code"
+      - "Classify UnitType records as supervisory where applicable"
+    author: "xTalent Documentation Team"
+    reviewed_by: "HR Domain Expert, Technical Architect"
+  
+  - version: "1.0"
+    date: "2025-12-01"
+    changes:
+      - "Initial ontology created from existing database design v3"
+      - "Documented all entities across 11 schemas"
+      - "Added business rules and design patterns"
+      - "Defined integration points"
+    author: "xTalent Documentation Team"
+
+# =============================================================================
+# NOTES
+# =============================================================================
+
+notes:
+  - "This ontology is derived from existing database design (1.Core.V3.dbml)"
+  - "Some entities marked as DEPRECATED in DBML are excluded from ontology"
+  - "Multi-tree approach for Job and Taxonomy supports corporate vs BU flexibility"
+  - "SCD Type 2 is used extensively for historical tracking"
+  - "Worker-Employee-Assignment separation enables complex employment scenarios"
+  - "Talent Market feature supports multi-country/multi-entity organizations"

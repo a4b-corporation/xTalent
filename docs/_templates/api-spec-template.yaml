@@ -1,0 +1,541 @@
+openapi: 3.0.3
+
+info:
+  title: "{Module Name} API"
+  description: |
+    API specification for {Module Name} module.
+    
+    This API provides endpoints for managing {brief description of what the API does}.
+    
+    ## Authentication
+    All endpoints require authentication using Bearer token.
+    
+    ## Rate Limiting
+    - 100 requests per minute per user
+    - 1000 requests per hour per user
+    
+    ## Versioning
+    API version is specified in the URL path (e.g., /api/v1/)
+    
+  version: "1.0.0"
+  contact:
+    name: "xTalent API Team"
+    email: "api@xtalent.com"
+  license:
+    name: "Proprietary"
+
+servers:
+  - url: "https://api.xtalent.com/v1"
+    description: "Production"
+  - url: "https://api-staging.xtalent.com/v1"
+    description: "Staging"
+  - url: "http://localhost:3000/v1"
+    description: "Local Development"
+
+tags:
+  - name: "{Resource Name}"
+    description: "Operations related to {resource}"
+
+paths:
+  /{resources}:
+    get:
+      summary: "List {resources}"
+      description: "Retrieve a paginated list of {resources}"
+      operationId: "list{Resources}"
+      tags:
+        - "{Resource Name}"
+      parameters:
+        - $ref: "#/components/parameters/PageNumber"
+        - $ref: "#/components/parameters/PageSize"
+        - $ref: "#/components/parameters/SortBy"
+        - $ref: "#/components/parameters/SortOrder"
+        - name: "status"
+          in: "query"
+          description: "Filter by status"
+          required: false
+          schema:
+            type: "string"
+            enum: ["ACTIVE", "INACTIVE", "PENDING"]
+        - name: "search"
+          in: "query"
+          description: "Search term for filtering"
+          required: false
+          schema:
+            type: "string"
+            maxLength: 100
+      responses:
+        "200":
+          description: "Successful response"
+          content:
+            application/json:
+              schema:
+                type: "object"
+                properties:
+                  data:
+                    type: "array"
+                    items:
+                      $ref: "#/components/schemas/{Resource}"
+                  pagination:
+                    $ref: "#/components/schemas/Pagination"
+              examples:
+                success:
+                  summary: "Successful list response"
+                  value:
+                    data:
+                      - id: "uuid-1"
+                        name: "Example Resource"
+                        status: "ACTIVE"
+                    pagination:
+                      page: 1
+                      pageSize: 20
+                      totalPages: 5
+                      totalItems: 100
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - bearerAuth: []
+
+    post:
+      summary: "Create {resource}"
+      description: "Create a new {resource}"
+      operationId: "create{Resource}"
+      tags:
+        - "{Resource Name}"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/{Resource}Create"
+            examples:
+              example1:
+                summary: "Basic example"
+                value:
+                  name: "New Resource"
+                  description: "Description here"
+                  status: "ACTIVE"
+      responses:
+        "201":
+          description: "Resource created successfully"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/{Resource}"
+          headers:
+            Location:
+              description: "URL of the created resource"
+              schema:
+                type: "string"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - bearerAuth: []
+
+  /{resources}/{id}:
+    get:
+      summary: "Get {resource} by ID"
+      description: "Retrieve a specific {resource} by its ID"
+      operationId: "get{Resource}ById"
+      tags:
+        - "{Resource Name}"
+      parameters:
+        - $ref: "#/components/parameters/ResourceId"
+      responses:
+        "200":
+          description: "Successful response"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/{Resource}"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - bearerAuth: []
+
+    put:
+      summary: "Update {resource}"
+      description: "Update an existing {resource}"
+      operationId: "update{Resource}"
+      tags:
+        - "{Resource Name}"
+      parameters:
+        - $ref: "#/components/parameters/ResourceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/{Resource}Update"
+      responses:
+        "200":
+          description: "Resource updated successfully"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/{Resource}"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - bearerAuth: []
+
+    delete:
+      summary: "Delete {resource}"
+      description: "Delete a {resource} (soft delete)"
+      operationId: "delete{Resource}"
+      tags:
+        - "{Resource Name}"
+      parameters:
+        - $ref: "#/components/parameters/ResourceId"
+      responses:
+        "204":
+          description: "Resource deleted successfully"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: "Cannot delete - resource has dependencies"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: "http"
+      scheme: "bearer"
+      bearerFormat: "JWT"
+
+  parameters:
+    ResourceId:
+      name: "id"
+      in: "path"
+      description: "Resource ID"
+      required: true
+      schema:
+        type: "string"
+        format: "uuid"
+
+    PageNumber:
+      name: "page"
+      in: "query"
+      description: "Page number (1-indexed)"
+      required: false
+      schema:
+        type: "integer"
+        minimum: 1
+        default: 1
+
+    PageSize:
+      name: "pageSize"
+      in: "query"
+      description: "Number of items per page"
+      required: false
+      schema:
+        type: "integer"
+        minimum: 1
+        maximum: 100
+        default: 20
+
+    SortBy:
+      name: "sortBy"
+      in: "query"
+      description: "Field to sort by"
+      required: false
+      schema:
+        type: "string"
+        default: "createdAt"
+
+    SortOrder:
+      name: "sortOrder"
+      in: "query"
+      description: "Sort order"
+      required: false
+      schema:
+        type: "string"
+        enum: ["asc", "desc"]
+        default: "desc"
+
+  schemas:
+    {Resource}:
+      type: "object"
+      required:
+        - "id"
+        - "name"
+        - "status"
+      properties:
+        id:
+          type: "string"
+          format: "uuid"
+          description: "Unique identifier"
+          readOnly: true
+        name:
+          type: "string"
+          minLength: 1
+          maxLength: 255
+          description: "Resource name"
+        code:
+          type: "string"
+          pattern: "^[A-Z0-9_]+$"
+          maxLength: 50
+          description: "Unique code"
+        description:
+          type: "string"
+          maxLength: 1000
+          description: "Resource description"
+        status:
+          type: "string"
+          enum: ["ACTIVE", "INACTIVE", "PENDING"]
+          description: "Resource status"
+        effectiveDate:
+          type: "string"
+          format: "date"
+          description: "Date when resource becomes effective"
+        endDate:
+          type: "string"
+          format: "date"
+          nullable: true
+          description: "Date when resource ends (null if no end date)"
+        metadata:
+          type: "object"
+          additionalProperties: true
+          description: "Additional metadata"
+        createdAt:
+          type: "string"
+          format: "date-time"
+          description: "Creation timestamp"
+          readOnly: true
+        createdBy:
+          type: "string"
+          format: "uuid"
+          description: "User who created the resource"
+          readOnly: true
+        updatedAt:
+          type: "string"
+          format: "date-time"
+          description: "Last update timestamp"
+          readOnly: true
+        updatedBy:
+          type: "string"
+          format: "uuid"
+          description: "User who last updated the resource"
+          readOnly: true
+
+    {Resource}Create:
+      type: "object"
+      required:
+        - "name"
+        - "status"
+      properties:
+        name:
+          type: "string"
+          minLength: 1
+          maxLength: 255
+        code:
+          type: "string"
+          pattern: "^[A-Z0-9_]+$"
+          maxLength: 50
+        description:
+          type: "string"
+          maxLength: 1000
+        status:
+          type: "string"
+          enum: ["ACTIVE", "INACTIVE", "PENDING"]
+        effectiveDate:
+          type: "string"
+          format: "date"
+        endDate:
+          type: "string"
+          format: "date"
+          nullable: true
+        metadata:
+          type: "object"
+          additionalProperties: true
+
+    {Resource}Update:
+      type: "object"
+      properties:
+        name:
+          type: "string"
+          minLength: 1
+          maxLength: 255
+        description:
+          type: "string"
+          maxLength: 1000
+        status:
+          type: "string"
+          enum: ["ACTIVE", "INACTIVE", "PENDING"]
+        effectiveDate:
+          type: "string"
+          format: "date"
+        endDate:
+          type: "string"
+          format: "date"
+          nullable: true
+        metadata:
+          type: "object"
+          additionalProperties: true
+
+    Pagination:
+      type: "object"
+      properties:
+        page:
+          type: "integer"
+          description: "Current page number"
+        pageSize:
+          type: "integer"
+          description: "Items per page"
+        totalPages:
+          type: "integer"
+          description: "Total number of pages"
+        totalItems:
+          type: "integer"
+          description: "Total number of items"
+        hasNext:
+          type: "boolean"
+          description: "Whether there is a next page"
+        hasPrevious:
+          type: "boolean"
+          description: "Whether there is a previous page"
+
+    Error:
+      type: "object"
+      required:
+        - "code"
+        - "message"
+      properties:
+        code:
+          type: "string"
+          description: "Error code"
+          example: "VALIDATION_ERROR"
+        message:
+          type: "string"
+          description: "Human-readable error message"
+          example: "Validation failed"
+        details:
+          type: "object"
+          description: "Additional error details"
+          additionalProperties: true
+        timestamp:
+          type: "string"
+          format: "date-time"
+          description: "When the error occurred"
+        path:
+          type: "string"
+          description: "API path that generated the error"
+          example: "/api/v1/resources"
+
+    ValidationError:
+      allOf:
+        - $ref: "#/components/schemas/Error"
+        - type: "object"
+          properties:
+            errors:
+              type: "array"
+              items:
+                type: "object"
+                properties:
+                  field:
+                    type: "string"
+                    description: "Field that failed validation"
+                  message:
+                    type: "string"
+                    description: "Validation error message"
+                  code:
+                    type: "string"
+                    description: "Validation error code"
+
+  responses:
+    BadRequest:
+      description: "Bad request - validation error"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ValidationError"
+          example:
+            code: "VALIDATION_ERROR"
+            message: "Request validation failed"
+            errors:
+              - field: "name"
+                message: "Name is required"
+                code: "REQUIRED"
+              - field: "effectiveDate"
+                message: "Effective date must be in the future"
+                code: "INVALID_DATE"
+
+    Unauthorized:
+      description: "Unauthorized - invalid or missing authentication"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            code: "UNAUTHORIZED"
+            message: "Authentication required"
+
+    Forbidden:
+      description: "Forbidden - insufficient permissions"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            code: "FORBIDDEN"
+            message: "You do not have permission to perform this action"
+
+    NotFound:
+      description: "Resource not found"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            code: "NOT_FOUND"
+            message: "Resource not found"
+
+    Conflict:
+      description: "Conflict - resource already exists or constraint violation"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            code: "CONFLICT"
+            message: "A resource with this code already exists"
+
+    InternalServerError:
+      description: "Internal server error"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            code: "INTERNAL_ERROR"
+            message: "An unexpected error occurred"

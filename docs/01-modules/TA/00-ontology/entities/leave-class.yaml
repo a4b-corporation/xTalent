@@ -1,0 +1,43 @@
+entity: LeaveClass
+version: "2.0"
+layer: configuration
+
+description: |
+  High-level classification of leave types (e.g., Paid Time Off, Unpaid Leave, 
+  Statutory Leave). Used to group similar leave types and apply common policies.
+
+attributes:
+  - id: string (UUID)
+  - code: string # e.g., "PTO", "UNPAID", "STATUTORY"
+  - name: string # e.g., "Paid Time Off", "Unpaid Leave"
+  - description: string (nullable)
+  - category: enum [PAID, UNPAID, STATUTORY, SPECIAL]
+  - isActive: boolean
+  - displayOrder: integer
+  - effectiveDate: date
+  - endDate: date (nullable)
+  - createdAt: datetime
+  - updatedAt: datetime
+
+relationships:
+  - hasLeaveTypes: LeaveType[]
+  - hasEligibilityRules: EligibilityRule[] # Rules bound to this class
+  - hasValidationRules: ValidationRule[]
+  - hasAccrualRules: AccrualRule[]
+  - hasCarryoverRules: CarryoverRule[]
+  - hasLimitRules: LimitRule[]
+  - hasOverdraftRules: OverdraftRule[]
+  - hasProrationRules: ProrationRule[]
+  - hasRoundingRules: RoundingRule[]
+
+constraints:
+  - "code must be unique"
+  - "name must be unique"
+  - "effectiveDate must be <= endDate if endDate is set"
+
+validations:
+  - "code: required, uppercase, alphanumeric + underscore, max 50"
+  - "name: required, max 255"
+  - "category: required, must be valid enum value"
+
+  # ---------------------------------------------------------------------------

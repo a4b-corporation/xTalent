@@ -1,0 +1,75 @@
+entity: ShiftSwapRequest
+version: "1.0"
+layer: shift-management
+
+description: |
+  Request to swap shifts between two workers.
+attributes:
+  id:
+    type: UUID
+    required: true
+  requestorId:
+    type: UUID
+    required: true
+    description: "Worker requesting swap"
+  targetWorkerId:
+    type: UUID
+    required: true
+    description: "Worker to swap with"
+  requestorShiftId:
+    type: UUID
+    required: true
+  targetShiftId:
+    type: UUID
+    required: true
+  requestDate:
+    type: datetime
+    required: true
+  reason:
+    type: text
+    required: false
+  status:
+    type: enum
+    values: [PENDING, ACCEPTED_BY_TARGET, REJECTED_BY_TARGET, APPROVED, REJECTED, CANCELLED]
+    default: PENDING
+  targetResponse:
+    type: enum
+    values: [PENDING, ACCEPTED, REJECTED]
+    default: PENDING
+  targetResponseAt:
+    type: datetime
+    required: false
+  managerApproval:
+    type: enum
+    values: [PENDING, APPROVED, REJECTED]
+    default: PENDING
+  approvedBy:
+    type: UUID
+    required: false
+  approvedAt:
+    type: datetime
+    required: false
+  rejectionReason:
+    type: text
+    required: false
+  createdAt:
+    type: datetime
+    required: true
+  updatedAt:
+    type: datetime
+    required: true
+relationships:
+  requestedBy:
+    target: Worker
+    cardinality: "1"
+  swapWith:
+    target: Worker
+    cardinality: "1"
+  involvesShifts:
+    target: Shift
+    cardinality: "2"
+businessRules:
+  - "Both workers must accept before manager approval"
+  - "Cannot swap shifts in the past"
+  - "Workers must be qualified for swapped shifts"
+  - "Cannot have more than X pending swap requests"

@@ -1,0 +1,115 @@
+# xTalent Core Domain Ontology
+# Global entities used across all modules
+
+entities:
+  Person:
+    description: "Individual human being in the system"
+    attributes:
+      - id: string (UUID)
+      - firstName: string
+      - lastName: string
+      - dateOfBirth: date
+      - nationalId: string
+      - email: string
+      - phone: string
+    relationships:
+      - hasWorkerRecords: Worker[]
+    constraints:
+      - email must be unique
+      - nationalId must be unique per country
+    
+  Worker:
+    description: "Employment relationship between Person and Organization"
+    attributes:
+      - id: string (UUID)
+      - personId: string (UUID)
+      - workerNumber: string
+      - hireDate: date
+      - terminationDate: date (nullable)
+      - status: enum [ACTIVE, TERMINATED, SUSPENDED]
+    relationships:
+      - belongsToPerson: Person
+      - hasAssignments: Assignment[]
+      - hasLegalEntity: LegalEntity
+    lifecycle:
+      - PENDING → ACTIVE → TERMINATED/SUSPENDED
+    rules:
+      - hireDate must be <= today
+      - terminationDate must be >= hireDate if set
+      
+  LegalEntity:
+    description: "Legal company entity that employs workers"
+    attributes:
+      - id: string (UUID)
+      - name: string
+      - code: string
+      - country: string
+      - taxId: string
+    relationships:
+      - employs: Worker[]
+      - hasOrgUnits: OrgUnit[]
+    constraints:
+      - code must be unique
+      - taxId must be unique per country
+      
+  OrgUnit:
+    description: "Organizational unit (department, division, team)"
+    attributes:
+      - id: string (UUID)
+      - name: string
+      - code: string
+      - type: enum [DEPARTMENT, DIVISION, TEAM, COST_CENTER]
+      - parentId: string (UUID, nullable)
+    relationships:
+      - belongsToLegalEntity: LegalEntity
+      - hasParent: OrgUnit
+      - hasChildren: OrgUnit[]
+      - hasPositions: Position[]
+    constraints:
+      - code must be unique within legal entity
+      
+  Job:
+    description: "Job definition (role type)"
+    attributes:
+      - id: string (UUID)
+      - title: string
+      - code: string
+      - family: string
+      - level: string
+    relationships:
+      - hasPositions: Position[]
+    constraints:
+      - code must be unique
+      
+  Position:
+    description: "Specific position in organization structure"
+    attributes:
+      - id: string (UUID)
+      - jobId: string (UUID)
+      - orgUnitId: string (UUID)
+      - code: string
+      - status: enum [ACTIVE, INACTIVE, FROZEN]
+    relationships:
+      - hasJob: Job
+      - belongsToOrgUnit: OrgUnit
+      - hasAssignments: Assignment[]
+    constraints:
+      - code must be unique
+      
+  Assignment:
+    description: "Worker assignment to a position"
+    attributes:
+      - id: string (UUID)
+      - workerId: string (UUID)
+      - positionId: string (UUID)
+      - startDate: date
+      - endDate: date (nullable)
+      - isPrimary: boolean
+      - assignmentType: enum [PERMANENT, TEMPORARY, SECONDMENT]
+    relationships:
+      - belongsToWorker: Worker
+      - hasPosition: Position
+    rules:
+      - Worker can have multiple assignments
+      - Only one primary assignment per worker at a time
+      - startDate must be <= endDate if endDate is set

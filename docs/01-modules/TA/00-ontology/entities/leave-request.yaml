@@ -1,0 +1,73 @@
+entity: LeaveRequest
+version: "2.0"
+layer: transaction
+
+description: |
+  Employee request for time off. Goes through approval workflow and
+  affects leave balance when approved.
+
+attributes:
+  - id: string (UUID)
+  - requestNumber: string # Auto-generated, e.g., "LR-2025-00123"
+  - workerId: string (UUID)
+  - leaveTypeId: string (UUID)
+  - startDate: date
+  - endDate: date
+  - startTime: time (nullable) # For hourly leave
+  - endTime: time (nullable) # For hourly leave
+  - totalDays: decimal # Calculated working days
+  - totalHours: decimal (nullable) # For hourly leave
+  - isHalfDay: boolean
+  - halfDayPeriod: enum [MORNING, AFTERNOON] (nullable)
+  - reason: string (nullable)
+  - status: enum [DRAFT, PENDING, APPROVED, REJECTED, CANCELLED, WITHDRAWN]
+  - submittedAt: datetime (nullable)
+  - approvedAt: datetime (nullable)
+  - approvedBy: string (UUID, nullable)
+  - rejectedAt: datetime (nullable)
+  - rejectedBy: string (UUID, nullable)
+  - rejectionReason: string (nullable)
+  - cancelledAt: datetime (nullable)
+  - cancelledBy: string (UUID, nullable)
+  - cancellationReason: string (nullable)
+  - attachments: string[] (nullable) # File URLs
+  - metadata: json (nullable) # Additional data
+  - createdAt: datetime
+  - createdBy: string (UUID)
+  - updatedAt: datetime
+  - updatedBy: string (UUID)
+
+relationships:
+  - belongsToWorker: Worker
+  - hasLeaveType: LeaveType
+  - affectsBalance: LeaveBalance
+  - hasMovements: LeaveMovement[]
+  - hasApprovals: Approval[]
+  - hasReservation: LeaveReservation (nullable)
+
+lifecycle:
+  - DRAFT → PENDING → APPROVED/REJECTED/WITHDRAWN
+  - APPROVED → CANCELLED (exceptional)
+  - PENDING → CANCELLED/WITHDRAWN
+
+rules:
+  - "endDate must be >= startDate"
+  - "Cannot overlap with other APPROVED or PENDING requests for same worker"
+  - "totalDays must be <= available balance (unless overdraft allowed)"
+  - "If isHalfDay is true, startDate must equal endDate"
+  - "If isHalfDay is true, halfDayPeriod must be set"
+  - "Cannot modify request after status is APPROVED (except cancel)"
+  - "Cannot cancel request after leave period has ended"
+
+constraints:
+  - "requestNumber must be unique"
+  - "startDate must be >= today (for new requests)"
+
+validations:
+  - "workerId: required, must reference existing Worker"
+  - "leaveTypeId: required, must reference active LeaveType"
+  - "startDate: required, valid date"
+  - "endDate: required, valid date, >= startDate"
+  - "reason: optional, max 1000 characters"
+
+  # ---------------------------------------------------------------------------

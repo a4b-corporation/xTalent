@@ -1,0 +1,47 @@
+entity: OverdraftRule
+version: "2.0"
+layer: rules
+
+description: |
+  Defines whether and how employees can request leave beyond their
+  available balance (negative balance). Can be bound to a specific
+  LeaveType or to an entire LeaveClass.
+
+attributes:
+  - id: string (UUID)
+  - code: string
+  - name: string
+  - description: string (nullable)
+  - leaveTypeId: string (UUID, nullable)
+  - leaveClassId: string (UUID, nullable)
+  - allowOverdraft: boolean
+  - maxOverdraftAmount: decimal (nullable) # Max negative balance allowed
+  - overdraftRepaymentRequired: boolean
+  - repaymentMethod: enum [AUTO_DEDUCT, MANUAL, PAYROLL_DEDUCT] (nullable)
+  - requiresApproval: boolean # Overdraft requests need special approval
+  - approvalLevel: enum [MANAGER, HR, DIRECTOR] (nullable)
+  - priority: integer
+  - isActive: boolean
+  - effectiveDate: date
+  - endDate: date (nullable)
+  - createdAt: datetime
+  - updatedAt: datetime
+
+relationships:
+  - appliesTo: LeaveType | LeaveClass
+
+constraints:
+  - "code must be unique"
+
+rules:
+  - "Either leaveTypeId OR leaveClassId must be set, not both"
+  - "If allowOverdraft is true, maxOverdraftAmount must be set"
+  - "If overdraftRepaymentRequired is true, repaymentMethod must be set"
+  - "If requiresApproval is true, approvalLevel must be set"
+  - "maxOverdraftAmount must be > 0 if set"
+
+examples:
+  - "Allow 5 days overdraft: Employee can go -5 days, must repay from future accruals"
+  - "No overdraft: Cannot request leave if balance is 0"
+
+  # ---------------------------------------------------------------------------

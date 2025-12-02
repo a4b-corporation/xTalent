@@ -1,0 +1,247 @@
+# Absence Sub-module - Ontology Index
+# Version: 2.0
+# Last Updated: 2025-11-28
+# Module: Time & Absence (TA) - Absence
+
+module: Absence
+description: |
+  Complete ontology for absence/leave management sub-module.
+  This includes leave types, policy rules, requests, balances, and ledger tracking.
+
+# =============================================================================
+# ENTITY FILES
+# =============================================================================
+
+entities:
+  # Configuration Layer
+  - leave-class.yaml          # High-level classification of leave types
+  - leave-type.yaml           # Specific leave types (Annual, Sick, etc.)
+  - period-profile.yaml       # Leave year/period structure
+  
+  # Rules Layer (Policy Library Components)
+  - eligibility-rule.yaml     # Who can use leave
+  - validation-rule.yaml      # Request validation rules
+  - accrual-rule.yaml         # How leave is earned
+  - carryover-rule.yaml       # Handling unused leave
+  - limit-rule.yaml           # Usage limits
+  - overdraft-rule.yaml       # Negative balance rules
+  - proration-rule.yaml       # Proration for mid-period starts
+  - rounding-rule.yaml        # Rounding fractional amounts
+  
+  # Period & Schedule Layer
+  - schedule.yaml             # Working schedule
+  - holiday.yaml              # Public/company holidays
+  
+  # Transaction Layer
+  - leave-request.yaml        # Leave request entity
+  - leave-reservation.yaml    # Temporary balance hold
+  - leave-movement.yaml       # Ledger entries (immutable)
+  - leave-balance.yaml        # Current balance state
+  - approval.yaml             # Approval workflow
+  - event.yaml                # System events
+  - trigger.yaml              # Automated triggers
+
+# =============================================================================
+# ENTITY RELATIONSHIPS
+# =============================================================================
+
+relationships:
+  # Configuration
+  - "LeaveClass (1) ──< (N) LeaveType"
+  
+  # Rules binding
+  - "LeaveClass (1) ──< (N) EligibilityRule (class-level rules)"
+  - "LeaveClass (1) ──< (N) ValidationRule"
+  - "LeaveClass (1) ──< (N) AccrualRule"
+  - "LeaveClass (1) ──< (N) CarryoverRule"
+  - "LeaveClass (1) ──< (N) LimitRule"
+  - "LeaveClass (1) ──< (N) OverdraftRule"
+  - "LeaveClass (1) ──< (N) ProrationRule"
+  - "LeaveClass (1) ──< (N) RoundingRule"
+  
+  - "LeaveType (1) ──< (N) EligibilityRule (type-specific rules)"
+  - "LeaveType (1) ──< (N) ValidationRule"
+  - "LeaveType (1) ──< (N) AccrualRule"
+  - "LeaveType (1) ──< (N) CarryoverRule"
+  - "LeaveType (1) ──< (N) LimitRule"
+  - "LeaveType (1) ──< (N) OverdraftRule"
+  - "LeaveType (1) ──< (N) ProrationRule"
+  - "LeaveType (1) ──< (N) RoundingRule"
+  
+  # Period & Schedule
+  - "PeriodProfile (1) ──< (N) LeaveBalance"
+  - "Schedule (1) ──< (N) Holiday"
+  - "Schedule (1) ──< (N) Worker"
+  
+  # Transactions
+  - "LeaveType (1) ──< (N) LeaveBalance"
+  - "LeaveType (1) ──< (N) LeaveRequest"
+  - "Worker (1) ──< (N) LeaveBalance"
+  - "Worker (1) ──< (N) LeaveRequest"
+  - "LeaveRequest (1) ──< (N) LeaveMovement"
+  - "LeaveRequest (1) ──< (N) Approval"
+  - "LeaveRequest (1) ──o (1) LeaveReservation"
+  - "LeaveBalance (1) ──< (N) LeaveMovement"
+  - "LeaveBalance (1) ──< (N) LeaveReservation"
+  
+  # Events & Triggers
+  - "Trigger (1) ──< (N) Event"
+  - "LeaveRequest triggers Event"
+  - "LeaveBalance triggers Event"
+
+# =============================================================================
+# DOMAIN LAYERS
+# =============================================================================
+
+layers:
+  configuration:
+    description: "Static configuration - leave types, classes, period profiles"
+    entities:
+      - LeaveClass
+      - LeaveType
+      - PeriodProfile
+    
+  rules:
+    description: "Policy Library components - reusable rules that govern leave behavior"
+    entities:
+      - EligibilityRule
+      - ValidationRule
+      - AccrualRule
+      - CarryoverRule
+      - LimitRule
+      - OverdraftRule
+      - ProrationRule
+      - RoundingRule
+    notes:
+      - "Rules can bind to LeaveType OR LeaveClass"
+      - "Priority-based resolution when multiple rules apply"
+      - "Rules are reusable across leave types"
+  
+  schedule:
+    description: "Working schedules and holidays for calculating working days"
+    entities:
+      - Schedule
+      - Holiday
+  
+  transaction:
+    description: "Runtime transactions - requests, balances, movements"
+    entities:
+      - LeaveRequest
+      - LeaveReservation
+      - LeaveMovement
+      - LeaveBalance
+      - Approval
+    notes:
+      - "LeaveMovement is immutable (ledger pattern)"
+      - "LeaveReservation prevents double-booking"
+  
+  automation:
+    description: "Event-driven automation and notifications"
+    entities:
+      - Event
+      - Trigger
+
+# =============================================================================
+# KEY DESIGN PATTERNS
+# =============================================================================
+
+patterns:
+  - name: "Immutable Ledger"
+    description: "LeaveMovement records are never modified or deleted"
+    entities: [LeaveMovement]
+    
+  - name: "Reservation Pattern"
+    description: "Temporary hold on balance while request is pending"
+    entities: [LeaveReservation, LeaveBalance]
+    
+  - name: "Event-Driven"
+    description: "Actions trigger events that drive notifications and integrations"
+    entities: [Event, Trigger]
+    
+  - name: "Flexible Rule Binding"
+    description: "Rules can bind at class or type level with priority resolution"
+    entities: [All Rule entities]
+    
+  - name: "Computed Balance"
+    description: "Balance is computed from movements, not stored directly"
+    entities: [LeaveBalance, LeaveMovement]
+
+# =============================================================================
+# BUSINESS RULES SUMMARY
+# =============================================================================
+
+business_rules:
+  - "Rules bind to either LeaveType OR LeaveClass, not both"
+  - "Higher priority rules override lower priority rules"
+  - "Type-level rules typically override class-level rules"
+  - "Leave requests cannot overlap for same worker"
+  - "Available balance = allocated + carried - used - pending - expired"
+  - "Movements are immutable - use reversal for corrections"
+  - "Reservations are released when request is approved/rejected"
+  - "Working days exclude weekends and holidays per schedule"
+
+# =============================================================================
+# INTEGRATION POINTS
+# =============================================================================
+
+integrations:
+  - module: "Core HR (CO)"
+    entities: [Worker, Assignment, OrgUnit]
+    purpose: "Employee data and organizational structure"
+    
+  - module: "Payroll (PR)"
+    entities: [PayrollElement]
+    purpose: "Unpaid leave deductions"
+    
+  - module: "Time Tracking"
+    entities: [TimeEntry]
+    purpose: "Actual time worked vs. leave taken"
+
+# =============================================================================
+# VERSIONING & COMPATIBILITY
+# =============================================================================
+
+version_info:
+  ontology_version: "2.0"
+  breaking_changes:
+    - "Removed Policy entity - rules now bind directly to LeaveType/LeaveClass"
+    - "Added priority attribute to all rules"
+    - "Added code attribute to all rules for reusability"
+  
+  migration_notes:
+    - "See REFACTORING-SUMMARY.md for migration guide"
+    - "Policy data should be migrated to individual rule entities"
+
+# =============================================================================
+# DOCUMENTATION REFERENCES
+# =============================================================================
+
+documentation:
+  - absence-glossary.md        # Term definitions
+  - REFACTORING-SUMMARY.md     # Version 2.0 changes
+  - ../01-concept/             # Concept documentation (to be generated)
+  - ../02-spec/                # Specifications (to be generated)
+  - ../04-api/                 # API specs (to be generated)
+
+# =============================================================================
+# NOTES FOR AI AGENTS
+# =============================================================================
+
+ai_notes:
+  - "Each entity has its own YAML file for independent processing"
+  - "Use this index to understand entity relationships"
+  - "When generating specs/APIs, load only relevant entity files"
+  - "Rules are reusable - check for existing rules before creating new ones"
+  - "Follow immutable ledger pattern for LeaveMovement"
+  - "Use priority-based resolution for conflicting rules"
+
+# =============================================================================
+# MAINTENANCE GUIDELINES
+# =============================================================================
+
+maintenance:
+  - "When adding new entity: create new YAML file and add to this index"
+  - "When modifying entity: update only that entity's YAML file"
+  - "When adding relationship: update relationships section in this index"
+  - "Keep entity files focused - one entity per file"
+  - "Use references (ref) for relationships, not duplication"

@@ -1,0 +1,66 @@
+# Total Rewards Core Ontology
+# Shared concepts across Total Rewards modules
+
+entities:
+  CompensationPlan:
+    description: "Compensation structure definition"
+    attributes:
+      - id: string (UUID)
+      - name: string
+      - code: string
+      - planType: enum [BASE_PAY, BONUS, COMMISSION, ALLOWANCE, BENEFIT]
+      - frequency: enum [MONTHLY, QUARTERLY, ANNUALLY, ONE_TIME]
+      - currency: string
+    relationships:
+      - hasComponents: CompensationComponent[]
+    constraints:
+      - code must be unique
+      
+  CompensationComponent:
+    description: "Individual component of compensation (salary, bonus, allowance)"
+    attributes:
+      - id: string (UUID)
+      - planId: string (UUID)
+      - name: string
+      - code: string
+      - componentType: enum [FIXED, VARIABLE, RECURRING, ONE_TIME]
+      - calculationMethod: enum [FLAT_AMOUNT, PERCENTAGE, FORMULA]
+    relationships:
+      - belongsToPlan: CompensationPlan
+      - hasAssignments: CompensationAssignment[]
+    constraints:
+      - code must be unique within plan
+      
+  CompensationAssignment:
+    description: "Assignment of compensation to worker"
+    attributes:
+      - id: string (UUID)
+      - workerId: string (UUID)
+      - componentId: string (UUID)
+      - effectiveDate: date
+      - endDate: date (nullable)
+      - amount: decimal
+      - currency: string
+    relationships:
+      - belongsToWorker: Worker
+      - hasComponent: CompensationComponent
+    rules:
+      - effectiveDate must be <= endDate if endDate is set
+      - Cannot have overlapping assignments for same component
+      
+  Grade:
+    description: "Compensation grade/level"
+    attributes:
+      - id: string (UUID)
+      - name: string
+      - code: string
+      - level: integer
+      - minSalary: decimal
+      - midSalary: decimal
+      - maxSalary: decimal
+      - currency: string
+    relationships:
+      - hasJobs: Job[]
+    constraints:
+      - code must be unique
+      - minSalary <= midSalary <= maxSalary

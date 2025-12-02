@@ -1,0 +1,37 @@
+entity: ShiftBreak
+version: "1.0"
+layer: configuration
+
+description: |
+  Defines break periods within a shift (lunch, rest breaks).
+attributes:
+  id:
+    type: UUID
+    required: true
+  shiftPatternId:
+    type: UUID
+    required: true
+  name:
+    type: string
+    required: true
+    description: "Break name (e.g., Lunch Break)"
+  startOffset:
+    type: decimal
+    required: true
+    description: "Hours from shift start (e.g., 4.0 for lunch at 12:00)"
+  duration:
+    type: decimal
+    required: true
+    description: "Break duration in hours"
+  isPaid:
+    type: boolean
+    default: false
+    description: "Whether break is paid"
+  isMandatory:
+    type: boolean
+    default: true
+    description: "Whether break must be taken"
+relationships:
+  belongsToPattern:
+    target: ShiftPattern
+    cardinality: "1"

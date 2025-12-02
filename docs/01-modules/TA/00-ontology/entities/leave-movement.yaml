@@ -1,0 +1,53 @@
+entity: LeaveMovement
+version: "2.0"
+layer: transaction
+
+description: |
+  Ledger entry for all leave balance changes. Provides complete audit trail.
+  Every change to balance creates a movement record.
+
+attributes:
+  - id: string (UUID)
+  - leaveBalanceId: string (UUID)
+  - movementType: enum [ALLOCATION, ACCRUAL, USAGE, ADJUSTMENT, CARRYOVER, 
+                        EXPIRY, PAYOUT, REVERSAL]
+  - amount: decimal # Positive for credit, negative for debit
+  - balanceBefore: decimal
+  - balanceAfter: decimal
+  - movementDate: date
+  - effectiveDate: date # When this movement takes effect
+  - leaveRequestId: string (UUID, nullable) # If caused by leave request
+  - reason: string
+  - referenceType: enum [LEAVE_REQUEST, POLICY, MANUAL, SYSTEM] (nullable)
+  - referenceId: string (UUID, nullable)
+  - isReversed: boolean
+  - reversalMovementId: string (UUID, nullable)
+  - createdAt: datetime
+  - createdBy: string (UUID)
+
+relationships:
+  - affectsBalance: LeaveBalance
+  - causedByRequest: LeaveRequest (nullable)
+  - reversedBy: LeaveMovement (nullable)
+  - reverses: LeaveMovement (nullable)
+
+rules:
+  - "amount cannot be 0"
+  - "balanceAfter must equal balanceBefore + amount"
+  - "If movementType is USAGE, amount must be negative"
+  - "If movementType is ALLOCATION or ACCRUAL, amount must be positive"
+  - "If movementType is REVERSAL, reversalMovementId must be set"
+  - "Cannot modify or delete movement records (immutable ledger)"
+
+constraints:
+  - "effectiveDate must be <= today for USAGE type"
+
+examples:
+  - "Allocation: +20 days (annual allocation)"
+  - "Accrual: +1.67 days (monthly accrual)"
+  - "Usage: -5 days (approved leave request)"
+  - "Adjustment: +2 days (manual correction by HR)"
+  - "Carryover: +5 days (from previous year)"
+  - "Expiry: -3 days (unused days expired)"
+
+  # ---------------------------------------------------------------------------

@@ -1,0 +1,100 @@
+entity: AttendanceRecord
+version: "1.0"
+layer: attendance-tracking
+
+description: |
+  Daily attendance record for a worker, tracking actual time worked.
+attributes:
+  id:
+    type: UUID
+    required: true
+  workerId:
+    type: UUID
+    required: true
+  shiftId:
+    type: UUID
+    required: false
+    description: "Related shift (if scheduled)"
+  attendanceDate:
+    type: date
+    required: true
+  clockInTime:
+    type: datetime
+    required: false
+    description: "Actual clock-in time"
+  clockOutTime:
+    type: datetime
+    required: false
+    description: "Actual clock-out time"
+  scheduledStartTime:
+    type: time
+    required: false
+  scheduledEndTime:
+    type: time
+    required: false
+  actualHours:
+    type: decimal
+    required: false
+    description: "Calculated from clock in/out"
+  scheduledHours:
+    type: decimal
+    required: false
+  status:
+    type: enum
+    values: [PRESENT, ABSENT, LATE, EARLY_DEPARTURE, HALF_DAY, ON_LEAVE]
+    required: true
+  lateMinutes:
+    type: integer
+    default: 0
+    description: "Minutes late"
+  earlyDepartureMinutes:
+    type: integer
+    default: 0
+  location:
+    type: string
+    required: false
+    description: "Clock-in location (GPS/Site)"
+  deviceId:
+    type: string
+    required: false
+    description: "Time clock device ID"
+  notes:
+    type: text
+    required: false
+  isApproved:
+    type: boolean
+    default: false
+  approvedBy:
+    type: UUID
+    required: false
+  approvedAt:
+    type: datetime
+    required: false
+  createdAt:
+    type: datetime
+    required: true
+  updatedAt:
+    type: datetime
+    required: true
+relationships:
+  belongsToWorker:
+    target: Worker
+    cardinality: "1"
+  relatedToShift:
+    target: Shift
+    cardinality: "0..1"
+  hasExceptions:
+    target: TimeException
+    cardinality: "0..*"
+  generatesTimesheet:
+    target: TimesheetEntry
+    cardinality: "0..*"
+constraints:
+  - name: "unique_worker_date"
+    type: unique
+    fields: [workerId, attendanceDate]
+businessRules:
+  - "Clock-out must be after clock-in"
+  - "Cannot clock in more than X hours before shift"
+  - "Late/early departure calculated against scheduled times"
+  - "Approved records cannot be modified"

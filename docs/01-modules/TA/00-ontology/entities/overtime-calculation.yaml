@@ -1,0 +1,60 @@
+entity: OvertimeCalculation
+version: "1.0"
+layer: overtime
+
+description: |
+  Calculated overtime for a worker in a period.
+attributes:
+  id:
+    type: UUID
+    required: true
+  workerId:
+    type: UUID
+    required: true
+  periodStart:
+    type: date
+    required: true
+  periodEnd:
+    type: date
+    required: true
+  regularHours:
+    type: decimal
+    required: true
+  overtimeHours:
+    type: decimal
+    required: true
+  doubleTimeHours:
+    type: decimal
+    default: 0
+  holidayHours:
+    type: decimal
+    default: 0
+  nightShiftHours:
+    type: decimal
+    default: 0
+  totalHours:
+    type: decimal
+    required: true
+  isApproved:
+    type: boolean
+    default: false
+  approvedBy:
+    type: UUID
+    required: false
+  approvedAt:
+    type: datetime
+    required: false
+  createdAt:
+    type: datetime
+    required: true
+relationships:
+  belongsToWorker:
+    target: Worker
+    cardinality: "1"
+  basedOnTimesheets:
+    target: TimesheetEntry
+    cardinality: "1..*"
+businessRules:
+  - "Recalculated when timesheets change"
+  - "Must be approved before payroll"
+  - "Different overtime types have different multipliers"

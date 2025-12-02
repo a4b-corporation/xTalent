@@ -1,0 +1,1654 @@
+# Core Module - Feature List
+# Version: 2.0
+# Last Updated: 2025-12-02
+# Module: Core (CO)
+
+metadata:
+  module:
+    code: CO
+    name: "Core Module"
+    version: "2.0"
+    description: |
+      Foundation module for xTalent HR system providing core HR data management,
+      employment lifecycle, organizational structure, job & position management,
+      and skill management capabilities.
+  
+  documentation:
+    ontology: "00-ontology/core-ontology.yaml"
+    concept_guides: "01-concept/*.md"
+    specifications: "02-spec/*.md"
+    design: "03-design/1.Core.V3.dbml"
+
+# =============================================================================
+# PHASE 0: FOUNDATION (CRITICAL - MUST BE FIRST)
+# =============================================================================
+
+features:
+  # ---------------------------------------------------------------------------
+  # Feature 015: Code List & Configuration Management
+  # ---------------------------------------------------------------------------
+  - id: "015"
+    name: "code-list-configuration"
+    title: "Code List & Configuration Management"
+    priority: CRITICAL
+    epic: "Foundation"
+    phase: 0
+    
+    description: |
+      Manage all system-wide code lists and configuration data including
+      gender, marital status, blood type, ethnicity, nationality, document types,
+      contract types, employee status, assignment reasons, and other lookup values.
+      This is a foundational feature that MUST be implemented first as all other
+      features depend on these code lists.
+    
+    user_stories:
+      - "As an HR Admin, I want to manage code lists so that I can configure system values"
+      - "As an HR Admin, I want to add new code values so that I can extend the system"
+      - "As an HR Admin, I want to localize code lists so that users see values in their language"
+      - "As an HR Admin, I want to deactivate obsolete codes so that they don't appear in dropdowns"
+      - "As a System Admin, I want to manage currencies so that we support multi-currency payroll"
+      - "As a System Admin, I want to manage timezones so that we support global workforce"
+    
+    sources:
+      concept_guides:
+        - "01-concept/09-data-security-guide.md#data-classification"
+      
+      ontology:
+        entities:
+          - "CodeList"
+          - "Currency"
+          - "TimeZone"
+          - "Country"
+          - "Industry"
+        glossary: "00-ontology/glossary-common.md"
+      
+      functional_requirements:
+        range: "FR-CFG-001 to FR-CFG-040"
+        key_requirements:
+          - "FR-CFG-001: Create code list group"
+          - "FR-CFG-002: Add code value to group"
+          - "FR-CFG-003: Update code value"
+          - "FR-CFG-004: Deactivate code value"
+          - "FR-CFG-005: Localize code values (multi-language)"
+          - "FR-CFG-010: Manage currencies (ISO-4217)"
+          - "FR-CFG-011: Manage timezones (IANA)"
+          - "FR-CFG-015: Manage countries"
+          - "FR-CFG-020: Search and filter code lists"
+          - "FR-CFG-025: Export/import code lists"
+          - "FR-CFG-030: Code list versioning (SCD Type 2)"
+      
+      business_rules:
+        range: "BR-CFG-001 to BR-CFG-020"
+        key_rules:
+          - "BR-CFG-001: Code within group must be unique"
+          - "BR-CFG-002: Group code follows naming convention (UPPERCASE_UNDERSCORE)"
+          - "BR-CFG-003: Inactive codes cannot be used for new records"
+          - "BR-CFG-004: Historical codes retained for reporting"
+          - "BR-CFG-005: Display text required for at least one language"
+          - "BR-CFG-010: Currency codes follow ISO-4217"
+          - "BR-CFG-011: Timezone codes follow IANA standard"
+          - "BR-CFG-015: Sort order determines dropdown sequence"
+      
+      apis:
+        - "POST /api/v1/code-lists"
+        - "GET /api/v1/code-lists"
+        - "GET /api/v1/code-lists/{groupCode}"
+        - "POST /api/v1/code-lists/{groupCode}/values"
+        - "PUT /api/v1/code-lists/{groupCode}/values/{code}"
+        - "DELETE /api/v1/code-lists/{groupCode}/values/{code}"
+        - "POST /api/v1/currencies"
+        - "GET /api/v1/currencies"
+        - "POST /api/v1/timezones"
+        - "GET /api/v1/timezones"
+        - "POST /api/v1/countries"
+        - "GET /api/v1/countries"
+        - "POST /api/v1/code-lists/import"
+        - "GET /api/v1/code-lists/export"
+      
+      scenarios:
+        - "Create new code list group (e.g., BLOOD_TYPE)"
+        - "Add code values (A, B, AB, O)"
+        - "Localize code values (English + Vietnamese)"
+        - "Deactivate obsolete code"
+        - "Import code lists from Excel"
+        - "Export code lists for backup"
+    
+    code_list_groups:
+      personal_information:
+        - "GENDER (M, F, O, U)"
+        - "MARITAL_STATUS (SINGLE, MARRIED, DIVORCED, WIDOWED, SEPARATED)"
+        - "BLOOD_TYPE (A, B, AB, O, A+, A-, B+, B-, AB+, AB-, O+, O-)"
+        - "ETHNICITY (KINH, TAY, THAI, MUONG, KHMER, MONG, NGA, DAO, etc.)"
+        - "NATIONALITY (VN, US, UK, SG, etc.)"
+        - "RELIGION (BUDDHISM, CHRISTIANITY, ISLAM, NONE, etc.)"
+      
+      employment:
+        - "EMPLOYEE_STATUS (ACTIVE, TERMINATED, SUSPENDED, ON_LEAVE, RETIRED)"
+        - "EMPLOYEE_TYPE (FULL_TIME, PART_TIME, CONTRACTOR, INTERN, CONSULTANT)"
+        - "CONTRACT_TYPE (PERMANENT, FIXED_TERM, PROBATION, SEASONAL, PROJECT)"
+        - "ASSIGNMENT_REASON (HIRE, TRANSFER, PROMOTION, DEMOTION, RETURN, SECONDMENT)"
+        - "TERMINATION_REASON (RESIGNATION, RETIREMENT, DISMISSAL, REDUNDANCY, END_CONTRACT)"
+        - "WORK_RELATIONSHIP_TYPE (EMPLOYEE, CONTRACTOR, CONSULTANT, INTERN, VOLUNTEER)"
+      
+      organization:
+        - "UNIT_TYPE (DIVISION, DEPARTMENT, TEAM, COST_CENTER, PROFIT_CENTER)"
+        - "LOCATION_TYPE (OFFICE, WAREHOUSE, FACTORY, REMOTE, FIELD)"
+        - "RELATIONSHIP_TYPE (SOLID_LINE, DOTTED_LINE, FUNCTIONAL, GEOGRAPHIC)"
+      
+      job_position:
+        - "JOB_FAMILY (ENGINEERING, SALES, MARKETING, FINANCE, HR, OPERATIONS)"
+        - "JOB_LEVEL (ENTRY, JUNIOR, MID, SENIOR, LEAD, PRINCIPAL, EXECUTIVE)"
+        - "POSITION_STATUS (ACTIVE, VACANT, FROZEN, ELIMINATED)"
+        - "STAFFING_MODEL (POSITION_BASED, JOB_BASED, HYBRID)"
+      
+      skills:
+        - "SKILL_CATEGORY (TECHNICAL, FUNCTIONAL, LANGUAGE, SOFT_SKILL)"
+        - "PROFICIENCY_LEVEL (BEGINNER, BASIC, INTERMEDIATE, ADVANCED, EXPERT)"
+        - "COMPETENCY_LEVEL (DEVELOPING, COMPETENT, PROFICIENT, ADVANCED, EXPERT)"
+        - "ASSESSMENT_METHOD (INTERVIEW, TEST, CERTIFICATION, OBSERVATION, PEER_REVIEW)"
+      
+      documents:
+        - "DOCUMENT_TYPE (NATIONAL_ID, PASSPORT, DEGREE, CERTIFICATE, CONTRACT, RESUME)"
+        - "EDUCATION_LEVEL (HIGH_SCHOOL, ASSOCIATE, BACHELOR, MASTER, DOCTORATE)"
+        - "DEGREE_TYPE (BA, BS, MA, MS, MBA, PHD)"
+      
+      compensation:
+        - "PAYMENT_FREQUENCY (MONTHLY, BI_WEEKLY, WEEKLY, DAILY, HOURLY)"
+        - "ALLOWANCE_TYPE (HOUSING, TRANSPORT, MEAL, PHONE, INTERNET, TRAVEL)"
+        - "DEDUCTION_TYPE (TAX, SOCIAL_INSURANCE, HEALTH_INSURANCE, LOAN, ADVANCE)"
+      
+      time_attendance:
+        - "LEAVE_TYPE (ANNUAL, SICK, MATERNITY, PATERNITY, UNPAID, STUDY)"
+        - "SHIFT_TYPE (MORNING, AFTERNOON, EVENING, NIGHT, ROTATING)"
+        - "OVERTIME_TYPE (WEEKDAY, WEEKEND, HOLIDAY, NIGHT)"
+      
+      data_privacy:
+        - "DATA_CLASSIFICATION (PUBLIC, INTERNAL, CONFIDENTIAL, RESTRICTED)"
+        - "CONSENT_TYPE (BIOMETRIC, HEALTH, BACKGROUND_CHECK, MARKETING)"
+        - "DSAR_TYPE (ACCESS, RECTIFICATION, ERASURE, RESTRICTION, PORTABILITY)"
+    
+    spec_kit_outputs:
+      - "spec.md"
+      - "data-model.md"
+      - "contracts/api-spec.yaml"
+      - "tasks.md"
+    
+    technical_notes:
+      - "Single table design (CodeList) for all code groups"
+      - "SCD Type 2 for code value changes"
+      - "Multi-language support (display_en, display_local)"
+      - "Metadata field (JSONB) for extensibility (color, icon, validation rules)"
+      - "Caching strategy for frequently accessed codes"
+      - "Seed data script for initial code lists"
+      - "Admin UI for code list management"
+      - "Dropdown component that reads from code lists"
+    
+    acceptance_criteria:
+      - "Code list group created"
+      - "Code values added with localization"
+      - "Inactive codes hidden from dropdowns"
+      - "Historical codes retained"
+      - "Multi-language display works"
+      - "Sort order respected in UI"
+      - "Metadata stored and retrieved"
+      - "Import/export works"
+      - "Currency management works (ISO-4217)"
+      - "Timezone management works (IANA)"
+      - "All code groups seeded with initial data"
+    
+    seed_data_requirements:
+      - "All code groups listed above must be seeded"
+      - "Vietnamese translations for all codes"
+      - "Common currencies (VND, USD, EUR, SGD, etc.)"
+      - "Common timezones (Asia/Ho_Chi_Minh, UTC, etc.)"
+      - "Countries (Vietnam, US, UK, Singapore, etc.)"
+      - "Industries (Technology, Finance, Manufacturing, etc.)"
+    
+    dependencies: []
+    
+    estimated_effort: "10 story points"
+    status: "PLANNED"
+    
+    notes:
+      - "This is a FOUNDATIONAL feature - must be implemented FIRST"
+      - "All other features depend on code lists"
+      - "Single feature manages ALL code list groups (not separate features per group)"
+      - "Extensible design allows adding new code groups without code changes"
+
+# =============================================================================
+# PHASE 1: CORE EMPLOYMENT (HIGH PRIORITY)
+# =============================================================================
+
+  # Continue with existing features 001-005...
+  # ---------------------------------------------------------------------------
+  # Feature 001: Worker Management
+  # ---------------------------------------------------------------------------
+  - id: "001"
+    name: "worker-management"
+    title: "Worker Management"
+    priority: HIGH
+    epic: "Core Employment"
+    phase: 1
+    
+    description: |
+      Manage worker (person) identity and personal information with proper
+      data classification and consent management. Supports GDPR, PDPA, and
+      Vietnam Decree 13/2023/NĐ-CP compliance.
+    
+    user_stories:
+      - "As an HR Admin, I want to create worker records so that I can track person identity"
+      - "As an HR Admin, I want to update worker information so that data stays accurate"
+      - "As an Employee, I want to view my personal data so that I can verify accuracy"
+      - "As an Employee, I want to update my contact information so that I can be reached"
+      - "As a DPO, I want to manage data classification so that we comply with privacy laws"
+    
+    sources:
+      concept_guides:
+        - "01-concept/01-employment-lifecycle-guide.md#level-1-worker"
+        - "01-concept/09-data-security-guide.md#data-classification"
+      
+      ontology:
+        entities:
+          - "Worker"
+          - "WorkerAddress"
+          - "WorkerContact"
+          - "WorkerRelationship"
+        glossary: "00-ontology/glossary-person.md"
+      
+      functional_requirements:
+        range: "FR-WRK-001 to FR-WRK-025"
+        key_requirements:
+          - "FR-WRK-001: Create worker record"
+          - "FR-WRK-002: Update worker information"
+          - "FR-WRK-003: View worker details"
+          - "FR-WRK-004: Manage worker addresses"
+          - "FR-WRK-005: Manage worker contacts"
+          - "FR-WRK-010: Data classification enforcement"
+          - "FR-WRK-015: Consent management"
+          - "FR-WRK-020: Worker search and filter"
+      
+      business_rules:
+        range: "BR-WRK-001 to BR-WRK-015"
+        key_rules:
+          - "BR-WRK-001: Worker name validation"
+          - "BR-WRK-002: Date of birth validation (must be 18+)"
+          - "BR-WRK-003: National ID uniqueness"
+          - "BR-WRK-004: Data classification by field"
+          - "BR-WRK-005: Encryption for RESTRICTED data"
+          - "BR-WRK-010: Consent required for biometric data"
+      
+      apis:
+        - "POST /api/v1/workers"
+        - "GET /api/v1/workers/{id}"
+        - "PUT /api/v1/workers/{id}"
+        - "PATCH /api/v1/workers/{id}"
+        - "GET /api/v1/workers"
+        - "POST /api/v1/workers/{id}/addresses"
+        - "POST /api/v1/workers/{id}/contacts"
+        - "POST /api/v1/workers/{id}/consents"
+      
+      scenarios:
+        - "New worker creation (applicant)"
+        - "Worker information update"
+        - "Address management"
+        - "Consent management for biometric data"
+    
+    spec_kit_outputs:
+      - "spec.md"
+      - "data-model.md"
+      - "contracts/api-spec.yaml"
+      - "tasks.md"
+    
+    technical_notes:
+      - "Implement field-level encryption for RESTRICTED data (AES-256)"
+      - "Implement audit logging for all data access"
+      - "Support SCD Type 2 for historical tracking"
+      - "Implement soft delete (GDPR right to erasure)"
+    
+    acceptance_criteria:
+      - "Worker can be created with all required fields"
+      - "Data classification enforced at field level"
+      - "RESTRICTED data encrypted in database"
+      - "Audit log created for all operations"
+      - "Consent tracked for sensitive data"
+      - "Search supports filtering by multiple criteria"
+    
+    dependencies: []
+    
+    estimated_effort: "8 story points"
+    status: "PLANNED"
+
+  # ---------------------------------------------------------------------------
+  # Feature 002: Work Relationship Management
+  # ---------------------------------------------------------------------------
+  - id: "002"
+    name: "work-relationship"
+    title: "Work Relationship Management"
+    priority: HIGH
+    epic: "Core Employment"
+    phase: 1
+    
+    description: |
+      Manage work relationships between workers and organization, supporting
+      multiple relationship types (EMPLOYEE, CONTRACTOR, CONSULTANT, INTERN)
+      and handling concurrent relationships, rehires, and conversions.
+    
+    user_stories:
+      - "As an HR Admin, I want to create work relationships so that I can track employment"
+      - "As an HR Admin, I want to support multiple relationship types so that we can hire contractors"
+      - "As an HR Admin, I want to handle rehires so that we preserve employment history"
+      - "As an HR Admin, I want to convert contractors to employees so that we can transition workers"
+      - "As an HR Admin, I want to terminate relationships so that we can process resignations"
+    
+    sources:
+      concept_guides:
+        - "01-concept/01-employment-lifecycle-guide.md#level-2-work-relationship"
+        - "01-concept/08-staffing-models-guide.md"
+      
+      ontology:
+        entities:
+          - "WorkRelationship"
+          - "WorkRelationshipType"
+          - "TerminationReason"
+        glossary: "00-ontology/glossary-employment.md"
+      
+      functional_requirements:
+        range: "FR-WR-001 to FR-WR-030"
+        key_requirements:
+          - "FR-WR-001: Create work relationship"
+          - "FR-WR-002: Update work relationship"
+          - "FR-WR-003: Terminate work relationship"
+          - "FR-WR-005: Support multiple concurrent relationships"
+          - "FR-WR-010: Handle rehires"
+          - "FR-WR-015: Convert contractor to employee"
+          - "FR-WR-020: Track relationship history"
+      
+      business_rules:
+        range: "BR-WR-001 to BR-WR-020"
+        key_rules:
+          - "BR-WR-001: Worker must exist before creating relationship"
+          - "BR-WR-002: Start date must be valid"
+          - "BR-WR-003: End date must be after start date"
+          - "BR-WR-004: Only one ACTIVE employee relationship per worker"
+          - "BR-WR-005: Multiple concurrent contractor relationships allowed"
+          - "BR-WR-010: Termination reason required when ending"
+          - "BR-WR-015: Preserve history for rehires"
+      
+      apis:
+        - "POST /api/v1/work-relationships"
+        - "GET /api/v1/work-relationships/{id}"
+        - "PUT /api/v1/work-relationships/{id}"
+        - "POST /api/v1/work-relationships/{id}/terminate"
+        - "GET /api/v1/workers/{workerId}/work-relationships"
+        - "POST /api/v1/work-relationships/{id}/convert-to-employee"
+      
+      scenarios:
+        - "New hire (create work relationship)"
+        - "Contractor to employee conversion"
+        - "Rehire (create new relationship for existing worker)"
+        - "Concurrent relationships (employee + contractor)"
+        - "Termination (resignation, retirement)"
+    
+    spec_kit_outputs:
+      - "spec.md"
+      - "data-model.md"
+      - "contracts/api-spec.yaml"
+      - "tasks.md"
+    
+    technical_notes:
+      - "Implement SCD Type 2 for relationship history"
+      - "Support concurrent relationships (same worker, multiple active)"
+      - "Preserve complete history for compliance"
+      - "Link to legal entity for multi-country support"
+    
+    acceptance_criteria:
+      - "Work relationship created with valid dates"
+      - "Multiple concurrent relationships supported"
+      - "Rehire creates new relationship, preserves history"
+      - "Contractor to employee conversion works"
+      - "Termination updates status and end date"
+      - "History preserved with SCD Type 2"
+    
+    dependencies:
+      - "001-worker-management"
+    
+    estimated_effort: "8 story points"
+    status: "PLANNED"
+
+  # ---------------------------------------------------------------------------
+  # Feature 003: Employee Management
+  # ---------------------------------------------------------------------------
+  - id: "003"
+    name: "employee-management"
+    title: "Employee Management"
+    priority: HIGH
+    epic: "Core Employment"
+    phase: 1
+    
+    description: |
+      Manage employee-specific data including employee number, hire date,
+      probation period, and seniority. Only for EMPLOYEE-type work relationships.
+    
+    user_stories:
+      - "As an HR Admin, I want to create employee records so that I can track employment details"
+      - "As an HR Admin, I want to generate employee numbers so that each employee has unique ID"
+      - "As an HR Admin, I want to track probation periods so that we can manage new hires"
+      - "As an HR Admin, I want to track seniority so that we can calculate benefits"
+      - "As an HR Admin, I want to handle rehires so that we preserve original hire date"
+    
+    sources:
+      concept_guides:
+        - "01-concept/01-employment-lifecycle-guide.md#level-3-employee"
+      
+      ontology:
+        entities:
+          - "Employee"
+          - "EmploymentStatus"
+        glossary: "00-ontology/glossary-employment.md"
+      
+      functional_requirements:
+        range: "FR-EMP-001 to FR-EMP-025"
+        key_requirements:
+          - "FR-EMP-001: Create employee record"
+          - "FR-EMP-002: Generate employee number"
+          - "FR-EMP-003: Update employee information"
+          - "FR-EMP-005: Track probation period"
+          - "FR-EMP-010: Calculate seniority"
+          - "FR-EMP-015: Handle rehire seniority"
+          - "FR-EMP-020: Track employment status"
+      
+      business_rules:
+        range: "BR-EMP-001 to BR-EMP-015"
+        key_rules:
+          - "BR-EMP-001: Employee record only for EMPLOYEE type"
+          - "BR-EMP-002: Employee number must be unique"
+          - "BR-EMP-003: Hire date = Work relationship start date"
+          - "BR-EMP-004: Probation end date = Hire date + probation period"
+          - "BR-EMP-005: Original hire date preserved for rehires"
+          - "BR-EMP-010: Seniority calculated from original hire date"
+      
+      apis:
+        - "POST /api/v1/employees"
+        - "GET /api/v1/employees/{id}"
+        - "PUT /api/v1/employees/{id}"
+        - "GET /api/v1/employees"
+        - "GET /api/v1/employees/{id}/seniority"
+        - "POST /api/v1/employees/generate-employee-number"
+      
+      scenarios:
+        - "New employee creation"
+        - "Employee number generation"
+        - "Probation period tracking"
+        - "Rehire with seniority preservation"
+        - "Employment status updates"
+    
+    spec_kit_outputs:
+      - "spec.md"
+      - "data-model.md"
+      - "contracts/api-spec.yaml"
+      - "tasks.md"
+    
+    technical_notes:
+      - "Employee number generation strategy (sequential, year-based, etc.)"
+      - "Seniority calculation includes all employment periods"
+      - "SCD Type 2 for employment status changes"
+      - "Link to work relationship (1:1)"
+    
+    acceptance_criteria:
+      - "Employee record created for EMPLOYEE type only"
+      - "Employee number unique and auto-generated"
+      - "Probation period calculated correctly"
+      - "Seniority includes all employment periods"
+      - "Rehire preserves original hire date"
+      - "Employment status tracked with history"
+    
+    dependencies:
+      - "002-work-relationship"
+    
+    estimated_effort: "5 story points"
+    status: "PLANNED"
+
+  # ---------------------------------------------------------------------------
+  # Feature 004: Assignment Management
+  # ---------------------------------------------------------------------------
+  - id: "004"
+    name: "assignment-management"
+    title: "Assignment Management"
+    priority: HIGH
+    epic: "Core Employment"
+    phase: 1
+    
+    description: |
+      Manage job assignments including position-based and job-based staffing,
+      reporting relationships (solid and dotted line), transfers, promotions,
+      and assignment history.
+    
+    user_stories:
+      - "As an HR Admin, I want to create assignments so that employees have jobs"
+      - "As an HR Admin, I want to support position-based staffing so that we control headcount"
+      - "As an HR Admin, I want to support job-based staffing so that we have flexibility"
+      - "As an HR Admin, I want to assign managers so that reporting is clear"
+      - "As an HR Admin, I want to support dotted line reporting so that we can model matrix orgs"
+      - "As an HR Admin, I want to process transfers so that employees can move departments"
+      - "As an HR Admin, I want to process promotions so that we can advance careers"
+    
+    sources:
+      concept_guides:
+        - "01-concept/01-employment-lifecycle-guide.md#level-4-assignment"
+        - "01-concept/07-matrix-organizations-guide.md"
+        - "01-concept/08-staffing-models-guide.md"
+      
+      ontology:
+        entities:
+          - "Assignment"
+          - "AssignmentReason"
+          - "StaffingModel"
+        glossary: "00-ontology/glossary-employment.md"
+      
+      functional_requirements:
+        range: "FR-ASG-001 to FR-ASG-045"
+        key_requirements:
+          - "FR-ASG-001: Create assignment"
+          - "FR-ASG-002: Update assignment"
+          - "FR-ASG-003: End assignment"
+          - "FR-ASG-005: Position-based staffing"
+          - "FR-ASG-006: Job-based staffing"
+          - "FR-ASG-010: Assign solid line manager"
+          - "FR-ASG-011: Assign dotted line manager"
+          - "FR-ASG-015: Process transfer"
+          - "FR-ASG-016: Process promotion"
+          - "FR-ASG-020: Multiple concurrent assignments"
+          - "FR-ASG-025: Track assignment history"
+      
+      business_rules:
+        range: "BR-ASG-001 to BR-ASG-025"
+        key_rules:
+          - "BR-ASG-001: Employee or work relationship required"
+          - "BR-ASG-002: Position OR job required (not both for position-based)"
+          - "BR-ASG-003: Business unit required"
+          - "BR-ASG-004: Manager required (solid line)"
+          - "BR-ASG-005: One primary assignment per employee"
+          - "BR-ASG-006: Multiple dotted line managers allowed"
+          - "BR-ASG-010: FTE sum cannot exceed 1.0"
+          - "BR-ASG-015: End previous assignment before new one (for primary)"
+          - "BR-ASG-020: Assignment reason required"
+      
+      apis:
+        - "POST /api/v1/assignments"
+        - "GET /api/v1/assignments/{id}"
+        - "PUT /api/v1/assignments/{id}"
+        - "POST /api/v1/assignments/{id}/end"
+        - "GET /api/v1/employees/{employeeId}/assignments"
+        - "POST /api/v1/assignments/transfer"
+        - "POST /api/v1/assignments/promote"
+        - "GET /api/v1/assignments/{id}/reporting-chain"
+      
+      scenarios:
+        - "New hire assignment (position-based)"
+        - "New hire assignment (job-based)"
+        - "Internal transfer"
+        - "Promotion"
+        - "Matrix organization (dotted line)"
+        - "Multiple concurrent assignments"
+        - "Assignment history tracking"
+    
+    spec_kit_outputs:
+      - "spec.md"
+      - "data-model.md"
+      - "contracts/api-spec.yaml"
+      - "tasks.md"
+    
+    technical_notes:
+      - "Support both position-based and job-based staffing"
+      - "Implement solid line (primary) and dotted line (secondary) reporting"
+      - "SCD Type 2 for assignment history"
+      - "Calculate reporting chain (recursive)"
+      - "Validate FTE sum for concurrent assignments"
+    
+    acceptance_criteria:
+      - "Assignment created with position or job"
+      - "Solid line manager assigned"
+      - "Dotted line managers supported (multiple)"
+      - "Transfer creates new assignment, ends old"
+      - "Promotion creates new assignment with higher level"
+      - "FTE validation for concurrent assignments"
+      - "Assignment history preserved"
+      - "Reporting chain calculated correctly"
+    
+    dependencies:
+      - "003-employee-management"
+      - "006-business-unit" (for business unit assignment)
+      - "007-job-taxonomy" (for job assignment)
+      - "008-position-management" (for position assignment)
+    
+    estimated_effort: "13 story points"
+    status: "PLANNED"
+
+  # ---------------------------------------------------------------------------
+  # Feature 005: Basic Reporting
+  # ---------------------------------------------------------------------------
+  - id: "005"
+    name: "basic-reporting"
+    title: "Basic Reporting & Analytics"
+    priority: MEDIUM
+    epic: "Core Employment"
+    phase: 1
+    
+    description: |
+      Provide basic reporting capabilities including headcount reports,
+      employee lists, org charts, and employment analytics.
+    
+    user_stories:
+      - "As an HR Manager, I want to view headcount reports so that I can track staffing levels"
+      - "As an HR Manager, I want to view employee lists so that I can see all employees"
+      - "As a Manager, I want to view org charts so that I can see my team structure"
+      - "As an Executive, I want to view employment analytics so that I can make decisions"
+    
+    sources:
+      concept_guides:
+        - "01-concept/01-employment-lifecycle-guide.md"
+        - "01-concept/02-organization-structure-guide.md"
+      
+      ontology:
+        entities:
+          - "Worker"
+          - "Employee"
+          - "Assignment"
+          - "BusinessUnit"
+        glossary: "Multiple glossaries"
+      
+      functional_requirements:
+        range: "FR-RPT-001 to FR-RPT-020"
+        key_requirements:
+          - "FR-RPT-001: Headcount report"
+          - "FR-RPT-002: Employee list"
+          - "FR-RPT-003: Org chart"
+          - "FR-RPT-005: Headcount by department"
+          - "FR-RPT-006: Headcount by job"
+          - "FR-RPT-007: Headcount by location"
+          - "FR-RPT-010: New hires report"
+          - "FR-RPT-011: Terminations report"
+          - "FR-RPT-015: Vacancy report (position-based)"
+      
+      business_rules:
+        range: "BR-RPT-001 to BR-RPT-010"
+        key_rules:
+          - "BR-RPT-001: Count only active employees"
+          - "BR-RPT-002: Respect data classification (no RESTRICTED data)"
+          - "BR-RPT-003: Filter by user permissions"
+          - "BR-RPT-005: Headcount = count of active assignments"
+      
+      apis:
+        - "GET /api/v1/reports/headcount"
+        - "GET /api/v1/reports/employees"
+        - "GET /api/v1/reports/org-chart"
+        - "GET /api/v1/reports/headcount-by-department"
+        - "GET /api/v1/reports/headcount-by-job"
+        - "GET /api/v1/reports/new-hires"
+        - "GET /api/v1/reports/terminations"
+        - "GET /api/v1/reports/vacancies"
+      
+      scenarios:
+        - "View current headcount"
+        - "View employee list with filters"
+        - "View org chart for department"
+        - "View new hires this month"
+        - "View open positions"
+    
+    spec_kit_outputs:
+      - "spec.md"
+      - "data-model.md"
+      - "contracts/api-spec.yaml"
+      - "tasks.md"
+    
+    technical_notes:
+      - "Implement efficient queries for large datasets"
+      - "Support export to CSV, Excel, PDF"
+      - "Respect data classification and permissions"
+      - "Cache frequently accessed reports"
+    
+    acceptance_criteria:
+      - "Headcount report shows accurate count"
+      - "Employee list supports filtering and sorting"
+      - "Org chart displays hierarchy correctly"
+      - "Reports respect data permissions"
+      - "Export to multiple formats supported"
+    
+    dependencies:
+      - "001-worker-management"
+      - "003-employee-management"
+      - "004-assignment-management"
+      - "006-business-unit"
+    
+    estimated_effort: "8 story points"
+    status: "PLANNED"
+
+# =============================================================================
+# PHASE 2: ORGANIZATION & JOBS (MEDIUM PRIORITY)
+# =============================================================================
+
+  # ---------------------------------------------------------------------------
+  # Feature 006: Business Unit Management
+  # ---------------------------------------------------------------------------
+  - id: "006"
+    name: "business-unit"
+    title: "Business Unit Management"
+    priority: MEDIUM
+    epic: "Organization Structure"
+    phase: 2
+    
+    description: |
+      Manage business units including operational and supervisory organizations,
+      unit hierarchies, and organizational relationships.
+    
+    user_stories:
+      - "As an HR Admin, I want to create business units so that we can organize the company"
+      - "As an HR Admin, I want to create supervisory orgs so that we can separate reporting"
+      - "As an HR Admin, I want to build unit hierarchies so that we can model org structure"
+      - "As a Manager, I want to view my org structure so that I can see my team"
+    
+    sources:
+      concept_guides:
+        - "01-concept/02-organization-structure-guide.md"
+      
+      ontology:
+        entities:
+          - "BusinessUnit"
+          - "UnitType"
+          - "OrganizationRelation"
+        glossary: "00-ontology/glossary-business-unit.md"
+      
+      functional_requirements:
+        range: "FR-BU-001 to FR-BU-035"
+        key_requirements:
+          - "FR-BU-001: Create business unit"
+          - "FR-BU-002: Update business unit"
+          - "FR-BU-003: Deactivate business unit"
+          - "FR-BU-005: Create unit hierarchy"
+          - "FR-BU-010: Create supervisory organization"
+          - "FR-BU-015: Manage unit relationships"
+          - "FR-BU-020: Track unit history"
+      
+      business_rules:
+        range: "BR-BU-001 to BR-BU-020"
+        key_rules:
+          - "BR-BU-001: Unit code must be unique"
+          - "BR-BU-002: Unit type must be valid"
+          - "BR-BU-003: Parent unit must exist"
+          - "BR-BU-004: No circular references in hierarchy"
+          - "BR-BU-005: Supervisory org can exist at any level"
+          - "BR-BU-010: Legal entity required for top-level units"
+      
+      apis:
+        - "POST /api/v1/business-units"
+        - "GET /api/v1/business-units/{id}"
+        - "PUT /api/v1/business-units/{id}"
+        - "DELETE /api/v1/business-units/{id}"
+        - "GET /api/v1/business-units"
+        - "GET /api/v1/business-units/{id}/hierarchy"
+        - "GET /api/v1/business-units/{id}/children"
+        - "POST /api/v1/business-units/{id}/relationships"
+      
+      scenarios:
+        - "Create operational unit hierarchy"
+        - "Create supervisory organization"
+        - "Reorganization (merge units)"
+        - "Unit deactivation"
+    
+    spec_kit_outputs:
+      - "spec.md"
+      - "data-model.md"
+      - "contracts/api-spec.yaml"
+      - "tasks.md"
+    
+    technical_notes:
+      - "Implement materialized path for hierarchy"
+      - "Support both operational and supervisory types"
+      - "SCD Type 2 for unit changes"
+      - "Validate no circular references"
+    
+    acceptance_criteria:
+      - "Business unit created with valid type"
+      - "Hierarchy built correctly"
+      - "Supervisory org created independently"
+      - "No circular references allowed"
+      - "Unit history preserved"
+    
+    dependencies: []
+    
+    estimated_effort: "10 story points"
+    status: "PLANNED"
+
+  # ---------------------------------------------------------------------------
+  # Feature 007: Job Taxonomy Management
+  # ---------------------------------------------------------------------------
+  - id: "007"
+    name: "job-taxonomy"
+    title: "Job Taxonomy Management"
+    priority: MEDIUM
+    epic: "Job & Position"
+    phase: 2
+    
+    description: |
+      Manage job taxonomy including job families, job hierarchies, and
+      multi-tree architecture for corporate and BU-specific taxonomies.
+    
+    user_stories:
+      - "As an HR Admin, I want to create job taxonomies so that we can classify jobs"
+      - "As an HR Admin, I want to create job hierarchies so that we can show career paths"
+      - "As an HR Admin, I want to support multiple taxonomies so that BUs can customize"
+      - "As an Employee, I want to view job families so that I can explore careers"
+    
+    sources:
+      concept_guides:
+        - "01-concept/03-job-position-guide.md#job-taxonomy"
+      
+      ontology:
+        entities:
+          - "TaxonomyTree"
+          - "JobTaxonomy"
+          - "JobTree"
+          - "Job"
+        glossary: "00-ontology/glossary-job-position.md"
+      
+      functional_requirements:
+        range: "FR-TAX-001 to FR-TAX-030"
+        key_requirements:
+          - "FR-TAX-001: Create taxonomy tree"
+          - "FR-TAX-002: Create job taxonomy (family/sub-family/function)"
+          - "FR-TAX-003: Create job tree"
+          - "FR-TAX-005: Create job"
+          - "FR-TAX-010: Build job hierarchy"
+          - "FR-TAX-015: Support multi-tree architecture"
+          - "FR-TAX-020: Job inheritance"
+      
+      business_rules:
+        range: "BR-TAX-001 to BR-TAX-015"
+        key_rules:
+          - "BR-TAX-001: Taxonomy tree code unique"
+          - "BR-TAX-002: Job code unique within tree"
+          - "BR-TAX-003: Job must belong to taxonomy"
+          - "BR-TAX-004: Job can inherit from parent"
+          - "BR-TAX-005: BU can have custom taxonomy"
+      
+      apis:
+        - "POST /api/v1/taxonomy-trees"
+        - "POST /api/v1/job-taxonomies"
+        - "POST /api/v1/job-trees"
+        - "POST /api/v1/jobs"
+        - "GET /api/v1/jobs/{id}"
+        - "PUT /api/v1/jobs/{id}"
+        - "GET /api/v1/jobs/{id}/hierarchy"
+        - "GET /api/v1/jobs/{id}/career-path"
+      
+      scenarios:
+        - "Create corporate job taxonomy"
+        - "Create BU-specific taxonomy"
+        - "Create job with inheritance"
+        - "View career path"
+    
+    spec_kit_outputs:
+      - "spec.md"
+      - "data-model.md"
+      - "contracts/api-spec.yaml"
+      - "tasks.md"
+    
+    technical_notes:
+      - "Support multi-tree architecture"
+      - "Implement job inheritance"
+      - "Materialized path for job hierarchy"
+      - "Link to job profiles"
+    
+    acceptance_criteria:
+      - "Taxonomy tree created"
+      - "Job taxonomy (3 levels) created"
+      - "Job created with taxonomy link"
+      - "Job hierarchy built"
+      - "Inheritance works correctly"
+      - "Multi-tree supported"
+    
+    dependencies: []
+    
+    estimated_effort: "10 story points"
+    status: "PLANNED"
+
+  # ---------------------------------------------------------------------------
+  # Feature 008: Job Profile Management
+  # ---------------------------------------------------------------------------
+  - id: "008"
+    name: "job-profile"
+    title: "Job Profile Management"
+    priority: MEDIUM
+    epic: "Job & Position"
+    phase: 2
+    
+    description: |
+      Manage job profiles including requirements, skills, competencies,
+      and proficiency levels for hiring and development.
+    
+    user_stories:
+      - "As an HR Admin, I want to create job profiles so that we can define requirements"
+      - "As an HR Admin, I want to specify required skills so that we can hire right people"
+      - "As an HR Admin, I want to specify competencies so that we can assess fit"
+      - "As a Hiring Manager, I want to view job profiles so that I can understand requirements"
+    
+    sources:
+      concept_guides:
+        - "01-concept/03-job-position-guide.md#job-profile"
+        - "01-concept/06-skill-management-guide.md"
+      
+      ontology:
+        entities:
+          - "JobProfile"
+          - "JobProfileSkill"
+          - "JobProfileCompetency"
+          - "JobLevel"
+          - "JobGrade"
+        glossary: "00-ontology/glossary-job-position.md"
+      
+      functional_requirements:
+        range: "FR-PRF-001 to FR-PRF-030"
+        key_requirements:
+          - "FR-PRF-001: Create job profile"
+          - "FR-PRF-002: Update job profile"
+          - "FR-PRF-005: Add required skills"
+          - "FR-PRF-006: Add required competencies"
+          - "FR-PRF-010: Set proficiency levels"
+          - "FR-PRF-015: Define job level and grade"
+          - "FR-PRF-020: View job profile"
+      
+      business_rules:
+        range: "BR-PRF-001 to BR-PRF-015"
+        key_rules:
+          - "BR-PRF-001: Job profile required for job"
+          - "BR-PRF-002: Skills must have proficiency level"
+          - "BR-PRF-003: Competencies must have required level"
+          - "BR-PRF-004: Mandatory vs optional skills"
+          - "BR-PRF-005: Job level determines grade range"
+      
+      apis:
+        - "POST /api/v1/job-profiles"
+        - "GET /api/v1/job-profiles/{id}"
+        - "PUT /api/v1/job-profiles/{id}"
+        - "POST /api/v1/job-profiles/{id}/skills"
+        - "POST /api/v1/job-profiles/{id}/competencies"
+        - "GET /api/v1/jobs/{jobId}/profile"
+      
+      scenarios:
+        - "Create job profile with skills"
+        - "Add competency requirements"
+        - "Set proficiency levels"
+        - "View complete job profile"
+    
+    spec_kit_outputs:
+      - "spec.md"
+      - "data-model.md"
+      - "contracts/api-spec.yaml"
+      - "tasks.md"
+    
+    technical_notes:
+      - "Link to skill master and competency master"
+      - "Support weighted importance"
+      - "Mandatory vs optional flags"
+      - "Proficiency scale (1-5)"
+    
+    acceptance_criteria:
+      - "Job profile created"
+      - "Skills added with proficiency levels"
+      - "Competencies added with required levels"
+      - "Mandatory/optional flags work"
+      - "Job level and grade assigned"
+    
+    dependencies:
+      - "007-job-taxonomy"
+      - "011-skill-catalog"
+    
+    estimated_effort: "8 story points"
+    status: "PLANNED"
+
+  # ---------------------------------------------------------------------------
+  # Feature 009: Position Management
+  # ---------------------------------------------------------------------------
+  - id: "009"
+    name: "position-management"
+    title: "Position Management"
+    priority: MEDIUM
+    epic: "Job & Position"
+    phase: 2
+    
+    description: |
+      Manage positions for position-based staffing including position creation,
+      vacancy tracking, and position hierarchy.
+    
+    user_stories:
+      - "As an HR Admin, I want to create positions so that we can control headcount"
+      - "As an HR Admin, I want to track vacancies so that we can fill open positions"
+      - "As an HR Admin, I want to freeze positions so that we can control hiring"
+      - "As a Hiring Manager, I want to view open positions so that I can recruit"
+    
+    sources:
+      concept_guides:
+        - "01-concept/03-job-position-guide.md#position-management"
+        - "01-concept/08-staffing-models-guide.md#position-based"
+      
+      ontology:
+        entities:
+          - "Position"
+          - "PositionStatus"
+        glossary: "00-ontology/glossary-job-position.md"
+      
+      functional_requirements:
+        range: "FR-POS-001 to FR-POS-035"
+        key_requirements:
+          - "FR-POS-001: Create position"
+          - "FR-POS-002: Update position"
+          - "FR-POS-003: Freeze position"
+          - "FR-POS-004: Eliminate position"
+          - "FR-POS-005: Track vacancy status"
+          - "FR-POS-010: Build position hierarchy"
+          - "FR-POS-015: Track incumbents"
+          - "FR-POS-020: Budget approval tracking"
+      
+      business_rules:
+        range: "BR-POS-001 to BR-POS-020"
+        key_rules:
+          - "BR-POS-001: Position code unique"
+          - "BR-POS-002: Position must link to job"
+          - "BR-POS-003: Position must link to business unit"
+          - "BR-POS-004: Max incumbents typically 1"
+          - "BR-POS-005: Cannot hire to frozen position"
+          - "BR-POS-010: Budget approval required"
+      
+      apis:
+        - "POST /api/v1/positions"
+        - "GET /api/v1/positions/{id}"
+        - "PUT /api/v1/positions/{id}"
+        - "POST /api/v1/positions/{id}/freeze"
+        - "POST /api/v1/positions/{id}/eliminate"
+        - "GET /api/v1/positions"
+        - "GET /api/v1/positions/vacancies"
+        - "GET /api/v1/positions/{id}/hierarchy"
+      
+      scenarios:
+        - "Create budgeted position"
+        - "Fill position (hire)"
+        - "Position becomes vacant (resignation)"
+        - "Freeze position (hiring freeze)"
+        - "Eliminate position (reorganization)"
+    
+    spec_kit_outputs:
+      - "spec.md"
+      - "data-model.md"
+      - "contracts/api-spec.yaml"
+      - "tasks.md"
+    
+    technical_notes:
+      - "Track current vs max incumbents"
+      - "Support position hierarchy (reports-to)"
+      - "SCD Type 2 for position changes"
+      - "Link to budget/cost center"
+    
+    acceptance_criteria:
+      - "Position created with job link"
+      - "Vacancy status tracked"
+      - "Frozen position cannot be filled"
+      - "Position hierarchy built"
+      - "Incumbents tracked correctly"
+    
+    dependencies:
+      - "007-job-taxonomy"
+      - "006-business-unit"
+    
+    estimated_effort: "8 story points"
+    status: "PLANNED"
+
+  # ---------------------------------------------------------------------------
+  # Feature 010: Matrix Reporting
+  # ---------------------------------------------------------------------------
+  - id: "010"
+    name: "matrix-reporting"
+    title: "Matrix Organization & Reporting Lines"
+    priority: MEDIUM
+    epic: "Organization Structure"
+    phase: 2
+    
+    description: |
+      Support matrix organizations with solid line (primary) and dotted line
+      (secondary) reporting relationships.
+    
+    user_stories:
+      - "As an HR Admin, I want to assign solid line managers so that reporting is clear"
+      - "As an HR Admin, I want to assign dotted line managers so that we can model matrix"
+      - "As a Manager, I want to view my direct reports so that I can manage my team"
+      - "As a Manager, I want to view dotted line reports so that I can coordinate work"
+    
+    sources:
+      concept_guides:
+        - "01-concept/07-matrix-organizations-guide.md"
+        - "01-concept/02-organization-structure-guide.md"
+      
+      ontology:
+        entities:
+          - "Assignment" (solid/dotted line fields)
+          - "OrganizationRelation"
+          - "RelationshipType"
+        glossary: "00-ontology/glossary-org-relation.md"
+      
+      functional_requirements:
+        range: "FR-MTX-001 to FR-MTX-025"
+        key_requirements:
+          - "FR-MTX-001: Assign solid line manager"
+          - "FR-MTX-002: Assign dotted line manager(s)"
+          - "FR-MTX-003: View direct reports (solid line)"
+          - "FR-MTX-004: View dotted line reports"
+          - "FR-MTX-005: Calculate reporting chain"
+          - "FR-MTX-010: Support multiple dotted lines"
+          - "FR-MTX-015: Track time allocation"
+      
+      business_rules:
+        range: "BR-MTX-001 to BR-MTX-012"
+        key_rules:
+          - "BR-MTX-001: One solid line manager per assignment"
+          - "BR-MTX-002: Multiple dotted line managers allowed"
+          - "BR-MTX-003: Solid line for approvals"
+          - "BR-MTX-004: Dotted line for coordination only"
+          - "BR-MTX-005: FTE allocation must sum to 100%"
+      
+      apis:
+        - "POST /api/v1/assignments/{id}/solid-line-manager"
+        - "POST /api/v1/assignments/{id}/dotted-line-manager"
+        - "GET /api/v1/managers/{managerId}/direct-reports"
+        - "GET /api/v1/managers/{managerId}/dotted-line-reports"
+        - "GET /api/v1/employees/{employeeId}/reporting-chain"
+        - "GET /api/v1/assignments/{id}/time-allocation"
+      
+      scenarios:
+        - "Assign solid line manager"
+        - "Add dotted line manager"
+        - "View direct reports"
+        - "Calculate reporting chain"
+        - "Manage time allocation"
+    
+    spec_kit_outputs:
+      - "spec.md"
+      - "data-model.md"
+      - "contracts/api-spec.yaml"
+      - "tasks.md"
+    
+    technical_notes:
+      - "Solid line = primary reporting (approvals)"
+      - "Dotted line = secondary reporting (coordination)"
+      - "Support multiple dotted lines per assignment"
+      - "Calculate reporting chain recursively"
+    
+    acceptance_criteria:
+      - "Solid line manager assigned"
+      - "Multiple dotted line managers supported"
+      - "Direct reports list correct"
+      - "Reporting chain calculated"
+      - "Time allocation tracked"
+    
+    dependencies:
+      - "004-assignment-management"
+    
+    estimated_effort: "8 story points"
+    status: "PLANNED"
+
+# =============================================================================
+# PHASE 3: SKILLS & ADVANCED (LOWER PRIORITY)
+# =============================================================================
+
+  # ---------------------------------------------------------------------------
+  # Feature 011: Skill Catalog
+  # ---------------------------------------------------------------------------
+  - id: "011"
+    name: "skill-catalog"
+    title: "Skill Catalog Management"
+    priority: LOW
+    epic: "Skill Management"
+    phase: 3
+    
+    description: |
+      Manage skill catalog including skill master, proficiency scales,
+      certifications, and skill categories.
+    
+    user_stories:
+      - "As an HR Admin, I want to create skill catalog so that we can track skills"
+      - "As an HR Admin, I want to define proficiency scales so that we can assess levels"
+      - "As an HR Admin, I want to categorize skills so that we can organize them"
+      - "As an Employee, I want to view skill catalog so that I can plan development"
+    
+    sources:
+      concept_guides:
+        - "01-concept/06-skill-management-guide.md#skill-catalog"
+      
+      ontology:
+        entities:
+          - "SkillMaster"
+          - "SkillCategory"
+          - "ProficiencyScale"
+          - "CompetencyMaster"
+        glossary: "00-ontology/glossary-common.md"
+      
+      functional_requirements:
+        range: "FR-SKL-001 to FR-SKL-025"
+        key_requirements:
+          - "FR-SKL-001: Create skill master"
+          - "FR-SKL-002: Update skill master"
+          - "FR-SKL-003: Create skill category"
+          - "FR-SKL-005: Define proficiency scale"
+          - "FR-SKL-010: Create competency master"
+          - "FR-SKL-015: Link certifications"
+          - "FR-SKL-020: Search skills"
+      
+      business_rules:
+        range: "BR-SKL-001 to BR-SKL-015"
+        key_rules:
+          - "BR-SKL-001: Skill code unique"
+          - "BR-SKL-002: Skill must have category"
+          - "BR-SKL-003: Proficiency scale 1-5"
+          - "BR-SKL-004: Competency scale 1-5"
+          - "BR-SKL-005: Active skills only in catalog"
+      
+      apis:
+        - "POST /api/v1/skills"
+        - "GET /api/v1/skills/{id}"
+        - "PUT /api/v1/skills/{id}"
+        - "GET /api/v1/skills"
+        - "POST /api/v1/skill-categories"
+        - "POST /api/v1/proficiency-scales"
+        - "POST /api/v1/competencies"
+      
+      scenarios:
+        - "Create skill catalog"
+        - "Define proficiency scale"
+        - "Categorize skills"
+        - "Link certifications"
+    
+    spec_kit_outputs:
+      - "spec.md"
+      - "data-model.md"
+      - "contracts/api-spec.yaml"
+      - "tasks.md"
+    
+    technical_notes:
+      - "Support skill hierarchies"
+      - "Link to external certification providers"
+      - "Support multiple proficiency scales"
+      - "Track skill lifecycle (emerging, declining)"
+    
+    acceptance_criteria:
+      - "Skill created with category"
+      - "Proficiency scale defined"
+      - "Certifications linked"
+      - "Skill search works"
+      - "Skill catalog browsable"
+    
+    dependencies: []
+    
+    estimated_effort: "8 story points"
+    status: "PLANNED"
+
+  # ---------------------------------------------------------------------------
+  # Feature 012: Skill Assessment & Gap Analysis
+  # ---------------------------------------------------------------------------
+  - id: "012"
+    name: "skill-assessment"
+    title: "Skill Assessment & Gap Analysis"
+    priority: LOW
+    epic: "Skill Management"
+    phase: 3
+    
+    description: |
+      Assess worker skills, compare with job requirements, identify gaps,
+      and create development plans.
+    
+    user_stories:
+      - "As an HR Admin, I want to assess worker skills so that we can track capabilities"
+      - "As an HR Admin, I want to perform gap analysis so that we can identify training needs"
+      - "As a Manager, I want to view team skills so that I can plan assignments"
+      - "As an Employee, I want to view my skill gaps so that I can develop"
+    
+    sources:
+      concept_guides:
+        - "01-concept/06-skill-management-guide.md#skill-gap-analysis"
+      
+      ontology:
+        entities:
+          - "WorkerSkill"
+          - "WorkerCompetency"
+          - "SkillAssessment"
+        glossary: "00-ontology/glossary-person.md"
+      
+      functional_requirements:
+        range: "FR-ASS-001 to FR-ASS-030"
+        key_requirements:
+          - "FR-ASS-001: Assess worker skills"
+          - "FR-ASS-002: Update skill proficiency"
+          - "FR-ASS-003: Assess competencies"
+          - "FR-ASS-005: Perform gap analysis"
+          - "FR-ASS-010: Compare with job requirements"
+          - "FR-ASS-015: Generate development plan"
+          - "FR-ASS-020: Track skill progress"
+      
+      business_rules:
+        range: "BR-ASS-001 to BR-ASS-015"
+        key_rules:
+          - "BR-ASS-001: Skill assessment requires evidence"
+          - "BR-ASS-002: Gap = Required - Current proficiency"
+          - "BR-ASS-003: Mandatory skills must be met"
+          - "BR-ASS-004: Qualification score calculation"
+          - "BR-ASS-005: Assessment frequency (annual)"
+      
+      apis:
+        - "POST /api/v1/workers/{workerId}/skills"
+        - "PUT /api/v1/workers/{workerId}/skills/{skillId}"
+        - "POST /api/v1/workers/{workerId}/competencies"
+        - "POST /api/v1/workers/{workerId}/skill-gap-analysis"
+        - "GET /api/v1/workers/{workerId}/skill-gaps"
+        - "GET /api/v1/workers/{workerId}/qualification-score"
+        - "POST /api/v1/workers/{workerId}/development-plan"
+      
+      scenarios:
+        - "Assess worker skills"
+        - "Perform gap analysis for job"
+        - "Hiring decision (gap analysis)"
+        - "Internal promotion (gap analysis)"
+        - "Create development plan"
+    
+    spec_kit_outputs:
+      - "spec.md"
+      - "data-model.md"
+      - "contracts/api-spec.yaml"
+      - "tasks.md"
+    
+    technical_notes:
+      - "Calculate gap = required - current"
+      - "Weighted qualification score"
+      - "Track assessment history"
+      - "Support multiple assessment methods"
+    
+    acceptance_criteria:
+      - "Worker skills assessed"
+      - "Gap analysis performed"
+      - "Qualification score calculated"
+      - "Development plan generated"
+      - "Skill progress tracked"
+    
+    dependencies:
+      - "011-skill-catalog"
+      - "008-job-profile"
+    
+    estimated_effort: "10 story points"
+    status: "PLANNED"
+
+  # ---------------------------------------------------------------------------
+  # Feature 013: Career Paths
+  # ---------------------------------------------------------------------------
+  - id: "013"
+    name: "career-paths"
+    title: "Career Path Management"
+    priority: LOW
+    epic: "Skill Management"
+    phase: 3
+    
+    description: |
+      Define career paths, job progression rules, and career development
+      opportunities for employees.
+    
+    user_stories:
+      - "As an HR Admin, I want to define career paths so that employees can plan careers"
+      - "As an HR Admin, I want to set progression rules so that promotions are clear"
+      - "As an Employee, I want to view career paths so that I can plan my development"
+      - "As a Manager, I want to view career options so that I can guide my team"
+    
+    sources:
+      concept_guides:
+        - "01-concept/03-job-position-guide.md#career-paths"
+      
+      ontology:
+        entities:
+          - "CareerPath"
+          - "CareerStep"
+          - "JobProgression"
+        glossary: "00-ontology/glossary-job-position.md"
+      
+      functional_requirements:
+        range: "FR-CAR-001 to FR-CAR-025"
+        key_requirements:
+          - "FR-CAR-001: Create career path"
+          - "FR-CAR-002: Define career steps"
+          - "FR-CAR-003: Set progression rules"
+          - "FR-CAR-005: View career options"
+          - "FR-CAR-010: Track career progress"
+          - "FR-CAR-015: Recommend next steps"
+      
+      business_rules:
+        range: "BR-CAR-001 to BR-CAR-010"
+        key_rules:
+          - "BR-CAR-001: Career path must have steps"
+          - "BR-CAR-002: Progression rules define requirements"
+          - "BR-CAR-003: Typical duration for each step"
+          - "BR-CAR-004: Skills required for progression"
+      
+      apis:
+        - "POST /api/v1/career-paths"
+        - "GET /api/v1/career-paths/{id}"
+        - "POST /api/v1/career-paths/{id}/steps"
+        - "GET /api/v1/jobs/{jobId}/career-paths"
+        - "GET /api/v1/employees/{employeeId}/career-options"
+        - "GET /api/v1/employees/{employeeId}/career-progress"
+      
+      scenarios:
+        - "Define IC career path"
+        - "Define management career path"
+        - "View career options"
+        - "Track career progress"
+    
+    spec_kit_outputs:
+      - "spec.md"
+      - "data-model.md"
+      - "contracts/api-spec.yaml"
+      - "tasks.md"
+    
+    technical_notes:
+      - "Support multiple career tracks (IC, Management)"
+      - "Link to job progression rules"
+      - "Calculate readiness for next step"
+      - "Recommend development activities"
+    
+    acceptance_criteria:
+      - "Career path created"
+      - "Career steps defined"
+      - "Progression rules set"
+      - "Career options displayed"
+      - "Progress tracked"
+    
+    dependencies:
+      - "007-job-taxonomy"
+      - "012-skill-assessment"
+    
+    estimated_effort: "8 story points"
+    status: "PLANNED"
+
+  # ---------------------------------------------------------------------------
+  # Feature 014: Data Privacy & Compliance
+  # ---------------------------------------------------------------------------
+  - id: "014"
+    name: "data-privacy"
+    title: "Data Privacy & Compliance"
+    priority: MEDIUM
+    epic: "Data Security"
+    phase: 3
+    
+    description: |
+      Implement data subject rights (DSAR), consent management, audit trails,
+      and compliance with GDPR, PDPA, and Vietnam Decree 13/2023/NĐ-CP.
+    
+    user_stories:
+      - "As a DPO, I want to handle DSAR requests so that we comply with regulations"
+      - "As an HR Admin, I want to manage consents so that we process data lawfully"
+      - "As an Auditor, I want to view audit trails so that I can verify compliance"
+      - "As an Employee, I want to access my data so that I can exercise my rights"
+    
+    sources:
+      concept_guides:
+        - "01-concept/09-data-security-guide.md"
+      
+      ontology:
+        entities:
+          - "Consent"
+          - "DataSubjectRequest"
+          - "AuditLog"
+          - "DataBreachLog"
+        glossary: "00-ontology/glossary-common.md"
+      
+      functional_requirements:
+        range: "FR-PRI-001 to FR-PRI-030"
+        key_requirements:
+          - "FR-PRI-001: Handle DSAR (access request)"
+          - "FR-PRI-002: Handle right to rectification"
+          - "FR-PRI-003: Handle right to erasure"
+          - "FR-PRI-005: Manage consents"
+          - "FR-PRI-010: Audit trail for RESTRICTED data"
+          - "FR-PRI-015: Data breach notification"
+          - "FR-PRI-020: Retention policy enforcement"
+      
+      business_rules:
+        range: "BR-PRI-001 to BR-PRI-015"
+        key_rules:
+          - "BR-PRI-001: DSAR response within 30 days"
+          - "BR-PRI-002: Consent required for RESTRICTED data"
+          - "BR-PRI-003: Audit log for all RESTRICTED access"
+          - "BR-PRI-004: Data breach notification within 72 hours"
+          - "BR-PRI-005: Retention periods enforced"
+      
+      apis:
+        - "POST /api/v1/data-subject-requests"
+        - "GET /api/v1/data-subject-requests/{id}"
+        - "POST /api/v1/data-subject-requests/{id}/respond"
+        - "POST /api/v1/consents"
+        - "PUT /api/v1/consents/{id}/withdraw"
+        - "GET /api/v1/audit-logs"
+        - "POST /api/v1/data-breaches"
+        - "GET /api/v1/workers/{workerId}/data-export"
+      
+      scenarios:
+        - "DSAR - Access request"
+        - "DSAR - Erasure request"
+        - "Consent management"
+        - "Audit trail review"
+        - "Data breach notification"
+    
+    spec_kit_outputs:
+      - "spec.md"
+      - "data-model.md"
+      - "contracts/api-spec.yaml"
+      - "tasks.md"
+    
+    technical_notes:
+      - "DSAR workflow (request → verify → respond)"
+      - "Consent tracking with timestamps"
+      - "Audit log for RESTRICTED data access"
+      - "Data export in structured format (JSON, CSV)"
+      - "Retention policy automation"
+    
+    acceptance_criteria:
+      - "DSAR processed within 30 days"
+      - "Consent managed with audit trail"
+      - "Audit logs captured for RESTRICTED data"
+      - "Data breach workflow implemented"
+      - "Retention policies enforced"
+    
+    dependencies:
+      - "001-worker-management"
+    
+    estimated_effort: "13 story points"
+    status: "PLANNED"
+
+# =============================================================================
+# FEATURE SUMMARY
+# =============================================================================
+
+summary:
+  total_features: 15
+  
+  by_phase:
+    phase_0: 1  # Foundation (Code Lists)
+    phase_1: 5  # Core Employment
+    phase_2: 5  # Organization & Jobs
+    phase_3: 4  # Skills & Advanced
+  
+  by_priority:
+    CRITICAL: 1 # 015 (Code Lists - must be first)
+    HIGH: 4     # 001-004
+    MEDIUM: 6   # 005-006, 009-010, 014
+    LOW: 4      # 011-013
+  
+  by_epic:
+    "Foundation": 1
+    "Core Employment": 5
+    "Organization Structure": 2
+    "Job & Position": 4
+    "Skill Management": 3
+    "Data Security": 1
+  
+  total_estimated_effort: "137 story points"
+  
+  by_status:
+    PLANNED: 15
+    IN_PROGRESS: 0
+    COMPLETED: 0
+
+# =============================================================================
+# IMPLEMENTATION ROADMAP
+# =============================================================================
+
+roadmap:
+  phase_0:
+    name: "Foundation"
+    duration: "2 weeks"
+    features: ["015"]
+    estimated_effort: "10 story points"
+    notes:
+      - "MUST be completed first before any other phase"
+      - "Provides code lists for all other features"
+      - "Includes seed data for all code groups"
+    
+  phase_1:
+    name: "Core Employment"
+    duration: "8 weeks"
+    features: ["001", "002", "003", "004", "005"]
+    estimated_effort: "42 story points"
+    dependencies: ["phase_0"]
+    
+  phase_2:
+    name: "Organization & Jobs"
+    duration: "8 weeks"
+    features: ["006", "007", "008", "009", "010"]
+    estimated_effort: "44 story points"
+    dependencies: ["phase_0", "phase_1"]
+    
+  phase_3:
+    name: "Skills & Advanced"
+    duration: "8 weeks"
+    features: ["011", "012", "013", "014"]
+    estimated_effort: "41 story points"
+    dependencies: ["phase_0", "phase_1", "phase_2"]
+  
+  total_duration: "26 weeks (6.5 months)"
+
+# =============================================================================
+# NOTES
+# =============================================================================
+
+notes:
+  - "Feature IDs are sequential and permanent (do not reuse)"
+  - "Feature 015 (Code Lists) MUST be implemented first - it's the foundation"
+  - "Estimated effort in story points (1 SP ≈ 1 day for experienced dev)"
+  - "Dependencies must be completed before dependent features"
+  - "Priorities may change based on business needs"
+  - "Each feature generates 4 Spec-Kit documents (spec, data-model, api-spec, tasks)"
+  - "Total 60 Spec-Kit documents will be generated (15 features × 4 docs)"
+  - "Code lists are managed as ONE feature (not separate features per code group)"
+  - "All code list groups share the same table and logic"

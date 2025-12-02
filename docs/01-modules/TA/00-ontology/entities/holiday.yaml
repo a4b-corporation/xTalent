@@ -1,0 +1,31 @@
+entity: Holiday
+version: "2.0"
+layer: schedule
+
+description: |
+  Public/company holidays that are excluded from leave calculations.
+
+attributes:
+  - id: string (UUID)
+  - scheduleId: string (UUID)
+  - name: string
+  - date: date
+  - isRecurring: boolean # True if holiday repeats annually
+  - recurringMonth: integer (nullable) # 1-12
+  - recurringDay: integer (nullable) # 1-31
+  - isActive: boolean
+  - createdAt: datetime
+  - updatedAt: datetime
+
+relationships:
+  - belongsToSchedule: Schedule
+
+rules:
+  - "If isRecurring is true, recurringMonth and recurringDay must be set"
+  - "recurringMonth must be between 1 and 12"
+  - "recurringDay must be between 1 and 31"
+
+examples:
+  - "New Year's Day: Jan 1, recurring"
+  - "Independence Day: Jul 4, recurring"
+  - "Company Anniversary: Specific date, non-recurring"

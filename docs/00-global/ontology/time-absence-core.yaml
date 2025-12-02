@@ -1,0 +1,73 @@
+# Time & Absence Core Ontology
+# Shared concepts across Time & Absence modules
+
+entities:
+  TimeType:
+    description: "Classification of time (work time, break, absence, etc.)"
+    attributes:
+      - id: string (UUID)
+      - code: string
+      - name: string
+      - category: enum [WORK, ABSENCE, BREAK, OVERTIME]
+      - isPaid: boolean
+      - requiresApproval: boolean
+    relationships:
+      - hasBalances: TimeBalance[]
+    constraints:
+      - code must be unique
+      
+  TimeBalance:
+    description: "Balance tracking for time types (leave balance, overtime balance)"
+    attributes:
+      - id: string (UUID)
+      - workerId: string (UUID)
+      - timeTypeId: string (UUID)
+      - year: integer
+      - totalAllocated: decimal
+      - used: decimal
+      - pending: decimal
+      - available: decimal (computed)
+    relationships:
+      - belongsToWorker: Worker
+      - hasTimeType: TimeType
+    rules:
+      - available = totalAllocated - used - pending
+      - used + pending cannot exceed totalAllocated
+      
+  TimeEvent:
+    description: "Time-related event (absence, overtime, schedule change)"
+    attributes:
+      - id: string (UUID)
+      - workerId: string (UUID)
+      - timeTypeId: string (UUID)
+      - startDateTime: datetime
+      - endDateTime: datetime
+      - duration: decimal
+      - status: enum [DRAFT, PENDING, APPROVED, REJECTED, CANCELLED]
+      - reason: string
+    relationships:
+      - belongsToWorker: Worker
+      - hasTimeType: TimeType
+      - hasMovements: TimeMovement[]
+    lifecycle:
+      - DRAFT → PENDING → APPROVED/REJECTED/CANCELLED
+    rules:
+      - endDateTime must be >= startDateTime
+      - Cannot overlap with approved events of same worker
+      
+  TimeMovement:
+    description: "Ledger entry for time balance changes"
+    attributes:
+      - id: string (UUID)
+      - timeBalanceId: string (UUID)
+      - timeEventId: string (UUID)
+      - movementDate: date
+      - amount: decimal
+      - movementType: enum [ALLOCATION, USAGE, ADJUSTMENT, CARRYOVER]
+      - description: string
+    relationships:
+      - affectsBalance: TimeBalance
+      - causedByEvent: TimeEvent
+    rules:
+      - amount can be positive (credit) or negative (debit)
+      - movementDate must be <= today for USAGE type

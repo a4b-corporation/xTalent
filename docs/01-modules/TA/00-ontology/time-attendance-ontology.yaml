@@ -1,0 +1,898 @@
+# Time & Attendance Ontology - Hierarchical Model
+# Version: 2.0
+# Last Updated: 2025-12-01
+# Module: Time & Absence (TA) - Time & Attendance
+# Architecture: 6-Level Hierarchical Model
+
+module: TimeAttendance
+description: |
+  Comprehensive ontology for time and attendance management based on 6-level
+  hierarchical architecture: Time Segment → Shift → Day Model → Pattern → 
+  Work Schedule Rule → Roster.
+
+# =============================================================================
+# HIERARCHICAL ARCHITECTURE OVERVIEW
+# =============================================================================
+
+architecture:
+  model: "6-Level Hierarchical"
+  levels:
+    - level: 1
+      name: "Time Segment"
+      description: "Atomic unit of time (WORK, BREAK, MEAL, TRANSFER)"
+      entity: "TimeSegment"
+    - level: 2
+      name: "Shift"
+      description: "Composition of time segments (ELAPSED, PUNCH, FLEX)"
+      entity: "ShiftDefinition"
+    - level: 3
+      name: "Day Model"
+      description: "Daily work schedule (WORK, OFF, HOLIDAY, HALF_DAY)"
+      entity: "DayModel"
+    - level: 4
+      name: "Pattern"
+      description: "Period work schedule (cycle of day models)"
+      entity: "PatternTemplate"
+    - level: 5
+      name: "Work Schedule Rule"
+      description: "Pattern + Calendar + Rotation offset"
+      entity: "ScheduleAssignment"
+    - level: 6
+      name: "Roster"
+      description: "Materialized assignment to employees"
+      entity: "GeneratedRoster"
+
+# =============================================================================
+# ENTITY DEFINITIONS
+# =============================================================================
+
+entities:
+
+  # ===========================================================================
+  # LEVEL 1: TIME SEGMENT (Atomic Unit)
+  # ===========================================================================
+
+  TimeSegment:
+    description: |
+      Atomic building block of work time. Represents smallest unit that can
+      be scheduled (work period, break, meal, transfer between locations).
+      Can be defined with relative timing (offset from shift start) or 
+      absolute timing (fixed clock time).
+    attributes:
+      id:
+        type: UUID
+        required: true
+        description: "Unique identifier"
+      code:
+        type: string
+        required: true
+        unique: true
+        maxLength: 50
+        description: "Unique code (e.g., WORK_4H, LUNCH_1H, BREAK_15M)"
+      name:
+        type: string
+        required: true
+        maxLength: 100
+        description: "Display name"
+      segmentType:
+        type: enum
+        values: [WORK, BREAK, MEAL, TRANSFER]
+        required: true
+        description: "Type of time segment"
+      # Timing - either relative OR absolute
+      startOffsetMinutes:
+        type: integer
+        required: false
+        description: "Minutes from shift start (for relative timing)"
+      endOffsetMinutes:
+        type: integer
+        required: false
+        description: "Minutes from shift start (for relative timing)"
+      startTime:
+        type: time
+        required: false
+        description: "Absolute start time (alternative to offset)"
+      endTime:
+        type: time
+        required: false
+        description: "Absolute end time (alternative to offset)"
+      durationMinutes:
+        type: integer
+        required: true
+        description: "Duration in minutes"
+      isPaid:
+        type: boolean
+        default: false
+        description: "Whether this segment is paid time"
+      isMandatory:
+        type: boolean
+        default: true
+        description: "Whether segment must be taken"
+      # Payroll attributes
+      costCenterCode:
+        type: string
+        required: false
+        maxLength: 50
+        description: "Cost center for accounting"
+      jobCode:
+        type: string
+        required: false
+        maxLength: 50
+        description: "Job/position code"
+      premiumCode:
+        type: string
+        required: false
+        maxLength: 50
+        description: "Premium pay code (night shift, hazard, etc.)"
+      isActive:
+        type: boolean
+        default: true
+      effectiveDate:
+        type: date
+        required: true
+      endDate:
+        type: date
+        required: false
+      createdAt:
+        type: datetime
+        required: true
+      updatedAt:
+        type: datetime
+        required: true
+    relationships:
+      usedInShifts:
+        target: ShiftSegment
+        cardinality: "0..*"
+        description: "Shifts that use this segment"
+    constraints:
+      - name: "timing_method"
+        type: check
+        condition: "(startOffsetMinutes IS NOT NULL AND endOffsetMinutes IS NOT NULL) OR (startTime IS NOT NULL AND endTime IS NOT NULL)"
+        description: "Must use either offset OR absolute time, not both"
+      - name: "unique_code"
+        type: unique
+        fields: [code]
+    businessRules:
+      - "Segment can use relative (offset) or absolute (time) positioning"
+      - "WORK segments are typically paid, BREAK/MEAL are unpaid"
+      - "TRANSFER segments track time moving between work locations"
+      - "Duration must match calculated time from start to end"
+
+  # ===========================================================================
+  # LEVEL 2: SHIFT (Composition of Segments)
+  # ===========================================================================
+
+  ShiftDefinition:
+    description: |
+      Composition of time segments forming a complete shift.
+      Three types: ELAPSED (fixed schedule), PUNCH (flexible clock-based),
+      FLEX (hybrid). Defines the work pattern but not the assignment.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      code:
+        type: string
+        required: true
+        unique: true
+        maxLength: 50
+        description: "Shift code (e.g., DAY_SHIFT, NIGHT_SHIFT, SPLIT_AM)"
+      name:
+        type: string
+        required: true
+        maxLength: 100
+      shiftType:
+        type: enum
+        values: [ELAPSED, PUNCH, FLEX]
+        required: true
+        description: "Type of shift scheduling"
+      # Reference times (for ELAPSED type)
+      referenceStartTime:
+        type: time
+        required: false
+        description: "Reference start time (ELAPSED type)"
+      referenceEndTime:
+        type: time
+        required: false
+        description: "Reference end time (ELAPSED type)"
+      # Calculated totals (from segments)
+      totalWorkHours:
+        type: decimal
+        required: true
+        description: "Total work time in hours"
+      totalBreakHours:
+        type: decimal
+        default: 0
+        description: "Total break time in hours"
+      totalPaidHours:
+        type: decimal
+        required: true
+        description: "Total paid time (work + paid breaks)"
+      crossMidnight:
+        type: boolean
+        default: false
+        description: "Whether shift crosses midnight"
+      # Grace periods (for PUNCH type)
+      graceInMinutes:
+        type: integer
+        default: 0
+        description: "Grace period for late clock-in"
+      graceOutMinutes:
+        type: integer
+        default: 0
+        description: "Grace period for early clock-out"
+      # Rounding rules (for PUNCH type)
+      roundingIntervalMinutes:
+        type: integer
+        default: 15
+        description: "Rounding interval (e.g., 15 min)"
+      roundingMode:
+        type: enum
+        values: [NEAREST, UP, DOWN]
+        default: NEAREST
+        description: "How to round clock times"
+      # Display
+      color:
+        type: string
+        required: false
+        maxLength: 7
+        description: "UI color (hex code, e.g., #FF5733)"
+      isActive:
+        type: boolean
+        default: true
+      effectiveDate:
+        type: date
+        required: true
+      endDate:
+        type: date
+        required: false
+      createdAt:
+        type: datetime
+        required: true
+      updatedAt:
+        type: datetime
+        required: true
+    relationships:
+      composedOfSegments:
+        target: ShiftSegment
+        cardinality: "1..*"
+        description: "Ordered list of time segments"
+      usedInDayModels:
+        target: DayModel
+        cardinality: "0..*"
+        description: "Day models using this shift"
+      generatesRosterEntries:
+        target: GeneratedRoster
+        cardinality: "0..*"
+    constraints:
+      - name: "unique_code"
+        type: unique
+        fields: [code]
+      - name: "valid_shift_type"
+        type: check
+        condition: "shiftType IN ('ELAPSED', 'PUNCH', 'FLEX')"
+    businessRules:
+      - "ELAPSED: Fixed schedule, segments define exact timing"
+      - "PUNCH: Flexible, workers clock in/out, grace periods apply"
+      - "FLEX: Hybrid, core hours required, flexible start/end"
+      - "Total hours = sum of segment durations"
+      - "Paid hours = sum of paid segment durations"
+
+  ShiftSegment:
+    description: |
+      Junction table linking ShiftDefinition to TimeSegment with ordering.
+      Allows override of segment properties at shift level.
+    attributes:
+      shiftId:
+        type: UUID
+        required: true
+      segmentId:
+        type: UUID
+        required: true
+      sequenceOrder:
+        type: integer
+        required: true
+        description: "Order of segment in shift (1, 2, 3...)"
+      # Overrides (optional)
+      overrideDurationMinutes:
+        type: integer
+        required: false
+        description: "Override segment duration for this shift"
+      overrideIsPaid:
+        type: boolean
+        required: false
+        description: "Override paid flag for this shift"
+    relationships:
+      belongsToShift:
+        target: ShiftDefinition
+        cardinality: "1"
+      usesSegment:
+        target: TimeSegment
+        cardinality: "1"
+    constraints:
+      - name: "pk_shift_segment"
+        type: primary_key
+        fields: [shiftId, segmentId]
+      - name: "unique_sequence"
+        type: unique
+        fields: [shiftId, sequenceOrder]
+    businessRules:
+      - "Segments must be ordered sequentially"
+      - "Override values take precedence over segment defaults"
+      - "Cannot have gaps in sequence order"
+
+  # ===========================================================================
+  # LEVEL 3: DAY MODEL (Daily Work Schedule)
+  # ===========================================================================
+
+  DayModel:
+    description: |
+      Represents one day in a work schedule. Links to a shift definition
+      for work days, or marks day as OFF/HOLIDAY. Handles variant selection
+      for holiday classes.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      code:
+        type: string
+        required: true
+        unique: true
+        maxLength: 50
+        description: "Day model code (e.g., WORK_DAY, OFF_DAY, HOLIDAY)"
+      name:
+        type: string
+        required: true
+        maxLength: 100
+      dayType:
+        type: enum
+        values: [WORK, OFF, HOLIDAY, HALF_DAY]
+        required: true
+        description: "Type of day"
+      shiftId:
+        type: UUID
+        required: false
+        description: "Shift for this day (null for OFF/HOLIDAY)"
+      # Variant handling
+      variantSelectionRule:
+        type: jsonb
+        required: false
+        description: "Rules for selecting shift variant based on holiday class"
+      # Half-day specifics
+      isHalfDay:
+        type: boolean
+        default: false
+      halfDayPeriod:
+        type: enum
+        values: [MORNING, AFTERNOON]
+        required: false
+        description: "Which half of day (if isHalfDay = true)"
+      isActive:
+        type: boolean
+        default: true
+      effectiveDate:
+        type: date
+        required: true
+      endDate:
+        type: date
+        required: false
+      createdAt:
+        type: datetime
+        required: true
+      updatedAt:
+        type: datetime
+        required: true
+    relationships:
+      usesShift:
+        target: ShiftDefinition
+        cardinality: "0..1"
+        description: "Shift definition (null for non-work days)"
+      usedInPatterns:
+        target: PatternDay
+        cardinality: "0..*"
+        description: "Patterns using this day model"
+    constraints:
+      - name: "unique_code"
+        type: unique
+        fields: [code]
+      - name: "shift_required_for_work"
+        type: check
+        condition: "dayType = 'WORK' IMPLIES shiftId IS NOT NULL"
+    businessRules:
+      - "WORK days must have a shift"
+      - "OFF/HOLIDAY days have null shift"
+      - "HALF_DAY requires halfDayPeriod specification"
+      - "Variant rules handle holiday class substitutions"
+
+  # ===========================================================================
+  # LEVEL 4: PATTERN (Period Work Schedule)
+  # ===========================================================================
+
+  PatternTemplate:
+    description: |
+      Defines a repeating cycle of day models. Represents work patterns like
+      5x8 (5 days work, 8 hours), 4on-4off, 14/14 rotation, etc.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      code:
+        type: string
+        required: true
+        unique: true
+        maxLength: 50
+        description: "Pattern code (e.g., 5X8, 4ON4OFF, 14_14_ROTATION)"
+      name:
+        type: string
+        required: true
+        maxLength: 100
+      description:
+        type: text
+        required: false
+      cycleLengthDays:
+        type: integer
+        required: true
+        description: "Number of days in pattern cycle (7, 14, 21, 28...)"
+      rotationType:
+        type: enum
+        values: [FIXED, ROTATING]
+        required: true
+        description: "Whether pattern rotates or is fixed"
+      # Pattern definition (can also use PatternDay table)
+      patternJson:
+        type: jsonb
+        required: false
+        description: "JSON array of day models: [{day:1,dayModelId:uuid},...]"
+      isActive:
+        type: boolean
+        default: true
+      effectiveDate:
+        type: date
+        required: true
+      endDate:
+        type: date
+        required: false
+      createdAt:
+        type: datetime
+        required: true
+      updatedAt:
+        type: datetime
+        required: true
+    relationships:
+      composedOfDays:
+        target: PatternDay
+        cardinality: "1..*"
+        description: "Ordered sequence of day models"
+      usedInScheduleRules:
+        target: ScheduleAssignment
+        cardinality: "0..*"
+    constraints:
+      - name: "unique_code"
+        type: unique
+        fields: [code]
+      - name: "positive_cycle"
+        type: check
+        condition: "cycleLengthDays > 0"
+    businessRules:
+      - "Cycle repeats after cycleLengthDays"
+      - "FIXED patterns don't rotate (same pattern for all groups)"
+      - "ROTATING patterns shift by offset for different crews"
+      - "Pattern must have at least one day model"
+
+  PatternDay:
+    description: |
+      Junction table defining which day model applies to each day in pattern cycle.
+    attributes:
+      patternId:
+        type: UUID
+        required: true
+      dayNumber:
+        type: integer
+        required: true
+        description: "Day position in cycle (1, 2, 3... up to cycleLengthDays)"
+      dayModelId:
+        type: UUID
+        required: true
+        description: "Day model for this day in pattern"
+    relationships:
+      belongsToPattern:
+        target: PatternTemplate
+        cardinality: "1"
+      usesDayModel:
+        target: DayModel
+        cardinality: "1"
+    constraints:
+      - name: "pk_pattern_day"
+        type: primary_key
+        fields: [patternId, dayNumber]
+      - name: "valid_day_number"
+        type: check
+        condition: "dayNumber >= 1 AND dayNumber <= (SELECT cycleLengthDays FROM PatternTemplate WHERE id = patternId)"
+    businessRules:
+      - "Day number must be within pattern cycle length"
+      - "Each day in cycle must have exactly one day model"
+      - "Day numbers must be sequential (no gaps)"
+
+  # ===========================================================================
+  # LEVEL 5: WORK SCHEDULE RULE
+  # ===========================================================================
+
+  ScheduleAssignment:
+    description: |
+      Combines pattern with calendar and rotation offset to define WHO gets
+      WHICH pattern. This is the rule that generates roster entries.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      code:
+        type: string
+        required: true
+        unique: true
+        maxLength: 50
+        description: "Rule code (e.g., TEAM_A_5X8, CREW_B_ROTATION)"
+      name:
+        type: string
+        required: true
+        maxLength: 100
+      patternId:
+        type: UUID
+        required: true
+        description: "Pattern template to apply"
+      # Calendar integration
+      holidayCalendarId:
+        type: UUID
+        required: false
+        description: "Holiday calendar for this rule"
+      # Rotation anchor
+      startReferenceDate:
+        type: date
+        required: true
+        description: "Anchor point for pattern start (e.g., 2025-01-01)"
+      offsetDays:
+        type: integer
+        default: 0
+        description: "Offset for rotation groups (Crew A=0, B=7, C=14...)"
+      # Applicable groupings (WHO)
+      employeeId:
+        type: UUID
+        required: false
+        description: "Specific employee (if individual assignment)"
+      employeeGroupId:
+        type: UUID
+        required: false
+        description: "Employee group/team/crew"
+      positionId:
+        type: UUID
+        required: false
+        description: "Position/role"
+      # Validity
+      effectiveStart:
+        type: date
+        required: true
+      effectiveEnd:
+        type: date
+        required: false
+      createdAt:
+        type: datetime
+        required: true
+      updatedAt:
+        type: datetime
+        required: true
+    relationships:
+      usesPattern:
+        target: PatternTemplate
+        cardinality: "1"
+      usesCalendar:
+        target: HolidayCalendar
+        cardinality: "0..1"
+      assignedToEmployee:
+        target: Worker
+        cardinality: "0..1"
+      assignedToGroup:
+        target: OrgUnit
+        cardinality: "0..1"
+      generatesRoster:
+        target: GeneratedRoster
+        cardinality: "0..*"
+    constraints:
+      - name: "unique_code"
+        type: unique
+        fields: [code]
+      - name: "assignment_target"
+        type: check
+        condition: "employeeId IS NOT NULL OR employeeGroupId IS NOT NULL OR positionId IS NOT NULL"
+        description: "Must assign to at least one target"
+    businessRules:
+      - "Offset enables rotation: Crew A starts day 1, Crew B starts day 8, etc."
+      - "Holiday calendar determines which days are holidays"
+      - "Can assign to individual, group, or position"
+      - "Effective dates control when rule is active"
+      - "Multiple rules can apply to same employee (priority resolution needed)"
+
+  # ===========================================================================
+  # LEVEL 6: ROSTER (Materialized Assignment)
+  # ===========================================================================
+
+  GeneratedRoster:
+    description: |
+      Materialized view of schedule assignments. One row per employee per day.
+      Generated from schedule rules + pattern + calendar. Tracks full lineage
+      back to source rule and supports overrides.
+    attributes:
+      employeeId:
+        type: UUID
+        required: true
+      workDate:
+        type: date
+        required: true
+      # Source tracking (full lineage)
+      scheduleRuleId:
+        type: UUID
+        required: true
+        description: "Schedule rule that generated this entry"
+      patternId:
+        type: UUID
+        required: true
+        description: "Pattern used"
+      dayModelId:
+        type: UUID
+        required: true
+        description: "Day model for this date"
+      shiftId:
+        type: UUID
+        required: false
+        description: "Shift (null for OFF/HOLIDAY)"
+      # Override handling
+      overrideId:
+        type: UUID
+        required: false
+        description: "Schedule override (if any)"
+      isOverride:
+        type: boolean
+        default: false
+        description: "Whether this entry is overridden"
+      # Holiday handling
+      isHoliday:
+        type: boolean
+        default: false
+      holidayId:
+        type: UUID
+        required: false
+      # Status
+      statusCode:
+        type: enum
+        values: [SCHEDULED, CONFIRMED, COMPLETED, CANCELLED]
+        default: SCHEDULED
+      metadata:
+        type: jsonb
+        required: false
+    relationships:
+      assignedToEmployee:
+        target: Worker
+        cardinality: "1"
+      generatedByRule:
+        target: ScheduleAssignment
+        cardinality: "1"
+      basedOnPattern:
+        target: PatternTemplate
+        cardinality: "1"
+      usesDayModel:
+        target: DayModel
+        cardinality: "1"
+      usesShift:
+        target: ShiftDefinition
+        cardinality: "0..1"
+      hasOverride:
+        target: ScheduleOverride
+        cardinality: "0..1"
+      hasAttendance:
+        target: AttendanceRecord
+        cardinality: "0..1"
+    constraints:
+      - name: "unique_employee_date"
+        type: unique
+        fields: [employeeId, workDate]
+    businessRules:
+      - "Generated by roster generation process"
+      - "Immutable once generated (use override for changes)"
+      - "Full lineage tracking for auditability"
+      - "One entry per employee per day"
+
+  # ===========================================================================
+  # SUPPORTING ENTITIES
+  # ===========================================================================
+
+  ScheduleOverride:
+    description: |
+      Ad-hoc changes to generated roster. Overrides pattern-based schedule
+      for specific dates/employees.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      employeeId:
+        type: UUID
+        required: false
+      employeeGroupId:
+        type: UUID
+        required: false
+      workDate:
+        type: date
+        required: true
+      # Override with specific shift or mark as OFF
+      shiftId:
+        type: UUID
+        required: false
+      dayTypeOverride:
+        type: enum
+        values: [OFF, HOLIDAY]
+        required: false
+      reasonCode:
+        type: string
+        required: true
+        maxLength: 50
+      notes:
+        type: text
+        required: false
+      createdBy:
+        type: UUID
+        required: true
+      createdAt:
+        type: datetime
+        required: true
+    relationships:
+      overridesRoster:
+        target: GeneratedRoster
+        cardinality: "1..*"
+      createdByUser:
+        target: Worker
+        cardinality: "1"
+    businessRules:
+      - "Override takes precedence over pattern-based schedule"
+      - "Requires reason code for audit"
+      - "Can override individual or group"
+
+  # ===========================================================================
+  # ATTENDANCE & TIMESHEET (Keep from v1.0)
+  # ===========================================================================
+
+  AttendanceRecord:
+    description: |
+      Daily attendance record tracking actual time worked vs scheduled.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      workerId:
+        type: UUID
+        required: true
+      shiftId:
+        type: UUID
+        required: false
+      attendanceDate:
+        type: date
+        required: true
+      clockInTime:
+        type: datetime
+        required: false
+      clockOutTime:
+        type: datetime
+        required: false
+      scheduledStartTime:
+        type: time
+        required: false
+      scheduledEndTime:
+        type: time
+        required: false
+      actualHours:
+        type: decimal
+        required: false
+      scheduledHours:
+        type: decimal
+        required: false
+      status:
+        type: enum
+        values: [PRESENT, ABSENT, LATE, EARLY_DEPARTURE, HALF_DAY, ON_LEAVE]
+        required: true
+      lateMinutes:
+        type: integer
+        default: 0
+      earlyDepartureMinutes:
+        type: integer
+        default: 0
+      location:
+        type: string
+        required: false
+      deviceId:
+        type: string
+        required: false
+      notes:
+        type: text
+        required: false
+      isApproved:
+        type: boolean
+        default: false
+      approvedBy:
+        type: UUID
+        required: false
+      approvedAt:
+        type: datetime
+        required: false
+      createdAt:
+        type: datetime
+        required: true
+      updatedAt:
+        type: datetime
+        required: true
+    relationships:
+      belongsToWorker:
+        target: Worker
+        cardinality: "1"
+      relatedToShift:
+        target: ShiftDefinition
+        cardinality: "0..1"
+      hasExceptions:
+        target: TimeException
+        cardinality: "0..*"
+    constraints:
+      - name: "unique_worker_date"
+        type: unique
+        fields: [workerId, attendanceDate]
+
+  # (Other entities from v1.0: TimesheetEntry, TimeException, ShiftSwapRequest,
+  #  ShiftBid, OvertimeRule, OvertimeRequest, OvertimeCalculation remain same)
+
+# =============================================================================
+# DESIGN PATTERNS
+# =============================================================================
+
+patterns:
+  composition:
+    description: "Hierarchical composition from atomic segments to roster"
+    levels:
+      - "TimeSegment (atomic)"
+      - "ShiftDefinition (composition of segments)"
+      - "DayModel (daily schedule)"
+      - "PatternTemplate (cycle of days)"
+      - "ScheduleAssignment (pattern + calendar + rotation)"
+      - "GeneratedRoster (materialized assignment)"
+  
+  reusability:
+    description: "Components reused across hierarchy"
+    examples:
+      - "One TimeSegment used in multiple ShiftDefinitions"
+      - "One ShiftDefinition used in multiple DayModels"
+      - "One DayModel used in multiple PatternTemplates"
+      - "One PatternTemplate used in multiple ScheduleAssignments"
+  
+  flexibility:
+    description: "Support for various schedule types"
+    types:
+      - "Fixed schedules (5x8, 9x80)"
+      - "Rotating shifts (24/7 operations)"
+      - "Flexible schedules (core hours + flex)"
+      - "Compressed workweeks (4x10)"
+      - "Split shifts"
+      - "On-call schedules"
+
+# =============================================================================
+# VERSION HISTORY
+# =============================================================================
+
+versionHistory:
+  - version: "2.0"
+    date: "2025-12-01"
+    changes:
+      - "Complete redesign to 6-level hierarchical model"
+      - "Added TimeSegment (Level 1)"
+      - "Added ShiftSegment relationship"
+      - "Added DayModel (Level 3)"
+      - "Added PatternDay relationship"
+      - "Enhanced ScheduleAssignment (Level 5)"
+      - "Enhanced GeneratedRoster with full lineage"
+      - "Aligned with Time_Attendance_Concept_Design.docx"
+  - version: "1.0"
+    date: "2025-12-01"
+    changes:
+      - "Initial ontology with flat model"

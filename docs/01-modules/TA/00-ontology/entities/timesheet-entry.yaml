@@ -1,0 +1,82 @@
+entity: TimesheetEntry
+version: "1.0"
+layer: attendance-tracking
+
+description: |
+  Detailed time entry for work performed, can be project/task-specific.
+attributes:
+  id:
+    type: UUID
+    required: true
+  workerId:
+    type: UUID
+    required: true
+  entryDate:
+    type: date
+    required: true
+  startTime:
+    type: datetime
+    required: true
+  endTime:
+    type: datetime
+    required: false
+    description: "Null if still in progress"
+  duration:
+    type: decimal
+    required: false
+    description: "Hours worked (calculated)"
+  timeType:
+    type: enum
+    values: [REGULAR, OVERTIME, DOUBLE_TIME, HOLIDAY, NIGHT_SHIFT]
+    required: true
+    default: REGULAR
+  projectId:
+    type: UUID
+    required: false
+    description: "Project/cost center"
+  taskId:
+    type: UUID
+    required: false
+  description:
+    type: text
+    required: false
+  isBillable:
+    type: boolean
+    default: false
+  status:
+    type: enum
+    values: [DRAFT, SUBMITTED, APPROVED, REJECTED]
+    default: DRAFT
+  submittedAt:
+    type: datetime
+    required: false
+  approvedBy:
+    type: UUID
+    required: false
+  approvedAt:
+    type: datetime
+    required: false
+  rejectionReason:
+    type: text
+    required: false
+  createdAt:
+    type: datetime
+    required: true
+  updatedAt:
+    type: datetime
+    required: true
+relationships:
+  belongsToWorker:
+    target: Worker
+    cardinality: "1"
+  assignedToProject:
+    target: Project
+    cardinality: "0..1"
+  relatedToAttendance:
+    target: AttendanceRecord
+    cardinality: "0..1"
+businessRules:
+  - "Cannot submit timesheet for future dates"
+  - "Total daily hours cannot exceed 24"
+  - "Approved entries cannot be modified"
+  - "Overtime requires manager approval"

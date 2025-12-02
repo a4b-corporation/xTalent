@@ -1,0 +1,58 @@
+entity: LeaveType
+version: "2.0"
+layer: configuration
+
+description: |
+  Specific type of leave (e.g., Annual Leave, Sick Leave, Maternity Leave).
+  Each leave type has its own balance tracking and rules.
+
+attributes:
+  - id: string (UUID)
+  - leaveClassId: string (UUID)
+  - code: string # e.g., "ANNUAL", "SICK", "MATERNITY"
+  - name: string # e.g., "Annual Leave", "Sick Leave"
+  - description: string (nullable)
+  - isPaid: boolean
+  - requiresApproval: boolean
+  - requiresDocumentation: boolean
+  - allowsHalfDay: boolean
+  - allowsHourly: boolean
+  - unitOfMeasure: enum [DAYS, HOURS]
+  - color: string (nullable) # For calendar display, hex color
+  - icon: string (nullable) # Icon identifier
+  - isActive: boolean
+  - effectiveDate: date
+  - endDate: date (nullable)
+  - createdAt: datetime
+  - updatedAt: datetime
+
+relationships:
+  - belongsToClass: LeaveClass
+  - hasEligibilityRules: EligibilityRule[] # Rules bound to this type
+  - hasValidationRules: ValidationRule[]
+  - hasAccrualRules: AccrualRule[]
+  - hasCarryoverRules: CarryoverRule[]
+  - hasLimitRules: LimitRule[]
+  - hasOverdraftRules: OverdraftRule[]
+  - hasProrationRules: ProrationRule[]
+  - hasRoundingRules: RoundingRule[]
+  - hasBalances: LeaveBalance[]
+  - hasRequests: LeaveRequest[]
+
+lifecycle:
+  - DRAFT → ACTIVE → INACTIVE
+
+rules:
+  - "Cannot deactivate if there are active balances with pending/approved requests"
+  - "If allowsHalfDay is true, unitOfMeasure must be DAYS"
+  - "If allowsHourly is true, unitOfMeasure must be HOURS"
+
+constraints:
+  - "code must be unique"
+  - "name must be unique within leaveClass"
+  - "effectiveDate must be <= endDate if endDate is set"
+
+validations:
+  - "code: required, uppercase, alphanumeric + underscore, max 50"
+  - "name: required, max 255"
+  - "leaveClassId: required, must reference existing LeaveClass"

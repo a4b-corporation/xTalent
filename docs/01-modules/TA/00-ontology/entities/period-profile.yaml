@@ -1,0 +1,39 @@
+entity: PeriodProfile
+version: "2.0"
+layer: configuration
+
+description: |
+  Defines the leave year/period structure (e.g., calendar year, 
+  fiscal year, hire anniversary).
+
+attributes:
+  - id: string (UUID)
+  - code: string
+  - name: string
+  - periodType: enum [CALENDAR_YEAR, FISCAL_YEAR, HIRE_ANNIVERSARY, CUSTOM]
+  - startMonth: integer (nullable) # 1-12, for FISCAL_YEAR
+  - startDay: integer (nullable) # 1-31, for FISCAL_YEAR
+  - customStartDate: date (nullable) # For CUSTOM type
+  - customEndDate: date (nullable) # For CUSTOM type
+  - isActive: boolean
+  - createdAt: datetime
+  - updatedAt: datetime
+
+relationships:
+  - usedByLeaveTypes: LeaveType[]
+
+rules:
+  - "If periodType is FISCAL_YEAR, startMonth and startDay must be set"
+  - "If periodType is CUSTOM, customStartDate and customEndDate must be set"
+  - "startMonth must be between 1 and 12"
+  - "startDay must be between 1 and 31"
+
+constraints:
+  - "code must be unique"
+
+examples:
+  - "Calendar year: Jan 1 - Dec 31"
+  - "Fiscal year: Apr 1 - Mar 31"
+  - "Hire anniversary: Based on employee hire date"
+
+  # ---------------------------------------------------------------------------

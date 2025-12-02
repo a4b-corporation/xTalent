@@ -1,0 +1,62 @@
+entity: OvertimeRequest
+version: "1.0"
+layer: overtime
+
+description: |
+  Request for pre-approved overtime work.
+attributes:
+  id:
+    type: UUID
+    required: true
+  workerId:
+    type: UUID
+    required: true
+  requestDate:
+    type: datetime
+    required: true
+  plannedDate:
+    type: date
+    required: true
+  estimatedHours:
+    type: decimal
+    required: true
+  reason:
+    type: text
+    required: true
+  projectId:
+    type: UUID
+    required: false
+  status:
+    type: enum
+    values: [PENDING, APPROVED, REJECTED, CANCELLED]
+    default: PENDING
+  approvedBy:
+    type: UUID
+    required: false
+  approvedAt:
+    type: datetime
+    required: false
+  rejectionReason:
+    type: text
+    required: false
+  actualHours:
+    type: decimal
+    required: false
+    description: "Filled after work completed"
+  createdAt:
+    type: datetime
+    required: true
+  updatedAt:
+    type: datetime
+    required: true
+relationships:
+  requestedBy:
+    target: Worker
+    cardinality: "1"
+  approvedByManager:
+    target: Worker
+    cardinality: "0..1"
+businessRules:
+  - "Must be approved before overtime work"
+  - "Actual hours tracked in timesheet"
+  - "Cannot exceed daily/weekly overtime limits"

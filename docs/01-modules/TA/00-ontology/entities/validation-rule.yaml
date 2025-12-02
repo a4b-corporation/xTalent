@@ -1,0 +1,53 @@
+entity: ValidationRule
+version: "2.0"
+layer: rules
+
+description: |
+  Defines validation rules for leave requests (e.g., advance notice,
+  max consecutive days, blackout periods). Can be bound to a specific
+  LeaveType or to an entire LeaveClass.
+
+attributes:
+  - id: string (UUID)
+  - code: string
+  - name: string
+  - description: string (nullable)
+  - leaveTypeId: string (UUID, nullable)
+  - leaveClassId: string (UUID, nullable)
+  - ruleType: enum [ADVANCE_NOTICE, MAX_CONSECUTIVE_DAYS, MIN_CONSECUTIVE_DAYS, 
+                    BLACKOUT_PERIOD, MAX_REQUESTS_PER_PERIOD, DOCUMENTATION_REQUIRED]
+  - advanceNoticeDays: integer (nullable) # Minimum days before leave starts
+  - maxConsecutiveDays: integer (nullable)
+  - minConsecutiveDays: integer (nullable)
+  - blackoutStartDate: date (nullable)
+  - blackoutEndDate: date (nullable)
+  - maxRequestsPerPeriod: integer (nullable)
+  - periodType: enum [MONTH, QUARTER, YEAR] (nullable)
+  - documentationThresholdDays: integer (nullable) # Require docs if > X days
+  - errorMessage: string # Custom error message to display
+  - priority: integer
+  - isActive: boolean
+  - effectiveDate: date
+  - endDate: date (nullable)
+  - createdAt: datetime
+  - updatedAt: datetime
+
+relationships:
+  - appliesTo: LeaveType | LeaveClass
+
+constraints:
+  - "code must be unique"
+
+rules:
+  - "Either leaveTypeId OR leaveClassId must be set, not both"
+  - "If ruleType is ADVANCE_NOTICE, advanceNoticeDays must be > 0"
+  - "If ruleType is MAX_CONSECUTIVE_DAYS, maxConsecutiveDays must be > 0"
+  - "If ruleType is BLACKOUT_PERIOD, both blackoutStartDate and blackoutEndDate must be set"
+  - "If ruleType is MAX_REQUESTS_PER_PERIOD, both maxRequestsPerPeriod and periodType must be set"
+
+examples:
+  - "Advance notice: Must request at least 7 days in advance"
+  - "Max consecutive: Cannot take more than 10 consecutive days"
+  - "Blackout: Cannot request leave during Dec 20-31 (year-end close)"
+
+  # ---------------------------------------------------------------------------

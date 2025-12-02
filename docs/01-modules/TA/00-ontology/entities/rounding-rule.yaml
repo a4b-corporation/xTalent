@@ -1,0 +1,38 @@
+entity: RoundingRule
+version: "2.0"
+layer: rules
+
+description: |
+  Defines how fractional leave amounts are rounded (e.g., 1.67 days → 1.5 or 2).
+  Can be bound to a specific LeaveType or to an entire LeaveClass.
+
+attributes:
+  - id: string (UUID)
+  - code: string
+  - name: string
+  - description: string (nullable)
+  - leaveTypeId: string (UUID, nullable)
+  - leaveClassId: string (UUID, nullable)
+  - roundingMethod: enum [UP, DOWN, NEAREST, NEAREST_HALF, NEAREST_QUARTER, NO_ROUNDING]
+  - decimalPlaces: integer # Number of decimal places to round to
+  - priority: integer
+  - isActive: boolean
+  - effectiveDate: date
+  - endDate: date (nullable)
+  - createdAt: datetime
+  - updatedAt: datetime
+
+relationships:
+  - appliesTo: LeaveType | LeaveClass
+
+constraints:
+  - "code must be unique"
+
+rules:
+  - "Either leaveTypeId OR leaveClassId must be set, not both"
+  - "decimalPlaces must be >= 0 and <= 4"
+
+examples:
+  - "Round up: 1.67 → 2.0"
+  - "Round to nearest half: 1.67 → 1.5"
+  - "Round down: 1.67 → 1.0"

@@ -1,0 +1,38 @@
+entity: Approval
+version: "2.0"
+layer: transaction
+
+description: |
+  Approval record for leave request. Supports multi-level approval workflows.
+
+attributes:
+  - id: string (UUID)
+  - leaveRequestId: string (UUID)
+  - approverLevel: integer # 1 = first level, 2 = second level, etc.
+  - approverId: string (UUID)
+  - approverRole: enum [MANAGER, HR, DIRECTOR, CUSTOM]
+  - status: enum [PENDING, APPROVED, REJECTED, SKIPPED]
+  - approvedAt: datetime (nullable)
+  - rejectedAt: datetime (nullable)
+  - comments: string (nullable)
+  - notifiedAt: datetime (nullable)
+  - createdAt: datetime
+
+relationships:
+  - forRequest: LeaveRequest
+  - approver: Worker
+
+lifecycle:
+  - PENDING → APPROVED/REJECTED/SKIPPED
+
+rules:
+  - "Cannot approve own leave request"
+  - "Must approve in sequence (level 1 before level 2)"
+  - "If any level rejects, entire request is rejected"
+
+examples:
+  - "Level 1: Direct manager approval"
+  - "Level 2: Department head approval (for > 5 days)"
+  - "Level 3: HR approval (for special leave types)"
+
+  # ---------------------------------------------------------------------------

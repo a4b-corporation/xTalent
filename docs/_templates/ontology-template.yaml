@@ -1,0 +1,80 @@
+# {Module Name} - Ontology Template
+# Define entities, relationships, rules for this module
+
+entities:
+  EntityName:
+    description: "Brief description of what this entity represents"
+    
+    attributes:
+      - id: string (UUID) # Primary key
+      - name: string
+      - code: string # Unique identifier
+      - status: enum [ACTIVE, INACTIVE]
+      - effectiveDate: date
+      - endDate: date (nullable)
+      - createdAt: datetime
+      - updatedAt: datetime
+      
+    relationships:
+      - relationName: TargetEntity # Description of relationship
+      - hasMany: ChildEntity[]
+      - belongsTo: ParentEntity
+      
+    lifecycle:
+      - STATE1 → STATE2 → STATE3
+      # Example: DRAFT → PENDING → APPROVED → ACTIVE
+      
+    rules:
+      - "Business rule description"
+      - "effectiveDate must be <= endDate if endDate is set"
+      - "code must be unique within scope"
+      
+    constraints:
+      - "Technical constraint description"
+      - "Cannot delete if has active children"
+      - "Status cannot change from APPROVED to DRAFT"
+      
+    validations:
+      - "name is required, max 255 characters"
+      - "code is required, alphanumeric only, max 50 characters"
+      - "effectiveDate cannot be in the past"
+
+# Example: Leave Type Entity
+# 
+# LeaveType:
+#   description: "Type of leave (Annual, Sick, Unpaid, etc.)"
+#   
+#   attributes:
+#     - id: string (UUID)
+#     - code: string # e.g., "ANNUAL", "SICK"
+#     - name: string # e.g., "Annual Leave"
+#     - isPaid: boolean
+#     - requiresApproval: boolean
+#     - maxDaysPerYear: integer (nullable)
+#     - carryoverAllowed: boolean
+#     - carryoverMaxDays: integer (nullable)
+#     - accrualMethod: enum [UPFRONT, MONTHLY, DAILY]
+#     - status: enum [ACTIVE, INACTIVE]
+#     
+#   relationships:
+#     - hasBalances: LeaveBalance[]
+#     - hasRequests: LeaveRequest[]
+#     - belongsToClass: LeaveClass
+#     
+#   lifecycle:
+#     - DRAFT → ACTIVE → INACTIVE
+#     
+#   rules:
+#     - "If carryoverAllowed is false, carryoverMaxDays must be null"
+#     - "If carryoverAllowed is true, carryoverMaxDays must be > 0"
+#     - "maxDaysPerYear must be > 0 if set"
+#     - "Cannot deactivate if there are active balances"
+#     
+#   constraints:
+#     - "code must be unique"
+#     - "name must be unique"
+#     
+#   validations:
+#     - "code: required, uppercase, alphanumeric + underscore, max 50"
+#     - "name: required, max 255"
+#     - "maxDaysPerYear: if set, must be between 1 and 365"

@@ -1,0 +1,34 @@
+entity: LeaveReservation
+version: "2.0"
+layer: transaction
+
+description: |
+  Temporary hold on leave balance while request is pending approval.
+  Prevents double-booking of leave days.
+
+attributes:
+  - id: string (UUID)
+  - leaveRequestId: string (UUID)
+  - leaveBalanceId: string (UUID)
+  - reservedAmount: decimal
+  - reservedAt: datetime
+  - expiresAt: datetime (nullable) # Auto-expire if not approved
+  - status: enum [ACTIVE, RELEASED, EXPIRED]
+  - releasedAt: datetime (nullable)
+  - createdAt: datetime
+
+relationships:
+  - forRequest: LeaveRequest
+  - holdsBalance: LeaveBalance
+
+lifecycle:
+  - ACTIVE → RELEASED (when approved/rejected)
+  - ACTIVE → EXPIRED (if request not processed in time)
+
+rules:
+  - "reservedAmount must be > 0"
+  - "reservedAmount must be <= available balance at time of reservation"
+  - "Reservation is released when request is approved/rejected/cancelled"
+  - "Expired reservations are automatically released"
+
+  # ---------------------------------------------------------------------------

@@ -1,0 +1,50 @@
+entity: AccrualRule
+version: "2.0"
+layer: rules
+
+description: |
+  Defines how leave balance is accrued (earned) over time.
+  Can be bound to a specific LeaveType or to an entire LeaveClass.
+
+attributes:
+  - id: string (UUID)
+  - code: string
+  - name: string
+  - description: string (nullable)
+  - leaveTypeId: string (UUID, nullable)
+  - leaveClassId: string (UUID, nullable)
+  - accrualMethod: enum [UPFRONT, MONTHLY, BIWEEKLY, WEEKLY, DAILY, HOURLY, CUSTOM]
+  - accrualAmount: decimal # Amount accrued per period
+  - accrualPeriod: enum [YEAR, MONTH, WEEK, DAY, HOUR] (nullable)
+  - maxAccrualBalance: decimal (nullable) # Cap on accrued balance
+  - accrualStartDate: enum [HIRE_DATE, YEAR_START, CUSTOM_DATE]
+  - customStartDate: date (nullable)
+  - waitingPeriodMonths: integer (nullable) # Waiting period before accrual starts
+  - isProrated: boolean # Prorate based on start date
+  - priority: integer
+  - isActive: boolean
+  - effectiveDate: date
+  - endDate: date (nullable)
+  - createdAt: datetime
+  - updatedAt: datetime
+
+relationships:
+  - appliesTo: LeaveType | LeaveClass
+  - hasProrationRules: ProrationRule[]
+
+constraints:
+  - "code must be unique"
+
+rules:
+  - "Either leaveTypeId OR leaveClassId must be set, not both"
+  - "If accrualMethod is not UPFRONT, accrualPeriod must be set"
+  - "accrualAmount must be > 0"
+  - "If accrualStartDate is CUSTOM_DATE, customStartDate must be set"
+  - "If maxAccrualBalance is set, it must be >= accrualAmount"
+
+examples:
+  - "Upfront: 20 days allocated on Jan 1 each year"
+  - "Monthly: 1.67 days accrued per month (20 days / 12 months)"
+  - "Tenure-based: 15 days for 0-5 years, 20 days for 5+ years"
+
+  # ---------------------------------------------------------------------------

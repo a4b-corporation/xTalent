@@ -1,0 +1,41 @@
+entity: Event
+version: "2.0"
+layer: automation
+
+description: |
+  System events triggered by leave-related actions. Used for notifications,
+  integrations, and audit logging.
+
+attributes:
+  - id: string (UUID)
+  - eventType: enum [LEAVE_REQUEST_SUBMITTED, LEAVE_REQUEST_APPROVED, 
+                     LEAVE_REQUEST_REJECTED, LEAVE_REQUEST_CANCELLED,
+                     BALANCE_ALLOCATED, BALANCE_ACCRUED, BALANCE_EXPIRED,
+                     APPROVAL_REQUIRED, REMINDER_SENT]
+  - entityType: enum [LEAVE_REQUEST, LEAVE_BALANCE, APPROVAL]
+  - entityId: string (UUID)
+  - workerId: string (UUID)
+  - eventData: json # Event-specific data
+  - triggeredBy: enum [USER, SYSTEM, SCHEDULE]
+  - triggeredById: string (UUID, nullable) # User ID if triggered by user
+  - occurredAt: datetime
+  - processedAt: datetime (nullable)
+  - status: enum [PENDING, PROCESSED, FAILED]
+  - errorMessage: string (nullable)
+  - createdAt: datetime
+
+relationships:
+  - relatedToWorker: Worker
+  - relatedToEntity: LeaveRequest | LeaveBalance | Approval
+
+rules:
+  - "Events are immutable once created"
+  - "Failed events can be retried"
+
+examples:
+  - "LEAVE_REQUEST_SUBMITTED: Send notification to manager"
+  - "LEAVE_REQUEST_APPROVED: Update balance, send confirmation to employee"
+  - "BALANCE_ACCRUED: Monthly accrual processed"
+  - "BALANCE_EXPIRED: Unused days expired at year-end"
+
+  # ---------------------------------------------------------------------------

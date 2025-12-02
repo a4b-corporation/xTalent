@@ -1,0 +1,1254 @@
+//===============================================================
+//  SCHEMA: Time & Attendance - Database Design v5
+//  Revision: 2025-12-01
+//  Model: 6-Level Hierarchical Architecture
+//  Based on: Time_Attendance_Concept_Design.docx
+//===============================================================
+//
+//  HIERARCHICAL LEVELS:
+//  Level 1: TIME SEGMENT (Atomic unit - WORK, BREAK, MEAL, TRANSFER)
+//  Level 2: SHIFT (Composition of segments - ELAPSED, PUNCH, FLEX)
+//  Level 3: DAY MODEL (Daily work schedule - WORK, OFF, HOLIDAY)
+//  Level 4: PATTERN (Period work schedule - cycle of day models)
+//  Level 5: WORK SCHEDULE RULE (Pattern + calendar + rotation)
+//  Level 6: ROSTER (Assignment to employees/groups)
+//
+//===============================================================
+
+//===============================================================
+//  LEVEL 1: TIME SEGMENT (Atomic Unit)
+//===============================================================
+
+// [v5] NEW TABLE: Level 1 Atomic Unit (replaces hardcoded segments)
+Table ta.time_segment {
+  id                uuid [pk]
+  code              varchar(50) [unique]
+  name              varchar(100)
+  
+  segment_type      varchar(20)                 // WORK | BREAK | MEAL | TRANSFER
+  
+  // Timing (relative or absolute)
+  start_offset_min  int [null]                  // Minutes from shift start (relative)
+  end_offset_min    int [null]                  // Minutes from shift start (relative)
+  start_time        time [null]                 // Absolute time (alternative)
+  end_time          time [null]                 // Absolute time (alternative)
+  duration_minutes  int
+  
+  is_paid           boolean [default:false]
+  is_mandatory      boolean [default:true]
+  
+  // Attributes for payroll/costing
+  cost_center_code  varchar(50) [null]
+  job_code          varchar(50) [null]
+  premium_code      varchar(50) [null]          // Night shift, hazard, etc.
+  
+  metadata          jsonb
+  is_active         boolean [default:true]
+  effective_start   date
+  effective_end     date [null]
+  
+  created_at        timestamp [default:`now()`]
+  updated_at        timestamp [null]
+  
+  Note: 'Atomic building block. Can be relative (offset) or absolute (time).'
+}
+
+//===============================================================
+//  LEVEL 2: SHIFT (Composition of Segments)
+//===============================================================
+
+// [v5] ENHANCED: Added shift_type, grace periods, rounding rules
+Table ta.shift_def {
+  id                uuid [pk]
+  code              varchar(50) [unique]
+  name              varchar(100)
+  
+  shift_type        varchar(20)                 // [v5] NEW: ELAPSED | PUNCH | FLEX
+  
+  // Reference times (for ELAPSED type)
+  reference_start_time time [null]              // [v5] RENAMED: from start_time
+  reference_end_time   time [null]              // [v5] RENAMED: from end_time
+  
+  // Calculated totals
+  total_work_hours  decimal(5,2)                // [v5] NEW
+  total_break_hours decimal(5,2) [default:0]    // [v5] NEW
+  total_paid_hours  decimal(5,2)                // [v5] NEW
+  
+  cross_midnight    boolean [default:false]     // [v5] REPLACES: day_breaker_min
+  
+  // Grace periods (for PUNCH type)
+  grace_in_minutes  int [default:0]             // [v5] NEW
+  grace_out_minutes int [default:0]             // [v5] NEW
+  
+  // Rounding rules (for PUNCH type)
+  rounding_interval_min int [default:15]        // [v5] NEW
+  rounding_mode     varchar(20) [default:'NEAREST'] // [v5] NEW
+  
+  // Display
+  color             varchar(7) [null]            // [v5] NEW: UI color (#FF5733)
+  
+  metadata          jsonb
+  is_active         boolean [default:true]
+  effective_start   date
+  effective_end     date [null]
+  
+  created_at        timestamp [default:`now()`]
+  updated_at        timestamp [null]
+  
+  Note: 'Composition of time segments. Three types: ELAPSED (fixed), PUNCH (flexible), FLEX (hybrid).'
+}
+
+// Shift-Segment relationship (ordered composition)
+Table ta.shift_segment {
+  shift_id          uuid [ref: > ta.shift_def.id]
+  segment_id        uuid [ref: > ta.time_segment.id]
+  sequence_order    int                         // 1, 2, 3... (order matters)
+  
+  // Override segment properties if needed
+  override_duration_min int [null]
+  override_is_paid  boolean [null]
+  
+  pk ((shift_id, segment_id))
+  
+  Indexes { (shift_id, sequence_order) }
+  
+  Note: 'Ordered list of segments composing a shift.'
+}
+
+//===============================================================
+//  LEVEL 3: DAY MODEL (Daily Work Schedule)
+//===============================================================
+
+// [v5] NEW TABLE: Level 3 Daily Schedule (abstracts shift from pattern)
+Table ta.day_model {
+  id                uuid [pk]
+  code              varchar(50) [unique]
+  name              varchar(100)
+  
+  day_type          varchar(20)                 // WORK | OFF | HOLIDAY | HALF_DAY
+  
+  shift_id          uuid [ref: > ta.shift_def.id, null] // null for OFF/HOLIDAY
+  
+  // Variant handling for holidays
+  variant_selection_rule jsonb [null]           // Rules for holiday class handling
+  
+  // Half-day specifics
+  is_half_day       boolean [default:false]
+  half_day_period   varchar(10) [null]          // MORNING | AFTERNOON
+  
+  metadata          jsonb
+  is_active         boolean [default:true]
+  effective_start   date
+  effective_end     date [null]
+  
+  created_at        timestamp [default:`now()`]
+  updated_at        timestamp [null]
+  
+  Note: 'Represents one day in a work schedule. Links to a shift or marks as OFF/HOLIDAY.'
+}
+
+//===============================================================
+//  LEVEL 4: PATTERN (Period Work Schedule)
+//===============================================================
+
+// [v5] ENHANCED: Updated to use day_models instead of raw JSON
+Table ta.pattern_template {
+  id                uuid [pk]
+  code              varchar(50) [unique]
+  name              varchar(100)
+  description       text [null]
+  
+  cycle_length_days int                         // [v5] NEW: Explicit cycle length
+  
+  rotation_type     varchar(20)                 // [v5] NEW: FIXED | ROTATING
+  
+  // Pattern definition (sequence of day models)
+  pattern_json      jsonb                       // [v5] UPDATED: Uses dayModelId instead of raw shift codes
+  
+  metadata          jsonb
+  is_active         boolean [default:true]
+  effective_start   date
+  effective_end     date [null]
+  
+  created_at        timestamp [default:`now()`]
+  updated_at        timestamp [null]
+  
+  Note: 'Cycle of day models. E.g., 5x8 (5 days work, 8 hours), 4on-4off, 14/14 rotation.'
+}
+
+// Pattern-DayModel relationship (ordered sequence)
+Table ta.pattern_day {
+  pattern_id        uuid [ref: > ta.pattern_template.id]
+  day_number        int                         // 1, 2, 3... (position in cycle)
+  day_model_id      uuid [ref: > ta.day_model.id]
+  
+  pk ((pattern_id, day_number))
+  
+  Indexes { (pattern_id, day_number) }
+  
+  Note: 'Defines which day model applies to each day in the pattern cycle.'
+}
+
+//===============================================================
+//  LEVEL 5: WORK SCHEDULE RULE
+//===============================================================
+
+// [v5] ENHANCED: Added rotation logic, calendar integration, and offset
+Table ta.schedule_assignment {
+  id                uuid [pk]
+  code              varchar(50) [unique]
+  name              varchar(100)
+  
+  pattern_id        uuid [ref: > ta.pattern_template.id]
+  
+  // Calendar integration
+  holiday_calendar_id uuid [ref: > absence.holiday_calendar.id, null] // [v5] NEW: Link to holiday calendar
+  
+  // Rotation anchor
+  start_reference_date date                     // [v5] RENAMED: from rotation_start
+  offset_days       int [default:0]             // [v5] RENAMED: from rotation_anchor
+  
+  // Applicable groupings
+  employee_id       uuid [ref: > employment.employee.id, null]
+  employee_group_id uuid [ref: > org_bu.unit.id, null]
+  position_id       uuid [null]                 // [v5] NEW: Assign by position
+  
+  // Validity
+  effective_start   date
+  effective_end     date [null]
+  
+  metadata          jsonb
+  created_at        timestamp [default:`now()`]
+  updated_at        timestamp [null]
+  
+  Note: 'Combines pattern with calendar and rotation offset. Defines WHO gets WHICH pattern.'
+}
+
+//===============================================================
+//  LEVEL 6: ROSTER (Assignment Layer / Materialized View)
+//===============================================================
+
+// [v5] ENHANCED: Added full lineage tracking (schedule -> pattern -> day -> shift)
+Table ta.generated_roster {
+  employee_id       uuid [ref: > employment.employee.id]
+  work_date         date
+  
+  // Source tracking
+  schedule_rule_id  uuid [ref: > ta.schedule_assignment.id] // [v5] RENAMED: from source_sched_id
+  pattern_id        uuid [ref: > ta.pattern_template.id]    // [v5] NEW: Direct link
+  day_model_id      uuid [ref: > ta.day_model.id]           // [v5] NEW: Direct link
+  shift_id          uuid [ref: > ta.shift_def.id, null]
+  
+  // Override handling
+  override_id       uuid [ref: > ta.schedule_override.id, null]
+  is_override       boolean [default:false]
+  
+  // Holiday handling
+  is_holiday        boolean [default:false]
+  holiday_id        uuid [null]
+  
+  // Status
+  status_code       varchar(20) [default:'SCHEDULED'] // SCHEDULED | CONFIRMED | COMPLETED | CANCELLED
+  
+  metadata          jsonb
+  
+  Indexes { 
+    (employee_id, work_date) [unique]
+    (schedule_rule_id, work_date)
+    (work_date)
+  }
+  
+  Note: 'Materialized roster. Generated from schedule rules + pattern + calendar. One row per employee per day.'
+}
+
+//===============================================================
+//  SUPPORTING TABLES
+//===============================================================
+
+/*----------- Schedule Override (Ad-hoc changes) ----------------*/
+Table ta.schedule_override {
+  id                uuid [pk]
+  employee_id       uuid [ref: > employment.employee.id, null]
+  employee_group_id uuid [ref: > org_bu.unit.id, null]
+  work_date         date
+  
+  // Override with specific shift or mark as OFF
+  shift_id          uuid [ref: > ta.shift_def.id, null]
+  day_type_override varchar(20) [null]          // OFF | HOLIDAY
+  
+  reason_code       varchar(50)
+  notes             text [null]
+  
+  created_by        uuid [ref: > employment.employee.id]
+  created_at        timestamp [default:`now()`]
+  
+  metadata          jsonb
+  
+  Indexes { (employee_id, work_date) }
+  
+  Note: 'Ad-hoc changes to generated roster. Overrides pattern-based schedule.'
+}
+
+/*----------- Open Shift Pool (Unfilled shifts) -----------------*/
+Table ta.open_shift_pool {
+  id                uuid [pk]
+  work_date         date
+  shift_id          uuid [ref: > ta.shift_def.id]
+  
+  qty_needed        int
+  qty_claimed       int [default:0]
+  
+  status_code       varchar(20)                 // OPEN | PARTIAL | CLOSED
+  
+  metadata          jsonb
+  
+  Note: 'Pool of unfilled shifts available for bidding.'
+}
+
+//===============================================================
+//  ATTENDANCE & TIMESHEET (Keep existing v3 design)
+//===============================================================
+
+/*----------- Clock Event (Raw punch data) ----------------------*/
+Table ta.clock_event {
+  id                uuid [pk]
+  employee_id       uuid [ref: > employment.employee.id]
+  event_dt          timestamp
+  event_type        varchar(10)                 // IN | OUT | BREAK_IN | BREAK_OUT
+  source            varchar(50)                 // MOBILE | KIOSK | API
+  device_id         varchar(50) [null]
+  geo_lat           decimal(9,6) [null]
+  geo_long          decimal(9,6) [null]
+  metadata          jsonb
+  
+  Indexes { (employee_id, event_dt) }
+  
+  Note: 'Raw clock-in/out events from devices.'
+}
+
+/*----------- Timesheet (Processed time entries) ----------------*/
+Table ta.timesheet_header {
+  id                uuid [pk]
+  employee_id       uuid [ref: > employment.employee.id]
+  period_start      date
+  period_end        date
+  status_code       varchar(20)                 // OPEN | SUBMITTED | APPROVED
+  total_hours       decimal(6,2) [null]
+  workflow_state    jsonb  [null]
+  metadata          jsonb
+  
+  Indexes { (employee_id, period_start) }
+}
+
+Table ta.timesheet_line {
+  id                uuid [pk]
+  header_id         uuid [ref: > ta.timesheet_header.id]
+  work_date         date
+  time_type_code    varchar(50)                 // REG | OT1.5 | ANL | SL
+  qty_hours         decimal(5,2)
+  
+  // Source tracking
+  source_clock_id   uuid [ref: > ta.clock_event.id, null]
+  related_leave_id  uuid [null]
+  
+  // Project/task allocation
+  project_id        uuid [null]
+  task_id           uuid [null]
+  cost_center_code  varchar(50) [null]
+  
+  metadata          jsonb
+  
+  Indexes { (header_id, work_date) }
+}
+
+/*----------- Time Exception (Attendance violations) ------------*/
+Table ta.time_exception {
+  id                uuid [pk]
+  employee_id       uuid [ref: > employment.employee.id]
+  work_date         date
+  exception_code    varchar(50)                 // LATE | MISS_PUNCH | ABSENT
+  status_code       varchar(20)                 // OPEN | RESOLVED
+  reason            text [null]
+  resolved_by       uuid [ref: > employment.employee.id, null]
+  resolved_at       timestamp [null]
+  metadata          jsonb
+  
+  Indexes { (employee_id, work_date) }
+}
+
+/*----------- Overtime Evaluation (Keep v3 design) --------------*/
+Table ta.eval_rule {
+  id                uuid [pk]
+  code              varchar(50) [unique]
+  name              varchar(100)
+  rule_json         jsonb                       // DSL for overtime, night diff, etc.
+  is_active         boolean [default:true]
+}
+
+Table ta.eval_result {
+  id                uuid [pk]
+  employee_id       uuid [ref: > employment.employee.id]
+  work_date         date
+  rule_id           uuid [ref: > ta.eval_rule.id]
+  time_type_code    varchar(50)                 // OT1.5 | NIGHT_PREM
+  qty_hours         decimal(5,2)
+  source_clock_id   uuid [ref: > ta.clock_event.id, null]
+  metadata          jsonb
+  
+  Indexes { (employee_id, work_date) }
+}
+
+//===============================================================
+//  ABSENCE MANAGEMENT (Keep v4 design - already good)
+//===============================================================
+
+// NOTE: Absence schema remains unchanged from v4
+// Tables: leave_type, leave_class, leave_instant, leave_movement,
+//         leave_request, leave_reservation, etc.
+// (Not repeated here to keep file concise)
+
+//===============================================================
+//  SHARED COMPONENTS
+//===============================================================
+
+/*----------- Holiday Calendar (Shared) -------------------------*/
+Table absence.holiday_calendar {
+  id                uuid [pk]
+  code              varchar(50) [unique]
+  name              varchar(100)
+  region_code       varchar(10)                 // VN-N | VN-S | US
+  deduct_flag       boolean [default:false]
+  metadata          jsonb
+}
+
+Table absence.holiday_date {
+  calendar_id       uuid [ref: > absence.holiday_calendar.id]
+  holiday_date      date
+  name              varchar(100)
+  is_half_day       boolean [default:false]
+  
+  pk ((calendar_id, holiday_date))
+}
+
+//===============================================================
+//  REFERENCE TABLES
+//===============================================================
+
+Table employment.employee {
+  id                uuid [pk]
+  worker_id         uuid
+  legal_entity_id   uuid
+  employee_code     varchar(50)
+  employee_type_code varchar(50)
+  status_code       varchar(50)
+  hire_date         date
+  termination_date  date [null]
+  metadata          jsonb
+  created_at        timestamp [default:`now()`]
+  updated_at        timestamp [null]
+  
+  Indexes { (legal_entity_id, employee_code) [unique] }
+}
+
+Table org_bu.unit {
+  id                uuid [pk]
+  code              varchar(50) [unique]
+  name              varchar(150)
+  type_id           int
+  parent_id         uuid [null]
+  legal_entity_id   uuid [null]
+  path              varchar(255)
+  status_code       varchar(50)
+  metadata          jsonb
+  effective_start   date
+  effective_end     date [null]
+  
+  Indexes {
+    (parent_id, legal_entity_id)
+    (parent_id, code) [unique]
+  }
+}
+
+//===============================================================
+//  DESIGN NOTES & MIGRATION GUIDE
+//===============================================================
+
+// HIERARCHICAL MODEL BENEFITS:
+// 1. Flexibility: Build complex schedules from simple atomic segments
+// 2. Reusability: Same segment/shift used in multiple patterns
+// 3. Maintainability: Change segment → affects all shifts using it
+// 4. Scalability: Support any schedule complexity (24/7, rotating, flex)
+// 5. Auditability: Clear lineage from roster back to segment
+
+// MAPPING TO EXISTING v3 TABLES:
+// - ta.time_segment → NEW (atomic level)
+// - ta.shift_def → KEEP (enhanced with shift_type, segments)
+// - ta.day_model → NEW (daily schedule level)
+// - ta.pattern_template → KEEP (enhanced with day models)
+// - ta.schedule_assignment → KEEP (enhanced with rule concept)
+// - ta.generated_roster → KEEP (materialized view)
+
+// MIGRATION STRATEGY:
+// Phase 1: Add new tables (time_segment, day_model, pattern_day, shift_segment)
+// Phase 2: Migrate existing shift_def data to new structure
+// Phase 3: Enhance pattern_template with day_model references
+// Phase 4: Update roster generation logic to use 6-level hierarchy
+// Phase 5: Deprecate old fields, add new constraints
+
+// EXAMPLE DATA FLOW:
+// 1. Define TIME SEGMENTS: Work(8h), Lunch(1h), Break(15min)
+// 2. Compose SHIFT: DayShift = Work(4h) + Lunch(1h) + Work(4h)
+// 3. Define DAY MODELS: WorkDay(DayShift), OffDay(null)
+// 4. Create PATTERN: 5x8 = [WorkDay,WorkDay,WorkDay,WorkDay,WorkDay,OffDay,OffDay]
+// 5. Setup SCHEDULE RULE: Pattern(5x8) + Calendar(VN) + Offset(0)
+// 6. Generate ROSTER: Employee A gets WorkDay on Mon-Fri, OffDay on Sat-Sun
+
+//===============================================================
+//  PHẦN 1: TIME & ATTENDANCE (TA Schema)
+//===============================================================
+
+/*----------- 1. Shift Pattern (Nâng cấp từ shift_def) ---------*/
+// [DUPLICATE] This table overlaps with 'ta.shift_def' defined at Level 2 above.
+Table ta.shift_pattern_DUPLICATE {
+  id             uuid [pk]
+  code           varchar(50) [unique]          // DAY_SHIFT, NIGHT_SHIFT, ROTATING
+  name           varchar(100)
+  
+  // 2025-12-01 RENAMED: start_time/end_time → scheduled_start_time/scheduled_end_time
+  scheduled_start_time     time
+  scheduled_end_time       time
+  
+  // 2025-12-01 RENAMED: day_breaker_min → overnight_flag (boolean rõ ràng hơn)
+  is_overnight   boolean [default:false]       // true nếu ca qua đêm
+  
+  duration_hours decimal(5,2)                  // 2025-12-01 NEW: tổng giờ làm việc
+  break_duration_hours decimal(5,2) [default:0] // 2025-12-01 NEW: tổng giờ nghỉ
+  
+  working_days   jsonb                         // 2025-12-01 NEW: ["MON","TUE","WED","THU","FRI"]
+  
+  // 2025-12-01 RENAMED: segment_json → breaks_json (rõ ràng hơn)
+  breaks_json    jsonb                         // [{type:"LUNCH",startOffset:4.0,duration:1.0,isPaid:false}]
+  
+  color          varchar(7) [null]             // 2025-12-01 NEW: màu hiển thị UI (#FF5733)
+  
+  metadata       jsonb
+  is_active      boolean [default:true]        // 2025-12-01 NEW
+  effective_start date
+  effective_end   date [null]
+  
+  created_at     timestamp [default:`now()`]   // 2025-12-01 NEW
+  updated_at     timestamp [null]              // 2025-12-01 NEW
+}
+
+// 2025-12-01 COMMENT: Đổi tên từ shift_def → shift_pattern để phù hợp với ontology
+// Note {
+//   Bảng cũ: ta.shift_def
+//   Bảng mới: ta.shift_pattern
+//   Migration: RENAME TABLE ta.shift_def TO ta.shift_pattern
+// }
+
+
+/*----------- 2. Shift Break (NEW - tách riêng từ segment_json) */
+Table ta.shift_break {
+  id                uuid [pk]
+  shift_pattern_id  uuid [ref: > ta.shift_pattern.id]
+  name              varchar(100)                // "Lunch Break", "Tea Break"
+  start_offset_hours decimal(5,2)               // 4.0 = 4 giờ sau khi bắt đầu ca
+  duration_hours    decimal(5,2)
+  is_paid           boolean [default:false]
+  is_mandatory      boolean [default:true]
+  
+  created_at        timestamp [default:`now()`]
+  
+  Indexes { (shift_pattern_id) }
+}
+
+// 2025-12-01 NEW: Tách riêng breaks thành bảng để dễ quản lý và query
+
+
+/*----------- 3. Shift (Nâng cấp từ generated_roster) ----------*/
+// [DUPLICATE] This table overlaps with 'ta.generated_roster' defined at Level 6 above.
+Table ta.shift_DUPLICATE {
+  id                uuid [pk]
+  employee_id       uuid [ref: > employment.employee.id]
+  shift_pattern_id  uuid [ref: > ta.shift_pattern.id, null] // null nếu ad-hoc shift
+  shift_date        date
+  
+  // 2025-12-01 NEW: Lưu thông tin shift cụ thể (có thể khác pattern)
+  scheduled_start_time time
+  scheduled_end_time   time
+  duration_hours       decimal(5,2)
+  break_duration_hours decimal(5,2) [default:0]
+  
+  location          varchar(255) [null]         // 2025-12-01 NEW: địa điểm làm việc
+  
+  status_code       varchar(20) [default:'SCHEDULED'] // SCHEDULED, CONFIRMED, IN_PROGRESS, COMPLETED, CANCELLED, NO_SHOW
+  
+  // 2025-12-01 KEEP: Giữ các trường tracking nguồn gốc
+  schedule_id       uuid [ref: > ta.schedule.id, null]  // 2025-12-01 RENAMED from source_sched_id
+  is_override       boolean [default:false]     // 2025-12-01 NEW: thay thế override_id
+  
+  is_overtime       boolean [default:false]     // 2025-12-01 NEW
+  notes             text [null]                 // 2025-12-01 NEW
+  
+  metadata          jsonb
+  created_at        timestamp [default:`now()`]
+  updated_at        timestamp [null]
+  
+  Indexes { 
+    (employee_id, shift_date) [unique]
+    (shift_pattern_id, shift_date)
+    (status_code)
+  }
+}
+
+// 2025-12-01 COMMENT: Đổi tên từ generated_roster → shift
+// Lý do: "Shift" rõ ràng hơn, phù hợp với ontology
+// Migration: 
+//   - RENAME TABLE ta.generated_roster TO ta.shift
+//   - ADD COLUMN status_code, location, notes, is_overtime
+//   - RENAME COLUMN source_sched_id TO schedule_id
+
+
+/*----------- 4. Schedule (NEW - thay thế pattern_template) ----*/
+Table ta.schedule {
+  id              uuid [pk]
+  code            varchar(50) [unique]
+  name            varchar(100)
+  org_unit_id     uuid [null]                   // phòng ban/team áp dụng
+  
+  start_date      date
+  end_date        date
+  
+  status_code     varchar(20) [default:'DRAFT'] // DRAFT, PUBLISHED, ACTIVE, ARCHIVED
+  
+  published_at    timestamp [null]              // 2025-12-01 NEW
+  published_by    uuid [ref: > employment.employee.id, null]
+  
+  metadata        jsonb
+  created_at      timestamp [default:`now()`]
+  created_by      uuid [ref: > employment.employee.id]
+  updated_at      timestamp [null]
+  
+  Indexes { (org_unit_id, start_date) }
+}
+
+// 2025-12-01 NEW: Schedule là container cho nhiều shifts
+// Thay thế pattern_template (quá phức tạp với rotation logic)
+
+
+/*----------- 5. Attendance Record (NEW) ------------------------*/
+// [v5] NEW TABLE: Replaces clock_event as primary record (processed & validated)
+Table ta.attendance_record {
+  id                  uuid [pk]
+  employee_id         uuid [ref: > employment.employee.id]
+  shift_id            uuid [ref: > ta.shift.id, null]
+  attendance_date     date
+  
+  clock_in_time       timestamp [null]
+  clock_out_time      timestamp [null]
+  
+  scheduled_start_time time [null]
+  scheduled_end_time   time [null]
+  
+  actual_hours        decimal(5,2) [null]       // calculated
+  scheduled_hours     decimal(5,2) [null]
+  
+  status_code         varchar(20)               // PRESENT, ABSENT, LATE, EARLY_DEPARTURE, HALF_DAY, ON_LEAVE
+  
+  late_minutes        int [default:0]
+  early_departure_minutes int [default:0]
+  
+  location            varchar(255) [null]       // GPS location
+  device_id           varchar(50) [null]
+  
+  notes               text [null]
+  
+  is_approved         boolean [default:false]
+  approved_by         uuid [ref: > employment.employee.id, null]
+  approved_at         timestamp [null]
+  
+  metadata            jsonb
+  created_at          timestamp [default:`now()`]
+  updated_at          timestamp [null]
+  
+  Indexes { 
+    (employee_id, attendance_date) [unique]
+    (shift_id)
+    (status_code)
+    (attendance_date)
+  }
+}
+
+// 2025-12-01 NEW: Thay thế clock_event (quá raw)
+// AttendanceRecord là bản ghi chấm công đã xử lý
+
+
+/*----------- 6. Timesheet Entry (Nâng cấp timesheet_line) -----*/
+// [v5] RENAMED: From ta.timesheet_line (header removed)
+// [DUPLICATE] This table overlaps with 'ta.timesheet_line' defined above.
+Table ta.timesheet_entry_DUPLICATE {
+  id                uuid [pk]
+  employee_id       uuid [ref: > employment.employee.id]  // 2025-12-01 NEW: denormalize để query dễ
+  
+  entry_date        date
+  start_time        timestamp
+  end_time          timestamp [null]            // null nếu đang in progress
+  duration_hours    decimal(5,2) [null]
+  
+  time_type_code    varchar(50)                 // REGULAR, OVERTIME, DOUBLE_TIME, HOLIDAY, NIGHT_SHIFT
+  
+  project_id        uuid [null]                 // 2025-12-01 NEW
+  task_id           uuid [null]                 // 2025-12-01 NEW
+  description       text [null]
+  
+  is_billable       boolean [default:false]     // 2025-12-01 NEW
+  
+  status_code       varchar(20) [default:'DRAFT'] // DRAFT, SUBMITTED, APPROVED, REJECTED
+  
+  submitted_at      timestamp [null]
+  approved_by       uuid [ref: > employment.employee.id, null]
+  approved_at       timestamp [null]
+  rejection_reason  text [null]                 // 2025-12-01 NEW
+  
+  attendance_record_id uuid [ref: > ta.attendance_record.id, null] // 2025-12-01 NEW: link
+  
+  metadata          jsonb
+  created_at        timestamp [default:`now()`]
+  updated_at        timestamp [null]
+  
+  Indexes { 
+    (employee_id, entry_date)
+    (project_id)
+    (status_code)
+  }
+}
+
+// 2025-12-01 COMMENT: Đổi tên từ timesheet_line → timesheet_entry
+// Xóa timesheet_header (không cần thiết, group by employee_id + period)
+
+
+/*----------- 7. Time Exception (Giữ, bổ sung) -----------------*/
+// [DUPLICATE] This table is a duplicate of 'ta.time_exception' defined above.
+Table ta.time_exception_DUPLICATE {
+  id                uuid [pk]
+  attendance_record_id uuid [ref: > ta.attendance_record.id]
+  
+  exception_type    varchar(50)                 // LATE_IN, EARLY_OUT, MISSING_PUNCH_IN, MISSING_PUNCH_OUT, UNAUTHORIZED_ABSENCE, LONG_BREAK
+  exception_date    date                        // 2025-12-01 NEW: denormalize
+  
+  severity_code     varchar(20) [default:'WARNING'] // INFO, WARNING, VIOLATION
+  
+  minutes           int [null]                  // duration of exception
+  reason            text [null]
+  
+  is_excused        boolean [default:false]
+  excused_by        uuid [ref: > employment.employee.id, null]
+  excused_at        timestamp [null]
+  excuse_reason     text [null]
+  
+  requires_action   boolean [default:true]
+  action_taken      text [null]
+  
+  metadata          jsonb
+  created_at        timestamp [default:`now()`]
+  updated_at        timestamp [null]
+  
+  Indexes { 
+    (attendance_record_id)
+    (exception_date)
+    (is_excused)
+  }
+}
+
+// 2025-12-01 CHANGED: 
+//   - ADD attendance_record_id (thay vì employee_id + work_date)
+//   - ADD exception_type enum rõ ràng
+//   - ADD severity_code, excuse workflow
+
+
+/*----------- 8. Shift Swap Request (NEW) -----------------------*/
+// [v5] NEW TABLE: Workflow for shift swapping
+Table ta.shift_swap_request {
+  id                uuid [pk]
+  requestor_id      uuid [ref: > employment.employee.id]
+  target_worker_id  uuid [ref: > employment.employee.id]
+  
+  requestor_shift_id uuid [ref: > ta.shift.id]
+  target_shift_id    uuid [ref: > ta.shift.id]
+  
+  request_date      timestamp [default:`now()`]
+  reason            text [null]
+  
+  status_code       varchar(30) [default:'PENDING'] // PENDING, ACCEPTED_BY_TARGET, REJECTED_BY_TARGET, APPROVED, REJECTED, CANCELLED
+  
+  target_response   varchar(20) [default:'PENDING'] // PENDING, ACCEPTED, REJECTED
+  target_response_at timestamp [null]
+  
+  manager_approval  varchar(20) [default:'PENDING'] // PENDING, APPROVED, REJECTED
+  approved_by       uuid [ref: > employment.employee.id, null]
+  approved_at       timestamp [null]
+  rejection_reason  text [null]
+  
+  metadata          jsonb
+  created_at        timestamp [default:`now()`]
+  updated_at        timestamp [null]
+  
+  Indexes { 
+    (requestor_id)
+    (target_worker_id)
+    (status_code)
+  }
+}
+
+// 2025-12-01 NEW: Shift swap workflow
+
+
+/*----------- 9. Shift Bid (NEW) --------------------------------*/
+// [v5] NEW TABLE: Workflow for open shift bidding
+Table ta.shift_bid {
+  id                uuid [pk]
+  worker_id         uuid [ref: > employment.employee.id]
+  shift_id          uuid [ref: > ta.shift.id]
+  
+  bid_date          timestamp [default:`now()`]
+  priority          int [null]                  // worker's priority ranking
+  reason            text [null]
+  
+  status_code       varchar(20) [default:'PENDING'] // PENDING, ACCEPTED, REJECTED, EXPIRED
+  
+  assigned_at       timestamp [null]
+  expires_at        timestamp [null]
+  
+  metadata          jsonb
+  created_at        timestamp [default:`now()`]
+  
+  Indexes { 
+    (worker_id, shift_id) [unique]
+    (shift_id, status_code)
+  }
+}
+
+// 2025-12-01 NEW: Shift bidding for open shifts
+
+
+/*----------- 10. Overtime Rule (Nâng cấp eval_rule) -----------*/
+// [v5] RENAMED: From ta.eval_rule
+// [DUPLICATE] This table overlaps with 'ta.eval_rule' defined above.
+Table ta.overtime_rule_DUPLICATE {
+  id                uuid [pk]
+  code              varchar(50) [unique]
+  name              varchar(100)
+  
+  rule_type         varchar(30)                 // DAILY, WEEKLY, CONSECUTIVE_DAYS, HOLIDAY, NIGHT_SHIFT
+  threshold_hours   decimal(5,2)                // e.g., 8 for daily, 40 for weekly
+  multiplier        decimal(4,2)                // e.g., 1.5, 2.0, 3.0
+  
+  requires_approval boolean [default:true]
+  
+  is_active         boolean [default:true]
+  effective_start   date
+  effective_end     date [null]
+  
+  metadata          jsonb
+  created_at        timestamp [default:`now()`]
+  updated_at        timestamp [null]
+}
+
+// 2025-12-01 COMMENT: Đổi tên từ eval_rule → overtime_rule (rõ ràng hơn)
+
+
+/*----------- 11. Overtime Request (NEW) ------------------------*/
+// [v5] NEW TABLE: Pre-approval workflow for overtime
+Table ta.overtime_request {
+  id                uuid [pk]
+  worker_id         uuid [ref: > employment.employee.id]
+  
+  request_date      timestamp [default:`now()`]
+  planned_date      date
+  estimated_hours   decimal(5,2)
+  reason            text
+  
+  project_id        uuid [null]
+  
+  status_code       varchar(20) [default:'PENDING'] // PENDING, APPROVED, REJECTED, CANCELLED
+  
+  approved_by       uuid [ref: > employment.employee.id, null]
+  approved_at       timestamp [null]
+  rejection_reason  text [null]
+  
+  actual_hours      decimal(5,2) [null]         // filled after work completed
+  
+  metadata          jsonb
+  created_at        timestamp [default:`now()`]
+  updated_at        timestamp [null]
+  
+  Indexes { 
+    (worker_id, planned_date)
+    (status_code)
+  }
+}
+
+// 2025-12-01 NEW: Pre-approval for overtime
+
+
+/*----------- 12. Overtime Calculation (Nâng cấp eval_result) --*/
+// [v5] RENAMED: From ta.eval_result
+// [DUPLICATE] This table overlaps with 'ta.eval_result' defined above.
+Table ta.overtime_calculation_DUPLICATE {
+  id                uuid [pk]
+  worker_id         uuid [ref: > employment.employee.id]
+  
+  period_start      date
+  period_end        date
+  
+  regular_hours     decimal(6,2)
+  overtime_hours    decimal(6,2)
+  double_time_hours decimal(6,2) [default:0]
+  holiday_hours     decimal(6,2) [default:0]
+  night_shift_hours decimal(6,2) [default:0]
+  total_hours       decimal(6,2)
+  
+  is_approved       boolean [default:false]
+  approved_by       uuid [ref: > employment.employee.id, null]
+  approved_at       timestamp [null]
+  
+  metadata          jsonb
+  created_at        timestamp [default:`now()`]
+  
+  Indexes { 
+    (worker_id, period_start)
+    (is_approved)
+  }
+}
+
+// 2025-12-01 COMMENT: Đổi tên từ eval_result → overtime_calculation
+// Thêm breakdown theo loại OT
+
+
+//===============================================================
+//  PHẦN 2: ABSENCE MANAGEMENT (Absence Schema)
+//  Giữ nguyên thiết kế v4, chỉ bổ sung comment và minor fixes
+//===============================================================
+
+/*----------- 1. Leave Type (Giữ, bổ sung validation) ----------*/
+Table absence.leave_type {
+  code              varchar(50) [pk]
+  name              varchar(100)
+  is_paid           boolean [default:true]
+  is_quota_based    boolean [default:true]
+  requires_approval boolean [default:true]
+  
+  unit_code         varchar(10)                 // 'HOUR' | 'DAY'
+  core_min_unit     decimal(6,2)                // 1.00, 0.50
+  
+  allows_half_day   boolean [default:false]     // 2025-12-01 NEW
+  
+  holiday_handling  varchar(30)                 // 'EXCLUDE_HOLIDAYS'|'INCLUDE_HOLIDAYS'
+  overlap_policy    varchar(30)                 // 'ALLOW'|'DENY'
+  support_scope     varchar(50)                 // 'VN:LE,SG:BU'
+  
+  metadata          jsonb
+  is_active         boolean [default:true]
+  effective_start   date
+  effective_end     date [null]
+  
+  created_at        timestamp [default:`now()`] // 2025-12-01 NEW
+  updated_at        timestamp [null]            // 2025-12-01 NEW
+}
+
+// 2025-12-01 KEEP: Giữ nguyên thiết kế v4
+// ADD: allows_half_day, created_at, updated_at
+
+
+/*----------- 2. Leave Class (Giữ nguyên v4) -------------------*/
+Table absence.leave_class {
+  id                uuid [pk]
+  type_code         varchar(50) [ref: > absence.leave_type.code]
+  code              varchar(50) [unique]
+  name              varchar(100)
+  status_code       varchar(20) [default: 'ACTIVE']
+  
+  scope_owner       varchar(10)                 // 'EMP'
+  mode_code         varchar(10)                 // 'ACCOUNT'|'LIMIT'|'UNPAID'
+  unit_code         varchar(10)                 // 'HOUR'|'DAY'
+  
+  period_profile    jsonb
+  posting_map       jsonb
+  eligibility_json  jsonb  [null]
+  rules_json        jsonb  [null]
+  
+  emit_expire_turnover boolean [default:false]
+  
+  bu_id             uuid [null]
+  le_id             uuid [null]
+  country_code      varchar(10) [null]
+  
+  effective_start   date
+  effective_end     date [null]
+  metadata          jsonb
+  
+  created_at        timestamp [default:`now()`] // 2025-12-01 NEW
+  updated_at        timestamp [null]            // 2025-12-01 NEW
+}
+
+// 2025-12-01 KEEP: Giữ nguyên thiết kế v4
+
+
+/*----------- 3. Leave Instant (Giữ nguyên v4) -----------------*/
+Table absence.leave_instant {
+  id                uuid [pk]
+  employee_id       uuid [ref: > employment.employee.id]
+  class_id          uuid [ref: > absence.leave_class.id]
+  state_code        varchar(20) [default: 'ACTIVE']
+  
+  current_qty       decimal(10,2) [default: 0.00]
+  hold_qty          decimal(10,2) [default: 0.00]
+  available_qty     decimal(10,2) [default: 0.00]
+  
+  limit_yearly      decimal(10,2) [null]
+  limit_monthly     decimal(10,2) [null]
+  limit_per_case    decimal(10,2) [null]
+  limit_rolling_days int [null]
+  used_ytd          decimal(10,2) [default: 0.00]
+  used_mtd          decimal(10,2) [default: 0.00]
+  
+  bu_id             uuid [null]
+  le_id             uuid [null]
+  country_code      varchar(10) [null]
+  
+  effective_start   date
+  effective_end     date [null]
+  metadata          jsonb
+  
+  created_at        timestamp [default:`now()`] // 2025-12-01 NEW
+  updated_at        timestamp [null]            // 2025-12-01 NEW
+  
+  Indexes {
+    (employee_id, class_id)
+    (state_code)
+  }
+}
+
+// 2025-12-01 KEEP: Giữ nguyên thiết kế v4
+
+
+/*----------- 4. Leave Movement (Giữ nguyên v4) ----------------*/
+Table absence.leave_movement {
+  id                uuid [pk]
+  instant_id        uuid [ref: > absence.leave_instant.id]
+  class_id          uuid [ref: > absence.leave_class.id]
+  event_code        varchar(50)
+  qty               decimal(10,2)
+  unit_code         varchar(10)
+  
+  period_id         uuid  [null]
+  effective_date    date
+  expire_date       date [null]
+  posted_at         timestamp [default: `now()`]
+  
+  request_id        uuid [null]
+  lot_id            uuid [null, ref: > absence.leave_instant_detail.id]
+  run_id            uuid [null]
+  idempotency_key   varchar(120) [null]
+  
+  bu_id             uuid [null]
+  le_id             uuid [null]
+  country_code      varchar(10) [null]
+  
+  metadata          jsonb
+  
+  Indexes {
+    (instant_id, effective_date)
+    (class_id, event_code, effective_date)
+    (request_id)
+    (run_id)
+    (idempotency_key)
+  }
+}
+
+// 2025-12-01 KEEP: Giữ nguyên thiết kế v4 (immutable ledger)
+
+
+/*----------- 5. Leave Request (Giữ, bổ sung status) -----------*/
+Table absence.leave_request {
+  id            uuid [pk]
+  employee_id   uuid [ref: > employment.employee.id]
+  class_id      uuid [ref: > absence.leave_class.id]
+  
+  start_dt      timestamp
+  end_dt        timestamp
+  
+  total_days    decimal(6,2) [null]             // 2025-12-01 NEW: calculated working days
+  
+  is_half_day   boolean [default:false]         // 2025-12-01 NEW
+  half_day_period varchar(10) [null]            // 2025-12-01 NEW: MORNING, AFTERNOON
+  
+  qty_hours_req decimal(6,2) [null]
+  
+  status_code   varchar(20)                     // DRAFT, PENDING, APPROVED, REJECTED, WITHDRAWN, CANCELLED
+  workflow_state jsonb  [null]
+  reason        text [null]
+  
+  instant_id    uuid [null, ref: > absence.leave_instant.id]
+  
+  submitted_at  timestamp [null]                // 2025-12-01 NEW
+  approved_by   uuid [ref: > employment.employee.id, null] // 2025-12-01 NEW
+  approved_at   timestamp [null]                // 2025-12-01 NEW
+  rejection_reason text [null]                  // 2025-12-01 NEW
+  
+  escalation_level smallint [default:0]
+  
+  metadata      jsonb
+  created_at    timestamp [default:`now()`]
+  updated_at    timestamp [null]                // 2025-12-01 NEW
+  
+  Indexes {
+    (employee_id, status_code)
+    (class_id, start_dt)
+  }
+}
+
+// 2025-12-01 CHANGED:
+//   - ADD total_days, is_half_day, half_day_period
+//   - ADD submitted_at, approved_by, approved_at, rejection_reason
+//   - ADD updated_at
+
+
+/*----------- 6. Leave Reservation (Giữ nguyên v4) -------------*/
+Table absence.leave_reservation {
+  request_id     uuid [pk, ref: > absence.leave_request.id]
+  instant_id     uuid [ref: > absence.leave_instant.id]
+  reserved_qty   decimal(10,2)
+  expires_at     timestamp [null]
+  
+  created_at     timestamp [default:`now()`]    // 2025-12-01 NEW
+}
+
+// 2025-12-01 KEEP: Giữ nguyên thiết kế v4
+
+
+/*----------- 7. Approval (NEW - Multi-level approval) ---------*/
+// [v5] NEW TABLE: Multi-level approval workflow
+Table absence.approval {
+  id                uuid [pk]
+  request_id        uuid [ref: > absence.leave_request.id]
+  
+  approval_level    int [default:1]             // 1, 2, 3...
+  approver_id       uuid [ref: > employment.employee.id]
+  
+  status_code       varchar(20) [default:'PENDING'] // PENDING, APPROVED, REJECTED
+  decision_date     timestamp [null]
+  comments          text [null]
+  
+  metadata          jsonb
+  created_at        timestamp [default:`now()`]
+  
+  Indexes { 
+    (request_id, approval_level)
+    (approver_id, status_code)
+  }
+}
+
+// 2025-12-01 NEW: Support multi-level approval workflow
+
+
+/*----------- 8-12. Giữ nguyên các bảng v4 khác ----------------*/
+// leave_instant_detail, leave_event_def, leave_class_event,
+// leave_period, leave_event_run, leave_balance_history,
+// team_leave_limit, holiday_calendar, holiday_date, leave_wallet
+
+// (Không copy lại để giữ file ngắn gọn - giữ nguyên như v4)
+
+
+//===============================================================
+//  PHẦN 3: SHARED COMPONENTS
+//===============================================================
+
+/*----------- Schedule (Shared) ---------------------------------*/
+// [v5] NEW TABLE: Shared schedule definition
+Table shared.schedule {
+  id              uuid [pk]
+  code            varchar(50) [unique]
+  name            varchar(100)
+  
+  working_days    jsonb                         // ["MON","TUE","WED","THU","FRI"]
+  hours_per_day   decimal(4,2) [default:8.0]
+  
+  metadata        jsonb
+  is_active       boolean [default:true]
+  effective_start date
+  effective_end   date [null]
+}
+
+// 2025-12-01 NEW: Shared schedule definition for both TA and Absence
+
+
+/*----------- Holiday (Shared) ----------------------------------*/
+// [v5] NEW TABLE: Consolidated holiday logic (moved from absence)
+Table shared.holiday {
+  id              uuid [pk]
+  calendar_id     uuid [ref: > absence.holiday_calendar.id]
+  holiday_date    date
+  name            varchar(100)
+  
+  is_recurring    boolean [default:false]
+  is_half_day     boolean [default:false]
+  
+  metadata        jsonb
+  
+  Indexes { (calendar_id, holiday_date) [unique] }
+}
+
+// 2025-12-01 COMMENT: Merge từ absence.holiday_date
+
+
+/*----------- Period Profile (Shared) ---------------------------*/
+// [v5] NEW TABLE: Shared period definition
+Table shared.period_profile {
+  id              uuid [pk]
+  code            varchar(50) [unique]
+  name            varchar(100)
+  
+  period_type     varchar(30)                   // CALENDAR_YEAR, FISCAL_YEAR, HIRE_ANNIVERSARY
+  
+  start_month     int [null]                    // for FISCAL_YEAR
+  start_day       int [null]
+  
+  metadata        jsonb
+  is_active       boolean [default:true]
+}
+
+// 2025-12-01 NEW: Shared period definition
+
+
+//===============================================================
+//===============================================================
+//  MIGRATION NOTES (Corrected for 6-Level Model)
+//===============================================================
+
+// 1. TIME & ATTENDANCE (Hierarchical Update):
+//    - NEW TABLES (For Hierarchy):
+//      + ta.time_segment (Level 1)
+//      + ta.day_model (Level 3)
+//      + ta.shift_segment (Link Level 1-2)
+//      + ta.pattern_day (Link Level 3-4)
+//
+//    - ENHANCED TABLES (Keep existing names):
+//      + ta.shift_def (Level 2): Added shift_type, grace periods, rounding
+//      + ta.pattern_template (Level 4): Updated to use day_models
+//      + ta.schedule_assignment (Level 5): Added rotation logic & calendar
+//      + ta.generated_roster (Level 6): Added full lineage tracking
+//
+//    - OPERATIONAL TABLES:
+//      + NEW: ta.attendance_record (Replaces clock_event as primary)
+//      + RENAME: ta.timesheet_line → ta.timesheet_entry
+//      + NEW: ta.shift_swap_request, ta.shift_bid, ta.overtime_request
+//
+// 2. ABSENCE:
+//    - Keep v4 design mostly unchanged
+//    - Add multi-level approval (absence.approval)
+//
+// 3. SHARED:
+//    - Consolidate holiday logic into shared.holiday
+//    - Add shared.schedule and shared.period_profile

@@ -1,0 +1,51 @@
+entity: OvertimeRule
+version: "1.0"
+layer: overtime
+
+description: |
+  Rules defining when overtime applies and how it's calculated.
+attributes:
+  id:
+    type: UUID
+    required: true
+  code:
+    type: string
+    required: true
+    unique: true
+  name:
+    type: string
+    required: true
+  ruleType:
+    type: enum
+    values: [DAILY, WEEKLY, CONSECUTIVE_DAYS, HOLIDAY, NIGHT_SHIFT]
+    required: true
+  threshold:
+    type: decimal
+    required: true
+    description: "Hours threshold (e.g., 8 for daily, 40 for weekly)"
+  multiplier:
+    type: decimal
+    required: true
+    description: "Pay multiplier (e.g., 1.5 for time-and-half)"
+  requiresApproval:
+    type: boolean
+    default: true
+  isActive:
+    type: boolean
+    default: true
+  effectiveDate:
+    type: date
+    required: true
+  endDate:
+    type: date
+    required: false
+  createdAt:
+    type: datetime
+    required: true
+  updatedAt:
+    type: datetime
+    required: true
+businessRules:
+  - "Multiple rules can apply (e.g., daily + weekly)"
+  - "Highest multiplier wins if rules overlap"
+  - "Holiday overtime typically has higher multiplier"

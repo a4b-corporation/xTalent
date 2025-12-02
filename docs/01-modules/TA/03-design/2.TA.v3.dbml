@@ -1,0 +1,185 @@
+//********************
+// ref table
+
+
+Table employment.employee {
+  id                uuid       [pk]
+  worker_id         uuid      // [ref: > person.worker.id]
+  legal_entity_id   uuid      // [ref: > org_legal.entity.id]  // công ty ký hợp đồng
+  employee_code     varchar(50)
+  employee_type_code varchar(50) // common.code_list(EMPLOYEE_TYPE)
+  status_code       varchar(50) // common.code_list(EMP_STATUS): ACTIVE, TERMINATED…
+  hire_date         date
+  termination_date  date       [null]
+  metadata          jsonb      // probation, seniority_level…
+  created_at        timestamp  [default:`now()`]
+  updated_at        timestamp  [null]
+  Indexes { (legal_entity_id, employee_code) [unique] }
+}
+Table org_bu.unit {
+  id              uuid [pk]
+  code            varchar(50) [unique]
+  name            varchar(150)
+  type_id         int  // [ref: > org_bu.type.id]
+  parent_id       uuid  //[ref: > org_bu.unit.id, null]         // cây BU
+  legal_entity_id uuid  //[ref: > org_legal.entity.id, null]    // link tùy chọn
+  path            varchar(255)
+  status_code     varchar(50)                                 // từ common.code_list(STATUS)
+  metadata        jsonb                                       // region, cost_center…
+  effective_start date
+  effective_end   date [null]
+
+  Indexes {
+    (parent_id, legal_entity_id)                       // đã tồn tại
+    (parent_id, code) [unique]                         // bảo vệ code
+  }
+}
+
+// ===============================================================
+//  SCHEMA: ta – Time, Schedule, Timesheet
+// ===============================================================
+
+/*----------- 1. Shift Library ----------------------------------*/
+Table ta.shift_def {
+  id             uuid [pk]
+  code           varchar(50) [unique]          // D1, N3, SPLIT_PM…
+  name           varchar(100)
+  start_time     time
+  end_time       time                          // ca qua đêm: end < start
+  day_breaker_min smallint [default:0]         // 0 = 00:00; 240 = 04:00
+  segment_json   jsonb                         // [{"type":"WORK","from":"08:00","to":"12:00"}, …]
+  metadata       jsonb                         // meal flag, premium zone…
+  effective_start date
+  effective_end   date [null]
+}
+
+/*----------- 2. Pattern / Rotation -----------------------------*/
+Table ta.pattern_template {                     // 5×8; 4on4off; 14/14…
+  id             uuid [pk]
+  code           varchar(50) [unique]
+  name           varchar(100)
+  pattern_json   jsonb                           // {"cycle":28,"seq":["D1","D1","N3","OFF",…]}
+  description    text [null]
+  metadata       jsonb
+  effective_start date
+  effective_end   date [null]
+}
+
+/*----------- 3. Schedule Assignment ----------------------------*/
+Table ta.schedule_assignment {
+  id                 uuid [pk]
+  employee_id        uuid [ref: > employment.employee.id, null]
+  employee_group_id  uuid [ref: > org_bu.unit.id, null]   // crew / team
+  pattern_id         uuid [ref: > ta.pattern_template.id]
+  rotation_start     date
+  rotation_anchor    int  [default:0]                    // offset day in seq
+  metadata           jsonb
+  effective_start    date
+  effective_end      date [null]
+}
+
+/*----------- 4. Schedule Override (ad-hoc) ---------------------*/
+Table ta.schedule_override {
+  id                 uuid [pk]
+  employee_id        uuid [ref: > employment.employee.id, null]
+  employee_group_id  uuid [ref: > org_bu.unit.id, null]
+  work_date          date
+  shift_id           uuid [ref: > ta.shift_def.id]
+  reason_code        varchar(50)                          // code_list(SCHD_OVERRIDE_REASON)
+  created_by         uuid [ref: > employment.employee.id]
+  created_at         timestamp [default:`now()`]
+  metadata           jsonb
+  Indexes { (employee_id, work_date) }
+}
+
+/*----------- 5. Materialised Roster ---------------------------*/
+Table ta.generated_roster {
+  employee_id     uuid [ref: > employment.employee.id]
+  work_date       date
+  shift_id        uuid [ref: > ta.shift_def.id]
+  source_sched_id uuid [ref: > ta.schedule_assignment.id]
+  override_id     uuid [ref: > ta.schedule_override.id, null]
+  is_holiday      boolean [default:false]
+  metadata        jsonb
+  Indexes { (employee_id, work_date) [unique] }
+}
+
+/*----------- 6. Open-Shift Pool -------------------------------*/
+Table ta.open_shift_pool {
+  id            uuid [pk]
+  work_date     date
+  shift_id      uuid [ref: > ta.shift_def.id]
+  qty_needed    int
+  qty_claimed   int [default:0]
+  status_code   varchar(20)                              // OPEN, PARTIAL, CLOSED
+  metadata      jsonb
+}
+
+/*----------- 7. Clock Event (raw punch) ------------------------*/
+Table ta.clock_event {
+  id           uuid [pk]
+  employee_id  uuid [ref: > employment.employee.id]
+  event_dt     timestamp
+  event_type   varchar(10)                                // IN | OUT | BREAK_IN | GEO_IN
+  source       varchar(50)                                // MOBILE, KIOSK, API
+  device_id    varchar(50) [null]
+  geo_lat      decimal(9,6) [null]
+  geo_long     decimal(9,6) [null]
+  metadata     jsonb
+}
+
+/*----------- 8. Timesheet --------------------------------------*/
+Table ta.timesheet_header {
+  id             uuid [pk]
+  employee_id    uuid [ref: > employment.employee.id]
+  period_start   date
+  period_end     date
+  status_code    varchar(20)                              // OPEN, SUBMITTED, APPROVED
+  total_hours    decimal(6,2) [null]
+  workflow_state jsonb  [null]
+  metadata       jsonb
+}
+
+Table ta.timesheet_line {
+  id                uuid [pk]
+  header_id         uuid [ref: > ta.timesheet_header.id]
+  work_date         date
+  time_type_code    varchar(50)                           // REG, OT1.5, ANL, SL …
+  qty_hours         decimal(5,2)
+  source_clock_id   uuid [ref: > ta.clock_event.id, null]
+  related_leave_id  uuid // [ref: > absence.leave_request.id, null]
+  metadata          jsonb
+}
+
+/*----------- 9. Evaluation & Premium ---------------------------*/
+Table ta.eval_rule {
+  id          uuid [pk]
+  code        varchar(50) [unique]
+  name        varchar(100)
+  rule_json   jsonb                                        // DSL overtime, night diff…
+  is_active   boolean [default:true]
+}
+
+Table ta.eval_result {
+  id             uuid [pk]
+  employee_id    uuid [ref: > employment.employee.id]
+  work_date      date
+  rule_id        uuid [ref: > ta.eval_rule.id]
+  time_type_code varchar(50)                              // OT1.5, NIGHT_PREM…
+  qty_hours      decimal(5,2)
+  source_clock_id uuid [ref: > ta.clock_event.id, null]
+  metadata       jsonb
+}
+
+/*----------- 10. Exception Log --------------------------------*/
+Table ta.time_exception {
+  id            uuid [pk]
+  employee_id   uuid [ref: > employment.employee.id]
+  work_date     date
+  exception_code varchar(50)                               // LATE, MISS_PUNCH…
+  status_code   varchar(20)                                // OPEN, RESOLVED
+  reason        text [null]
+  resolved_by   uuid [ref: > employment.employee.id, null]
+  resolved_at   timestamp [null]
+  metadata      jsonb
+}

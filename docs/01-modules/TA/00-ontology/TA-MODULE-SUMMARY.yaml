@@ -1,0 +1,341 @@
+# Time & Absence Module - Ontology Summary
+# Version: 2.0
+# Last Updated: 2025-12-01
+
+module: TimeAndAbsence
+code: TA
+description: |
+  Complete Time & Absence management module covering leave/absence management
+  and time & attendance tracking.
+
+# =============================================================================
+# SUB-MODULES
+# =============================================================================
+
+sub_modules:
+  
+  Absence:
+    description: "Leave and absence management"
+    ontology_file: "absence-ontology.yaml"
+    status: "Complete (v2.0)"
+    key_features:
+      - "Leave type and class configuration"
+      - "Flexible rule system (Policy Library)"
+      - "Leave request workflow"
+      - "Balance tracking with ledger"
+      - "Accrual and carryover management"
+    entity_count: 20
+    entities:
+      configuration:
+        - LeaveClass
+        - LeaveType
+        - PeriodProfile
+      rules:
+        - EligibilityRule
+        - ValidationRule
+        - AccrualRule
+        - CarryoverRule
+        - LimitRule
+        - OverdraftRule
+        - ProrationRule
+        - RoundingRule
+      schedule:
+        - Schedule
+        - Holiday
+      transaction:
+        - LeaveRequest
+        - LeaveReservation
+        - LeaveMovement
+        - LeaveBalance
+        - Approval
+      automation:
+        - Event
+        - Trigger
+  
+  TimeAttendance:
+    description: "Time tracking and attendance management"
+    ontology_file: "time-attendance-ontology.yaml"
+    status: "Complete (v1.0)"
+    key_features:
+      - "Shift pattern and scheduling"
+      - "Time clock integration"
+      - "Attendance tracking"
+      - "Timesheet management"
+      - "Exception handling"
+      - "Shift swap and bidding"
+      - "Overtime management"
+    entity_count: 14
+    entities:
+      configuration:
+        - ShiftPattern
+        - ShiftBreak
+        - Schedule
+      shift_management:
+        - Shift
+        - ShiftSwapRequest
+        - ShiftBid
+      attendance:
+        - AttendanceRecord
+        - TimesheetEntry
+        - TimeException
+      overtime:
+        - OvertimeRule
+        - OvertimeRequest
+        - OvertimeCalculation
+
+# =============================================================================
+# SHARED ENTITIES
+# =============================================================================
+
+shared_entities:
+  - entity: PeriodProfile
+    used_by: [Absence, TimeAttendance]
+    description: "Time period definitions (leave year, pay period)"
+  
+  - entity: Holiday
+    used_by: [Absence, TimeAttendance]
+    description: "Public and company holidays"
+  
+  - entity: Schedule
+    used_by: [Absence, TimeAttendance]
+    description: "Working schedule and calendar"
+
+# =============================================================================
+# INTEGRATION POINTS
+# =============================================================================
+
+integrations:
+  
+  internal:
+    - module: "Core HR (CO)"
+      entities: [Worker, Assignment, OrgUnit, Position]
+      purpose: "Employee and organizational data"
+      
+    - module: "Total Rewards (TR)"
+      entities: [CompensationComponent]
+      purpose: "Overtime pay and shift differentials"
+      
+    - module: "Payroll (PR)"
+      entities: [PayrollElement, PayrollPeriod]
+      purpose: "Time data for payroll calculation"
+  
+  external:
+    - system: "Time Clock Devices"
+      protocol: "REST API / MQTT"
+      purpose: "Biometric/RFID clock-in/out"
+      
+    - system: "Mobile Apps"
+      protocol: "REST API"
+      purpose: "Mobile time tracking and shift management"
+      
+    - system: "Calendar Systems"
+      protocol: "CalDAV / iCal"
+      purpose: "Sync leave and shifts to external calendars"
+      
+    - system: "Project Management"
+      protocol: "REST API"
+      purpose: "Time tracking for projects and tasks"
+
+# =============================================================================
+# KEY DESIGN PATTERNS
+# =============================================================================
+
+design_patterns:
+  
+  shared:
+    - pattern: "Event-Driven Architecture"
+      description: "Actions trigger events for notifications and integrations"
+      applies_to: [Absence, TimeAttendance]
+      
+    - pattern: "Approval Workflows"
+      description: "Multi-level approval for requests"
+      applies_to: [Absence, TimeAttendance]
+      
+    - pattern: "Audit Trail"
+      description: "Complete history of all changes"
+      applies_to: [Absence, TimeAttendance]
+  
+  absence_specific:
+    - pattern: "Immutable Ledger"
+      description: "LeaveMovement records are never modified"
+      entities: [LeaveMovement]
+      
+    - pattern: "Reservation Pattern"
+      description: "Temporary hold on balance while request pending"
+      entities: [LeaveReservation]
+      
+    - pattern: "Flexible Rule Binding"
+      description: "Rules bind at class or type level with priority"
+      entities: [All Rule entities]
+  
+  time_attendance_specific:
+    - pattern: "Scheduled vs Actual"
+      description: "Separate scheduled shifts from actual attendance"
+      entities: [Shift, AttendanceRecord]
+      
+    - pattern: "Exception-Based Management"
+      description: "Track deviations from expected attendance"
+      entities: [TimeException]
+      
+    - pattern: "Pattern-Based Scheduling"
+      description: "Reusable shift patterns for efficiency"
+      entities: [ShiftPattern, Shift]
+
+# =============================================================================
+# BUSINESS RULES SUMMARY
+# =============================================================================
+
+business_rules:
+  
+  absence:
+    - "Rules bind to either LeaveType OR LeaveClass, not both"
+    - "Higher priority rules override lower priority rules"
+    - "Leave requests cannot overlap for same worker"
+    - "Available balance = allocated + carried - used - pending - expired"
+    - "Movements are immutable - use reversal for corrections"
+    - "Reservations released when request approved/rejected"
+  
+  time_attendance:
+    - "Workers cannot have overlapping shifts"
+    - "Attendance records immutable once approved"
+    - "Overtime requires pre-approval (configurable)"
+    - "Shift swaps need both worker and manager approval"
+    - "Missing punches must be corrected within grace period"
+    - "Timesheet entries must be submitted by deadline"
+    - "Late/early exceptions tracked for compliance"
+  
+  cross_module:
+    - "Leave requests block shift assignments"
+    - "Approved leave creates attendance record"
+    - "Working days exclude holidays for both modules"
+    - "Period profiles shared across modules"
+
+# =============================================================================
+# COMPLIANCE & REGULATIONS
+# =============================================================================
+
+compliance:
+  - regulation: "Labor Laws"
+    applies_to: [TimeAttendance]
+    requirements:
+      - "Accurate time tracking for hourly workers"
+      - "Overtime calculation per local laws"
+      - "Rest period enforcement"
+      - "Maximum working hours limits"
+  
+  - regulation: "Leave Entitlements"
+    applies_to: [Absence]
+    requirements:
+      - "Statutory leave minimums (maternity, sick, etc.)"
+      - "Accrual rate compliance"
+      - "Carryover rules per jurisdiction"
+  
+  - regulation: "Data Privacy"
+    applies_to: [Absence, TimeAttendance]
+    requirements:
+      - "Sensitive health data protection (sick leave)"
+      - "Location data privacy (GPS clock-in)"
+      - "Access control and audit logging"
+
+# =============================================================================
+# METRICS & KPIs
+# =============================================================================
+
+metrics:
+  
+  absence:
+    - "Absence rate by department/worker"
+    - "Leave balance utilization"
+    - "Average leave request approval time"
+    - "Unplanned absence frequency"
+    - "Leave balance expiry/wastage"
+  
+  time_attendance:
+    - "Attendance rate"
+    - "Late arrival frequency"
+    - "Overtime hours and cost"
+    - "Timesheet submission compliance"
+    - "Shift swap frequency"
+    - "Schedule adherence"
+    - "Exception rate by type"
+
+# =============================================================================
+# DOCUMENTATION STRUCTURE
+# =============================================================================
+
+documentation:
+  ontology:
+    - absence-ontology.yaml
+    - time-attendance-ontology.yaml
+    - absence-ontology-index.yaml (entity index)
+    - this file (module summary)
+  
+  glossary:
+    - absence-glossary.md
+    - time-attendance-glossary.md (to be created)
+  
+  concept:
+    - ../01-concept/ (to be generated from ontology)
+  
+  specifications:
+    - ../02-spec/ (behavioral, system, API, UI specs)
+  
+  design:
+    - ../03-design/ (data models, architecture)
+  
+  api:
+    - ../04-api/ (OpenAPI specifications)
+  
+  ui:
+    - ../05-ui/ (UI specifications and mockups)
+  
+  tests:
+    - ../06-tests/ (test scenarios and cases)
+
+# =============================================================================
+# DEVELOPMENT STATUS
+# =============================================================================
+
+status:
+  absence:
+    ontology: "✅ Complete (v2.0)"
+    glossary: "✅ Complete"
+    concept: "⏳ Pending"
+    specifications: "⏳ Pending"
+    api: "⏳ Pending"
+    ui: "⏳ Pending"
+    implementation: "⏳ Pending"
+  
+  time_attendance:
+    ontology: "✅ Complete (v1.0)"
+    glossary: "⏳ Pending"
+    concept: "⏳ Pending"
+    specifications: "⏳ Pending"
+    api: "⏳ Pending"
+    ui: "⏳ Pending"
+    implementation: "⏳ Pending"
+
+# =============================================================================
+# NEXT STEPS
+# =============================================================================
+
+next_steps:
+  1. "Create time-attendance-glossary.md"
+  2. "Generate concept documents from ontologies"
+  3. "Write behavioral specifications for key workflows"
+  4. "Generate API specifications from ontologies"
+  5. "Create UI specifications for main screens"
+  6. "Develop test scenarios"
+  7. "Begin implementation"
+
+# =============================================================================
+# NOTES
+# =============================================================================
+
+notes:
+  - "Absence ontology has been refactored (v2.0) - Policy entity removed"
+  - "Rules now bind directly to LeaveType/LeaveClass with priority system"
+  - "Time & Attendance ontology follows similar patterns for consistency"
+  - "Both sub-modules share common entities (PeriodProfile, Holiday, Schedule)"
+  - "Integration with Payroll is critical for both sub-modules"
+  - "Mobile support is essential for time tracking"

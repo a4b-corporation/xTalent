@@ -1,0 +1,43 @@
+entity: LimitRule
+version: "2.0"
+layer: rules
+
+description: |
+  Defines limits on leave usage (e.g., max days per year, per request).
+  Can be bound to a specific LeaveType or to an entire LeaveClass.
+
+attributes:
+  - id: string (UUID)
+  - code: string
+  - name: string
+  - description: string (nullable)
+  - leaveTypeId: string (UUID, nullable)
+  - leaveClassId: string (UUID, nullable)
+  - limitType: enum [MAX_PER_YEAR, MAX_PER_REQUEST, MAX_PER_MONTH, 
+                     MAX_PER_QUARTER, MIN_PER_REQUEST]
+  - limitAmount: decimal
+  - limitPeriod: enum [YEAR, MONTH, QUARTER, REQUEST] (nullable)
+  - priority: integer
+  - isActive: boolean
+  - effectiveDate: date
+  - endDate: date (nullable)
+  - createdAt: datetime
+  - updatedAt: datetime
+
+relationships:
+  - appliesTo: LeaveType | LeaveClass
+
+constraints:
+  - "code must be unique"
+
+rules:
+  - "Either leaveTypeId OR leaveClassId must be set, not both"
+  - "limitAmount must be > 0"
+  - "If limitType is MAX_PER_YEAR, limitPeriod must be YEAR"
+
+examples:
+  - "Max per year: Cannot exceed 20 days per calendar year"
+  - "Max per request: Cannot request more than 10 consecutive days"
+  - "Min per request: Must request at least 0.5 days (half day minimum)"
+
+  # ---------------------------------------------------------------------------

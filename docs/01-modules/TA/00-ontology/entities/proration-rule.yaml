@@ -1,0 +1,42 @@
+entity: ProrationRule
+version: "2.0"
+layer: rules
+
+description: |
+  Defines how leave allocation is prorated for employees who start
+  mid-period or have part-time schedules. Can be bound to a specific
+  LeaveType or to an entire LeaveClass.
+
+attributes:
+  - id: string (UUID)
+  - code: string
+  - name: string
+  - description: string (nullable)
+  - leaveTypeId: string (UUID, nullable)
+  - leaveClassId: string (UUID, nullable)
+  - prorationType: enum [START_DATE, END_DATE, SCHEDULE, NONE]
+  - prorationMethod: enum [MONTHLY, DAILY, HOURLY]
+  - roundingRuleId: string (UUID, nullable) # Reference to rounding rule
+  - priority: integer
+  - isActive: boolean
+  - effectiveDate: date
+  - endDate: date (nullable)
+  - createdAt: datetime
+  - updatedAt: datetime
+
+relationships:
+  - appliesTo: LeaveType | LeaveClass
+  - usesRoundingRule: RoundingRule (nullable)
+
+constraints:
+  - "code must be unique"
+
+rules:
+  - "Either leaveTypeId OR leaveClassId must be set, not both"
+  - "If prorationType is not NONE, prorationMethod must be set"
+
+examples:
+  - "Start date proration: Employee starting July 1 gets 10 days (50% of 20)"
+  - "Schedule proration: Part-time (50%) employee gets 10 days (50% of 20)"
+
+  # ---------------------------------------------------------------------------

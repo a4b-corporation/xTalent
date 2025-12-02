@@ -1,0 +1,77 @@
+entity: Shift
+version: "1.0"
+layer: configuration
+
+description: |
+  Actual shift assignment for a worker on a specific date.
+  Created from ShiftPattern or ad-hoc.
+attributes:
+  id:
+    type: UUID
+    required: true
+  workerId:
+    type: UUID
+    required: true
+  shiftPatternId:
+    type: UUID
+    required: false
+    description: "Pattern used (null for ad-hoc shifts)"
+  shiftDate:
+    type: date
+    required: true
+    description: "Date of the shift"
+  startTime:
+    type: time
+    required: true
+  endTime:
+    type: time
+    required: true
+  duration:
+    type: decimal
+    required: true
+  breakDuration:
+    type: decimal
+    default: 0
+  status:
+    type: enum
+    values: [SCHEDULED, CONFIRMED, IN_PROGRESS, COMPLETED, CANCELLED, NO_SHOW]
+    required: true
+    default: SCHEDULED
+  location:
+    type: string
+    required: false
+    description: "Work location/site"
+  notes:
+    type: text
+    required: false
+  isOvertime:
+    type: boolean
+    default: false
+    description: "Whether this is overtime shift"
+  createdAt:
+    type: datetime
+    required: true
+  updatedAt:
+    type: datetime
+    required: true
+relationships:
+  assignedToWorker:
+    target: Worker
+    cardinality: "1"
+  basedOnPattern:
+    target: ShiftPattern
+    cardinality: "0..1"
+  hasAttendance:
+    target: AttendanceRecord
+    cardinality: "0..1"
+  hasSwapRequest:
+    target: ShiftSwapRequest
+    cardinality: "0..*"
+constraints:
+  - name: "no_overlap"
+    type: check
+    condition: "No overlapping shifts for same worker on same date"
+businessRules:
+  - "Cannot schedule shift in the past (except corrections)"
+  - "Worker must be active on shift date"
+  - "Shift duration must match pattern (if pattern-based)"

@@ -1,0 +1,51 @@
+entity: ShiftBid
+version: "1.0"
+layer: shift-management
+
+description: |
+  Worker bid for open/available shifts.
+attributes:
+  id:
+    type: UUID
+    required: true
+  workerId:
+    type: UUID
+    required: true
+  shiftId:
+    type: UUID
+    required: true
+  bidDate:
+    type: datetime
+    required: true
+  priority:
+    type: integer
+    required: false
+    description: "Worker's priority ranking"
+  reason:
+    type: text
+    required: false
+  status:
+    type: enum
+    values: [PENDING, ACCEPTED, REJECTED, EXPIRED]
+    default: PENDING
+  assignedAt:
+    type: datetime
+    required: false
+  expiresAt:
+    type: datetime
+    required: false
+  createdAt:
+    type: datetime
+    required: true
+relationships:
+  submittedBy:
+    target: Worker
+    cardinality: "1"
+  forShift:
+    target: Shift
+    cardinality: "1"
+businessRules:
+  - "Worker must be qualified for shift"
+  - "Cannot bid on overlapping shifts"
+  - "Bids expire after deadline"
+  - "Seniority may affect bid priority"

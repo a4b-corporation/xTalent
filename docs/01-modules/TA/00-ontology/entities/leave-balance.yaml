@@ -1,0 +1,55 @@
+entity: LeaveBalance
+version: "2.0"
+layer: transaction
+
+description: |
+  Current leave balance for a worker and leave type. Tracks allocated,
+  used, pending, and available amounts.
+
+attributes:
+  - id: string (UUID)
+  - workerId: string (UUID)
+  - leaveTypeId: string (UUID)
+  - periodProfileId: string (UUID)
+  - periodYear: integer # e.g., 2025
+  - periodStartDate: date
+  - periodEndDate: date
+  - totalAllocated: decimal # Total days/hours allocated for period
+  - accrued: decimal # Amount accrued so far (if using accrual)
+  - used: decimal # Amount already used (approved requests)
+  - pending: decimal # Amount in pending requests (reserved)
+  - reserved: decimal # Amount in active reservations
+  - carriedOver: decimal # Amount carried from previous period
+  - adjusted: decimal # Manual adjustments (+ or -)
+  - expired: decimal # Amount expired
+  - available: decimal # Computed: totalAllocated + carriedOver + adjusted - used - pending - expired
+  - lastAccrualDate: date (nullable)
+  - nextAccrualDate: date (nullable)
+  - createdAt: datetime
+  - updatedAt: datetime
+
+relationships:
+  - belongsToWorker: Worker
+  - hasLeaveType: LeaveType
+  - hasPeriodProfile: PeriodProfile
+  - hasMovements: LeaveMovement[]
+  - hasReservations: LeaveReservation[]
+  - hasRequests: LeaveRequest[]
+
+computed:
+  - "available = totalAllocated + carriedOver + adjusted - used - pending - expired"
+
+rules:
+  - "available must be >= 0 (unless overdraft allowed)"
+  - "used + pending cannot exceed totalAllocated + carriedOver + adjusted (unless overdraft)"
+  - "Balance is recalculated after every movement"
+
+constraints:
+  - "Unique combination of (workerId, leaveTypeId, periodYear)"
+
+validations:
+  - "totalAllocated: must be >= 0"
+  - "used: must be >= 0"
+  - "pending: must be >= 0"
+
+  # ---------------------------------------------------------------------------

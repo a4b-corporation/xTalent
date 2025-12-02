@@ -1,0 +1,66 @@
+entity: TimeException
+version: "1.0"
+layer: attendance-tracking
+
+description: |
+  Exceptions to normal attendance (late, early departure, missing punch).
+attributes:
+  id:
+    type: UUID
+    required: true
+  attendanceRecordId:
+    type: UUID
+    required: true
+  exceptionType:
+    type: enum
+    values: [LATE_IN, EARLY_OUT, MISSING_PUNCH_IN, MISSING_PUNCH_OUT, UNAUTHORIZED_ABSENCE, LONG_BREAK]
+    required: true
+  exceptionDate:
+    type: date
+    required: true
+  severity:
+    type: enum
+    values: [INFO, WARNING, VIOLATION]
+    default: WARNING
+  minutes:
+    type: integer
+    required: false
+    description: "Duration of exception in minutes"
+  reason:
+    type: text
+    required: false
+  isExcused:
+    type: boolean
+    default: false
+  excusedBy:
+    type: UUID
+    required: false
+  excusedAt:
+    type: datetime
+    required: false
+  excuseReason:
+    type: text
+    required: false
+  requiresAction:
+    type: boolean
+    default: true
+  actionTaken:
+    type: text
+    required: false
+  createdAt:
+    type: datetime
+    required: true
+  updatedAt:
+    type: datetime
+    required: true
+relationships:
+  belongsToAttendance:
+    target: AttendanceRecord
+    cardinality: "1"
+  excusedByManager:
+    target: Worker
+    cardinality: "0..1"
+businessRules:
+  - "Excused exceptions don't count toward violations"
+  - "Multiple violations may trigger disciplinary action"
+  - "Missing punches require correction within X days"

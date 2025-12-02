@@ -1,0 +1,37 @@
+entity: Trigger
+version: "2.0"
+layer: automation
+
+description: |
+  Automated triggers that execute actions based on events or schedules.
+  Used for notifications, balance updates, expirations, etc.
+
+attributes:
+  - id: string (UUID)
+  - triggerName: string
+  - triggerType: enum [EVENT_BASED, SCHEDULE_BASED, CONDITION_BASED]
+  - eventType: enum (nullable) # Which event triggers this
+  - scheduleExpression: string (nullable) # Cron expression for scheduled triggers
+  - condition: string (nullable) # JSON condition for condition-based triggers
+  - actionType: enum [SEND_NOTIFICATION, UPDATE_BALANCE, EXPIRE_BALANCE, 
+                      CREATE_MOVEMENT, SEND_REMINDER, CUSTOM]
+  - actionConfig: json # Action-specific configuration
+  - isActive: boolean
+  - lastExecutedAt: datetime (nullable)
+  - nextExecutionAt: datetime (nullable)
+  - createdAt: datetime
+  - updatedAt: datetime
+
+relationships:
+  - generatesEvents: Event[]
+
+rules:
+  - "If triggerType is EVENT_BASED, eventType must be set"
+  - "If triggerType is SCHEDULE_BASED, scheduleExpression must be set"
+  - "If triggerType is CONDITION_BASED, condition must be set"
+
+examples:
+  - "Event trigger: When LEAVE_REQUEST_SUBMITTED → Send email to manager"
+  - "Schedule trigger: Every month on 1st → Accrue monthly leave"
+  - "Schedule trigger: Every year on Dec 31 → Expire unused balances"
+  - "Condition trigger: When available balance < 5 → Send low balance alert"

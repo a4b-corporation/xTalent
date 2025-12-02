@@ -1,0 +1,55 @@
+entity: Schedule
+version: "1.0"
+layer: configuration
+
+description: |
+  Collection of shifts for a team/department over a period.
+  Represents the master schedule.
+attributes:
+  id:
+    type: UUID
+    required: true
+  code:
+    type: string
+    required: true
+    unique: true
+  name:
+    type: string
+    required: true
+  orgUnitId:
+    type: UUID
+    required: false
+    description: "Department/team this schedule applies to"
+  startDate:
+    type: date
+    required: true
+  endDate:
+    type: date
+    required: true
+  status:
+    type: enum
+    values: [DRAFT, PUBLISHED, ACTIVE, ARCHIVED]
+    default: DRAFT
+  publishedAt:
+    type: datetime
+    required: false
+  publishedBy:
+    type: UUID
+    required: false
+  createdAt:
+    type: datetime
+    required: true
+  updatedAt:
+    type: datetime
+    required: true
+relationships:
+  containsShifts:
+    target: Shift
+    cardinality: "0..*"
+  appliesTo:
+    target: OrgUnit
+    cardinality: "0..1"
+businessRules:
+  - "Cannot modify published schedule without creating new version"
+  - "Must publish before shifts become active"
+  - "End date must be after start date"

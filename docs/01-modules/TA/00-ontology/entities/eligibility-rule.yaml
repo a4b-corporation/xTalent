@@ -1,0 +1,48 @@
+entity: EligibilityRule
+version: "2.0"
+layer: rules
+
+description: |
+  Defines who is eligible for a leave type based on criteria like
+  tenure, employment type, location, etc. Can be bound to a specific
+  LeaveType or to an entire LeaveClass.
+
+attributes:
+  - id: string (UUID)
+  - code: string # Unique identifier for reusability
+  - name: string
+  - description: string (nullable)
+  - leaveTypeId: string (UUID, nullable) # If rule applies to specific type
+  - leaveClassId: string (UUID, nullable) # If rule applies to entire class
+  - ruleType: enum [TENURE, EMPLOYMENT_TYPE, LOCATION, DEPARTMENT, JOB_LEVEL, CUSTOM]
+  - operator: enum [EQUALS, NOT_EQUALS, GREATER_THAN, LESS_THAN, IN, NOT_IN, CONTAINS]
+  - value: string # JSON string for complex values
+  - minTenureMonths: integer (nullable) # For TENURE type
+  - employmentTypes: string[] (nullable) # For EMPLOYMENT_TYPE type
+  - locations: string[] (nullable) # For LOCATION type
+  - priority: integer # Higher priority rules override lower ones
+  - isActive: boolean
+  - effectiveDate: date
+  - endDate: date (nullable)
+  - createdAt: datetime
+  - updatedAt: datetime
+
+relationships:
+  - appliesTo: LeaveType | LeaveClass
+
+rules:
+  - "Either leaveTypeId OR leaveClassId must be set, not both"
+  - "If ruleType is TENURE, minTenureMonths must be set"
+  - "If ruleType is EMPLOYMENT_TYPE, employmentTypes must be set"
+  - "If ruleType is LOCATION, locations must be set"
+  - "Cannot have overlapping active rules for same leave type/class with same priority"
+
+constraints:
+  - "code must be unique"
+
+examples:
+  - "Tenure >= 6 months: minTenureMonths = 6"
+  - "Employment type in [FULL_TIME, PART_TIME]: employmentTypes = ['FULL_TIME', 'PART_TIME']"
+  - "Location = 'US': locations = ['US']"
+
+  # ---------------------------------------------------------------------------

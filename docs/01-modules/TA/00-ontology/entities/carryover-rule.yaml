@@ -1,0 +1,50 @@
+entity: CarryoverRule
+version: "2.0"
+layer: rules
+
+description: |
+  Defines rules for carrying over unused leave to the next period,
+  expiring unused leave, or resetting balances. Can be bound to a 
+  specific LeaveType or to an entire LeaveClass.
+
+attributes:
+  - id: string (UUID)
+  - code: string
+  - name: string
+  - description: string (nullable)
+  - leaveTypeId: string (UUID, nullable)
+  - leaveClassId: string (UUID, nullable)
+  - carryoverType: enum [NONE, UNLIMITED, LIMITED, EXPIRE_ALL, PAYOUT]
+  - maxCarryoverAmount: decimal (nullable) # Max days/hours to carry over
+  - carryoverExpiryMonths: integer (nullable) # Carried over balance expires after X months
+  - expiryDate: date (nullable) # Specific expiry date
+  - payoutRate: decimal (nullable) # Payout rate if carryoverType is PAYOUT
+  - resetPeriod: enum [YEAR, HIRE_ANNIVERSARY, CUSTOM] (nullable)
+  - resetDate: date (nullable) # For CUSTOM reset period
+  - priority: integer
+  - isActive: boolean
+  - effectiveDate: date
+  - endDate: date (nullable)
+  - createdAt: datetime
+  - updatedAt: datetime
+
+relationships:
+  - appliesTo: LeaveType | LeaveClass
+
+constraints:
+  - "code must be unique"
+
+rules:
+  - "Either leaveTypeId OR leaveClassId must be set, not both"
+  - "If carryoverType is LIMITED, maxCarryoverAmount must be set"
+  - "If carryoverType is PAYOUT, payoutRate must be set"
+  - "If carryoverExpiryMonths is set, it must be > 0"
+  - "If resetPeriod is CUSTOM, resetDate must be set"
+
+examples:
+  - "Unlimited carryover: All unused days carry to next year"
+  - "Limited carryover: Max 5 days carry over, rest expires"
+  - "Expire all: All unused days expire on Dec 31"
+  - "Payout: Unused days paid out at 100% of daily rate"
+
+  # ---------------------------------------------------------------------------

@@ -1,0 +1,2219 @@
+# Time & Absence Module (TA) - Ontology
+# Version: 2.0
+# Last Updated: 2025-12-02
+# Module: Time & Absence (TA)
+# Description: Comprehensive ontology for time tracking, attendance, and absence management
+
+module: TimeAndAbsence
+code: TA
+description: "Time & Absence module manages employee work time, attendance tracking, \n  leave requests,\
+  \ and absence management. It includes shift scheduling, time capture,\n  timesheet processing, leave\
+  \ balances, and approval workflows."
+sub_modules:
+  TimeAttendance:
+    description: Time tracking and attendance management
+    entities:
+    - TimeSegment
+    - ShiftDefinition
+    - ShiftSegment
+    - DayModel
+    - PatternTemplate
+    - PatternDay
+    - ScheduleAssignment
+    - GeneratedRoster
+    - ScheduleOverride
+    - AttendanceRecord
+    - HolidayCalendar
+    - TimeException
+    - ClockEvent
+    - Timesheet
+    - TimesheetEntry
+  Absence:
+    description: Leave and absence management
+    entities:
+    - LeaveClass
+    - LeaveType
+    - PeriodProfile
+    - EligibilityRule
+    - ValidationRule
+    - AccrualRule
+    - CarryoverRule
+    - LimitRule
+    - OverdraftRule
+    - ProrationRule
+    - RoundingRule
+    - Schedule
+    - Holiday
+    - LeaveRequest
+    - LeaveReservation
+    - LeaveMovement
+    - LeaveBalance
+    - Approval
+    - Event
+    - Trigger
+entities:
+  TimeSegment:
+    description: "Atomic building block of work time. Represents smallest unit that can\nbe scheduled\
+      \ (work period, break, meal, transfer between locations).\nCan be defined with relative timing (offset\
+      \ from shift start) or \nabsolute timing (fixed clock time).\n"
+    attributes:
+      id:
+        type: UUID
+        required: true
+        description: Unique identifier
+      code:
+        type: string
+        required: true
+        unique: true
+        maxLength: 50
+        description: Unique code (e.g., WORK_4H, LUNCH_1H, BREAK_15M)
+      name:
+        type: string
+        required: true
+        maxLength: 100
+        description: Display name
+      segmentType:
+        type: enum
+        values:
+        - WORK
+        - BREAK
+        - MEAL
+        - TRANSFER
+        required: true
+        description: Type of time segment
+      startOffsetMinutes:
+        type: integer
+        required: false
+        description: Minutes from shift start (for relative timing)
+      endOffsetMinutes:
+        type: integer
+        required: false
+        description: Minutes from shift start (for relative timing)
+      startTime:
+        type: time
+        required: false
+        description: Absolute start time (alternative to offset)
+      endTime:
+        type: time
+        required: false
+        description: Absolute end time (alternative to offset)
+      durationMinutes:
+        type: integer
+        required: true
+        description: Duration in minutes
+      isPaid:
+        type: boolean
+        default: false
+        description: Whether this segment is paid time
+      isMandatory:
+        type: boolean
+        default: true
+        description: Whether segment must be taken
+      costCenterCode:
+        type: string
+        required: false
+        maxLength: 50
+        description: Cost center for accounting
+      jobCode:
+        type: string
+        required: false
+        maxLength: 50
+        description: Job/position code
+      premiumCode:
+        type: string
+        required: false
+        maxLength: 50
+        description: Premium pay code (night shift, hazard, etc.)
+      isActive:
+        type: boolean
+        default: true
+      effectiveDate:
+        type: date
+        required: true
+      endDate:
+        type: date
+        required: false
+      createdAt:
+        type: datetime
+        required: true
+      updatedAt:
+        type: datetime
+        required: true
+    relationships:
+      usedInShifts:
+        target: ShiftSegment
+        cardinality: 0..*
+        description: Shifts that use this segment
+    constraints:
+    - name: timing_method
+      type: check
+      condition: (startOffsetMinutes IS NOT NULL AND endOffsetMinutes IS NOT NULL) OR (startTime IS NOT
+        NULL AND endTime IS NOT NULL)
+      description: Must use either offset OR absolute time, not both
+    - name: unique_code
+      type: unique
+      fields:
+      - code
+    businessRules:
+    - Segment can use relative (offset) or absolute (time) positioning
+    - WORK segments are typically paid, BREAK/MEAL are unpaid
+    - TRANSFER segments track time moving between work locations
+    - Duration must match calculated time from start to end
+  ShiftDefinition:
+    description: 'Composition of time segments forming a complete shift.
+
+      Three types: ELAPSED (fixed schedule), PUNCH (flexible clock-based),
+
+      FLEX (hybrid). Defines the work pattern but not the assignment.
+
+      '
+    attributes:
+      id:
+        type: UUID
+        required: true
+      code:
+        type: string
+        required: true
+        unique: true
+        maxLength: 50
+        description: Shift code (e.g., DAY_SHIFT, NIGHT_SHIFT, SPLIT_AM)
+      name:
+        type: string
+        required: true
+        maxLength: 100
+      shiftType:
+        type: enum
+        values:
+        - ELAPSED
+        - PUNCH
+        - FLEX
+        required: true
+        description: Type of shift scheduling
+      referenceStartTime:
+        type: time
+        required: false
+        description: Reference start time (ELAPSED type)
+      referenceEndTime:
+        type: time
+        required: false
+        description: Reference end time (ELAPSED type)
+      totalWorkHours:
+        type: decimal
+        required: true
+        description: Total work time in hours
+      totalBreakHours:
+        type: decimal
+        default: 0
+        description: Total break time in hours
+      totalPaidHours:
+        type: decimal
+        required: true
+        description: Total paid time (work + paid breaks)
+      crossMidnight:
+        type: boolean
+        default: false
+        description: Whether shift crosses midnight
+      graceInMinutes:
+        type: integer
+        default: 0
+        description: Grace period for late clock-in
+      graceOutMinutes:
+        type: integer
+        default: 0
+        description: Grace period for early clock-out
+      roundingIntervalMinutes:
+        type: integer
+        default: 15
+        description: Rounding interval (e.g., 15 min)
+      roundingMode:
+        type: enum
+        values:
+        - NEAREST
+        - UP
+        - DOWN
+        default: NEAREST
+        description: How to round clock times
+      color:
+        type: string
+        required: false
+        maxLength: 7
+        description: 'UI color (hex code, e.g., #FF5733)'
+      isActive:
+        type: boolean
+        default: true
+      effectiveDate:
+        type: date
+        required: true
+      endDate:
+        type: date
+        required: false
+      createdAt:
+        type: datetime
+        required: true
+      updatedAt:
+        type: datetime
+        required: true
+    relationships:
+      composedOfSegments:
+        target: ShiftSegment
+        cardinality: 1..*
+        description: Ordered list of time segments
+      usedInDayModels:
+        target: DayModel
+        cardinality: 0..*
+        description: Day models using this shift
+      generatesRosterEntries:
+        target: GeneratedRoster
+        cardinality: 0..*
+    constraints:
+    - name: unique_code
+      type: unique
+      fields:
+      - code
+    - name: valid_shift_type
+      type: check
+      condition: shiftType IN ('ELAPSED', 'PUNCH', 'FLEX')
+    businessRules:
+    - 'ELAPSED: Fixed schedule, segments define exact timing'
+    - 'PUNCH: Flexible, workers clock in/out, grace periods apply'
+    - 'FLEX: Hybrid, core hours required, flexible start/end'
+    - Total hours = sum of segment durations
+    - Paid hours = sum of paid segment durations
+  ShiftSegment:
+    description: 'Junction table linking ShiftDefinition to TimeSegment with ordering.
+
+      Allows override of segment properties at shift level.
+
+      '
+    attributes:
+      shiftId:
+        type: UUID
+        required: true
+      segmentId:
+        type: UUID
+        required: true
+      sequenceOrder:
+        type: integer
+        required: true
+        description: Order of segment in shift (1, 2, 3...)
+      overrideDurationMinutes:
+        type: integer
+        required: false
+        description: Override segment duration for this shift
+      overrideIsPaid:
+        type: boolean
+        required: false
+        description: Override paid flag for this shift
+    relationships:
+      belongsToShift:
+        target: ShiftDefinition
+        cardinality: '1'
+      usesSegment:
+        target: TimeSegment
+        cardinality: '1'
+    constraints:
+    - name: pk_shift_segment
+      type: primary_key
+      fields:
+      - shiftId
+      - segmentId
+    - name: unique_sequence
+      type: unique
+      fields:
+      - shiftId
+      - sequenceOrder
+    businessRules:
+    - Segments must be ordered sequentially
+    - Override values take precedence over segment defaults
+    - Cannot have gaps in sequence order
+  DayModel:
+    description: 'Represents one day in a work schedule. Links to a shift definition
+
+      for work days, or marks day as OFF/HOLIDAY. Handles variant selection
+
+      for holiday classes.
+
+      '
+    attributes:
+      id:
+        type: UUID
+        required: true
+      code:
+        type: string
+        required: true
+        unique: true
+        maxLength: 50
+        description: Day model code (e.g., WORK_DAY, OFF_DAY, HOLIDAY)
+      name:
+        type: string
+        required: true
+        maxLength: 100
+      dayType:
+        type: enum
+        values:
+        - WORK
+        - false
+        - HOLIDAY
+        - HALF_DAY
+        required: true
+        description: Type of day
+      shiftId:
+        type: UUID
+        required: false
+        description: Shift for this day (null for OFF/HOLIDAY)
+      variantSelectionRule:
+        type: jsonb
+        required: false
+        description: Rules for selecting shift variant based on holiday class
+      isHalfDay:
+        type: boolean
+        default: false
+      halfDayPeriod:
+        type: enum
+        values:
+        - MORNING
+        - AFTERNOON
+        required: false
+        description: Which half of day (if isHalfDay = true)
+      isActive:
+        type: boolean
+        default: true
+      effectiveDate:
+        type: date
+        required: true
+      endDate:
+        type: date
+        required: false
+      createdAt:
+        type: datetime
+        required: true
+      updatedAt:
+        type: datetime
+        required: true
+    relationships:
+      usesShift:
+        target: ShiftDefinition
+        cardinality: 0..1
+        description: Shift definition (null for non-work days)
+      usedInPatterns:
+        target: PatternDay
+        cardinality: 0..*
+        description: Patterns using this day model
+    constraints:
+    - name: unique_code
+      type: unique
+      fields:
+      - code
+    - name: shift_required_for_work
+      type: check
+      condition: dayType = 'WORK' IMPLIES shiftId IS NOT NULL
+    businessRules:
+    - WORK days must have a shift
+    - OFF/HOLIDAY days have null shift
+    - HALF_DAY requires halfDayPeriod specification
+    - Variant rules handle holiday class substitutions
+  PatternTemplate:
+    description: 'Defines a repeating cycle of day models. Represents work patterns like
+
+      5x8 (5 days work, 8 hours), 4on-4off, 14/14 rotation, etc.
+
+      '
+    attributes:
+      id:
+        type: UUID
+        required: true
+      code:
+        type: string
+        required: true
+        unique: true
+        maxLength: 50
+        description: Pattern code (e.g., 5X8, 4ON4OFF, 14_14_ROTATION)
+      name:
+        type: string
+        required: true
+        maxLength: 100
+      description:
+        type: text
+        required: false
+      cycleLengthDays:
+        type: integer
+        required: true
+        description: Number of days in pattern cycle (7, 14, 21, 28...)
+      rotationType:
+        type: enum
+        values:
+        - FIXED
+        - ROTATING
+        required: true
+        description: Whether pattern rotates or is fixed
+      patternJson:
+        type: jsonb
+        required: false
+        description: 'JSON array of day models: [{day:1,dayModelId:uuid},...]'
+      isActive:
+        type: boolean
+        default: true
+      effectiveDate:
+        type: date
+        required: true
+      endDate:
+        type: date
+        required: false
+      createdAt:
+        type: datetime
+        required: true
+      updatedAt:
+        type: datetime
+        required: true
+    relationships:
+      composedOfDays:
+        target: PatternDay
+        cardinality: 1..*
+        description: Ordered sequence of day models
+      usedInScheduleRules:
+        target: ScheduleAssignment
+        cardinality: 0..*
+    constraints:
+    - name: unique_code
+      type: unique
+      fields:
+      - code
+    - name: positive_cycle
+      type: check
+      condition: cycleLengthDays > 0
+    businessRules:
+    - Cycle repeats after cycleLengthDays
+    - FIXED patterns don't rotate (same pattern for all groups)
+    - ROTATING patterns shift by offset for different crews
+    - Pattern must have at least one day model
+  PatternDay:
+    description: 'Junction table defining which day model applies to each day in pattern cycle.
+
+      '
+    attributes:
+      patternId:
+        type: UUID
+        required: true
+      dayNumber:
+        type: integer
+        required: true
+        description: Day position in cycle (1, 2, 3... up to cycleLengthDays)
+      dayModelId:
+        type: UUID
+        required: true
+        description: Day model for this day in pattern
+    relationships:
+      belongsToPattern:
+        target: PatternTemplate
+        cardinality: '1'
+      usesDayModel:
+        target: DayModel
+        cardinality: '1'
+    constraints:
+    - name: pk_pattern_day
+      type: primary_key
+      fields:
+      - patternId
+      - dayNumber
+    - name: valid_day_number
+      type: check
+      condition: dayNumber >= 1 AND dayNumber <= (SELECT cycleLengthDays FROM PatternTemplate WHERE id
+        = patternId)
+    businessRules:
+    - Day number must be within pattern cycle length
+    - Each day in cycle must have exactly one day model
+    - Day numbers must be sequential (no gaps)
+  ScheduleAssignment:
+    description: 'Combines pattern with calendar and rotation offset to define WHO gets
+
+      WHICH pattern. This is the rule that generates roster entries.
+
+      '
+    attributes:
+      id:
+        type: UUID
+        required: true
+      code:
+        type: string
+        required: true
+        unique: true
+        maxLength: 50
+        description: Rule code (e.g., TEAM_A_5X8, CREW_B_ROTATION)
+      name:
+        type: string
+        required: true
+        maxLength: 100
+      patternId:
+        type: UUID
+        required: true
+        description: Pattern template to apply
+      holidayCalendarId:
+        type: UUID
+        required: false
+        description: Holiday calendar for this rule
+      startReferenceDate:
+        type: date
+        required: true
+        description: Anchor point for pattern start (e.g., 2025-01-01)
+      offsetDays:
+        type: integer
+        default: 0
+        description: Offset for rotation groups (Crew A=0, B=7, C=14...)
+      employeeId:
+        type: UUID
+        required: false
+        description: Specific employee (if individual assignment)
+      employeeGroupId:
+        type: UUID
+        required: false
+        description: Employee group/team/crew
+      positionId:
+        type: UUID
+        required: false
+        description: Position/role
+      effectiveStart:
+        type: date
+        required: true
+      effectiveEnd:
+        type: date
+        required: false
+      createdAt:
+        type: datetime
+        required: true
+      updatedAt:
+        type: datetime
+        required: true
+    relationships:
+      usesPattern:
+        target: PatternTemplate
+        cardinality: '1'
+      usesCalendar:
+        target: HolidayCalendar
+        cardinality: 0..1
+      assignedToEmployee:
+        target: Worker
+        cardinality: 0..1
+      assignedToGroup:
+        target: OrgUnit
+        cardinality: 0..1
+      generatesRoster:
+        target: GeneratedRoster
+        cardinality: 0..*
+    constraints:
+    - name: unique_code
+      type: unique
+      fields:
+      - code
+    - name: assignment_target
+      type: check
+      condition: employeeId IS NOT NULL OR employeeGroupId IS NOT NULL OR positionId IS NOT NULL
+      description: Must assign to at least one target
+    businessRules:
+    - 'Offset enables rotation: Crew A starts day 1, Crew B starts day 8, etc.'
+    - Holiday calendar determines which days are holidays
+    - Can assign to individual, group, or position
+    - Effective dates control when rule is active
+    - Multiple rules can apply to same employee (priority resolution needed)
+  GeneratedRoster:
+    description: 'Materialized view of schedule assignments. One row per employee per day.
+
+      Generated from schedule rules + pattern + calendar. Tracks full lineage
+
+      back to source rule and supports overrides.
+
+      '
+    attributes:
+      employeeId:
+        type: UUID
+        required: true
+      workDate:
+        type: date
+        required: true
+      scheduleRuleId:
+        type: UUID
+        required: true
+        description: Schedule rule that generated this entry
+      patternId:
+        type: UUID
+        required: true
+        description: Pattern used
+      dayModelId:
+        type: UUID
+        required: true
+        description: Day model for this date
+      shiftId:
+        type: UUID
+        required: false
+        description: Shift (null for OFF/HOLIDAY)
+      overrideId:
+        type: UUID
+        required: false
+        description: Schedule override (if any)
+      isOverride:
+        type: boolean
+        default: false
+        description: Whether this entry is overridden
+      isHoliday:
+        type: boolean
+        default: false
+      holidayId:
+        type: UUID
+        required: false
+      statusCode:
+        type: enum
+        values:
+        - SCHEDULED
+        - CONFIRMED
+        - COMPLETED
+        - CANCELLED
+        default: SCHEDULED
+      metadata:
+        type: jsonb
+        required: false
+    relationships:
+      assignedToEmployee:
+        target: Worker
+        cardinality: '1'
+      generatedByRule:
+        target: ScheduleAssignment
+        cardinality: '1'
+      basedOnPattern:
+        target: PatternTemplate
+        cardinality: '1'
+      usesDayModel:
+        target: DayModel
+        cardinality: '1'
+      usesShift:
+        target: ShiftDefinition
+        cardinality: 0..1
+      hasOverride:
+        target: ScheduleOverride
+        cardinality: 0..1
+      hasAttendance:
+        target: AttendanceRecord
+        cardinality: 0..1
+    constraints:
+    - name: unique_employee_date
+      type: unique
+      fields:
+      - employeeId
+      - workDate
+    businessRules:
+    - Generated by roster generation process
+    - Immutable once generated (use override for changes)
+    - Full lineage tracking for auditability
+    - One entry per employee per day
+  ScheduleOverride:
+    description: 'Ad-hoc changes to generated roster. Overrides pattern-based schedule
+
+      for specific dates/employees.
+
+      '
+    attributes:
+      id:
+        type: UUID
+        required: true
+      employeeId:
+        type: UUID
+        required: false
+      employeeGroupId:
+        type: UUID
+        required: false
+      workDate:
+        type: date
+        required: true
+      shiftId:
+        type: UUID
+        required: false
+      dayTypeOverride:
+        type: enum
+        values:
+        - false
+        - HOLIDAY
+        required: false
+      reasonCode:
+        type: string
+        required: true
+        maxLength: 50
+      notes:
+        type: text
+        required: false
+      createdBy:
+        type: UUID
+        required: true
+      createdAt:
+        type: datetime
+        required: true
+    relationships:
+      overridesRoster:
+        target: GeneratedRoster
+        cardinality: 1..*
+      createdByUser:
+        target: Worker
+        cardinality: '1'
+    businessRules:
+    - Override takes precedence over pattern-based schedule
+    - Requires reason code for audit
+    - Can override individual or group
+  AttendanceRecord:
+    description: 'Daily attendance record tracking actual time worked vs scheduled.
+
+      '
+    attributes:
+      id:
+        type: UUID
+        required: true
+      workerId:
+        type: UUID
+        required: true
+      shiftId:
+        type: UUID
+        required: false
+      attendanceDate:
+        type: date
+        required: true
+      clockInTime:
+        type: datetime
+        required: false
+      clockOutTime:
+        type: datetime
+        required: false
+      scheduledStartTime:
+        type: time
+        required: false
+      scheduledEndTime:
+        type: time
+        required: false
+      actualHours:
+        type: decimal
+        required: false
+      scheduledHours:
+        type: decimal
+        required: false
+      status:
+        type: enum
+        values:
+        - PRESENT
+        - ABSENT
+        - LATE
+        - EARLY_DEPARTURE
+        - HALF_DAY
+        - ON_LEAVE
+        required: true
+      lateMinutes:
+        type: integer
+        default: 0
+      earlyDepartureMinutes:
+        type: integer
+        default: 0
+      location:
+        type: string
+        required: false
+      deviceId:
+        type: string
+        required: false
+      notes:
+        type: text
+        required: false
+      isApproved:
+        type: boolean
+        default: false
+      approvedBy:
+        type: UUID
+        required: false
+      approvedAt:
+        type: datetime
+        required: false
+      createdAt:
+        type: datetime
+        required: true
+      updatedAt:
+        type: datetime
+        required: true
+    relationships:
+      belongsToWorker:
+        target: Worker
+        cardinality: '1'
+      relatedToShift:
+        target: ShiftDefinition
+        cardinality: 0..1
+      hasExceptions:
+        target: TimeException
+        cardinality: 0..*
+    constraints:
+    - name: unique_worker_date
+      type: unique
+      fields:
+      - workerId
+      - attendanceDate
+  
+  HolidayCalendar:
+    description: |\
+      Calendar defining holidays and non-working days for different regions, countries,
+      or organizational groups. Used by ScheduleAssignment to determine which days are holidays.
+    attributes:
+      id:
+        type: UUID
+        required: true
+        description: "Unique identifier"
+      code:
+        type: string
+        required: true
+        maxLength: 50
+        description: "Calendar code (e.g., VN_NATIONAL, US_FEDERAL, HCMC_LOCAL)"
+      name:
+        type: string
+        required: true
+        maxLength: 150
+        description: "Calendar name"
+      description:
+        type: text
+        required: false
+        description: "Calendar description"
+      country_code:
+        type: string
+        required: false
+        maxLength: 2
+        description: "ISO 3166-1 alpha-2 country code"
+      region_code:
+        type: string
+        required: false
+        maxLength: 50
+        description: "Region/state/province code"
+      is_active:
+        type: boolean
+        required: true
+        default: true
+        description: "Whether calendar is active"
+      effective_start_date:
+        type: date
+        required: true
+        description: "Start date of this calendar version"
+      effective_end_date:
+        type: date
+        required: false
+        description: "End date of this version (NULL = current)"
+      is_current_flag:
+        type: boolean
+        required: true
+        default: true
+        description: "Flag indicating current version"
+      created_at:
+        type: datetime
+        required: true
+      created_by:
+        type: UUID
+        required: true
+        description: "User who created this calendar"
+      updated_at:
+        type: datetime
+        required: true
+      updated_by:
+        type: UUID
+        required: false
+        description: "User who last updated this calendar"
+    relationships:
+      hasHolidays:
+        target: Holiday
+        cardinality: 0..*
+        description: "Holidays defined in this calendar"
+      usedByScheduleRules:
+        target: ScheduleAssignment
+        cardinality: 0..*
+        description: "Schedule assignments using this calendar"
+    constraints:
+      - name: uq_calendar_code
+        type: unique
+        fields: [code]
+      - name: uq_calendar_current
+        type: unique
+        fields: [code, is_current_flag]
+        where: "is_current_flag = TRUE"
+    businessRules:
+      - "One calendar can be shared by multiple schedule assignments"
+      - "Holidays are defined per calendar"
+      - "SCD Type 2 for historical tracking of calendar changes"
+      - "Country and region codes help organize calendars"
+    indexes:
+      - name: "pk_holiday_calendar"
+        columns: [id]
+        type: "primary_key"
+      - name: "idx_calendar_code_current"
+        columns: [code, is_current_flag]
+        where: "is_current_flag = TRUE"
+      - name: "idx_calendar_country"
+        columns: [country_code, region_code]
+  
+  TimeException:
+    description: |\
+      Exceptions to normal attendance patterns such as late arrival, early departure,
+      missing punch, unauthorized absence, etc. Automatically created when attendance
+      deviates from schedule or manually created by managers.
+    attributes:
+      id:
+        type: UUID
+        required: true
+        description: "Unique identifier"
+      attendance_record_id:
+        type: UUID
+        required: true
+        description: "Related attendance record"
+      exception_type:
+        type: enum
+        values: [LATE, EARLY_DEPARTURE, MISSING_PUNCH_IN, MISSING_PUNCH_OUT, OVERTIME, UNAUTHORIZED_ABSENCE, LONG_BREAK]
+        required: true
+        description: "Type of exception"
+      severity:
+        type: enum
+        values: [INFO, WARNING, ERROR]
+        required: true
+        description: "Severity level for reporting"
+      minutes:
+        type: integer
+        required: false
+        description: "Duration of exception in minutes (e.g., 15 min late)"
+      reason_code:
+        type: string
+        required: false
+        maxLength: 50
+        description: "Reason code if provided"
+      notes:
+        type: text
+        required: false
+        description: "Additional notes or explanation"
+      is_excused:
+        type: boolean
+        required: true
+        default: false
+        description: "Whether exception has been excused"
+      excused_by:
+        type: UUID
+        required: false
+        description: "Manager who excused the exception"
+      excused_at:
+        type: datetime
+        required: false
+        description: "When exception was excused"
+      excused_reason:
+        type: text
+        required: false
+        description: "Reason for excusing"
+      created_at:
+        type: datetime
+        required: true
+      created_by:
+        type: UUID
+        required: true
+        description: "User/system that created this exception"
+    relationships:
+      belongsToAttendance:
+        target: AttendanceRecord
+        cardinality: "1"
+        description: "Attendance record this exception relates to"
+      excusedByManager:
+        target: Worker
+        cardinality: "0..1"
+        description: "Manager who excused this exception"
+    constraints:
+      - name: fk_exception_attendance
+        type: foreign_key
+        fields: [attendance_record_id]
+        references: AttendanceRecord(id)
+    businessRules:
+      - "Automatically created when attendance deviates from schedule"
+      - "Can be excused by manager to waive policy violations"
+      - "Used for attendance policy enforcement and reporting"
+      - "Severity determines notification and escalation rules"
+      - "Minutes field required for time-based exceptions (LATE, EARLY_DEPARTURE)"
+    indexes:
+      - name: "pk_time_exception"
+        columns: [id]
+        type: "primary_key"
+      - name: "idx_exception_attendance"
+        columns: [attendance_record_id]
+      - name: "idx_exception_type_severity"
+        columns: [exception_type, severity]
+  
+  ClockEvent:
+    description: |\
+      Individual clock-in/out events captured from time clocks, biometric devices,
+      RFID readers, or mobile apps. Raw events are immutable and processed into
+      AttendanceRecord by the timesheet engine.
+    attributes:
+      id:
+        type: UUID
+        required: true
+        description: "Unique identifier"
+      worker_id:
+        type: UUID
+        required: true
+        description: "Worker who clocked in/out"
+      event_type:
+        type: enum
+        values: [CLOCK_IN, CLOCK_OUT, BREAK_START, BREAK_END, MEAL_START, MEAL_END]
+        required: true
+        description: "Type of clock event"
+      event_timestamp:
+        type: datetime
+        required: true
+        description: "Exact timestamp of the event"
+      device_id:
+        type: string
+        required: false
+        maxLength: 100
+        description: "Device identifier (terminal ID, phone ID, etc.)"
+      device_type:
+        type: enum
+        values: [BIOMETRIC, RFID, MOBILE_APP, WEB, MANUAL, KIOSK]
+        required: true
+        description: "Type of device used"
+      location_latitude:
+        type: decimal
+        required: false
+        precision: [10, 7]
+        description: "GPS latitude (for mobile app)"
+      location_longitude:
+        type: decimal
+        required: false
+        precision: [10, 7]
+        description: "GPS longitude (for mobile app)"
+      location_accuracy:
+        type: integer
+        required: false
+        description: "GPS accuracy in meters"
+      photo_url:
+        type: string
+        required: false
+        maxLength: 500
+        description: "URL to captured photo (if applicable)"
+      is_valid:
+        type: boolean
+        required: true
+        default: true
+        description: "Whether event passed validation"
+      validation_status:
+        type: enum
+        values: [VALID, DUPLICATE, OUT_OF_RANGE, SUSPICIOUS, INVALID_LOCATION]
+        required: true
+        default: VALID
+        description: "Validation result"
+      validation_message:
+        type: text
+        required: false
+        description: "Validation error or warning message"
+      processed:
+        type: boolean
+        required: true
+        default: false
+        description: "Whether event has been processed into attendance"
+      attendance_record_id:
+        type: UUID
+        required: false
+        description: "Attendance record this event was processed into"
+      created_at:
+        type: datetime
+        required: true
+        description: "When event was captured"
+    relationships:
+      belongsToWorker:
+        target: Worker
+        cardinality: "1"
+        description: "Worker who created this event"
+      processedIntoAttendance:
+        target: AttendanceRecord
+        cardinality: "0..1"
+        description: "Attendance record created from this event"
+    constraints:
+      - name: fk_clock_event_worker
+        type: foreign_key
+        fields: [worker_id]
+        references: Worker(id)
+    businessRules:
+      - "Raw clock events are immutable once created"
+      - "Processed into AttendanceRecord by timesheet engine"
+      - "Duplicate detection based on timestamp proximity (e.g., within 1 minute)"
+      - "GPS validation for mobile app punches (geofencing)"
+      - "Photo capture for biometric verification (optional)"
+      - "Out-of-range events flagged if outside allowed time window"
+      - "Manual events require supervisor approval"
+    indexes:
+      - name: "pk_clock_event"
+        columns: [id]
+        type: "primary_key"
+      - name: "idx_clock_worker_timestamp"
+        columns: [worker_id, event_timestamp]
+      - name: "idx_clock_processed"
+        columns: [processed, event_timestamp]
+      - name: "idx_clock_validation"
+        columns: [validation_status, is_valid]
+  
+  Timesheet:
+    description: |\
+      Aggregated timesheet for a worker for a specific period (weekly, bi-weekly, monthly).
+      Contains summary totals and references to individual daily entries. Supports approval
+      workflow and locking for payroll processing.
+    attributes:
+      id:
+        type: UUID
+        required: true
+        description: "Unique identifier"
+      worker_id:
+        type: UUID
+        required: true
+        description: "Worker this timesheet belongs to"
+      period_start_date:
+        type: date
+        required: true
+        description: "Start date of timesheet period"
+      period_end_date:
+        type: date
+        required: true
+        description: "End date of timesheet period"
+      total_scheduled_hours:
+        type: decimal
+        required: true
+        precision: [8, 2]
+        description: "Total scheduled hours for period"
+      total_worked_hours:
+        type: decimal
+        required: true
+        precision: [8, 2]
+        description: "Total actual worked hours"
+      total_regular_hours:
+        type: decimal
+        required: true
+        precision: [8, 2]
+        description: "Regular hours (up to standard)"
+      total_overtime_hours:
+        type: decimal
+        required: true
+        precision: [8, 2]
+        description: "Overtime hours (beyond standard)"
+      total_break_hours:
+        type: decimal
+        required: true
+        precision: [8, 2]
+        description: "Total break time"
+      total_paid_hours:
+        type: decimal
+        required: true
+        precision: [8, 2]
+        description: "Total paid hours (regular + OT)"
+      status:
+        type: enum
+        values: [DRAFT, SUBMITTED, APPROVED, REJECTED, LOCKED, PAID]
+        required: true
+        default: DRAFT
+        description: "Timesheet status"
+      submitted_at:
+        type: datetime
+        required: false
+        description: "When timesheet was submitted"
+      submitted_by:
+        type: UUID
+        required: false
+        description: "Who submitted (worker or delegate)"
+      approved_at:
+        type: datetime
+        required: false
+        description: "When timesheet was approved"
+      approved_by:
+        type: UUID
+        required: false
+        description: "Manager who approved"
+      rejected_at:
+        type: datetime
+        required: false
+        description: "When timesheet was rejected"
+      rejected_by:
+        type: UUID
+        required: false
+        description: "Who rejected"
+      rejection_reason:
+        type: text
+        required: false
+        description: "Reason for rejection"
+      locked_at:
+        type: datetime
+        required: false
+        description: "When timesheet was locked for payroll"
+      locked_by:
+        type: UUID
+        required: false
+        description: "Who locked the timesheet"
+      created_at:
+        type: datetime
+        required: true
+      created_by:
+        type: UUID
+        required: true
+      updated_at:
+        type: datetime
+        required: true
+      updated_by:
+        type: UUID
+        required: false
+    relationships:
+      belongsToWorker:
+        target: Worker
+        cardinality: "1"
+        description: "Worker this timesheet belongs to"
+      hasEntries:
+        target: TimesheetEntry
+        cardinality: "1..*"
+        description: "Daily entries in this timesheet"
+      approvedByManager:
+        target: Worker
+        cardinality: "0..1"
+        description: "Manager who approved"
+    constraints:
+      - name: uq_timesheet_worker_period
+        type: unique
+        fields: [worker_id, period_start_date, period_end_date]
+      - name: chk_timesheet_dates
+        type: check
+        condition: "period_end_date >= period_start_date"
+    businessRules:
+      - "One timesheet per worker per period"
+      - "Cannot modify after locked status"
+      - "Totals calculated from entries (can be cached)"
+      - "Submitted for approval workflow"
+      - "Locked before payroll processing"
+      - "Rejection requires reason and returns to DRAFT"
+      - "PAID status set after payroll run completes"
+    indexes:
+      - name: "pk_timesheet"
+        columns: [id]
+        type: "primary_key"
+      - name: "idx_timesheet_worker_period"
+        columns: [worker_id, period_start_date, period_end_date]
+        unique: true
+      - name: "idx_timesheet_status"
+        columns: [status, period_end_date]
+  
+  TimesheetEntry:
+    description: |\
+      Individual day entry in a timesheet. One entry per work date. Contains
+      hours breakdown and can reference the underlying attendance record.
+      Supports manual adjustments and cost center allocation.
+    attributes:
+      id:
+        type: UUID
+        required: true
+        description: "Unique identifier"
+      timesheet_id:
+        type: UUID
+        required: true
+        description: "Parent timesheet"
+      work_date:
+        type: date
+        required: true
+        description: "Date of this entry"
+      attendance_record_id:
+        type: UUID
+        required: false
+        description: "Source attendance record (if from actual attendance)"
+      scheduled_hours:
+        type: decimal
+        required: true
+        precision: [5, 2]
+        description: "Scheduled hours for this date"
+      worked_hours:
+        type: decimal
+        required: true
+        precision: [5, 2]
+        description: "Actual worked hours"
+      regular_hours:
+        type: decimal
+        required: true
+        precision: [5, 2]
+        description: "Regular hours"
+      overtime_hours:
+        type: decimal
+        required: true
+        precision: [5, 2]
+        description: "Overtime hours"
+      break_hours:
+        type: decimal
+        required: true
+        precision: [5, 2]
+        description: "Break hours"
+      paid_hours:
+        type: decimal
+        required: true
+        precision: [5, 2]
+        description: "Total paid hours"
+      cost_center_code:
+        type: string
+        required: false
+        maxLength: 50
+        description: "Cost center for allocation"
+      job_code:
+        type: string
+        required: false
+        maxLength: 50
+        description: "Job code for this work"
+      project_code:
+        type: string
+        required: false
+        maxLength: 50
+        description: "Project code (if applicable)"
+      notes:
+        type: text
+        required: false
+        description: "Notes or comments for this day"
+      is_manual_entry:
+        type: boolean
+        required: true
+        default: false
+        description: "Whether manually entered vs auto-generated"
+      created_at:
+        type: datetime
+        required: true
+      created_by:
+        type: UUID
+        required: false
+    relationships:
+      belongsToTimesheet:
+        target: Timesheet
+        cardinality: "1"
+        description: "Parent timesheet"
+      basedOnAttendance:
+        target: AttendanceRecord
+        cardinality: "0..1"
+        description: "Source attendance record"
+    constraints:
+      - name: uq_entry_timesheet_date
+        type: unique
+        fields: [timesheet_id, work_date]
+      - name: chk_entry_hours_positive
+        type: check
+        condition: "worked_hours >= 0 AND regular_hours >= 0 AND overtime_hours >= 0"
+    businessRules:
+      - "One entry per date per timesheet"
+      - "Hours calculated from attendance record if available"
+      - "Can be manually adjusted by worker or manager"
+      - "Supports cost center and project allocation"
+      - "Manual entries require justification in notes"
+      - "paid_hours = regular_hours + overtime_hours"
+      - "worked_hours = regular_hours + overtime_hours + break_hours"
+    indexes:
+      - name: "pk_timesheet_entry"
+        columns: [id]
+        type: "primary_key"
+      - name: "idx_entry_timesheet_date"
+        columns: [timesheet_id, work_date]
+        unique: true
+      - name: "idx_entry_attendance"
+        columns: [attendance_record_id]
+  
+  LeaveClass:
+    description: "High-level classification of leave types (e.g., Paid Time Off, Unpaid Leave, \nStatutory\
+      \ Leave). Used to group similar leave types and apply common policies.\n"
+    attributes:
+    - id: string (UUID)
+    - code: string
+    - name: string
+    - description: string (nullable)
+    - category: enum [PAID, UNPAID, STATUTORY, SPECIAL]
+    - isActive: boolean
+    - displayOrder: integer
+    - effectiveDate: date
+    - endDate: date (nullable)
+    - createdAt: datetime
+    - updatedAt: datetime
+    relationships:
+    - hasLeaveTypes: LeaveType[]
+    - hasEligibilityRules: EligibilityRule[]
+    - hasValidationRules: ValidationRule[]
+    - hasAccrualRules: AccrualRule[]
+    - hasCarryoverRules: CarryoverRule[]
+    - hasLimitRules: LimitRule[]
+    - hasOverdraftRules: OverdraftRule[]
+    - hasProrationRules: ProrationRule[]
+    - hasRoundingRules: RoundingRule[]
+    constraints:
+    - code must be unique
+    - name must be unique
+    - effectiveDate must be <= endDate if endDate is set
+    validations:
+    - 'code: required, uppercase, alphanumeric + underscore, max 50'
+    - 'name: required, max 255'
+    - 'category: required, must be valid enum value'
+  LeaveType:
+    description: 'Specific type of leave (e.g., Annual Leave, Sick Leave, Maternity Leave).
+
+      Each leave type has its own balance tracking and rules.
+
+      '
+    attributes:
+    - id: string (UUID)
+    - leaveClassId: string (UUID)
+    - code: string
+    - name: string
+    - description: string (nullable)
+    - isPaid: boolean
+    - requiresApproval: boolean
+    - requiresDocumentation: boolean
+    - allowsHalfDay: boolean
+    - allowsHourly: boolean
+    - unitOfMeasure: enum [DAYS, HOURS]
+    - color: string (nullable)
+    - icon: string (nullable)
+    - isActive: boolean
+    - effectiveDate: date
+    - endDate: date (nullable)
+    - createdAt: datetime
+    - updatedAt: datetime
+    relationships:
+    - belongsToClass: LeaveClass
+    - hasEligibilityRules: EligibilityRule[]
+    - hasValidationRules: ValidationRule[]
+    - hasAccrualRules: AccrualRule[]
+    - hasCarryoverRules: CarryoverRule[]
+    - hasLimitRules: LimitRule[]
+    - hasOverdraftRules: OverdraftRule[]
+    - hasProrationRules: ProrationRule[]
+    - hasRoundingRules: RoundingRule[]
+    - hasBalances: LeaveBalance[]
+    - hasRequests: LeaveRequest[]
+    lifecycle:
+    - DRAFT → ACTIVE → INACTIVE
+    rules:
+    - Cannot deactivate if there are active balances with pending/approved requests
+    - If allowsHalfDay is true, unitOfMeasure must be DAYS
+    - If allowsHourly is true, unitOfMeasure must be HOURS
+    constraints:
+    - code must be unique
+    - name must be unique within leaveClass
+    - effectiveDate must be <= endDate if endDate is set
+    validations:
+    - 'code: required, uppercase, alphanumeric + underscore, max 50'
+    - 'name: required, max 255'
+    - 'leaveClassId: required, must reference existing LeaveClass'
+  PeriodProfile:
+    description: "Defines the leave year/period structure (e.g., calendar year, \nfiscal year, hire anniversary).\n"
+    attributes:
+    - id: string (UUID)
+    - code: string
+    - name: string
+    - periodType: enum [CALENDAR_YEAR, FISCAL_YEAR, HIRE_ANNIVERSARY, CUSTOM]
+    - startMonth: integer (nullable)
+    - startDay: integer (nullable)
+    - customStartDate: date (nullable)
+    - customEndDate: date (nullable)
+    - isActive: boolean
+    - createdAt: datetime
+    - updatedAt: datetime
+    relationships:
+    - usedByLeaveTypes: LeaveType[]
+    rules:
+    - If periodType is FISCAL_YEAR, startMonth and startDay must be set
+    - If periodType is CUSTOM, customStartDate and customEndDate must be set
+    - startMonth must be between 1 and 12
+    - startDay must be between 1 and 31
+    constraints:
+    - code must be unique
+    examples:
+    - 'Calendar year: Jan 1 - Dec 31'
+    - 'Fiscal year: Apr 1 - Mar 31'
+    - 'Hire anniversary: Based on employee hire date'
+  EligibilityRule:
+    description: 'Defines who is eligible for a leave type based on criteria like
+
+      tenure, employment type, location, etc. Can be bound to a specific
+
+      LeaveType or to an entire LeaveClass.
+
+      '
+    attributes:
+    - id: string (UUID)
+    - code: string
+    - name: string
+    - description: string (nullable)
+    - leaveTypeId: string (UUID, nullable)
+    - leaveClassId: string (UUID, nullable)
+    - ruleType: enum [TENURE, EMPLOYMENT_TYPE, LOCATION, DEPARTMENT, JOB_LEVEL, CUSTOM]
+    - operator: enum [EQUALS, NOT_EQUALS, GREATER_THAN, LESS_THAN, IN, NOT_IN, CONTAINS]
+    - value: string
+    - minTenureMonths: integer (nullable)
+    - employmentTypes: string[] (nullable)
+    - locations: string[] (nullable)
+    - priority: integer
+    - isActive: boolean
+    - effectiveDate: date
+    - endDate: date (nullable)
+    - createdAt: datetime
+    - updatedAt: datetime
+    relationships:
+    - appliesTo: LeaveType | LeaveClass
+    rules:
+    - Either leaveTypeId OR leaveClassId must be set, not both
+    - If ruleType is TENURE, minTenureMonths must be set
+    - If ruleType is EMPLOYMENT_TYPE, employmentTypes must be set
+    - If ruleType is LOCATION, locations must be set
+    - Cannot have overlapping active rules for same leave type/class with same priority
+    constraints:
+    - code must be unique
+    examples:
+    - 'Tenure >= 6 months: minTenureMonths = 6'
+    - 'Employment type in [FULL_TIME, PART_TIME]: employmentTypes = [''FULL_TIME'', ''PART_TIME'']'
+    - 'Location = ''US'': locations = [''US'']'
+  ValidationRule:
+    description: 'Defines validation rules for leave requests (e.g., advance notice,
+
+      max consecutive days, blackout periods). Can be bound to a specific
+
+      LeaveType or to an entire LeaveClass.
+
+      '
+    attributes:
+    - id: string (UUID)
+    - code: string
+    - name: string
+    - description: string (nullable)
+    - leaveTypeId: string (UUID, nullable)
+    - leaveClassId: string (UUID, nullable)
+    - ruleType: enum [ADVANCE_NOTICE, MAX_CONSECUTIVE_DAYS, MIN_CONSECUTIVE_DAYS, BLACKOUT_PERIOD, MAX_REQUESTS_PER_PERIOD,
+        DOCUMENTATION_REQUIRED]
+    - advanceNoticeDays: integer (nullable)
+    - maxConsecutiveDays: integer (nullable)
+    - minConsecutiveDays: integer (nullable)
+    - blackoutStartDate: date (nullable)
+    - blackoutEndDate: date (nullable)
+    - maxRequestsPerPeriod: integer (nullable)
+    - periodType: enum [MONTH, QUARTER, YEAR] (nullable)
+    - documentationThresholdDays: integer (nullable)
+    - errorMessage: string
+    - priority: integer
+    - isActive: boolean
+    - effectiveDate: date
+    - endDate: date (nullable)
+    - createdAt: datetime
+    - updatedAt: datetime
+    relationships:
+    - appliesTo: LeaveType | LeaveClass
+    constraints:
+    - code must be unique
+    rules:
+    - Either leaveTypeId OR leaveClassId must be set, not both
+    - If ruleType is ADVANCE_NOTICE, advanceNoticeDays must be > 0
+    - If ruleType is MAX_CONSECUTIVE_DAYS, maxConsecutiveDays must be > 0
+    - If ruleType is BLACKOUT_PERIOD, both blackoutStartDate and blackoutEndDate must be set
+    - If ruleType is MAX_REQUESTS_PER_PERIOD, both maxRequestsPerPeriod and periodType must be set
+    examples:
+    - 'Advance notice: Must request at least 7 days in advance'
+    - 'Max consecutive: Cannot take more than 10 consecutive days'
+    - 'Blackout: Cannot request leave during Dec 20-31 (year-end close)'
+  AccrualRule:
+    description: 'Defines how leave balance is accrued (earned) over time.
+
+      Can be bound to a specific LeaveType or to an entire LeaveClass.
+
+      '
+    attributes:
+    - id: string (UUID)
+    - code: string
+    - name: string
+    - description: string (nullable)
+    - leaveTypeId: string (UUID, nullable)
+    - leaveClassId: string (UUID, nullable)
+    - accrualMethod: enum [UPFRONT, MONTHLY, BIWEEKLY, WEEKLY, DAILY, HOURLY, CUSTOM]
+    - accrualAmount: decimal
+    - accrualPeriod: enum [YEAR, MONTH, WEEK, DAY, HOUR] (nullable)
+    - maxAccrualBalance: decimal (nullable)
+    - accrualStartDate: enum [HIRE_DATE, YEAR_START, CUSTOM_DATE]
+    - customStartDate: date (nullable)
+    - waitingPeriodMonths: integer (nullable)
+    - isProrated: boolean
+    - priority: integer
+    - isActive: boolean
+    - effectiveDate: date
+    - endDate: date (nullable)
+    - createdAt: datetime
+    - updatedAt: datetime
+    relationships:
+    - appliesTo: LeaveType | LeaveClass
+    - hasProrationRules: ProrationRule[]
+    constraints:
+    - code must be unique
+    rules:
+    - Either leaveTypeId OR leaveClassId must be set, not both
+    - If accrualMethod is not UPFRONT, accrualPeriod must be set
+    - accrualAmount must be > 0
+    - If accrualStartDate is CUSTOM_DATE, customStartDate must be set
+    - If maxAccrualBalance is set, it must be >= accrualAmount
+    examples:
+    - 'Upfront: 20 days allocated on Jan 1 each year'
+    - 'Monthly: 1.67 days accrued per month (20 days / 12 months)'
+    - 'Tenure-based: 15 days for 0-5 years, 20 days for 5+ years'
+  CarryoverRule:
+    description: "Defines rules for carrying over unused leave to the next period,\nexpiring unused leave,\
+      \ or resetting balances. Can be bound to a \nspecific LeaveType or to an entire LeaveClass.\n"
+    attributes:
+    - id: string (UUID)
+    - code: string
+    - name: string
+    - description: string (nullable)
+    - leaveTypeId: string (UUID, nullable)
+    - leaveClassId: string (UUID, nullable)
+    - carryoverType: enum [NONE, UNLIMITED, LIMITED, EXPIRE_ALL, PAYOUT]
+    - maxCarryoverAmount: decimal (nullable)
+    - carryoverExpiryMonths: integer (nullable)
+    - expiryDate: date (nullable)
+    - payoutRate: decimal (nullable)
+    - resetPeriod: enum [YEAR, HIRE_ANNIVERSARY, CUSTOM] (nullable)
+    - resetDate: date (nullable)
+    - priority: integer
+    - isActive: boolean
+    - effectiveDate: date
+    - endDate: date (nullable)
+    - createdAt: datetime
+    - updatedAt: datetime
+    relationships:
+    - appliesTo: LeaveType | LeaveClass
+    constraints:
+    - code must be unique
+    rules:
+    - Either leaveTypeId OR leaveClassId must be set, not both
+    - If carryoverType is LIMITED, maxCarryoverAmount must be set
+    - If carryoverType is PAYOUT, payoutRate must be set
+    - If carryoverExpiryMonths is set, it must be > 0
+    - If resetPeriod is CUSTOM, resetDate must be set
+    examples:
+    - 'Unlimited carryover: All unused days carry to next year'
+    - 'Limited carryover: Max 5 days carry over, rest expires'
+    - 'Expire all: All unused days expire on Dec 31'
+    - 'Payout: Unused days paid out at 100% of daily rate'
+  LimitRule:
+    description: 'Defines limits on leave usage (e.g., max days per year, per request).
+
+      Can be bound to a specific LeaveType or to an entire LeaveClass.
+
+      '
+    attributes:
+    - id: string (UUID)
+    - code: string
+    - name: string
+    - description: string (nullable)
+    - leaveTypeId: string (UUID, nullable)
+    - leaveClassId: string (UUID, nullable)
+    - limitType: enum [MAX_PER_YEAR, MAX_PER_REQUEST, MAX_PER_MONTH, MAX_PER_QUARTER, MIN_PER_REQUEST]
+    - limitAmount: decimal
+    - limitPeriod: enum [YEAR, MONTH, QUARTER, REQUEST] (nullable)
+    - priority: integer
+    - isActive: boolean
+    - effectiveDate: date
+    - endDate: date (nullable)
+    - createdAt: datetime
+    - updatedAt: datetime
+    relationships:
+    - appliesTo: LeaveType | LeaveClass
+    constraints:
+    - code must be unique
+    rules:
+    - Either leaveTypeId OR leaveClassId must be set, not both
+    - limitAmount must be > 0
+    - If limitType is MAX_PER_YEAR, limitPeriod must be YEAR
+    examples:
+    - 'Max per year: Cannot exceed 20 days per calendar year'
+    - 'Max per request: Cannot request more than 10 consecutive days'
+    - 'Min per request: Must request at least 0.5 days (half day minimum)'
+  OverdraftRule:
+    description: 'Defines whether and how employees can request leave beyond their
+
+      available balance (negative balance). Can be bound to a specific
+
+      LeaveType or to an entire LeaveClass.
+
+      '
+    attributes:
+    - id: string (UUID)
+    - code: string
+    - name: string
+    - description: string (nullable)
+    - leaveTypeId: string (UUID, nullable)
+    - leaveClassId: string (UUID, nullable)
+    - allowOverdraft: boolean
+    - maxOverdraftAmount: decimal (nullable)
+    - overdraftRepaymentRequired: boolean
+    - repaymentMethod: enum [AUTO_DEDUCT, MANUAL, PAYROLL_DEDUCT] (nullable)
+    - requiresApproval: boolean
+    - approvalLevel: enum [MANAGER, HR, DIRECTOR] (nullable)
+    - priority: integer
+    - isActive: boolean
+    - effectiveDate: date
+    - endDate: date (nullable)
+    - createdAt: datetime
+    - updatedAt: datetime
+    relationships:
+    - appliesTo: LeaveType | LeaveClass
+    constraints:
+    - code must be unique
+    rules:
+    - Either leaveTypeId OR leaveClassId must be set, not both
+    - If allowOverdraft is true, maxOverdraftAmount must be set
+    - If overdraftRepaymentRequired is true, repaymentMethod must be set
+    - If requiresApproval is true, approvalLevel must be set
+    - maxOverdraftAmount must be > 0 if set
+    examples:
+    - 'Allow 5 days overdraft: Employee can go -5 days, must repay from future accruals'
+    - 'No overdraft: Cannot request leave if balance is 0'
+  ProrationRule:
+    description: 'Defines how leave allocation is prorated for employees who start
+
+      mid-period or have part-time schedules. Can be bound to a specific
+
+      LeaveType or to an entire LeaveClass.
+
+      '
+    attributes:
+    - id: string (UUID)
+    - code: string
+    - name: string
+    - description: string (nullable)
+    - leaveTypeId: string (UUID, nullable)
+    - leaveClassId: string (UUID, nullable)
+    - prorationType: enum [START_DATE, END_DATE, SCHEDULE, NONE]
+    - prorationMethod: enum [MONTHLY, DAILY, HOURLY]
+    - roundingRuleId: string (UUID, nullable)
+    - priority: integer
+    - isActive: boolean
+    - effectiveDate: date
+    - endDate: date (nullable)
+    - createdAt: datetime
+    - updatedAt: datetime
+    relationships:
+    - appliesTo: LeaveType | LeaveClass
+    - usesRoundingRule: RoundingRule (nullable)
+    constraints:
+    - code must be unique
+    rules:
+    - Either leaveTypeId OR leaveClassId must be set, not both
+    - If prorationType is not NONE, prorationMethod must be set
+    examples:
+    - 'Start date proration: Employee starting July 1 gets 10 days (50% of 20)'
+    - 'Schedule proration: Part-time (50%) employee gets 10 days (50% of 20)'
+  RoundingRule:
+    description: 'Defines how fractional leave amounts are rounded (e.g., 1.67 days → 1.5 or 2).
+
+      Can be bound to a specific LeaveType or to an entire LeaveClass.
+
+      '
+    attributes:
+    - id: string (UUID)
+    - code: string
+    - name: string
+    - description: string (nullable)
+    - leaveTypeId: string (UUID, nullable)
+    - leaveClassId: string (UUID, nullable)
+    - roundingMethod: enum [UP, DOWN, NEAREST, NEAREST_HALF, NEAREST_QUARTER, NO_ROUNDING]
+    - decimalPlaces: integer
+    - priority: integer
+    - isActive: boolean
+    - effectiveDate: date
+    - endDate: date (nullable)
+    - createdAt: datetime
+    - updatedAt: datetime
+    relationships:
+    - appliesTo: LeaveType | LeaveClass
+    constraints:
+    - code must be unique
+    rules:
+    - Either leaveTypeId OR leaveClassId must be set, not both
+    - decimalPlaces must be >= 0 and <= 4
+    examples:
+    - 'Round up: 1.67 → 2.0'
+    - 'Round to nearest half: 1.67 → 1.5'
+    - 'Round down: 1.67 → 1.0'
+  Schedule:
+    description: 'Defines working schedule (which days are working days, holidays, etc.)
+
+      Used to calculate working days in leave requests.
+
+      '
+    attributes:
+    - id: string (UUID)
+    - code: string
+    - name: string
+    - scheduleType: enum [STANDARD, SHIFT, CUSTOM]
+    - workingDays: integer[]
+    - hoursPerDay: decimal
+    - daysPerWeek: decimal
+    - isActive: boolean
+    - effectiveDate: date
+    - endDate: date (nullable)
+    - createdAt: datetime
+    - updatedAt: datetime
+    relationships:
+    - hasHolidays: Holiday[]
+    - usedByWorkers: Worker[]
+    rules:
+    - workingDays must contain at least 1 day
+    - workingDays values must be between 1 and 7
+    - hoursPerDay must be > 0 and <= 24
+    - daysPerWeek must be > 0 and <= 7
+    constraints:
+    - code must be unique
+    examples:
+    - 'Standard 5-day: Mon-Fri, 8 hours/day'
+    - '4-day week: Mon-Thu, 10 hours/day'
+    - '6-day week: Mon-Sat, 8 hours/day'
+  Holiday:
+    description: 'Public/company holidays that are excluded from leave calculations.
+
+      '
+    attributes:
+    - id: string (UUID)
+    - scheduleId: string (UUID)
+    - name: string
+    - date: date
+    - isRecurring: boolean
+    - recurringMonth: integer (nullable)
+    - recurringDay: integer (nullable)
+    - isActive: boolean
+    - createdAt: datetime
+    - updatedAt: datetime
+    relationships:
+    - belongsToSchedule: Schedule
+    rules:
+    - If isRecurring is true, recurringMonth and recurringDay must be set
+    - recurringMonth must be between 1 and 12
+    - recurringDay must be between 1 and 31
+    examples:
+    - 'New Year''s Day: Jan 1, recurring'
+    - 'Independence Day: Jul 4, recurring'
+    - 'Company Anniversary: Specific date, non-recurring'
+  LeaveRequest:
+    description: 'Employee request for time off. Goes through approval workflow and
+
+      affects leave balance when approved.
+
+      '
+    attributes:
+    - id: string (UUID)
+    - requestNumber: string
+    - workerId: string (UUID)
+    - leaveTypeId: string (UUID)
+    - startDate: date
+    - endDate: date
+    - startTime: time (nullable)
+    - endTime: time (nullable)
+    - totalDays: decimal
+    - totalHours: decimal (nullable)
+    - isHalfDay: boolean
+    - halfDayPeriod: enum [MORNING, AFTERNOON] (nullable)
+    - reason: string (nullable)
+    - status: enum [DRAFT, PENDING, APPROVED, REJECTED, CANCELLED, WITHDRAWN]
+    - submittedAt: datetime (nullable)
+    - approvedAt: datetime (nullable)
+    - approvedBy: string (UUID, nullable)
+    - rejectedAt: datetime (nullable)
+    - rejectedBy: string (UUID, nullable)
+    - rejectionReason: string (nullable)
+    - cancelledAt: datetime (nullable)
+    - cancelledBy: string (UUID, nullable)
+    - cancellationReason: string (nullable)
+    - attachments: string[] (nullable)
+    - metadata: json (nullable)
+    - createdAt: datetime
+    - createdBy: string (UUID)
+    - updatedAt: datetime
+    - updatedBy: string (UUID)
+    relationships:
+    - belongsToWorker: Worker
+    - hasLeaveType: LeaveType
+    - affectsBalance: LeaveBalance
+    - hasMovements: LeaveMovement[]
+    - hasApprovals: Approval[]
+    - hasReservation: LeaveReservation (nullable)
+    lifecycle:
+    - DRAFT → PENDING → APPROVED/REJECTED/WITHDRAWN
+    - APPROVED → CANCELLED (exceptional)
+    - PENDING → CANCELLED/WITHDRAWN
+    rules:
+    - endDate must be >= startDate
+    - Cannot overlap with other APPROVED or PENDING requests for same worker
+    - totalDays must be <= available balance (unless overdraft allowed)
+    - If isHalfDay is true, startDate must equal endDate
+    - If isHalfDay is true, halfDayPeriod must be set
+    - Cannot modify request after status is APPROVED (except cancel)
+    - Cannot cancel request after leave period has ended
+    constraints:
+    - requestNumber must be unique
+    - startDate must be >= today (for new requests)
+    validations:
+    - 'workerId: required, must reference existing Worker'
+    - 'leaveTypeId: required, must reference active LeaveType'
+    - 'startDate: required, valid date'
+    - 'endDate: required, valid date, >= startDate'
+    - 'reason: optional, max 1000 characters'
+  LeaveReservation:
+    description: 'Temporary hold on leave balance while request is pending approval.
+
+      Prevents double-booking of leave days.
+
+      '
+    attributes:
+    - id: string (UUID)
+    - leaveRequestId: string (UUID)
+    - leaveBalanceId: string (UUID)
+    - reservedAmount: decimal
+    - reservedAt: datetime
+    - expiresAt: datetime (nullable)
+    - status: enum [ACTIVE, RELEASED, EXPIRED]
+    - releasedAt: datetime (nullable)
+    - createdAt: datetime
+    relationships:
+    - forRequest: LeaveRequest
+    - holdsBalance: LeaveBalance
+    lifecycle:
+    - ACTIVE → RELEASED (when approved/rejected)
+    - ACTIVE → EXPIRED (if request not processed in time)
+    rules:
+    - reservedAmount must be > 0
+    - reservedAmount must be <= available balance at time of reservation
+    - Reservation is released when request is approved/rejected/cancelled
+    - Expired reservations are automatically released
+  LeaveMovement:
+    description: 'Ledger entry for all leave balance changes. Provides complete audit trail.
+
+      Every change to balance creates a movement record.
+
+      '
+    attributes:
+    - id: string (UUID)
+    - leaveBalanceId: string (UUID)
+    - movementType: enum [ALLOCATION, ACCRUAL, USAGE, ADJUSTMENT, CARRYOVER, EXPIRY, PAYOUT, REVERSAL]
+    - amount: decimal
+    - balanceBefore: decimal
+    - balanceAfter: decimal
+    - movementDate: date
+    - effectiveDate: date
+    - leaveRequestId: string (UUID, nullable)
+    - reason: string
+    - referenceType: enum [LEAVE_REQUEST, POLICY, MANUAL, SYSTEM] (nullable)
+    - referenceId: string (UUID, nullable)
+    - isReversed: boolean
+    - reversalMovementId: string (UUID, nullable)
+    - createdAt: datetime
+    - createdBy: string (UUID)
+    relationships:
+    - affectsBalance: LeaveBalance
+    - causedByRequest: LeaveRequest (nullable)
+    - reversedBy: LeaveMovement (nullable)
+    - reverses: LeaveMovement (nullable)
+    rules:
+    - amount cannot be 0
+    - balanceAfter must equal balanceBefore + amount
+    - If movementType is USAGE, amount must be negative
+    - If movementType is ALLOCATION or ACCRUAL, amount must be positive
+    - If movementType is REVERSAL, reversalMovementId must be set
+    - Cannot modify or delete movement records (immutable ledger)
+    constraints:
+    - effectiveDate must be <= today for USAGE type
+    examples:
+    - 'Allocation: +20 days (annual allocation)'
+    - 'Accrual: +1.67 days (monthly accrual)'
+    - 'Usage: -5 days (approved leave request)'
+    - 'Adjustment: +2 days (manual correction by HR)'
+    - 'Carryover: +5 days (from previous year)'
+    - 'Expiry: -3 days (unused days expired)'
+  LeaveBalance:
+    description: 'Current leave balance for a worker and leave type. Tracks allocated,
+
+      used, pending, and available amounts.
+
+      '
+    attributes:
+    - id: string (UUID)
+    - workerId: string (UUID)
+    - leaveTypeId: string (UUID)
+    - periodProfileId: string (UUID)
+    - periodYear: integer
+    - periodStartDate: date
+    - periodEndDate: date
+    - totalAllocated: decimal
+    - accrued: decimal
+    - used: decimal
+    - pending: decimal
+    - reserved: decimal
+    - carriedOver: decimal
+    - adjusted: decimal
+    - expired: decimal
+    - available: decimal
+    - lastAccrualDate: date (nullable)
+    - nextAccrualDate: date (nullable)
+    - createdAt: datetime
+    - updatedAt: datetime
+    relationships:
+    - belongsToWorker: Worker
+    - hasLeaveType: LeaveType
+    - hasPeriodProfile: PeriodProfile
+    - hasMovements: LeaveMovement[]
+    - hasReservations: LeaveReservation[]
+    - hasRequests: LeaveRequest[]
+    computed:
+    - available = totalAllocated + carriedOver + adjusted - used - pending - expired
+    rules:
+    - available must be >= 0 (unless overdraft allowed)
+    - used + pending cannot exceed totalAllocated + carriedOver + adjusted (unless overdraft)
+    - Balance is recalculated after every movement
+    constraints:
+    - Unique combination of (workerId, leaveTypeId, periodYear)
+    validations:
+    - 'totalAllocated: must be >= 0'
+    - 'used: must be >= 0'
+    - 'pending: must be >= 0'
+  Approval:
+    description: 'Approval record for leave request. Supports multi-level approval workflows.
+
+      '
+    attributes:
+    - id: string (UUID)
+    - leaveRequestId: string (UUID)
+    - approverLevel: integer
+    - approverId: string (UUID)
+    - approverRole: enum [MANAGER, HR, DIRECTOR, CUSTOM]
+    - status: enum [PENDING, APPROVED, REJECTED, SKIPPED]
+    - approvedAt: datetime (nullable)
+    - rejectedAt: datetime (nullable)
+    - comments: string (nullable)
+    - notifiedAt: datetime (nullable)
+    - createdAt: datetime
+    relationships:
+    - forRequest: LeaveRequest
+    - approver: Worker
+    lifecycle:
+    - PENDING → APPROVED/REJECTED/SKIPPED
+    rules:
+    - Cannot approve own leave request
+    - Must approve in sequence (level 1 before level 2)
+    - If any level rejects, entire request is rejected
+    examples:
+    - 'Level 1: Direct manager approval'
+    - 'Level 2: Department head approval (for > 5 days)'
+    - 'Level 3: HR approval (for special leave types)'
+  Event:
+    description: 'System events triggered by leave-related actions. Used for notifications,
+
+      integrations, and audit logging.
+
+      '
+    attributes:
+    - id: string (UUID)
+    - eventType: enum [LEAVE_REQUEST_SUBMITTED, LEAVE_REQUEST_APPROVED, LEAVE_REQUEST_REJECTED, LEAVE_REQUEST_CANCELLED,
+        BALANCE_ALLOCATED, BALANCE_ACCRUED, BALANCE_EXPIRED, APPROVAL_REQUIRED, REMINDER_SENT]
+    - entityType: enum [LEAVE_REQUEST, LEAVE_BALANCE, APPROVAL]
+    - entityId: string (UUID)
+    - workerId: string (UUID)
+    - eventData: json
+    - triggeredBy: enum [USER, SYSTEM, SCHEDULE]
+    - triggeredById: string (UUID, nullable)
+    - occurredAt: datetime
+    - processedAt: datetime (nullable)
+    - status: enum [PENDING, PROCESSED, FAILED]
+    - errorMessage: string (nullable)
+    - createdAt: datetime
+    relationships:
+    - relatedToWorker: Worker
+    - relatedToEntity: LeaveRequest | LeaveBalance | Approval
+    rules:
+    - Events are immutable once created
+    - Failed events can be retried
+    examples:
+    - 'LEAVE_REQUEST_SUBMITTED: Send notification to manager'
+    - 'LEAVE_REQUEST_APPROVED: Update balance, send confirmation to employee'
+    - 'BALANCE_ACCRUED: Monthly accrual processed'
+    - 'BALANCE_EXPIRED: Unused days expired at year-end'
+  Trigger:
+    description: 'Automated triggers that execute actions based on events or schedules.
+
+      Used for notifications, balance updates, expirations, etc.
+
+      '
+    attributes:
+    - id: string (UUID)
+    - triggerName: string
+    - triggerType: enum [EVENT_BASED, SCHEDULE_BASED, CONDITION_BASED]
+    - eventType: enum (nullable)
+    - scheduleExpression: string (nullable)
+    - condition: string (nullable)
+    - actionType: enum [SEND_NOTIFICATION, UPDATE_BALANCE, EXPIRE_BALANCE, CREATE_MOVEMENT, SEND_REMINDER,
+        CUSTOM]
+    - actionConfig: json
+    - isActive: boolean
+    - lastExecutedAt: datetime (nullable)
+    - nextExecutionAt: datetime (nullable)
+    - createdAt: datetime
+    - updatedAt: datetime
+    relationships:
+    - generatesEvents: Event[]
+    rules:
+    - If triggerType is EVENT_BASED, eventType must be set
+    - If triggerType is SCHEDULE_BASED, scheduleExpression must be set
+    - If triggerType is CONDITION_BASED, condition must be set
+    examples:
+    - 'Event trigger: When LEAVE_REQUEST_SUBMITTED → Send email to manager'
+    - 'Schedule trigger: Every month on 1st → Accrue monthly leave'
+    - 'Schedule trigger: Every year on Dec 31 → Expire unused balances'
+    - 'Condition trigger: When available balance < 5 → Send low balance alert'
+architecture:
+  model: 6-Level Hierarchical
+  levels:
+  - level: 1
+    name: Time Segment
+    description: Atomic unit of time (WORK, BREAK, MEAL, TRANSFER)
+    entity: TimeSegment
+  - level: 2
+    name: Shift
+    description: Composition of time segments (ELAPSED, PUNCH, FLEX)
+    entity: ShiftDefinition
+  - level: 3
+    name: Day Model
+    description: Daily work schedule (WORK, OFF, HOLIDAY, HALF_DAY)
+    entity: DayModel
+  - level: 4
+    name: Pattern
+    description: Period work schedule (cycle of day models)
+    entity: PatternTemplate
+  - level: 5
+    name: Work Schedule Rule
+    description: Pattern + Calendar + Rotation offset
+    entity: ScheduleAssignment
+  - level: 6
+    name: Roster
+    description: Materialized assignment to employees
+    entity: GeneratedRoster
+design_patterns:
+  scd_type_2:
+    description: Slowly Changing Dimensions Type 2 for historical tracking
+    applies_to:
+    - ShiftDefinition
+    - PatternTemplate
+    - ScheduleAssignment
+    - LeaveType
+    - LeavePolicy
+    - LeaveBalance
+  hierarchical_data:
+    description: 6-level hierarchical model for time scheduling
+    applies_to:
+    - TimeSegment
+    - ShiftDefinition
+    - DayModel
+    - PatternTemplate
+    - ScheduleAssignment
+    - GeneratedRoster
+  ledger_pattern:
+    description: Double-entry ledger for leave balance tracking
+    applies_to:
+    - LeaveBalance
+    - LeaveTransaction
+    - LeaveAdjustment
+version_history:
+- version: '2.0'
+  date: '2025-12-02'
+  changes: Unified Time & Attendance and Absence ontologies into single module
+- version: '1.0'
+  date: '2025-11-28'
+  changes: Initial separate ontologies for TA and Absence
