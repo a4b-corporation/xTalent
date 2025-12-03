@@ -183,6 +183,24 @@ entities:
     businessRules:
       - "Code values are immutable - use SCD Type 2 for changes"
       - "group_code should follow naming convention: UPPERCASE_UNDERSCORE"
+      - "Used for system-wide dropdowns and validation"
+    indexes:
+      - name: "idx_codelist_group"
+        columns: [group_code]
+      - name: "idx_codelist_lookup"
+        columns: [group_code, code]
+        unique: true
+    examples:
+      - group_code: "GENDER"
+        code: "M"
+        display_en: "Male"
+        display_local: "Nam"
+        sort_order: 1
+      - group_code: "MARITAL_STATUS"
+        code: "SINGLE"
+        display_en: "Single"
+        display_local: "Độc thân"
+        sort_order: 10
 
   Currency:
     description: |
@@ -221,6 +239,22 @@ entities:
       - name: "unique_currency_code"
         type: unique
         fields: [code]
+    businessRules:
+      - "ISO-4217 standard codes required"
+      - "decimal_digits used for formatting and calculation precision"
+    indexes:
+      - name: "idx_currency_code"
+        columns: [code]
+        unique: true
+    examples:
+      - code: "USD"
+        name: "US Dollar"
+        symbol: "$"
+        decimal_digits: 2
+      - code: "VND"
+        name: "Vietnamese Dong"
+        symbol: "₫"
+        decimal_digits: 0
 
   TimeZone:
     description: |
@@ -257,6 +291,22 @@ entities:
       - name: "unique_tzid"
         type: unique
         fields: [tzid]
+    businessRules:
+      - "IANA timezone IDs required (Area/Location)"
+      - "Used for datetime conversion and scheduling"
+    indexes:
+      - name: "idx_timezone_tzid"
+        columns: [tzid]
+        unique: true
+    examples:
+      - tzid: "Asia/Ho_Chi_Minh"
+        offset_hours: 7.00
+        abbreviation: "ICT"
+      - tzid: "America/New_York"
+        offset_hours: -5.00
+        abbreviation: "EST"
+        metadata:
+          dst_observed: true
 
   Industry:
     description: |
@@ -301,6 +351,20 @@ entities:
       - name: "unique_industry_code"
         type: unique
         fields: [code]
+    businessRules:
+      - "Hierarchical structure (Sector -> Industry -> Sub-industry)"
+      - "Used for benchmarking and reporting"
+    indexes:
+      - name: "idx_industry_parent"
+        columns: [parent_id]
+    examples:
+      - code: "TECH"
+        name: "Technology"
+      - code: "TECH_SW"
+        name: "Software & Services"
+        parent_id: "TECH_UUID"
+      - code: "FIN"
+        name: "Financial Services"
 
   ContactType:
     description: |
@@ -351,6 +415,23 @@ entities:
       - name: "unique_contact_type_code"
         type: unique
         fields: [code]
+    businessRules:
+      - "Validation regex enforces data quality"
+      - "Input mask guides user entry"
+      - "Channel category determines communication method"
+    indexes:
+      - name: "idx_contact_type_category"
+        columns: [channel_category]
+    examples:
+      - code: "MOBILE_PERSONAL"
+        name: "Personal Mobile"
+        channel_category: "PHONE"
+        validation_regex: "^\\+?[0-9]{10,15}$"
+        input_mask: "(+99) 999-999-999"
+      - code: "EMAIL_WORK"
+        name: "Work Email"
+        channel_category: "EMAIL"
+        validation_regex: "^[\\w-\\.]+@([\\w-]+\\.)+[\\w-]{2,4}$"
 
   RelationshipGroup:
     description: |
@@ -376,6 +457,13 @@ entities:
       - name: "unique_rel_group_code"
         type: unique
         fields: [code]
+    examples:
+      - code: "FAMILY"
+        name: "Immediate Family"
+        description: "Spouse, children, parents"
+      - code: "EMERGENCY"
+        name: "Emergency Contact"
+        description: "Contacts for emergencies"
 
   RelationshipType:
     description: |
@@ -429,6 +517,23 @@ entities:
       - name: "unique_rel_type_code"
         type: unique
         fields: [code]
+    businessRules:
+      - "Inverse type enables bi-directional relationship tracking"
+      - "Dependency flag triggers benefits eligibility logic"
+    indexes:
+      - name: "idx_rel_type_group"
+        columns: [group_id]
+    examples:
+      - code: "SPOUSE"
+        name: "Spouse / Partner"
+        group_id: "FAMILY_UUID"
+        dependency_flag: true
+        inverse_type_id: "SPOUSE_UUID"
+      - code: "CHILD"
+        name: "Child"
+        group_id: "FAMILY_UUID"
+        dependency_flag: true
+        inverse_type_id: "PARENT_UUID"
 
   TalentMarket:
     description: |
@@ -536,6 +641,24 @@ entities:
       - name: "unique_skill_code"
         type: unique
         fields: [skill_code]
+    businessRules:
+      - "Skills are standardized across the organization"
+      - "Proficiency scale defines rating levels (e.g., 1-5)"
+      - "Used for job matching and gap analysis"
+    indexes:
+      - name: "idx_skill_category"
+        columns: [category_id]
+      - name: "idx_skill_name"
+        columns: [skill_name]
+    examples:
+      - skill_code: "JAVA"
+        skill_name: "Java Programming"
+        category_id: "CAT_TECH_SW_UUID"
+        proficiency_scale_code: "SCALE_1_5"
+      - skill_code: "PROJECT_MGMT"
+        skill_name: "Project Management"
+        category_id: "CAT_MGMT_UUID"
+        proficiency_scale_code: "SCALE_1_5"
 
   CompetencyMaster:
     description: |
@@ -576,6 +699,19 @@ entities:
       - name: "unique_competency_code"
         type: unique
         fields: [competency_code]
+    businessRules:
+      - "Competencies reflect behavioral attributes"
+      - "Used for performance reviews and development plans"
+    indexes:
+      - name: "idx_competency_category"
+        columns: [category_id]
+    examples:
+      - competency_code: "LEADERSHIP"
+        competency_name: "Strategic Leadership"
+        scale_code: "SCALE_BEHAVIORAL"
+      - competency_code: "COMMUNICATION"
+        competency_name: "Effective Communication"
+        scale_code: "SCALE_BEHAVIORAL"
 
   # ===========================================================================
   # GEOGRAPHIC SCHEMA
@@ -884,6 +1020,149 @@ entities:
 
   EntityRepresentative:
     description: |
+      Legal representatives of the entity (e.g., Director, Chairman).
+      Used for legal documents and compliance.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      legal_entity_id:
+        type: UUID
+        required: true
+      person_id:
+        type: UUID
+        description: "Link to Person if internal"
+      full_name:
+        type: string
+        required: true
+        maxLength: 150
+      job_title:
+        type: string
+        maxLength: 100
+        description: "Title (e.g., General Director)"
+      rep_type_code:
+        type: string
+        required: true
+        maxLength: 50
+        description: "LEGAL_REP, AUTHORIZED_REP, PROXY"
+      id_card_number:
+        type: string
+        maxLength: 50
+      id_card_issue_date:
+        type: date
+      id_card_issue_place:
+        type: string
+        maxLength: 100
+      nationality_code:
+        type: string
+        maxLength: 2
+      address:
+        type: string
+        maxLength: 255
+      phone:
+        type: string
+        maxLength: 50
+      email:
+        type: string
+        maxLength: 100
+      is_primary:
+        type: boolean
+        default: false
+      effective_start_date:
+        type: date
+        required: true
+      effective_end_date:
+        type: date
+      is_current_flag:
+        type: boolean
+        default: true
+    relationships:
+      entity:
+        target: Entity
+        cardinality: "1"
+      person:
+        target: Person
+        cardinality: "0..1"
+    constraints:
+      - name: "unique_primary_rep"
+        type: unique
+        fields: [legal_entity_id, is_primary]
+        where: "is_primary = true and is_current_flag = true"
+    businessRules:
+      - "Must have at least one primary legal representative"
+      - "Representative details used in contract templates"
+    examples:
+      - legal_entity_id: "VNG_CORP_UUID"
+        full_name: "Le Hong Minh"
+        job_title: "General Director"
+        rep_type_code: "LEGAL_REP"
+        is_primary: true
+        nationality_code: "VN"
+
+  EntityLicense:
+    description: |
+      Business licenses and permits held by the legal entity.
+      Tracks expiration dates and renewal status.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      legal_entity_id:
+        type: UUID
+        required: true
+      license_number:
+        type: string
+        required: true
+        maxLength: 100
+      license_type_code:
+        type: string
+        required: true
+        maxLength: 50
+        description: "BUSINESS_REG, TAX_REG, INDUSTRY_SPECIFIC"
+      issue_date:
+        type: date
+        required: true
+      expiry_date:
+        type: date
+        description: "Null if perpetual"
+      issuing_authority:
+        type: string
+        maxLength: 150
+        description: "Authority name (e.g., DPI, Tax Dept)"
+      status:
+        type: enum
+        values: [ACTIVE, EXPIRED, SUSPENDED, REVOKED]
+        default: ACTIVE
+      metadata:
+        type: jsonb
+        description: "Scanned file URL, additional details"
+      created_at:
+        type: timestamp
+        default: now()
+      updated_at:
+        type: timestamp
+    relationships:
+      entity:
+        target: Entity
+        cardinality: "1"
+    indexes:
+      - name: "idx_license_entity"
+        columns: [legal_entity_id]
+      - name: "idx_license_expiry"
+        columns: [expiry_date]
+    businessRules:
+      - "License number must be unique per type"
+      - "Alerts triggered before expiry_date"
+    examples:
+      - legal_entity_id: "VNG_CORP_UUID"
+        license_number: "0303456789"
+        license_type_code: "BUSINESS_REGISTRATION"
+        issue_date: "2004-09-09"
+        issuing_authority: "HCMC DPI"
+        status: "ACTIVE"
+
+  EntityRepresentative:
+    description: |
       Legal representatives and authorized signatories of legal entities.
     attributes:
       id:
@@ -1080,6 +1359,13 @@ entities:
         type: string
         maxLength: 50
         description: "ACTIVE, INACTIVE, PENDING"
+      manager_employee_id:
+        type: UUID
+        required: false
+        description: |
+          FK to Employee (business unit manager).
+          CRITICAL: Must reference Employee, NOT Worker.
+          Manager must be an active employee with organizational authority.
       metadata:
         type: jsonb
         description: "Region, cost center, custom attributes"
@@ -1101,6 +1387,10 @@ entities:
       children:
         target: Unit
         cardinality: "0..*"
+      manager:
+        target: Employee
+        cardinality: "N:1"
+        description: "Business unit manager (must be active employee)"
       tags:
         target: UnitTag
         cardinality: "0..*"
@@ -1115,6 +1405,10 @@ entities:
       - "Unit code must be unique within same parent"
       - "Path must reflect hierarchy"
       - "Legal entity code must reference valid Entity.code"
+      - "manager_employee_id must reference active Employee (not Worker, Contractor, or Candidate)"
+      - "Manager must have ACTIVE assignment in this BU or parent BU"
+      - "Manager cannot be contractor, candidate, or alumni"
+      - "One employee can manage multiple business units"
 
   UnitTag:
     description: |
@@ -1451,6 +1745,21 @@ entities:
     businessRules:
       - "Only one primary contact per type per worker"
       - "Contact value must match validation regex from ContactType"
+      - "Used for notifications and communication"
+    indexes:
+      - name: "idx_contact_worker"
+        columns: [worker_id]
+      - name: "idx_contact_type"
+        columns: [contact_type_code]
+    examples:
+      - worker_id: "WORKER_001_UUID"
+        contact_type_code: "MOBILE_PERSONAL"
+        contact_value: "+84909123456"
+        is_primary: true
+      - worker_id: "WORKER_001_UUID"
+        contact_type_code: "EMAIL_WORK"
+        contact_value: "john.doe@vng.com.vn"
+        is_primary: true
 
   Address:
     description: |
@@ -1496,6 +1805,26 @@ entities:
       adminArea:
         target: AdminArea
         cardinality: "1"
+    constraints:
+      - name: "unique_primary_address"
+        type: unique
+        fields: [worker_id, address_type_code, is_primary]
+        where: "is_primary = true and is_current_flag = true"
+    businessRules:
+      - "Must have valid admin_area_id (lowest level)"
+      - "Address type determines usage (e.g., TAX, MAILING)"
+    indexes:
+      - name: "idx_address_worker"
+        columns: [worker_id]
+      - name: "idx_address_geo"
+        columns: [admin_area_id]
+    examples:
+      - worker_id: "WORKER_001_UUID"
+        address_type_code: "PERMANENT"
+        street_line: "123 Nguyen Hue"
+        admin_area_id: "WARD_BEN_NGHE_UUID"
+        postal_code: "700000"
+        is_primary: true
 
   Document:
     description: |
@@ -1739,6 +2068,25 @@ entities:
       - name: "unique_worker_skill"
         type: unique
         fields: [worker_id, skill_id, effective_start_date]
+    businessRules:
+      - "Tracks employee skill proficiency over time"
+      - "Source indicates how skill was verified (Assessment, Self, Manager)"
+      - "Proficiency level must match skill's scale"
+    indexes:
+      - name: "idx_worker_skill_worker"
+        columns: [worker_id]
+      - name: "idx_worker_skill_skill"
+        columns: [skill_id]
+    examples:
+      - worker_id: "WORKER_001_UUID"
+        skill_id: "SKILL_JAVA_UUID"
+        proficiency_level: 4
+        verification_source: "ASSESSMENT"
+        verified_at: "2025-01-15"
+      - worker_id: "WORKER_002_UUID"
+        skill_id: "SKILL_PM_UUID"
+        proficiency_level: 3
+        verification_source: "SELF_DECLARED"
 
   WorkerCompetency:
     description: |
@@ -2251,6 +2599,30 @@ entities:
       - name: "unique_employee_identifier"
         type: unique
         fields: [employee_id, id_type_code, id_value]
+    businessRules:
+      - "Identifier value must be unique for specific types (e.g., TAX_ID, PASSPORT)"
+      - "Only one primary identifier per type allowed"
+      - "Used for integration with external systems (Payroll, Badge, Legacy)"
+    indexes:
+      - name: "idx_emp_ident_value"
+        columns: [id_type_code, id_value]
+      - name: "idx_emp_ident_employee"
+        columns: [employee_id]
+      - name: "idx_emp_ident_primary"
+        columns: [employee_id, is_primary]
+        where: "is_primary = true"
+    examples:
+      - employee_id: "EMP_001_UUID"
+        id_type_code: "PAYROLL_ID"
+        id_value: "PR_100234"
+        is_primary: true
+      - employee_id: "EMP_001_UUID"
+        id_type_code: "BADGE_ID"
+        id_value: "B_998877"
+        is_primary: true
+      - employee_id: "EMP_001_UUID"
+        id_type_code: "LEGACY_HR_ID"
+        id_value: "OLD_12345"
 
   GlobalAssignment:
     description: |
@@ -2370,6 +2742,17 @@ entities:
       - "Corporate taxonomy is default for all BUs"
       - "BU can override with own taxonomy tree"
       - "Jobs link to taxonomy nodes for classification"
+    indexes:
+      - name: "idx_taxonomy_tree_owner"
+        columns: [owner_type, owner_id]
+    examples:
+      - code: "CORP_TAX_2025"
+        name: "Corporate Job Taxonomy 2025"
+        owner_type: "CORPORATE"
+      - code: "ENG_TAX_V1"
+        name: "Engineering Taxonomy"
+        owner_type: "BUSINESS_UNIT"
+        owner_id: "BU_ENG_UUID"
 
   JobTaxonomy:
     description: |\
@@ -2431,6 +2814,28 @@ entities:
       - "Taxonomy typically 3 levels: Family → Sub-family → Function"
       - "Path enables efficient subtree queries"
       - "Jobs link to lowest applicable taxonomy node"
+    indexes:
+      - name: "idx_job_taxonomy_tree"
+        columns: [tree_id]
+      - name: "idx_job_taxonomy_parent"
+        columns: [parent_id]
+      - name: "idx_job_taxonomy_level"
+        columns: [level]
+    examples:
+      - code: "ENG"
+        name: "Engineering"
+        level: 1
+        path: "/ENG"
+      - code: "ENG_SW"
+        name: "Software Engineering"
+        parent_id: "ENG_UUID"
+        level: 2
+        path: "/ENG/ENG_SW"
+      - code: "ENG_SW_BACKEND"
+        name: "Backend Development"
+        parent_id: "ENG_SW_UUID"
+        level: 3
+        path: "/ENG/ENG_SW/ENG_SW_BACKEND"
 
   JobTree:
     description: |\
@@ -2476,6 +2881,18 @@ entities:
       - "Corporate job tree is default"
       - "BU job trees can inherit from corporate tree"
       - "Jobs in BU tree can override corporate job attributes"
+    indexes:
+      - name: "idx_job_tree_owner"
+        columns: [owner_type, owner_id]
+    examples:
+      - code: "CORP_JOBS_2025"
+        name: "Corporate Job Catalog 2025"
+        owner_type: "CORPORATE"
+      - code: "RETAIL_JOBS"
+        name: "Retail Division Jobs"
+        owner_type: "BUSINESS_UNIT"
+        owner_id: "BU_RETAIL_UUID"
+        parent_tree_id: "CORP_JOBS_UUID"
 
   Job:
     description: |\
@@ -2569,6 +2986,29 @@ entities:
       - "BU jobs can override corporate job attributes"
       - "Job family shortcut for performance (denormalized)"
       - "Level and grade determine compensation range"
+    indexes:
+      - name: "idx_job_tree"
+        columns: [tree_id]
+      - name: "idx_job_code"
+        columns: [code]
+      - name: "idx_job_family"
+        columns: [job_family_id]
+      - name: "idx_job_level"
+        columns: [level_id]
+    examples:
+      - code: "SWE_L3"
+        name: "Senior Software Engineer"
+        job_family_id: "ENG_SW_BACKEND_UUID"
+        level_id: "L3_SENIOR_UUID"
+        grade_id: "G5_UUID"
+        job_type_code: "INDIVIDUAL_CONTRIBUTOR"
+        flsa_status_code: "EXEMPT"
+      - code: "SALES_MGR_L1"
+        name: "Sales Manager"
+        job_family_id: "SALES_CORP_UUID"
+        level_id: "M1_MANAGER_UUID"
+        grade_id: "G6_UUID"
+        job_type_code: "MANAGER"
 
   JobProfile:
     description: |\
@@ -2740,6 +3180,30 @@ entities:
       - "Levels ordered by seniority (level_order)"
       - "Used for career progression paths"
       - "Linked to compensation ranges"
+    indexes:
+      - name: "idx_job_level_order"
+        columns: [level_order]
+    examples:
+      - code: "IC1"
+        name: "Junior / Entry Level"
+        level_order: 1
+        typical_years_experience: 0
+        is_management: false
+      - code: "IC2"
+        name: "Mid Level"
+        level_order: 2
+        typical_years_experience: 2
+        is_management: false
+      - code: "IC3"
+        name: "Senior Level"
+        level_order: 3
+        typical_years_experience: 5
+        is_management: false
+      - code: "M1"
+        name: "Team Lead / Manager"
+        level_order: 4
+        typical_years_experience: 7
+        is_management: true
 
   JobGrade:
     description: |\
@@ -2798,6 +3262,20 @@ entities:
       - "Grades ordered by compensation level"
       - "Salary ranges define compensation boundaries"
       - "Used by Total Rewards module for pay decisions"
+    indexes:
+      - name: "idx_job_grade_order"
+        columns: [grade_order]
+    examples:
+      - code: "G1"
+        name: "Grade 1"
+        grade_order: 1
+        salary_range_min: 5000000
+        salary_range_max: 10000000
+      - code: "G2"
+        name: "Grade 2"
+        grade_order: 2
+        salary_range_min: 8000000
+        salary_range_max: 15000000
 
   Position:
     description: |\
@@ -2894,15 +3372,44 @@ entities:
     constraints:
       - name: "unique_position_code"
         type: unique
-        fields: [code, effective_start_date]
+        fields: [code]
     businessRules:
-      - "Position is instance of a Job in specific BU"
-      - "Used for POSITION_BASED staffing model"
-      - "Positions form reporting hierarchy (reports_to)"
-      - "max_incumbents allows job sharing (typically 1)"
+      - "Position represents a specific seat/headcount"
+      - "Can have multiple incumbents if max_incumbents > 1 (shared position)"
+      - "Must belong to a Business Unit"
+      - "Linked to a Job for role definition"
+      - "Budgeted positions tracked against financial plan"
       - "Vacancy exists when current_incumbents < max_incumbents"
       - "Frozen positions cannot be filled"
       - "Eliminated positions are historical only"
+    indexes:
+      - name: "idx_position_code"
+        columns: [code]
+        unique: true
+      - name: "idx_position_bu"
+        columns: [business_unit_id]
+      - name: "idx_position_job"
+        columns: [job_id]
+      - name: "idx_position_status"
+        columns: [status_code]
+    examples:
+      - code: "POS_ENG_001"
+        name: "Senior Backend Engineer - Payments"
+        job_id: "SWE_L3_UUID"
+        business_unit_id: "BU_ENG_PAYMENTS_UUID"
+        location_id: "LOC_HCM_HQ_UUID"
+        fte: 1.0
+        max_incumbents: 1
+        status_code: "ACTIVE"
+        is_budgeted: true
+      - code: "POS_SALES_INTERN_BATCH_1"
+        name: "Sales Intern Batch 1"
+        job_id: "SALES_INTERN_UUID"
+        business_unit_id: "BU_SALES_UUID"
+        max_incumbents: 5
+        current_incumbents: 3
+        status_code: "ACTIVE"
+        position_type_code: "TEMPORARY"
 
   # ===========================================================================
   # FACILITY SCHEMA
@@ -2988,6 +3495,36 @@ entities:
       - name: "unique_place_code"
         type: unique
         fields: [code]
+    businessRules:
+      - "Place code must be unique"
+      - "Coordinates should be accurate for mapping"
+      - "Timezone should match geographic location"
+      - "SCD Type 2 for historical tracking"
+    indexes:
+      - name: "idx_place_code"
+        columns: [code]
+        unique: true
+      - name: "idx_place_active"
+        columns: [is_active]
+        where: "is_active = true"
+      - name: "idx_place_geo"
+        columns: [country_id, admin_area_id]
+    examples:
+      - code: "VNG_TOWER"
+        name: "VNG Tower"
+        address_line1: "182 Le Dai Hanh"
+        country_id: "VN_UUID"
+        timezone_id: "ASIA_HCM_UUID"
+        metadata:
+          building_info:
+            total_floors: 15
+            year_built: 2015
+          amenities: ["Gym", "Cafeteria"]
+      - code: "REMOTE_VIRTUAL"
+        name: "Remote Work Virtual Place"
+        description: "Virtual place for remote employees"
+        metadata:
+          type: "VIRTUAL"
 
   Location:
     description: |\
@@ -3059,6 +3596,36 @@ entities:
       - name: "unique_location_code_in_place"
         type: unique
         fields: [place_id, code]
+    businessRules:
+      - "Location code must be unique within place"
+      - "Capacity should not exceed place capacity"
+      - "Parent-child hierarchy supported (e.g., Floor -> Room)"
+      - "SCD Type 2 for historical tracking"
+    indexes:
+      - name: "idx_location_place"
+        columns: [place_id]
+      - name: "idx_location_code"
+        columns: [place_id, code]
+        unique: true
+      - name: "idx_location_type"
+        columns: [location_type]
+    examples:
+      - code: "5F_CONF_A"
+        name: "5th Floor Conference Room A"
+        place_id: "VNG_TOWER_UUID"
+        location_type: "MEETING_ROOM"
+        floor_number: "5"
+        capacity: 10
+        metadata:
+          features: ["Video Conf", "Whiteboard"]
+          bookable: true
+      - code: "3F_WORKSPACE"
+        name: "3rd Floor Open Workspace"
+        place_id: "VNG_TOWER_UUID"
+        location_type: "WORKSPACE"
+        capacity: 50
+        metadata:
+          desk_type: "HOT_DESK"
 
   WorkLocation:
     description: |\
@@ -3081,6 +3648,24 @@ entities:
       place_id:
         type: UUID
         description: "Place reference (denormalized)"
+      legal_entity_id:
+        type: UUID
+        required: false
+        description: |
+          FK to LegalEntity (owning/operating entity).
+          CRITICAL for:
+          - Tax jurisdiction determination
+          - Social insurance registration location
+          - Cross-location allowance calculation
+          - Compliance reporting (labor inspection, safety audit)
+          - Legal entity work location count queries
+      work_loc_type_code:
+        type: string
+        maxLength: 50
+        description: "Work location type (OFFICE, FACTORY, WAREHOUSE, SITE, REMOTE)"
+      capacity:
+        type: integer
+        description: "Maximum employee capacity"
       work_model:
         type: enum
         values: [ONSITE, REMOTE, HYBRID, FLEXIBLE]
@@ -3093,7 +3678,7 @@ entities:
         type: text
       metadata:
         type: jsonb
-        description: "Work model details, policies"
+        description: "Work model details, policies, equipment, features"
       is_active:
         type: boolean
         default: true
@@ -3112,6 +3697,14 @@ entities:
       place:
         target: Place
         cardinality: "0..1"
+      legalEntity:
+        target: LegalEntity
+        cardinality: "N:1"
+        description: "Owning/operating legal entity"
+      positions:
+        target: Position
+        cardinality: "1:N"
+        description: "Positions at this location"
       assignments:
         target: Assignment
         cardinality: "0..*"
@@ -3123,6 +3716,40 @@ entities:
       - "Hybrid model requires primary location"
       - "Remote model may not have physical location"
       - "Used by Assignment.primary_location_id"
+      - "legal_entity_id determines tax jurisdiction for employees at this location"
+      - "legal_entity_id determines social insurance registration location"
+      - "If assignment.work_location.legal_entity_id != contract.legal_entity_id, cross-location allowance may apply"
+      - "One legal entity can have multiple work locations"
+      - "Work location must be in same country as legal entity"
+      - "Cross-province work allowance: 2,000,000 VND/month (VN example)"
+      - "Tax withholding follows work location legal entity, not employee residence"
+    indexes:
+      - name: "idx_work_location_code"
+        columns: [code]
+        unique: true
+      - name: "idx_work_location_legal_entity"
+        columns: [legal_entity_id]
+      - name: "idx_work_location_active"
+        columns: [is_active]
+        where: "is_active = true"
+    examples:
+      - code: "VNG_HCM_HQ"
+        name: "VNG Corp HCM Head Office"
+        legal_entity_id: "VNG_CORP_HCM_UUID"
+        work_loc_type_code: "OFFICE"
+        capacity: 500
+        work_model: "ONSITE"
+      - code: "VNG_HN_OFFICE"
+        name: "VNG Corp Hanoi Office"
+        legal_entity_id: "VNG_CORP_HN_UUID"
+        work_loc_type_code: "OFFICE"
+        capacity: 200
+        work_model: "HYBRID"
+      - code: "REMOTE_VN"
+        name: "Remote Work - Vietnam"
+        legal_entity_id: "VNG_CORP_HCM_UUID"
+        work_loc_type_code: "REMOTE"
+        work_model: "REMOTE"
 
 
 # =============================================================================
@@ -3372,3 +3999,129 @@ notes:
   - "SCD Type 2 is used extensively for historical tracking"
   - "Worker-Employee-Assignment separation enables complex employment scenarios"
   - "Talent Market feature supports multi-country/multi-entity organizations"
+
+  # ===========================================================================
+  # PRIVACY & COMPLIANCE SCHEMA
+  # ===========================================================================
+
+  DataClassification:
+    description: |
+      Defines data sensitivity levels and handling rules (GDPR/PDPA).
+      Used to tag fields and entities for security controls.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      code:
+        type: string
+        required: true
+        maxLength: 50
+        description: "Classification code (e.g., PUBLIC, INTERNAL, CONFIDENTIAL, RESTRICTED)"
+      name:
+        type: string
+        required: true
+        maxLength: 100
+      description:
+        type: text
+      handling_rules:
+        type: jsonb
+        description: "Rules for storage, transmission, and access"
+      retention_period_days:
+        type: integer
+        description: "Default retention period in days"
+      is_active:
+        type: boolean
+        default: true
+      effective_start_date:
+        type: date
+        required: true
+      effective_end_date:
+        type: date
+      is_current_flag:
+        type: boolean
+        default: true
+    constraints:
+      - name: "unique_data_class_code"
+        type: unique
+        fields: [code]
+    businessRules:
+      - "All PII data must be classified as CONFIDENTIAL or RESTRICTED"
+      - "Determines encryption and access logging requirements"
+    examples:
+      - code: "PUBLIC"
+        name: "Public Data"
+        description: "Information freely available to the public"
+      - code: "CONFIDENTIAL"
+        name: "Confidential Data"
+        description: "Sensitive business or personal data (PII)"
+        handling_rules:
+          encryption: "REQUIRED"
+          access_logging: "REQUIRED"
+
+  ConsentManagement:
+    description: |
+      Tracks user consent for data processing (GDPR/PDPA).
+      Records what was consented to, when, and by whom.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      person_id:
+        type: UUID
+        required: true
+        description: "Person giving consent"
+      consent_type_code:
+        type: string
+        required: true
+        maxLength: 50
+        description: "Type of consent (e.g., DATA_PROCESSING, MARKETING, BIOMETRIC)"
+      status:
+        type: enum
+        values: [GRANTED, DENIED, REVOKED, EXPIRED]
+        required: true
+      consent_date:
+        type: timestamp
+        required: true
+        description: "When consent was given/updated"
+      expiration_date:
+        type: date
+        description: "When consent expires"
+      version:
+        type: string
+        maxLength: 20
+        description: "Version of the consent policy/terms"
+      ip_address:
+        type: string
+        maxLength: 45
+        description: "IP address where consent was captured"
+      metadata:
+        type: jsonb
+        description: "Additional context (device, location)"
+      created_at:
+        type: timestamp
+        default: now()
+    relationships:
+      person:
+        target: Person
+        cardinality: "1"
+    indexes:
+      - name: "idx_consent_person"
+        columns: [person_id]
+      - name: "idx_consent_type"
+        columns: [consent_type_code]
+      - name: "idx_consent_status"
+        columns: [status]
+    businessRules:
+      - "Consent must be explicit and recorded"
+      - "Revoked consent stops associated processing"
+      - "Audit trail required for all consent changes"
+    examples:
+      - person_id: "PERSON_001_UUID"
+        consent_type_code: "DATA_PROCESSING_HR"
+        status: "GRANTED"
+        consent_date: "2025-01-01T10:00:00Z"
+        version: "v2.0"
+      - person_id: "PERSON_001_UUID"
+        consent_type_code: "MARKETING_EMAILS"
+        status: "DENIED"
+        consent_date: "2025-01-01T10:05:00Z"

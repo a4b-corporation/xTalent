@@ -267,6 +267,7 @@ metadata:
 | `name` | string(150) | No | Work location name |
 | `location_id` | UUID | No | Location reference (null for remote) |
 | `place_id` | UUID | No | Place reference (denormalized) |
+| `legal_entity_id` | UUID | No | Legal Entity reference (CRITICAL for Tax/SI) |
 | `work_model` | enum | Yes | ONSITE, REMOTE, HYBRID |
 | `is_primary` | boolean | Yes | Primary work location flag |
 | `description` | text | No | Work location description |
@@ -317,6 +318,7 @@ metadata:
 **Relationships:**
 - **References** `Location` (optional)
 - **References** `Place` (denormalized)
+- **References** `LegalEntity` (owning/operating entity)
 - **Referenced by** `Assignment` (employee assignments)
 - **Referenced by** `Position` (position locations)
 
@@ -324,6 +326,8 @@ metadata:
 - Work location code must be unique
 - Remote work locations may not have physical location reference
 - Hybrid model requires primary location
+- `legal_entity_id` determines tax jurisdiction and SI registration
+- Cross-location allowance applies if assignment LE != work location LE
 - SCD Type 2 for historical tracking
 - One primary work location per employee
 
@@ -336,6 +340,7 @@ code: VNG_TOWER_ENG
 name: "VNG Tower - Engineering"
 location_id: loc_3f_workspace
 place_id: place_vng_tower
+legal_entity_id: VNG_CORP_HCM_UUID
 work_model: ONSITE
 is_primary: true
 metadata:
@@ -348,6 +353,7 @@ code: HYBRID_HANOI
 name: "Hybrid - Hanoi Office"
 location_id: loc_3f_workspace
 place_id: place_vng_tower
+legal_entity_id: VNG_CORP_HN_UUID
 work_model: HYBRID
 is_primary: true
 metadata:
@@ -361,6 +367,7 @@ code: REMOTE_VN
 name: "Remote - Vietnam"
 location_id: null
 place_id: place_remote
+legal_entity_id: VNG_CORP_HCM_UUID
 work_model: REMOTE
 is_primary: true
 metadata:

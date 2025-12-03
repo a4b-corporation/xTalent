@@ -53,112 +53,135 @@ sub_modules:
     - Trigger
 entities:
   TimeSegment:
-    description: "Atomic building block of work time. Represents smallest unit that can\nbe scheduled\
-      \ (work period, break, meal, transfer between locations).\nCan be defined with relative timing (offset\
-      \ from shift start) or \nabsolute timing (fixed clock time).\n"
+    description: |\
+      Atomic building block of work time. Represents smallest unit that can be scheduled
+      (work period, break, meal, transfer between locations).
+      Can be defined with relative timing (offset from shift start) or absolute timing (fixed clock time).
     attributes:
       id:
         type: UUID
         required: true
-        description: Unique identifier
+        description: "Unique identifier"
       code:
         type: string
         required: true
-        unique: true
         maxLength: 50
-        description: Unique code (e.g., WORK_4H, LUNCH_1H, BREAK_15M)
+        description: "Unique code (e.g., WORK_4H, LUNCH_1H, BREAK_15M)"
       name:
         type: string
         required: true
         maxLength: 100
-        description: Display name
+        description: "Display name"
       segmentType:
         type: enum
-        values:
-        - WORK
-        - BREAK
-        - MEAL
-        - TRANSFER
+        values: [WORK, BREAK, MEAL, TRANSFER]
         required: true
-        description: Type of time segment
+        description: "Type of time segment"
       startOffsetMinutes:
         type: integer
         required: false
-        description: Minutes from shift start (for relative timing)
+        description: "Minutes from shift start (for relative timing)"
       endOffsetMinutes:
         type: integer
         required: false
-        description: Minutes from shift start (for relative timing)
+        description: "Minutes from shift start (for relative timing)"
       startTime:
         type: time
         required: false
-        description: Absolute start time (alternative to offset)
+        description: "Absolute start time (alternative to offset)"
       endTime:
         type: time
         required: false
-        description: Absolute end time (alternative to offset)
+        description: "Absolute end time (alternative to offset)"
       durationMinutes:
         type: integer
         required: true
-        description: Duration in minutes
+        description: "Duration in minutes"
       isPaid:
         type: boolean
+        required: true
         default: false
-        description: Whether this segment is paid time
+        description: "Whether this segment is paid time"
       isMandatory:
         type: boolean
+        required: true
         default: true
-        description: Whether segment must be taken
+        description: "Whether segment must be taken"
       costCenterCode:
         type: string
         required: false
         maxLength: 50
-        description: Cost center for accounting
+        description: "Cost center for accounting"
       jobCode:
         type: string
         required: false
         maxLength: 50
-        description: Job/position code
+        description: "Job/position code"
       premiumCode:
         type: string
         required: false
         maxLength: 50
-        description: Premium pay code (night shift, hazard, etc.)
+        description: "Premium pay code (night shift, hazard, etc.)"
       isActive:
         type: boolean
+        required: true
         default: true
-      effectiveDate:
+      effective_start_date:
         type: date
         required: true
-      endDate:
+        description: "Start date of this version"
+      effective_end_date:
         type: date
         required: false
-      createdAt:
+        description: "End date of this version"
+      is_current_flag:
+        type: boolean
+        required: true
+        default: true
+        description: "Current version flag"
+      created_at:
         type: datetime
         required: true
-      updatedAt:
+      created_by:
+        type: UUID
+        required: true
+      updated_at:
         type: datetime
         required: true
+      updated_by:
+        type: UUID
+        required: false
     relationships:
       usedInShifts:
         target: ShiftSegment
         cardinality: 0..*
-        description: Shifts that use this segment
-    constraints:
-    - name: timing_method
-      type: check
-      condition: (startOffsetMinutes IS NOT NULL AND endOffsetMinutes IS NOT NULL) OR (startTime IS NOT
-        NULL AND endTime IS NOT NULL)
-      description: Must use either offset OR absolute time, not both
-    - name: unique_code
-      type: unique
-      fields:
-      - code
+        description: "Shifts that use this segment"
     businessRules:
-    - Segment can use relative (offset) or absolute (time) positioning
-    - WORK segments are typically paid, BREAK/MEAL are unpaid
-    - TRANSFER segments track time moving between work locations
-    - Duration must match calculated time from start to end
+      - "Segment can use relative (offset) or absolute (time) positioning"
+      - "WORK segments are typically paid, BREAK/MEAL are unpaid"
+      - "TRANSFER segments track time moving between work locations"
+      - "Duration must match calculated time from start to end"
+      - "Must use either offset OR absolute time, not both"
+    constraints:
+      - name: chk_time_segment_timing
+        type: check
+        condition: "(startOffsetMinutes IS NOT NULL AND endOffsetMinutes IS NOT NULL) OR (startTime IS NOT NULL AND endTime IS NOT NULL)"
+        description: "Must use either offset OR absolute time, not both"
+      - name: uq_time_segment_code
+        type: unique
+        fields: [code]
+    indexes:
+      - name: pk_time_segment
+        columns: [id]
+        type: primary_key
+      - name: idx_time_segment_code
+        columns: [code]
+        unique: true
+      - name: idx_time_segment_type
+        columns: [segmentType, isActive]
+      - name: idx_time_segment_current
+        columns: [is_current_flag]
+        where: "is_current_flag = TRUE"
   ShiftDefinition:
     description: 'Composition of time segments forming a complete shift.
 
@@ -1866,604 +1889,1944 @@ entities:
       - "Employment type in [FULL_TIME, PART_TIME]"
       - "Location = 'US'"
   ValidationRule:
-    description: 'Defines validation rules for leave requests (e.g., advance notice,
-
-      max consecutive days, blackout periods). Can be bound to a specific
-
-      LeaveType or to an entire LeaveClass.
-
-      '
+    description: |\
+      Defines validation rules for leave requests (e.g., advance notice, max consecutive days, blackout periods).
+      Can be bound to a specific LeaveType or to an entire LeaveClass.
     attributes:
-    - id: string (UUID)
-    - code: string
-    - name: string
-    - description: string (nullable)
-    - leaveTypeId: string (UUID, nullable)
-    - leaveClassId: string (UUID, nullable)
-    - ruleType: enum [ADVANCE_NOTICE, MAX_CONSECUTIVE_DAYS, MIN_CONSECUTIVE_DAYS, BLACKOUT_PERIOD, MAX_REQUESTS_PER_PERIOD,
-        DOCUMENTATION_REQUIRED]
-    - advanceNoticeDays: integer (nullable)
-    - maxConsecutiveDays: integer (nullable)
-    - minConsecutiveDays: integer (nullable)
-    - blackoutStartDate: date (nullable)
-    - blackoutEndDate: date (nullable)
-    - maxRequestsPerPeriod: integer (nullable)
-    - periodType: enum [MONTH, QUARTER, YEAR] (nullable)
-    - documentationThresholdDays: integer (nullable)
-    - errorMessage: string
-    - priority: integer
-    - isActive: boolean
-    - effectiveDate: date
-    - endDate: date (nullable)
-    - createdAt: datetime
-    - updatedAt: datetime
+      id:
+        type: UUID
+        required: true
+        description: "Unique identifier"
+      code:
+        type: string
+        required: true
+        maxLength: 50
+        description: "Rule code"
+      name:
+        type: string
+        required: true
+        maxLength: 100
+        description: "Rule name"
+      description:
+        type: text
+        required: false
+      leaveTypeId:
+        type: UUID
+        required: false
+        description: "Specific leave type this rule applies to"
+      leaveClassId:
+        type: UUID
+        required: false
+        description: "Entire leave class this rule applies to"
+      ruleType:
+        type: enum
+        values: [ADVANCE_NOTICE, MAX_CONSECUTIVE_DAYS, MIN_CONSECUTIVE_DAYS, BLACKOUT_PERIOD, MAX_REQUESTS_PER_PERIOD, DOCUMENTATION_REQUIRED]
+        required: true
+        description: "Type of validation"
+      advanceNoticeDays:
+        type: integer
+        required: false
+        description: "Minimum days notice required"
+      maxConsecutiveDays:
+        type: integer
+        required: false
+        description: "Maximum consecutive days allowed"
+      minConsecutiveDays:
+        type: integer
+        required: false
+        description: "Minimum consecutive days required"
+      blackoutStartDate:
+        type: date
+        required: false
+        description: "Start of blackout period"
+      blackoutEndDate:
+        type: date
+        required: false
+        description: "End of blackout period"
+      maxRequestsPerPeriod:
+        type: integer
+        required: false
+        description: "Maximum requests allowed per period"
+      periodType:
+        type: enum
+        values: [MONTH, QUARTER, YEAR]
+        required: false
+        description: "Period type for request limits"
+      documentationThresholdDays:
+        type: integer
+        required: false
+        description: "Days threshold requiring documentation"
+      errorMessage:
+        type: string
+        required: true
+        maxLength: 500
+        description: "Error message to display when validation fails"
+      priority:
+        type: integer
+        required: true
+        default: 0
+        description: "Evaluation priority"
+      isActive:
+        type: boolean
+        required: true
+        default: true
+      effective_start_date:
+        type: date
+        required: true
+        description: "Start date of this version"
+      effective_end_date:
+        type: date
+        required: false
+        description: "End date of this version"
+      is_current_flag:
+        type: boolean
+        required: true
+        default: true
+        description: "Current version flag"
+      created_at:
+        type: datetime
+        required: true
+      created_by:
+        type: UUID
+        required: true
+      updated_at:
+        type: datetime
+        required: true
+      updated_by:
+        type: UUID
+        required: false
     relationships:
-    - appliesTo: LeaveType | LeaveClass
+      appliesToLeaveType:
+        target: LeaveType
+        cardinality: 0..1
+      appliesToLeaveClass:
+        target: LeaveClass
+        cardinality: 0..1
+    businessRules:
+      - "Either leaveTypeId OR leaveClassId must be set, not both"
+      - "If ruleType is ADVANCE_NOTICE, advanceNoticeDays must be > 0"
+      - "If ruleType is MAX_CONSECUTIVE_DAYS, maxConsecutiveDays must be > 0"
+      - "If ruleType is BLACKOUT_PERIOD, both blackoutStartDate and blackoutEndDate must be set"
+      - "If ruleType is MAX_REQUESTS_PER_PERIOD, both maxRequestsPerPeriod and periodType must be set"
     constraints:
-    - code must be unique
-    rules:
-    - Either leaveTypeId OR leaveClassId must be set, not both
-    - If ruleType is ADVANCE_NOTICE, advanceNoticeDays must be > 0
-    - If ruleType is MAX_CONSECUTIVE_DAYS, maxConsecutiveDays must be > 0
-    - If ruleType is BLACKOUT_PERIOD, both blackoutStartDate and blackoutEndDate must be set
-    - If ruleType is MAX_REQUESTS_PER_PERIOD, both maxRequestsPerPeriod and periodType must be set
+      - name: uq_validation_rule_code
+        type: unique
+        fields: [code]
+      - name: chk_validation_target
+        type: check
+        condition: "(leaveTypeId IS NOT NULL AND leaveClassId IS NULL) OR (leaveTypeId IS NULL AND leaveClassId IS NOT NULL)"
+    indexes:
+      - name: pk_validation_rule
+        columns: [id]
+        type: primary_key
+      - name: idx_validation_rule_code
+        columns: [code]
+      - name: idx_validation_target
+        columns: [leaveTypeId, leaveClassId]
     examples:
-    - 'Advance notice: Must request at least 7 days in advance'
-    - 'Max consecutive: Cannot take more than 10 consecutive days'
-    - 'Blackout: Cannot request leave during Dec 20-31 (year-end close)'
+      - "Advance notice: Must request at least 7 days in advance"
+      - "Max consecutive: Cannot take more than 10 consecutive days"
+      - "Blackout: Cannot request leave during Dec 20-31 (year-end close)"
+
   AccrualRule:
-    description: 'Defines how leave balance is accrued (earned) over time.
-
+    description: |\
+      Defines how leave balance is accrued (earned) over time.
       Can be bound to a specific LeaveType or to an entire LeaveClass.
-
-      '
     attributes:
-    - id: string (UUID)
-    - code: string
-    - name: string
-    - description: string (nullable)
-    - leaveTypeId: string (UUID, nullable)
-    - leaveClassId: string (UUID, nullable)
-    - accrualMethod: enum [UPFRONT, MONTHLY, BIWEEKLY, WEEKLY, DAILY, HOURLY, CUSTOM]
-    - accrualAmount: decimal
-    - accrualPeriod: enum [YEAR, MONTH, WEEK, DAY, HOUR] (nullable)
-    - maxAccrualBalance: decimal (nullable)
-    - accrualStartDate: enum [HIRE_DATE, YEAR_START, CUSTOM_DATE]
-    - customStartDate: date (nullable)
-    - waitingPeriodMonths: integer (nullable)
-    - isProrated: boolean
-    - priority: integer
-    - isActive: boolean
-    - effectiveDate: date
-    - endDate: date (nullable)
-    - createdAt: datetime
-    - updatedAt: datetime
+      id:
+        type: UUID
+        required: true
+        description: "Unique identifier"
+      code:
+        type: string
+        required: true
+        maxLength: 50
+        description: "Rule code"
+      name:
+        type: string
+        required: true
+        maxLength: 100
+        description: "Rule name"
+      description:
+        type: text
+        required: false
+      leaveTypeId:
+        type: UUID
+        required: false
+        description: "Specific leave type this rule applies to"
+      leaveClassId:
+        type: UUID
+        required: false
+        description: "Entire leave class this rule applies to"
+      accrualMethod:
+        type: enum
+        values: [UPFRONT, MONTHLY, BIWEEKLY, WEEKLY, DAILY, HOURLY, CUSTOM]
+        required: true
+        description: "How leave is accrued"
+      accrualAmount:
+        type: decimal
+        required: true
+        precision: [10, 2]
+        description: "Amount accrued per period"
+      accrualPeriod:
+        type: enum
+        values: [YEAR, MONTH, WEEK, DAY, HOUR]
+        required: false
+        description: "Period for accrual calculation"
+      maxAccrualBalance:
+        type: decimal
+        required: false
+        precision: [10, 2]
+        description: "Maximum balance that can be accrued"
+      accrualStartDate:
+        type: enum
+        values: [HIRE_DATE, YEAR_START, CUSTOM_DATE]
+        required: true
+        description: "When accrual starts"
+      customStartDate:
+        type: date
+        required: false
+        description: "Custom start date if accrualStartDate is CUSTOM_DATE"
+      waitingPeriodMonths:
+        type: integer
+        required: false
+        description: "Months to wait before accrual starts"
+      isProrated:
+        type: boolean
+        required: true
+        default: false
+        description: "Whether to prorate accrual"
+      priority:
+        type: integer
+        required: true
+        default: 0
+        description: "Evaluation priority"
+      isActive:
+        type: boolean
+        required: true
+        default: true
+      effective_start_date:
+        type: date
+        required: true
+        description: "Start date of this version"
+      effective_end_date:
+        type: date
+        required: false
+        description: "End date of this version"
+      is_current_flag:
+        type: boolean
+        required: true
+        default: true
+        description: "Current version flag"
+      created_at:
+        type: datetime
+        required: true
+      created_by:
+        type: UUID
+        required: true
+      updated_at:
+        type: datetime
+        required: true
+      updated_by:
+        type: UUID
+        required: false
     relationships:
-    - appliesTo: LeaveType | LeaveClass
-    - hasProrationRules: ProrationRule[]
+      appliesToLeaveType:
+        target: LeaveType
+        cardinality: 0..1
+      appliesToLeaveClass:
+        target: LeaveClass
+        cardinality: 0..1
+      hasProrationRules:
+        target: ProrationRule
+        cardinality: 0..*
+    businessRules:
+      - "Either leaveTypeId OR leaveClassId must be set, not both"
+      - "If accrualMethod is not UPFRONT, accrualPeriod must be set"
+      - "accrualAmount must be > 0"
+      - "If accrualStartDate is CUSTOM_DATE, customStartDate must be set"
+      - "If maxAccrualBalance is set, it must be >= accrualAmount"
     constraints:
-    - code must be unique
-    rules:
-    - Either leaveTypeId OR leaveClassId must be set, not both
-    - If accrualMethod is not UPFRONT, accrualPeriod must be set
-    - accrualAmount must be > 0
-    - If accrualStartDate is CUSTOM_DATE, customStartDate must be set
-    - If maxAccrualBalance is set, it must be >= accrualAmount
+      - name: uq_accrual_rule_code
+        type: unique
+        fields: [code]
+      - name: chk_accrual_target
+        type: check
+        condition: "(leaveTypeId IS NOT NULL AND leaveClassId IS NULL) OR (leaveTypeId IS NULL AND leaveClassId IS NOT NULL)"
+      - name: chk_accrual_amount
+        type: check
+        condition: "accrualAmount > 0"
+    indexes:
+      - name: pk_accrual_rule
+        columns: [id]
+        type: primary_key
+      - name: idx_accrual_rule_code
+        columns: [code]
+      - name: idx_accrual_target
+        columns: [leaveTypeId, leaveClassId]
     examples:
-    - 'Upfront: 20 days allocated on Jan 1 each year'
-    - 'Monthly: 1.67 days accrued per month (20 days / 12 months)'
-    - 'Tenure-based: 15 days for 0-5 years, 20 days for 5+ years'
+      - "Upfront: 20 days allocated on Jan 1 each year"
+      - "Monthly: 1.67 days accrued per month (20 days / 12 months)"
+      - "Tenure-based: 15 days for 0-5 years, 20 days for 5+ years"
   CarryoverRule:
-    description: "Defines rules for carrying over unused leave to the next period,\nexpiring unused leave,\
-      \ or resetting balances. Can be bound to a \nspecific LeaveType or to an entire LeaveClass.\n"
+    description: |\
+      Defines rules for carrying over unused leave to the next period, expiring unused leave, or resetting balances.
+      Can be bound to a specific LeaveType or to an entire LeaveClass.
     attributes:
-    - id: string (UUID)
-    - code: string
-    - name: string
-    - description: string (nullable)
-    - leaveTypeId: string (UUID, nullable)
-    - leaveClassId: string (UUID, nullable)
-    - carryoverType: enum [NONE, UNLIMITED, LIMITED, EXPIRE_ALL, PAYOUT]
-    - maxCarryoverAmount: decimal (nullable)
-    - carryoverExpiryMonths: integer (nullable)
-    - expiryDate: date (nullable)
-    - payoutRate: decimal (nullable)
-    - resetPeriod: enum [YEAR, HIRE_ANNIVERSARY, CUSTOM] (nullable)
-    - resetDate: date (nullable)
-    - priority: integer
-    - isActive: boolean
-    - effectiveDate: date
-    - endDate: date (nullable)
-    - createdAt: datetime
-    - updatedAt: datetime
+      id:
+        type: UUID
+        required: true
+        description: "Unique identifier"
+      code:
+        type: string
+        required: true
+        maxLength: 50
+        description: "Rule code"
+      name:
+        type: string
+        required: true
+        maxLength: 100
+        description: "Rule name"
+      description:
+        type: text
+        required: false
+      leaveTypeId:
+        type: UUID
+        required: false
+        description: "Specific leave type this rule applies to"
+      leaveClassId:
+        type: UUID
+        required: false
+        description: "Entire leave class this rule applies to"
+      carryoverType:
+        type: enum
+        values: [NONE, UNLIMITED, LIMITED, EXPIRE_ALL, PAYOUT]
+        required: true
+        description: "Type of carryover behavior"
+      maxCarryoverAmount:
+        type: decimal
+        required: false
+        precision: [10, 2]
+        description: "Maximum amount that can carry over"
+      carryoverExpiryMonths:
+        type: integer
+        required: false
+        description: "Months until carried over balance expires"
+      expiryDate:
+        type: date
+        required: false
+        description: "Specific expiry date for carryover"
+      payoutRate:
+        type: decimal
+        required: false
+        precision: [5, 4]
+        description: "Rate for payout (e.g., 1.0 = 100%)"
+      resetPeriod:
+        type: enum
+        values: [YEAR, HIRE_ANNIVERSARY, CUSTOM]
+        required: false
+        description: "When balance resets"
+      resetDate:
+        type: date
+        required: false
+        description: "Custom reset date if resetPeriod is CUSTOM"
+      priority:
+        type: integer
+        required: true
+        default: 0
+        description: "Evaluation priority"
+      isActive:
+        type: boolean
+        required: true
+        default: true
+      effective_start_date:
+        type: date
+        required: true
+        description: "Start date of this version"
+      effective_end_date:
+        type: date
+        required: false
+        description: "End date of this version"
+      is_current_flag:
+        type: boolean
+        required: true
+        default: true
+        description: "Current version flag"
+      created_at:
+        type: datetime
+        required: true
+      created_by:
+        type: UUID
+        required: true
+      updated_at:
+        type: datetime
+        required: true
+      updated_by:
+        type: UUID
+        required: false
     relationships:
-    - appliesTo: LeaveType | LeaveClass
+      appliesToLeaveType:
+        target: LeaveType
+        cardinality: 0..1
+      appliesToLeaveClass:
+        target: LeaveClass
+        cardinality: 0..1
+    businessRules:
+      - "Either leaveTypeId OR leaveClassId must be set, not both"
+      - "If carryoverType is LIMITED, maxCarryoverAmount must be set"
+      - "If carryoverType is PAYOUT, payoutRate must be set"
+      - "If carryoverExpiryMonths is set, it must be > 0"
+      - "If resetPeriod is CUSTOM, resetDate must be set"
     constraints:
-    - code must be unique
-    rules:
-    - Either leaveTypeId OR leaveClassId must be set, not both
-    - If carryoverType is LIMITED, maxCarryoverAmount must be set
-    - If carryoverType is PAYOUT, payoutRate must be set
-    - If carryoverExpiryMonths is set, it must be > 0
-    - If resetPeriod is CUSTOM, resetDate must be set
+      - name: uq_carryover_rule_code
+        type: unique
+        fields: [code]
+      - name: chk_carryover_target
+        type: check
+        condition: "(leaveTypeId IS NOT NULL AND leaveClassId IS NULL) OR (leaveTypeId IS NULL AND leaveClassId IS NOT NULL)"
+    indexes:
+      - name: pk_carryover_rule
+        columns: [id]
+        type: primary_key
+      - name: idx_carryover_rule_code
+        columns: [code]
+      - name: idx_carryover_target
+        columns: [leaveTypeId, leaveClassId]
     examples:
-    - 'Unlimited carryover: All unused days carry to next year'
-    - 'Limited carryover: Max 5 days carry over, rest expires'
-    - 'Expire all: All unused days expire on Dec 31'
-    - 'Payout: Unused days paid out at 100% of daily rate'
+      - "Unlimited carryover: All unused days carry to next year"
+      - "Limited carryover: Max 5 days carry over, rest expires"
+      - "Expire all: All unused days expire on Dec 31"
+      - "Payout: Unused days paid out at 100% of daily rate"
+
   LimitRule:
-    description: 'Defines limits on leave usage (e.g., max days per year, per request).
-
+    description: |\
+      Defines limits on leave usage (e.g., max days per year, per request).
       Can be bound to a specific LeaveType or to an entire LeaveClass.
-
-      '
     attributes:
-    - id: string (UUID)
-    - code: string
-    - name: string
-    - description: string (nullable)
-    - leaveTypeId: string (UUID, nullable)
-    - leaveClassId: string (UUID, nullable)
-    - limitType: enum [MAX_PER_YEAR, MAX_PER_REQUEST, MAX_PER_MONTH, MAX_PER_QUARTER, MIN_PER_REQUEST]
-    - limitAmount: decimal
-    - limitPeriod: enum [YEAR, MONTH, QUARTER, REQUEST] (nullable)
-    - priority: integer
-    - isActive: boolean
-    - effectiveDate: date
-    - endDate: date (nullable)
-    - createdAt: datetime
-    - updatedAt: datetime
+      id:
+        type: UUID
+        required: true
+        description: "Unique identifier"
+      code:
+        type: string
+        required: true
+        maxLength: 50
+        description: "Rule code"
+      name:
+        type: string
+        required: true
+        maxLength: 100
+        description: "Rule name"
+      description:
+        type: text
+        required: false
+      leaveTypeId:
+        type: UUID
+        required: false
+        description: "Specific leave type this rule applies to"
+      leaveClassId:
+        type: UUID
+        required: false
+        description: "Entire leave class this rule applies to"
+      limitType:
+        type: enum
+        values: [MAX_PER_YEAR, MAX_PER_REQUEST, MAX_PER_MONTH, MAX_PER_QUARTER, MIN_PER_REQUEST]
+        required: true
+        description: "Type of limit"
+      limitAmount:
+        type: decimal
+        required: true
+        precision: [10, 2]
+        description: "Limit amount"
+      limitPeriod:
+        type: enum
+        values: [YEAR, MONTH, QUARTER, REQUEST]
+        required: false
+        description: "Period for the limit"
+      priority:
+        type: integer
+        required: true
+        default: 0
+        description: "Evaluation priority"
+      isActive:
+        type: boolean
+        required: true
+        default: true
+      effective_start_date:
+        type: date
+        required: true
+        description: "Start date of this version"
+      effective_end_date:
+        type: date
+        required: false
+        description: "End date of this version"
+      is_current_flag:
+        type: boolean
+        required: true
+        default: true
+        description: "Current version flag"
+      created_at:
+        type: datetime
+        required: true
+      created_by:
+        type: UUID
+        required: true
+      updated_at:
+        type: datetime
+        required: true
+      updated_by:
+        type: UUID
+        required: false
     relationships:
-    - appliesTo: LeaveType | LeaveClass
+      appliesToLeaveType:
+        target: LeaveType
+        cardinality: 0..1
+      appliesToLeaveClass:
+        target: LeaveClass
+        cardinality: 0..1
+    businessRules:
+      - "Either leaveTypeId OR leaveClassId must be set, not both"
+      - "limitAmount must be > 0"
+      - "If limitType is MAX_PER_YEAR, limitPeriod must be YEAR"
     constraints:
-    - code must be unique
-    rules:
-    - Either leaveTypeId OR leaveClassId must be set, not both
-    - limitAmount must be > 0
-    - If limitType is MAX_PER_YEAR, limitPeriod must be YEAR
+      - name: uq_limit_rule_code
+        type: unique
+        fields: [code]
+      - name: chk_limit_target
+        type: check
+        condition: "(leaveTypeId IS NOT NULL AND leaveClassId IS NULL) OR (leaveTypeId IS NULL AND leaveClassId IS NOT NULL)"
+      - name: chk_limit_amount
+        type: check
+        condition: "limitAmount > 0"
+    indexes:
+      - name: pk_limit_rule
+        columns: [id]
+        type: primary_key
+      - name: idx_limit_rule_code
+        columns: [code]
+      - name: idx_limit_target
+        columns: [leaveTypeId, leaveClassId]
     examples:
-    - 'Max per year: Cannot exceed 20 days per calendar year'
-    - 'Max per request: Cannot request more than 10 consecutive days'
-    - 'Min per request: Must request at least 0.5 days (half day minimum)'
+      - "Max per year: Cannot exceed 20 days per calendar year"
+      - "Max per request: Cannot request more than 10 consecutive days"
+      - "Min per request: Must request at least 0.5 days (half day minimum)"
+
   OverdraftRule:
-    description: 'Defines whether and how employees can request leave beyond their
-
-      available balance (negative balance). Can be bound to a specific
-
-      LeaveType or to an entire LeaveClass.
-
-      '
-    attributes:
-    - id: string (UUID)
-    - code: string
-    - name: string
-    - description: string (nullable)
-    - leaveTypeId: string (UUID, nullable)
-    - leaveClassId: string (UUID, nullable)
-    - allowOverdraft: boolean
-    - maxOverdraftAmount: decimal (nullable)
-    - overdraftRepaymentRequired: boolean
-    - repaymentMethod: enum [AUTO_DEDUCT, MANUAL, PAYROLL_DEDUCT] (nullable)
-    - requiresApproval: boolean
-    - approvalLevel: enum [MANAGER, HR, DIRECTOR] (nullable)
-    - priority: integer
-    - isActive: boolean
-    - effectiveDate: date
-    - endDate: date (nullable)
-    - createdAt: datetime
-    - updatedAt: datetime
-    relationships:
-    - appliesTo: LeaveType | LeaveClass
-    constraints:
-    - code must be unique
-    rules:
-    - Either leaveTypeId OR leaveClassId must be set, not both
-    - If allowOverdraft is true, maxOverdraftAmount must be set
-    - If overdraftRepaymentRequired is true, repaymentMethod must be set
-    - If requiresApproval is true, approvalLevel must be set
-    - maxOverdraftAmount must be > 0 if set
-    examples:
-    - 'Allow 5 days overdraft: Employee can go -5 days, must repay from future accruals'
-    - 'No overdraft: Cannot request leave if balance is 0'
-  ProrationRule:
-    description: 'Defines how leave allocation is prorated for employees who start
-
-      mid-period or have part-time schedules. Can be bound to a specific
-
-      LeaveType or to an entire LeaveClass.
-
-      '
-    attributes:
-    - id: string (UUID)
-    - code: string
-    - name: string
-    - description: string (nullable)
-    - leaveTypeId: string (UUID, nullable)
-    - leaveClassId: string (UUID, nullable)
-    - prorationType: enum [START_DATE, END_DATE, SCHEDULE, NONE]
-    - prorationMethod: enum [MONTHLY, DAILY, HOURLY]
-    - roundingRuleId: string (UUID, nullable)
-    - priority: integer
-    - isActive: boolean
-    - effectiveDate: date
-    - endDate: date (nullable)
-    - createdAt: datetime
-    - updatedAt: datetime
-    relationships:
-    - appliesTo: LeaveType | LeaveClass
-    - usesRoundingRule: RoundingRule (nullable)
-    constraints:
-    - code must be unique
-    rules:
-    - Either leaveTypeId OR leaveClassId must be set, not both
-    - If prorationType is not NONE, prorationMethod must be set
-    examples:
-    - 'Start date proration: Employee starting July 1 gets 10 days (50% of 20)'
-    - 'Schedule proration: Part-time (50%) employee gets 10 days (50% of 20)'
-  RoundingRule:
-    description: 'Defines how fractional leave amounts are rounded (e.g., 1.67 days → 1.5 or 2).
-
+    description: |\
+      Defines whether and how employees can request leave beyond their available balance (negative balance).
       Can be bound to a specific LeaveType or to an entire LeaveClass.
-
-      '
     attributes:
-    - id: string (UUID)
-    - code: string
-    - name: string
-    - description: string (nullable)
-    - leaveTypeId: string (UUID, nullable)
-    - leaveClassId: string (UUID, nullable)
-    - roundingMethod: enum [UP, DOWN, NEAREST, NEAREST_HALF, NEAREST_QUARTER, NO_ROUNDING]
-    - decimalPlaces: integer
-    - priority: integer
-    - isActive: boolean
-    - effectiveDate: date
-    - endDate: date (nullable)
-    - createdAt: datetime
-    - updatedAt: datetime
+      id:
+        type: UUID
+        required: true
+        description: "Unique identifier"
+      code:
+        type: string
+        required: true
+        maxLength: 50
+        description: "Rule code"
+      name:
+        type: string
+        required: true
+        maxLength: 100
+        description: "Rule name"
+      description:
+        type: text
+        required: false
+      leaveTypeId:
+        type: UUID
+        required: false
+        description: "Specific leave type this rule applies to"
+      leaveClassId:
+        type: UUID
+        required: false
+        description: "Entire leave class this rule applies to"
+      allowOverdraft:
+        type: boolean
+        required: true
+        default: false
+        description: "Whether overdraft is allowed"
+      maxOverdraftAmount:
+        type: decimal
+        required: false
+        precision: [10, 2]
+        description: "Maximum negative balance allowed"
+      overdraftRepaymentRequired:
+        type: boolean
+        required: true
+        default: true
+        description: "Whether overdraft must be repaid"
+      repaymentMethod:
+        type: enum
+        values: [AUTO_DEDUCT, MANUAL, PAYROLL_DEDUCT]
+        required: false
+        description: "How overdraft is repaid"
+      requiresApproval:
+        type: boolean
+        required: true
+        default: true
+        description: "Whether overdraft requires special approval"
+      approvalLevel:
+        type: enum
+        values: [MANAGER, HR, DIRECTOR]
+        required: false
+        description: "Required approval level"
+      priority:
+        type: integer
+        required: true
+        default: 0
+        description: "Evaluation priority"
+      isActive:
+        type: boolean
+        required: true
+        default: true
+      effective_start_date:
+        type: date
+        required: true
+        description: "Start date of this version"
+      effective_end_date:
+        type: date
+        required: false
+        description: "End date of this version"
+      is_current_flag:
+        type: boolean
+        required: true
+        default: true
+        description: "Current version flag"
+      created_at:
+        type: datetime
+        required: true
+      created_by:
+        type: UUID
+        required: true
+      updated_at:
+        type: datetime
+        required: true
+      updated_by:
+        type: UUID
+        required: false
     relationships:
-    - appliesTo: LeaveType | LeaveClass
+      appliesToLeaveType:
+        target: LeaveType
+        cardinality: 0..1
+      appliesToLeaveClass:
+        target: LeaveClass
+        cardinality: 0..1
+    businessRules:
+      - "Either leaveTypeId OR leaveClassId must be set, not both"
+      - "If allowOverdraft is true, maxOverdraftAmount must be set"
+      - "If overdraftRepaymentRequired is true, repaymentMethod must be set"
+      - "If requiresApproval is true, approvalLevel must be set"
+      - "maxOverdraftAmount must be > 0 if set"
     constraints:
-    - code must be unique
-    rules:
-    - Either leaveTypeId OR leaveClassId must be set, not both
-    - decimalPlaces must be >= 0 and <= 4
+      - name: uq_overdraft_rule_code
+        type: unique
+        fields: [code]
+      - name: chk_overdraft_target
+        type: check
+        condition: "(leaveTypeId IS NOT NULL AND leaveClassId IS NULL) OR (leaveTypeId IS NULL AND leaveClassId IS NOT NULL)"
+    indexes:
+      - name: pk_overdraft_rule
+        columns: [id]
+        type: primary_key
+      - name: idx_overdraft_rule_code
+        columns: [code]
+      - name: idx_overdraft_target
+        columns: [leaveTypeId, leaveClassId]
     examples:
-    - 'Round up: 1.67 → 2.0'
-    - 'Round to nearest half: 1.67 → 1.5'
-    - 'Round down: 1.67 → 1.0'
+      - "Allow 5 days overdraft: Employee can go -5 days, must repay from future accruals"
+      - "No overdraft: Cannot request leave if balance is 0"
+
+  ProrationRule:
+    description: |\
+      Defines how leave allocation is prorated for employees who start mid-period or have part-time schedules.
+      Can be bound to a specific LeaveType or to an entire LeaveClass.
+    attributes:
+      id:
+        type: UUID
+        required: true
+        description: "Unique identifier"
+      code:
+        type: string
+        required: true
+        maxLength: 50
+        description: "Rule code"
+      name:
+        type: string
+        required: true
+        maxLength: 100
+        description: "Rule name"
+      description:
+        type: text
+        required: false
+      leaveTypeId:
+        type: UUID
+        required: false
+        description: "Specific leave type this rule applies to"
+      leaveClassId:
+        type: UUID
+        required: false
+        description: "Entire leave class this rule applies to"
+      prorationType:
+        type: enum
+        values: [START_DATE, END_DATE, SCHEDULE, NONE]
+        required: true
+        description: "Type of proration"
+      prorationMethod:
+        type: enum
+        values: [MONTHLY, DAILY, HOURLY]
+        required: false
+        description: "Method for calculating proration"
+      roundingRuleId:
+        type: UUID
+        required: false
+        description: "Rounding rule to apply after proration"
+      priority:
+        type: integer
+        required: true
+        default: 0
+        description: "Evaluation priority"
+      isActive:
+        type: boolean
+        required: true
+        default: true
+      effective_start_date:
+        type: date
+        required: true
+        description: "Start date of this version"
+      effective_end_date:
+        type: date
+        required: false
+        description: "End date of this version"
+      is_current_flag:
+        type: boolean
+        required: true
+        default: true
+        description: "Current version flag"
+      created_at:
+        type: datetime
+        required: true
+      created_by:
+        type: UUID
+        required: true
+      updated_at:
+        type: datetime
+        required: true
+      updated_by:
+        type: UUID
+        required: false
+    relationships:
+      appliesToLeaveType:
+        target: LeaveType
+        cardinality: 0..1
+      appliesToLeaveClass:
+        target: LeaveClass
+        cardinality: 0..1
+      usesRoundingRule:
+        target: RoundingRule
+        cardinality: 0..1
+        description: "Optional rounding rule"
+    businessRules:
+      - "Either leaveTypeId OR leaveClassId must be set, not both"
+      - "If prorationType is not NONE, prorationMethod must be set"
+    constraints:
+      - name: uq_proration_rule_code
+        type: unique
+        fields: [code]
+      - name: chk_proration_target
+        type: check
+        condition: "(leaveTypeId IS NOT NULL AND leaveClassId IS NULL) OR (leaveTypeId IS NULL AND leaveClassId IS NOT NULL)"
+    indexes:
+      - name: pk_proration_rule
+        columns: [id]
+        type: primary_key
+      - name: idx_proration_rule_code
+        columns: [code]
+      - name: idx_proration_target
+        columns: [leaveTypeId, leaveClassId]
+      - name: idx_proration_rounding
+        columns: [roundingRuleId]
+    examples:
+      - "Start date proration: Employee starting July 1 gets 10 days (50% of 20)"
+      - "Schedule proration: Part-time (50%) employee gets 10 days (50% of 20)"
+
+  RoundingRule:
+    description: |\
+      Defines how fractional leave amounts are rounded (e.g., 1.67 days → 1.5 or 2).
+      Can be bound to a specific LeaveType or to an entire LeaveClass.
+    attributes:
+      id:
+        type: UUID
+        required: true
+        description: "Unique identifier"
+      code:
+        type: string
+        required: true
+        maxLength: 50
+        description: "Rule code"
+      name:
+        type: string
+        required: true
+        maxLength: 100
+        description: "Rule name"
+      description:
+        type: text
+        required: false
+      leaveTypeId:
+        type: UUID
+        required: false
+        description: "Specific leave type this rule applies to"
+      leaveClassId:
+        type: UUID
+        required: false
+        description: "Entire leave class this rule applies to"
+      roundingMethod:
+        type: enum
+        values: [UP, DOWN, NEAREST, NEAREST_HALF, NEAREST_QUARTER, NO_ROUNDING]
+        required: true
+        description: "How to round fractional amounts"
+      decimalPlaces:
+        type: integer
+        required: true
+        default: 2
+        description: "Number of decimal places to keep"
+      priority:
+        type: integer
+        required: true
+        default: 0
+        description: "Evaluation priority"
+      isActive:
+        type: boolean
+        required: true
+        default: true
+      effective_start_date:
+        type: date
+        required: true
+        description: "Start date of this version"
+      effective_end_date:
+        type: date
+        required: false
+        description: "End date of this version"
+      is_current_flag:
+        type: boolean
+        required: true
+        default: true
+        description: "Current version flag"
+      created_at:
+        type: datetime
+        required: true
+      created_by:
+        type: UUID
+        required: true
+      updated_at:
+        type: datetime
+        required: true
+      updated_by:
+        type: UUID
+        required: false
+    relationships:
+      appliesToLeaveType:
+        target: LeaveType
+        cardinality: 0..1
+      appliesToLeaveClass:
+        target: LeaveClass
+        cardinality: 0..1
+      usedByProrationRules:
+        target: ProrationRule
+        cardinality: 0..*
+        description: "Proration rules that use this rounding rule"
+    businessRules:
+      - "Either leaveTypeId OR leaveClassId must be set, not both"
+      - "decimalPlaces must be >= 0 and <= 4"
+    constraints:
+      - name: uq_rounding_rule_code
+        type: unique
+        fields: [code]
+      - name: chk_rounding_target
+        type: check
+        condition: "(leaveTypeId IS NOT NULL AND leaveClassId IS NULL) OR (leaveTypeId IS NULL AND leaveClassId IS NOT NULL)"
+      - name: chk_decimal_places
+        type: check
+        condition: "decimalPlaces >= 0 AND decimalPlaces <= 4"
+    indexes:
+      - name: pk_rounding_rule
+        columns: [id]
+        type: primary_key
+      - name: idx_rounding_rule_code
+        columns: [code]
+      - name: idx_rounding_target
+        columns: [leaveTypeId, leaveClassId]
+    examples:
+      - "Round up: 1.67 → 2.0"
+      - "Round to nearest half: 1.67 → 1.5"
+      - "Round down: 1.67 → 1.0"
   Schedule:
-    description: 'Defines working schedule (which days are working days, holidays, etc.)
-
+    description: |\
+      Defines working schedule (which days are working days, holidays, etc.).
       Used to calculate working days in leave requests.
-
-      '
     attributes:
-    - id: string (UUID)
-    - code: string
-    - name: string
-    - scheduleType: enum [STANDARD, SHIFT, CUSTOM]
-    - workingDays: integer[]
-    - hoursPerDay: decimal
-    - daysPerWeek: decimal
-    - isActive: boolean
-    - effectiveDate: date
-    - endDate: date (nullable)
-    - createdAt: datetime
-    - updatedAt: datetime
+      id:
+        type: UUID
+        required: true
+        description: "Unique identifier"
+      code:
+        type: string
+        required: true
+        maxLength: 50
+        description: "Schedule code"
+      name:
+        type: string
+        required: true
+        maxLength: 100
+        description: "Schedule name"
+      scheduleType:
+        type: enum
+        values: [STANDARD, SHIFT, CUSTOM]
+        required: true
+        description: "Type of schedule"
+      workingDays:
+        type: array
+        items: integer
+        required: true
+        description: "Working days (1=Mon, 7=Sun)"
+      hoursPerDay:
+        type: decimal
+        required: true
+        precision: [5, 2]
+        description: "Standard hours per day"
+      daysPerWeek:
+        type: decimal
+        required: true
+        precision: [3, 1]
+        description: "Standard days per week"
+      isActive:
+        type: boolean
+        required: true
+        default: true
+      effective_start_date:
+        type: date
+        required: true
+        description: "Start date of this version"
+      effective_end_date:
+        type: date
+        required: false
+        description: "End date of this version"
+      is_current_flag:
+        type: boolean
+        required: true
+        default: true
+        description: "Current version flag"
+      created_at:
+        type: datetime
+        required: true
+      created_by:
+        type: UUID
+        required: true
+      updated_at:
+        type: datetime
+        required: true
+      updated_by:
+        type: UUID
+        required: false
     relationships:
-    - hasHolidays: Holiday[]
-    - usedByWorkers: Worker[]
-    rules:
-    - workingDays must contain at least 1 day
-    - workingDays values must be between 1 and 7
-    - hoursPerDay must be > 0 and <= 24
-    - daysPerWeek must be > 0 and <= 7
+      hasHolidays:
+        target: Holiday
+        cardinality: 0..*
+        description: "Holidays in this schedule"
+      usedByWorkers:
+        target: Worker
+        cardinality: 0..*
+        description: "Workers using this schedule"
+    businessRules:
+      - "workingDays must contain at least 1 day"
+      - "workingDays values must be between 1 and 7"
+      - "hoursPerDay must be > 0 and <= 24"
+      - "daysPerWeek must be > 0 and <= 7"
     constraints:
-    - code must be unique
+      - name: uq_schedule_code
+        type: unique
+        fields: [code]
+      - name: chk_schedule_hours
+        type: check
+        condition: "hoursPerDay > 0 AND hoursPerDay <= 24"
+      - name: chk_schedule_days
+        type: check
+        condition: "daysPerWeek > 0 AND daysPerWeek <= 7"
+    indexes:
+      - name: pk_schedule
+        columns: [id]
+        type: primary_key
+      - name: idx_schedule_code
+        columns: [code]
+      - name: idx_schedule_current
+        columns: [is_current_flag]
+        where: "is_current_flag = TRUE"
     examples:
-    - 'Standard 5-day: Mon-Fri, 8 hours/day'
-    - '4-day week: Mon-Thu, 10 hours/day'
-    - '6-day week: Mon-Sat, 8 hours/day'
+      - "Standard 5-day: Mon-Fri, 8 hours/day"
+      - "4-day week: Mon-Thu, 10 hours/day"
+      - "6-day week: Mon-Sat, 8 hours/day"
+
   Holiday:
-    description: 'Public/company holidays that are excluded from leave calculations.
-
-      '
+    description: |\
+      Public/company holidays that are excluded from leave calculations.
+      Can be recurring (annual) or one-time events.
     attributes:
-    - id: string (UUID)
-    - scheduleId: string (UUID)
-    - name: string
-    - date: date
-    - isRecurring: boolean
-    - recurringMonth: integer (nullable)
-    - recurringDay: integer (nullable)
-    - isActive: boolean
-    - createdAt: datetime
-    - updatedAt: datetime
+      id:
+        type: UUID
+        required: true
+        description: "Unique identifier"
+      scheduleId:
+        type: UUID
+        required: true
+        description: "Schedule this holiday belongs to"
+      name:
+        type: string
+        required: true
+        maxLength: 100
+        description: "Holiday name"
+      date:
+        type: date
+        required: true
+        description: "Holiday date"
+      isRecurring:
+        type: boolean
+        required: true
+        default: false
+        description: "Whether holiday recurs annually"
+      recurringMonth:
+        type: integer
+        required: false
+        description: "Month for recurring holiday (1-12)"
+      recurringDay:
+        type: integer
+        required: false
+        description: "Day for recurring holiday (1-31)"
+      isActive:
+        type: boolean
+        required: true
+        default: true
+      created_at:
+        type: datetime
+        required: true
+      created_by:
+        type: UUID
+        required: true
+      updated_at:
+        type: datetime
+        required: true
+      updated_by:
+        type: UUID
+        required: false
     relationships:
-    - belongsToSchedule: Schedule
-    rules:
-    - If isRecurring is true, recurringMonth and recurringDay must be set
-    - recurringMonth must be between 1 and 12
-    - recurringDay must be between 1 and 31
+      belongsToSchedule:
+        target: Schedule
+        cardinality: "1"
+        description: "Schedule this holiday belongs to"
+    businessRules:
+      - "If isRecurring is true, recurringMonth and recurringDay must be set"
+      - "recurringMonth must be between 1 and 12"
+      - "recurringDay must be between 1 and 31"
+    constraints:
+      - name: chk_holiday_recurring
+        type: check
+        condition: "(isRecurring = FALSE) OR (isRecurring = TRUE AND recurringMonth IS NOT NULL AND recurringDay IS NOT NULL)"
+      - name: chk_holiday_month
+        type: check
+        condition: "recurringMonth IS NULL OR (recurringMonth >= 1 AND recurringMonth <= 12)"
+      - name: chk_holiday_day
+        type: check
+        condition: "recurringDay IS NULL OR (recurringDay >= 1 AND recurringDay <= 31)"
+    indexes:
+      - name: pk_holiday
+        columns: [id]
+        type: primary_key
+      - name: idx_holiday_schedule
+        columns: [scheduleId, date]
+      - name: idx_holiday_recurring
+        columns: [isRecurring, recurringMonth, recurringDay]
     examples:
-    - 'New Year''s Day: Jan 1, recurring'
-    - 'Independence Day: Jul 4, recurring'
-    - 'Company Anniversary: Specific date, non-recurring'
+      - "New Year's Day: Jan 1, recurring"
+      - "Independence Day: Jul 4, recurring"
+      - "Company Anniversary: Specific date, non-recurring"
   LeaveRequest:
-    description: 'Employee request for time off. Goes through approval workflow and
-
-      affects leave balance when approved.
-
-      '
+    description: |\
+      Employee request for time off. Goes through approval workflow and affects leave balance when approved.
+      This is the core entity for leave management.
     attributes:
-    - id: string (UUID)
-    - requestNumber: string
-    - workerId: string (UUID)
-    - leaveTypeId: string (UUID)
-    - startDate: date
-    - endDate: date
-    - startTime: time (nullable)
-    - endTime: time (nullable)
-    - totalDays: decimal
-    - totalHours: decimal (nullable)
-    - isHalfDay: boolean
-    - halfDayPeriod: enum [MORNING, AFTERNOON] (nullable)
-    - reason: string (nullable)
-    - status: enum [DRAFT, PENDING, APPROVED, REJECTED, CANCELLED, WITHDRAWN]
-    - submittedAt: datetime (nullable)
-    - approvedAt: datetime (nullable)
-    - approvedBy: string (UUID, nullable)
-    - rejectedAt: datetime (nullable)
-    - rejectedBy: string (UUID, nullable)
-    - rejectionReason: string (nullable)
-    - cancelledAt: datetime (nullable)
-    - cancelledBy: string (UUID, nullable)
-    - cancellationReason: string (nullable)
-    - attachments: string[] (nullable)
-    - metadata: json (nullable)
-    - createdAt: datetime
-    - createdBy: string (UUID)
-    - updatedAt: datetime
-    - updatedBy: string (UUID)
+      id:
+        type: UUID
+        required: true
+        description: "Unique identifier"
+      requestNumber:
+        type: string
+        required: true
+        maxLength: 50
+        description: "Human-readable request number"
+      workerId:
+        type: UUID
+        required: true
+        description: "Employee requesting leave"
+      leaveTypeId:
+        type: UUID
+        required: true
+        description: "Type of leave being requested"
+      startDate:
+        type: date
+        required: true
+        description: "First day of leave"
+      endDate:
+        type: date
+        required: true
+        description: "Last day of leave"
+      startTime:
+        type: time
+        required: false
+        description: "Start time for hourly leave"
+      endTime:
+        type: time
+        required: false
+        description: "End time for hourly leave"
+      totalDays:
+        type: decimal
+        required: true
+        precision: [10, 2]
+        description: "Total days requested"
+      totalHours:
+        type: decimal
+        required: false
+        precision: [10, 2]
+        description: "Total hours requested (for hourly leave)"
+      isHalfDay:
+        type: boolean
+        required: true
+        default: false
+        description: "Whether this is a half-day request"
+      halfDayPeriod:
+        type: enum
+        values: [MORNING, AFTERNOON]
+        required: false
+        description: "Which half of the day"
+      reason:
+        type: text
+        required: false
+        maxLength: 1000
+        description: "Reason for leave"
+      status:
+        type: enum
+        values: [DRAFT, PENDING, APPROVED, REJECTED, CANCELLED, WITHDRAWN]
+        required: true
+        default: DRAFT
+        description: "Current status"
+      submittedAt:
+        type: datetime
+        required: false
+        description: "When request was submitted"
+      approvedAt:
+        type: datetime
+        required: false
+        description: "When request was approved"
+      approvedBy:
+        type: UUID
+        required: false
+        description: "Who approved the request"
+      rejectedAt:
+        type: datetime
+        required: false
+        description: "When request was rejected"
+      rejectedBy:
+        type: UUID
+        required: false
+        description: "Who rejected the request"
+      rejectionReason:
+        type: text
+        required: false
+        maxLength: 500
+        description: "Reason for rejection"
+      cancelledAt:
+        type: datetime
+        required: false
+        description: "When request was cancelled"
+      cancelledBy:
+        type: UUID
+        required: false
+        description: "Who cancelled the request"
+      cancellationReason:
+        type: text
+        required: false
+        maxLength: 500
+        description: "Reason for cancellation"
+      attachments:
+        type: array
+        items: string
+        required: false
+        description: "URLs to supporting documents"
+      metadata:
+        type: json
+        required: false
+        description: "Additional metadata"
+      created_at:
+        type: datetime
+        required: true
+      created_by:
+        type: UUID
+        required: true
+      updated_at:
+        type: datetime
+        required: true
+      updated_by:
+        type: UUID
+        required: false
     relationships:
-    - belongsToWorker: Worker
-    - hasLeaveType: LeaveType
-    - affectsBalance: LeaveBalance
-    - hasMovements: LeaveMovement[]
-    - hasApprovals: Approval[]
-    - hasReservation: LeaveReservation (nullable)
+      belongsToWorker:
+        target: Worker
+        cardinality: "1"
+        description: "Employee who made the request"
+      hasLeaveType:
+        target: LeaveType
+        cardinality: "1"
+        description: "Type of leave"
+      affectsBalance:
+        target: LeaveBalance
+        cardinality: "0..1"
+        description: "Balance affected by this request"
+      hasMovements:
+        target: LeaveMovement
+        cardinality: 0..*
+        description: "Balance movements created by this request"
+      hasApprovals:
+        target: Approval
+        cardinality: 0..*
+        description: "Approval records for this request"
+      hasReservation:
+        target: LeaveReservation
+        cardinality: 0..1
+        description: "Balance reservation while pending"
     lifecycle:
-    - DRAFT → PENDING → APPROVED/REJECTED/WITHDRAWN
-    - APPROVED → CANCELLED (exceptional)
-    - PENDING → CANCELLED/WITHDRAWN
-    rules:
-    - endDate must be >= startDate
-    - Cannot overlap with other APPROVED or PENDING requests for same worker
-    - totalDays must be <= available balance (unless overdraft allowed)
-    - If isHalfDay is true, startDate must equal endDate
-    - If isHalfDay is true, halfDayPeriod must be set
-    - Cannot modify request after status is APPROVED (except cancel)
-    - Cannot cancel request after leave period has ended
+      - "DRAFT → PENDING → APPROVED/REJECTED/WITHDRAWN"
+      - "APPROVED → CANCELLED (exceptional)"
+      - "PENDING → CANCELLED/WITHDRAWN"
+    businessRules:
+      - "endDate must be >= startDate"
+      - "Cannot overlap with other APPROVED or PENDING requests for same worker"
+      - "totalDays must be <= available balance (unless overdraft allowed)"
+      - "If isHalfDay is true, startDate must equal endDate"
+      - "If isHalfDay is true, halfDayPeriod must be set"
+      - "Cannot modify request after status is APPROVED (except cancel)"
+      - "Cannot cancel request after leave period has ended"
+      - "startDate must be >= today for new requests (configurable)"
     constraints:
-    - requestNumber must be unique
-    - startDate must be >= today (for new requests)
-    validations:
-    - 'workerId: required, must reference existing Worker'
-    - 'leaveTypeId: required, must reference active LeaveType'
-    - 'startDate: required, valid date'
-    - 'endDate: required, valid date, >= startDate'
-    - 'reason: optional, max 1000 characters'
+      - name: uq_leave_request_number
+        type: unique
+        fields: [requestNumber]
+      - name: chk_leave_request_dates
+        type: check
+        condition: "endDate >= startDate"
+      - name: chk_leave_request_half_day
+        type: check
+        condition: "(isHalfDay = FALSE) OR (isHalfDay = TRUE AND startDate = endDate AND halfDayPeriod IS NOT NULL)"
+    indexes:
+      - name: pk_leave_request
+        columns: [id]
+        type: primary_key
+      - name: uq_request_number
+        columns: [requestNumber]
+        unique: true
+      - name: idx_request_worker
+        columns: [workerId, startDate, endDate]
+      - name: idx_request_status
+        columns: [status, submittedAt]
+      - name: idx_request_leave_type
+        columns: [leaveTypeId]
+
   LeaveReservation:
-    description: 'Temporary hold on leave balance while request is pending approval.
-
+    description: |\
+      Temporary hold on leave balance while request is pending approval.
       Prevents double-booking of leave days.
-
-      '
     attributes:
-    - id: string (UUID)
-    - leaveRequestId: string (UUID)
-    - leaveBalanceId: string (UUID)
-    - reservedAmount: decimal
-    - reservedAt: datetime
-    - expiresAt: datetime (nullable)
-    - status: enum [ACTIVE, RELEASED, EXPIRED]
-    - releasedAt: datetime (nullable)
-    - createdAt: datetime
+      id:
+        type: UUID
+        required: true
+        description: "Unique identifier"
+      leaveRequestId:
+        type: UUID
+        required: true
+        description: "Request this reservation is for"
+      leaveBalanceId:
+        type: UUID
+        required: true
+        description: "Balance being reserved"
+      reservedAmount:
+        type: decimal
+        required: true
+        precision: [10, 2]
+        description: "Amount reserved"
+      reservedAt:
+        type: datetime
+        required: true
+        description: "When reservation was created"
+      expiresAt:
+        type: datetime
+        required: false
+        description: "When reservation expires"
+      status:
+        type: enum
+        values: [ACTIVE, RELEASED, EXPIRED]
+        required: true
+        default: ACTIVE
+        description: "Reservation status"
+      releasedAt:
+        type: datetime
+        required: false
+        description: "When reservation was released"
+      created_at:
+        type: datetime
+        required: true
+      created_by:
+        type: UUID
+        required: false
     relationships:
-    - forRequest: LeaveRequest
-    - holdsBalance: LeaveBalance
+      forRequest:
+        target: LeaveRequest
+        cardinality: "1"
+        description: "Leave request this reservation is for"
+      holdsBalance:
+        target: LeaveBalance
+        cardinality: "1"
+        description: "Balance being held"
     lifecycle:
-    - ACTIVE → RELEASED (when approved/rejected)
-    - ACTIVE → EXPIRED (if request not processed in time)
-    rules:
-    - reservedAmount must be > 0
-    - reservedAmount must be <= available balance at time of reservation
-    - Reservation is released when request is approved/rejected/cancelled
-    - Expired reservations are automatically released
+      - "ACTIVE → RELEASED (when approved/rejected)"
+      - "ACTIVE → EXPIRED (if request not processed in time)"
+    businessRules:
+      - "reservedAmount must be > 0"
+      - "reservedAmount must be <= available balance at time of reservation"
+      - "Reservation is released when request is approved/rejected/cancelled"
+      - "Expired reservations are automatically released"
+      - "Only one active reservation per leave request"
+    constraints:
+      - name: uq_reservation_request
+        type: unique
+        fields: [leaveRequestId]
+      - name: chk_reservation_amount
+        type: check
+        condition: "reservedAmount > 0"
+    indexes:
+      - name: pk_leave_reservation
+        columns: [id]
+        type: primary_key
+      - name: idx_reservation_request
+        columns: [leaveRequestId]
+        unique: true
+      - name: idx_reservation_balance
+        columns: [leaveBalanceId, status]
+      - name: idx_reservation_expires
+        columns: [expiresAt, status]
+
   LeaveMovement:
-    description: 'Ledger entry for all leave balance changes. Provides complete audit trail.
-
-      Every change to balance creates a movement record.
-
-      '
+    description: |\
+      Ledger entry for all leave balance changes. Provides complete audit trail.
+      Every change to balance creates a movement record. Immutable once created.
     attributes:
-    - id: string (UUID)
-    - leaveBalanceId: string (UUID)
-    - movementType: enum [ALLOCATION, ACCRUAL, USAGE, ADJUSTMENT, CARRYOVER, EXPIRY, PAYOUT, REVERSAL]
-    - amount: decimal
-    - balanceBefore: decimal
-    - balanceAfter: decimal
-    - movementDate: date
-    - effectiveDate: date
-    - leaveRequestId: string (UUID, nullable)
-    - reason: string
-    - referenceType: enum [LEAVE_REQUEST, POLICY, MANUAL, SYSTEM] (nullable)
-    - referenceId: string (UUID, nullable)
-    - isReversed: boolean
-    - reversalMovementId: string (UUID, nullable)
-    - createdAt: datetime
-    - createdBy: string (UUID)
+      id:
+        type: UUID
+        required: true
+        description: "Unique identifier"
+      leaveBalanceId:
+        type: UUID
+        required: true
+        description: "Balance being affected"
+      movementType:
+        type: enum
+        values: [ALLOCATION, ACCRUAL, USAGE, ADJUSTMENT, CARRYOVER, EXPIRY, PAYOUT, REVERSAL]
+        required: true
+        description: "Type of movement"
+      amount:
+        type: decimal
+        required: true
+        precision: [10, 2]
+        description: "Amount of change (positive or negative)"
+      balanceBefore:
+        type: decimal
+        required: true
+        precision: [10, 2]
+        description: "Balance before this movement"
+      balanceAfter:
+        type: decimal
+        required: true
+        precision: [10, 2]
+        description: "Balance after this movement"
+      movementDate:
+        type: date
+        required: true
+        description: "Date of movement"
+      effectiveDate:
+        type: date
+        required: true
+        description: "Effective date for the movement"
+      leaveRequestId:
+        type: UUID
+        required: false
+        description: "Related leave request if applicable"
+      reason:
+        type: text
+        required: true
+        maxLength: 500
+        description: "Reason for movement"
+      referenceType:
+        type: enum
+        values: [LEAVE_REQUEST, POLICY, MANUAL, SYSTEM]
+        required: false
+        description: "Type of reference"
+      referenceId:
+        type: UUID
+        required: false
+        description: "ID of reference entity"
+      isReversed:
+        type: boolean
+        required: true
+        default: false
+        description: "Whether this movement has been reversed"
+      reversalMovementId:
+        type: UUID
+        required: false
+        description: "Movement that reversed this one"
+      created_at:
+        type: datetime
+        required: true
+      created_by:
+        type: UUID
+        required: true
     relationships:
-    - affectsBalance: LeaveBalance
-    - causedByRequest: LeaveRequest (nullable)
-    - reversedBy: LeaveMovement (nullable)
-    - reverses: LeaveMovement (nullable)
-    rules:
-    - amount cannot be 0
-    - balanceAfter must equal balanceBefore + amount
-    - If movementType is USAGE, amount must be negative
-    - If movementType is ALLOCATION or ACCRUAL, amount must be positive
-    - If movementType is REVERSAL, reversalMovementId must be set
-    - Cannot modify or delete movement records (immutable ledger)
+      affectsBalance:
+        target: LeaveBalance
+        cardinality: "1"
+        description: "Balance this movement affects"
+      causedByRequest:
+        target: LeaveRequest
+        cardinality: 0..1
+        description: "Request that caused this movement"
+      reversedBy:
+        target: LeaveMovement
+        cardinality: 0..1
+        description: "Movement that reversed this one"
+      reverses:
+        target: LeaveMovement
+        cardinality: 0..1
+        description: "Movement this one reverses"
+    businessRules:
+      - "amount cannot be 0"
+      - "balanceAfter must equal balanceBefore + amount"
+      - "If movementType is USAGE, amount must be negative"
+      - "If movementType is ALLOCATION or ACCRUAL, amount must be positive"
+      - "If movementType is REVERSAL, reversalMovementId must be set"
+      - "Cannot modify or delete movement records (immutable ledger)"
+      - "effectiveDate must be <= today for USAGE type"
     constraints:
-    - effectiveDate must be <= today for USAGE type
+      - name: chk_movement_amount
+        type: check
+        condition: "amount != 0"
+      - name: chk_movement_balance
+        type: check
+        condition: "balanceAfter = balanceBefore + amount"
+    indexes:
+      - name: pk_leave_movement
+        columns: [id]
+        type: primary_key
+      - name: idx_movement_balance
+        columns: [leaveBalanceId, movementDate]
+      - name: idx_movement_request
+        columns: [leaveRequestId]
+      - name: idx_movement_type
+        columns: [movementType, effectiveDate]
+      - name: idx_movement_reversal
+        columns: [reversalMovementId]
     examples:
-    - 'Allocation: +20 days (annual allocation)'
-    - 'Accrual: +1.67 days (monthly accrual)'
-    - 'Usage: -5 days (approved leave request)'
-    - 'Adjustment: +2 days (manual correction by HR)'
-    - 'Carryover: +5 days (from previous year)'
-    - 'Expiry: -3 days (unused days expired)'
+      - "Allocation: +20 days (annual allocation)"
+      - "Accrual: +1.67 days (monthly accrual)"
+      - "Usage: -5 days (approved leave request)"
+      - "Adjustment: +2 days (manual correction by HR)"
+      - "Carryover: +5 days (from previous year)"
+      - "Expiry: -3 days (unused days expired)"
+
   LeaveBalance:
-    description: 'Current leave balance for a worker and leave type. Tracks allocated,
-
-      used, pending, and available amounts.
-
-      '
+    description: |\
+      Current leave balance for a worker and leave type. Tracks allocated, used, pending, and available amounts.
+      This is the current state - all changes are tracked in LeaveMovement.
     attributes:
-    - id: string (UUID)
-    - workerId: string (UUID)
-    - leaveTypeId: string (UUID)
-    - periodProfileId: string (UUID)
-    - periodYear: integer
-    - periodStartDate: date
-    - periodEndDate: date
-    - totalAllocated: decimal
-    - accrued: decimal
-    - used: decimal
-    - pending: decimal
-    - reserved: decimal
-    - carriedOver: decimal
-    - adjusted: decimal
-    - expired: decimal
-    - available: decimal
-    - lastAccrualDate: date (nullable)
-    - nextAccrualDate: date (nullable)
-    - createdAt: datetime
-    - updatedAt: datetime
+      id:
+        type: UUID
+        required: true
+        description: "Unique identifier"
+      workerId:
+        type: UUID
+        required: true
+        description: "Worker this balance belongs to"
+      leaveTypeId:
+        type: UUID
+        required: true
+        description: "Type of leave"
+      periodProfileId:
+        type: UUID
+        required: true
+        description: "Period profile for this balance"
+      periodYear:
+        type: integer
+        required: true
+        description: "Year of the leave period"
+      periodStartDate:
+        type: date
+        required: true
+        description: "Start of leave period"
+      periodEndDate:
+        type: date
+        required: true
+        description: "End of leave period"
+      totalAllocated:
+        type: decimal
+        required: true
+        precision: [10, 2]
+        default: 0
+        description: "Total allocated for period"
+      accrued:
+        type: decimal
+        required: true
+        precision: [10, 2]
+        default: 0
+        description: "Amount accrued so far"
+      used:
+        type: decimal
+        required: true
+        precision: [10, 2]
+        default: 0
+        description: "Amount used (approved requests)"
+      pending:
+        type: decimal
+        required: true
+        precision: [10, 2]
+        default: 0
+        description: "Amount pending approval"
+      reserved:
+        type: decimal
+        required: true
+        precision: [10, 2]
+        default: 0
+        description: "Amount reserved (active reservations)"
+      carriedOver:
+        type: decimal
+        required: true
+        precision: [10, 2]
+        default: 0
+        description: "Amount carried from previous period"
+      adjusted:
+        type: decimal
+        required: true
+        precision: [10, 2]
+        default: 0
+        description: "Manual adjustments"
+      expired:
+        type: decimal
+        required: true
+        precision: [10, 2]
+        default: 0
+        description: "Amount expired"
+      available:
+        type: decimal
+        required: true
+        precision: [10, 2]
+        description: "Available balance (computed)"
+      lastAccrualDate:
+        type: date
+        required: false
+        description: "Date of last accrual"
+      nextAccrualDate:
+        type: date
+        required: false
+        description: "Date of next accrual"
+      effective_start_date:
+        type: date
+        required: true
+        description: "Start date of this version"
+      effective_end_date:
+        type: date
+        required: false
+        description: "End date of this version"
+      is_current_flag:
+        type: boolean
+        required: true
+        default: true
+        description: "Current version flag"
+      created_at:
+        type: datetime
+        required: true
+      created_by:
+        type: UUID
+        required: true
+      updated_at:
+        type: datetime
+        required: true
+      updated_by:
+        type: UUID
+        required: false
     relationships:
-    - belongsToWorker: Worker
-    - hasLeaveType: LeaveType
-    - hasPeriodProfile: PeriodProfile
-    - hasMovements: LeaveMovement[]
-    - hasReservations: LeaveReservation[]
-    - hasRequests: LeaveRequest[]
+      belongsToWorker:
+        target: Worker
+        cardinality: "1"
+        description: "Worker this balance belongs to"
+      hasLeaveType:
+        target: LeaveType
+        cardinality: "1"
+        description: "Type of leave"
+      hasPeriodProfile:
+        target: PeriodProfile
+        cardinality: "1"
+        description: "Period profile"
+      hasMovements:
+        target: LeaveMovement
+        cardinality: 0..*
+        description: "All movements for this balance"
+      hasReservations:
+        target: LeaveReservation
+        cardinality: 0..*
+        description: "Active reservations"
+      hasRequests:
+        target: LeaveRequest
+        cardinality: 0..*
+        description: "Leave requests affecting this balance"
     computed:
-    - available = totalAllocated + carriedOver + adjusted - used - pending - expired
-    rules:
-    - available must be >= 0 (unless overdraft allowed)
-    - used + pending cannot exceed totalAllocated + carriedOver + adjusted (unless overdraft)
-    - Balance is recalculated after every movement
+      available:
+        formula: "totalAllocated + carriedOver + adjusted - used - pending - expired"
+        description: "Available balance calculation"
+    businessRules:
+      - "available must be >= 0 (unless overdraft allowed)"
+      - "used + pending cannot exceed totalAllocated + carriedOver + adjusted (unless overdraft)"
+      - "Balance is recalculated after every movement"
+      - "Unique combination of (workerId, leaveTypeId, periodYear)"
+      - "SCD Type 2 for historical balance tracking"
     constraints:
-    - Unique combination of (workerId, leaveTypeId, periodYear)
-    validations:
-    - 'totalAllocated: must be >= 0'
-    - 'used: must be >= 0'
-    - 'pending: must be >= 0'
+      - name: uq_balance_worker_type_period
+        type: unique
+        fields: [workerId, leaveTypeId, periodYear, is_current_flag]
+        where: "is_current_flag = TRUE"
+      - name: chk_balance_positive_amounts
+        type: check
+        condition: "totalAllocated >= 0 AND used >= 0 AND pending >= 0"
+    indexes:
+      - name: pk_leave_balance
+        columns: [id]
+        type: primary_key
+      - name: idx_balance_worker_type
+        columns: [workerId, leaveTypeId, periodYear]
+      - name: idx_balance_current
+        columns: [workerId, leaveTypeId, is_current_flag]
+        where: "is_current_flag = TRUE"
+      - name: idx_balance_period
+        columns: [periodYear, periodStartDate, periodEndDate]
   Approval:
-    description: 'Approval record for leave request. Supports multi-level approval workflows.
-
-      '
+    description: |\
+      Approval record for leave request. Supports multi-level approval workflows.
+      Tracks approval chain and decision history.
     attributes:
-    - id: string (UUID)
-    - leaveRequestId: string (UUID)
-    - approverLevel: integer
-    - approverId: string (UUID)
-    - approverRole: enum [MANAGER, HR, DIRECTOR, CUSTOM]
-    - status: enum [PENDING, APPROVED, REJECTED, SKIPPED]
-    - approvedAt: datetime (nullable)
-    - rejectedAt: datetime (nullable)
-    - comments: string (nullable)
-    - notifiedAt: datetime (nullable)
-    - createdAt: datetime
+      id:
+        type: UUID
+        required: true
+        description: "Unique identifier"
+      leaveRequestId:
+        type: UUID
+        required: true
+        description: "Leave request being approved"
+      approverLevel:
+        type: integer
+        required: true
+        description: "Approval level (1, 2, 3, etc.)"
+      approverId:
+        type: UUID
+        required: true
+        description: "Person who needs to approve"
+      approverRole:
+        type: enum
+        values: [MANAGER, HR, DIRECTOR, CUSTOM]
+        required: true
+        description: "Role of approver"
+      status:
+        type: enum
+        values: [PENDING, APPROVED, REJECTED, SKIPPED]
+        required: true
+        default: PENDING
+        description: "Approval status"
+      approvedAt:
+        type: datetime
+        required: false
+        description: "When approved"
+      rejectedAt:
+        type: datetime
+        required: false
+        description: "When rejected"
+      comments:
+        type: text
+        required: false
+        maxLength: 500
+        description: "Approver comments"
+      notifiedAt:
+        type: datetime
+        required: false
+        description: "When approver was notified"
+      created_at:
+        type: datetime
+        required: true
+      created_by:
+        type: UUID
+        required: false
     relationships:
-    - forRequest: LeaveRequest
-    - approver: Worker
+      forRequest:
+        target: LeaveRequest
+        cardinality: "1"
+        description: "Leave request being approved"
+      approver:
+        target: Worker
+        cardinality: "1"
+        description: "Person who approves"
     lifecycle:
-    - PENDING → APPROVED/REJECTED/SKIPPED
-    rules:
-    - Cannot approve own leave request
-    - Must approve in sequence (level 1 before level 2)
-    - If any level rejects, entire request is rejected
+      - "PENDING → APPROVED/REJECTED/SKIPPED"
+    businessRules:
+      - "Cannot approve own leave request"
+      - "Must approve in sequence (level 1 before level 2)"
+      - "If any level rejects, entire request is rejected"
+      - "Skipped if request is cancelled before approval"
+    constraints:
+      - name: uq_approval_request_level
+        type: unique
+        fields: [leaveRequestId, approverLevel]
+    indexes:
+      - name: pk_approval
+        columns: [id]
+        type: primary_key
+      - name: idx_approval_request
+        columns: [leaveRequestId, approverLevel]
+      - name: idx_approval_approver
+        columns: [approverId, status]
+      - name: idx_approval_pending
+        columns: [status, notifiedAt]
+        where: "status = 'PENDING'"
     examples:
-    - 'Level 1: Direct manager approval'
-    - 'Level 2: Department head approval (for > 5 days)'
-    - 'Level 3: HR approval (for special leave types)'
+      - "Level 1: Direct manager approval"
+      - "Level 2: Department head approval (for > 5 days)"
+      - "Level 3: HR approval (for special leave types)"
+
   Event:
-    description: 'System events triggered by leave-related actions. Used for notifications,
-
-      integrations, and audit logging.
-
-      '
+    description: |\
+      System events triggered by leave-related actions. Used for notifications, integrations, and audit logging.
+      Immutable event log for complete system audit trail.
     attributes:
-    - id: string (UUID)
-    - eventType: enum [LEAVE_REQUEST_SUBMITTED, LEAVE_REQUEST_APPROVED, LEAVE_REQUEST_REJECTED, LEAVE_REQUEST_CANCELLED,
-        BALANCE_ALLOCATED, BALANCE_ACCRUED, BALANCE_EXPIRED, APPROVAL_REQUIRED, REMINDER_SENT]
-    - entityType: enum [LEAVE_REQUEST, LEAVE_BALANCE, APPROVAL]
-    - entityId: string (UUID)
-    - workerId: string (UUID)
-    - eventData: json
-    - triggeredBy: enum [USER, SYSTEM, SCHEDULE]
-    - triggeredById: string (UUID, nullable)
-    - occurredAt: datetime
-    - processedAt: datetime (nullable)
-    - status: enum [PENDING, PROCESSED, FAILED]
-    - errorMessage: string (nullable)
-    - createdAt: datetime
+      id:
+        type: UUID
+        required: true
+        description: "Unique identifier"
+      eventType:
+        type: enum
+        values: [LEAVE_REQUEST_SUBMITTED, LEAVE_REQUEST_APPROVED, LEAVE_REQUEST_REJECTED, LEAVE_REQUEST_CANCELLED, BALANCE_ALLOCATED, BALANCE_ACCRUED, BALANCE_EXPIRED, APPROVAL_REQUIRED, REMINDER_SENT]
+        required: true
+        description: "Type of event"
+      entityType:
+        type: enum
+        values: [LEAVE_REQUEST, LEAVE_BALANCE, APPROVAL]
+        required: true
+        description: "Type of entity that triggered event"
+      entityId:
+        type: UUID
+        required: true
+        description: "ID of entity that triggered event"
+      workerId:
+        type: UUID
+        required: true
+        description: "Worker related to this event"
+      eventData:
+        type: json
+        required: false
+        description: "Additional event data"
+      triggeredBy:
+        type: enum
+        values: [USER, SYSTEM, SCHEDULE]
+        required: true
+        description: "What triggered this event"
+      triggeredById:
+        type: UUID
+        required: false
+        description: "ID of user/system that triggered event"
+      occurredAt:
+        type: datetime
+        required: true
+        description: "When event occurred"
+      processedAt:
+        type: datetime
+        required: false
+        description: "When event was processed"
+      status:
+        type: enum
+        values: [PENDING, PROCESSED, FAILED]
+        required: true
+        default: PENDING
+        description: "Processing status"
+      errorMessage:
+        type: text
+        required: false
+        maxLength: 1000
+        description: "Error message if failed"
+      created_at:
+        type: datetime
+        required: true
+      created_by:
+        type: UUID
+        required: false
     relationships:
-    - relatedToWorker: Worker
-    - relatedToEntity: LeaveRequest | LeaveBalance | Approval
-    rules:
-    - Events are immutable once created
-    - Failed events can be retried
+      relatedToWorker:
+        target: Worker
+        cardinality: "1"
+        description: "Worker this event is about"
+      relatedToLeaveRequest:
+        target: LeaveRequest
+        cardinality: 0..1
+        description: "Related leave request if applicable"
+      relatedToLeaveBalance:
+        target: LeaveBalance
+        cardinality: 0..1
+        description: "Related balance if applicable"
+      relatedToApproval:
+        target: Approval
+        cardinality: 0..1
+        description: "Related approval if applicable"
+    businessRules:
+      - "Events are immutable once created"
+      - "Failed events can be retried"
+      - "Events are processed asynchronously"
+    constraints:
+      - name: chk_event_entity
+        type: check
+        condition: "(entityType = 'LEAVE_REQUEST' AND entityId IN (SELECT id FROM LeaveRequest)) OR (entityType = 'LEAVE_BALANCE' AND entityId IN (SELECT id FROM LeaveBalance)) OR (entityType = 'APPROVAL' AND entityId IN (SELECT id FROM Approval))"
+    indexes:
+      - name: pk_event
+        columns: [id]
+        type: primary_key
+      - name: idx_event_type_occurred
+        columns: [eventType, occurredAt]
+      - name: idx_event_worker
+        columns: [workerId, occurredAt]
+      - name: idx_event_entity
+        columns: [entityType, entityId]
+      - name: idx_event_status
+        columns: [status, occurredAt]
     examples:
-    - 'LEAVE_REQUEST_SUBMITTED: Send notification to manager'
-    - 'LEAVE_REQUEST_APPROVED: Update balance, send confirmation to employee'
-    - 'BALANCE_ACCRUED: Monthly accrual processed'
-    - 'BALANCE_EXPIRED: Unused days expired at year-end'
+      - "LEAVE_REQUEST_SUBMITTED: Send notification to manager"
+      - "LEAVE_REQUEST_APPROVED: Update balance, send confirmation to employee"
+      - "BALANCE_ACCRUED: Monthly accrual processed"
+      - "BALANCE_EXPIRED: Unused days expired at year-end"
+
   Trigger:
-    description: 'Automated triggers that execute actions based on events or schedules.
-
+    description: |\
+      Automated triggers that execute actions based on events or schedules.
       Used for notifications, balance updates, expirations, etc.
-
-      '
     attributes:
-    - id: string (UUID)
-    - triggerName: string
-    - triggerType: enum [EVENT_BASED, SCHEDULE_BASED, CONDITION_BASED]
-    - eventType: enum (nullable)
-    - scheduleExpression: string (nullable)
-    - condition: string (nullable)
-    - actionType: enum [SEND_NOTIFICATION, UPDATE_BALANCE, EXPIRE_BALANCE, CREATE_MOVEMENT, SEND_REMINDER,
-        CUSTOM]
-    - actionConfig: json
-    - isActive: boolean
-    - lastExecutedAt: datetime (nullable)
-    - nextExecutionAt: datetime (nullable)
-    - createdAt: datetime
-    - updatedAt: datetime
+      id:
+        type: UUID
+        required: true
+        description: "Unique identifier"
+      triggerName:
+        type: string
+        required: true
+        maxLength: 100
+        description: "Trigger name"
+      triggerType:
+        type: enum
+        values: [EVENT_BASED, SCHEDULE_BASED, CONDITION_BASED]
+        required: true
+        description: "Type of trigger"
+      eventType:
+        type: enum
+        values: [LEAVE_REQUEST_SUBMITTED, LEAVE_REQUEST_APPROVED, LEAVE_REQUEST_REJECTED, LEAVE_REQUEST_CANCELLED, BALANCE_ALLOCATED, BALANCE_ACCRUED, BALANCE_EXPIRED, APPROVAL_REQUIRED, REMINDER_SENT]
+        required: false
+        description: "Event type for EVENT_BASED triggers"
+      scheduleExpression:
+        type: string
+        required: false
+        maxLength: 100
+        description: "Cron expression for SCHEDULE_BASED triggers"
+      condition:
+        type: text
+        required: false
+        maxLength: 500
+        description: "Condition for CONDITION_BASED triggers"
+      actionType:
+        type: enum
+        values: [SEND_NOTIFICATION, UPDATE_BALANCE, EXPIRE_BALANCE, CREATE_MOVEMENT, SEND_REMINDER, CUSTOM]
+        required: true
+        description: "Action to execute"
+      actionConfig:
+        type: json
+        required: true
+        description: "Configuration for action"
+      isActive:
+        type: boolean
+        required: true
+        default: true
+        description: "Whether trigger is active"
+      lastExecutedAt:
+        type: datetime
+        required: false
+        description: "Last execution time"
+      nextExecutionAt:
+        type: datetime
+        required: false
+        description: "Next scheduled execution"
+      created_at:
+        type: datetime
+        required: true
+      created_by:
+        type: UUID
+        required: true
+      updated_at:
+        type: datetime
+        required: true
+      updated_by:
+        type: UUID
+        required: false
     relationships:
-    - generatesEvents: Event[]
-    rules:
-    - If triggerType is EVENT_BASED, eventType must be set
-    - If triggerType is SCHEDULE_BASED, scheduleExpression must be set
-    - If triggerType is CONDITION_BASED, condition must be set
+      generatesEvents:
+        target: Event
+        cardinality: 0..*
+        description: "Events generated by this trigger"
+    businessRules:
+      - "If triggerType is EVENT_BASED, eventType must be set"
+      - "If triggerType is SCHEDULE_BASED, scheduleExpression must be set"
+      - "If triggerType is CONDITION_BASED, condition must be set"
+      - "Inactive triggers are not executed"
+    constraints:
+      - name: uq_trigger_name
+        type: unique
+        fields: [triggerName]
+      - name: chk_trigger_event
+        type: check
+        condition: "(triggerType != 'EVENT_BASED') OR (triggerType = 'EVENT_BASED' AND eventType IS NOT NULL)"
+      - name: chk_trigger_schedule
+        type: check
+        condition: "(triggerType != 'SCHEDULE_BASED') OR (triggerType = 'SCHEDULE_BASED' AND scheduleExpression IS NOT NULL)"
+      - name: chk_trigger_condition
+        type: check
+        condition: "(triggerType != 'CONDITION_BASED') OR (triggerType = 'CONDITION_BASED' AND condition IS NOT NULL)"
+    indexes:
+      - name: pk_trigger
+        columns: [id]
+        type: primary_key
+      - name: idx_trigger_name
+        columns: [triggerName]
+        unique: true
+      - name: idx_trigger_type
+        columns: [triggerType, isActive]
+      - name: idx_trigger_next_execution
+        columns: [nextExecutionAt, isActive]
+        where: "isActive = TRUE"
     examples:
-    - 'Event trigger: When LEAVE_REQUEST_SUBMITTED → Send email to manager'
-    - 'Schedule trigger: Every month on 1st → Accrue monthly leave'
-    - 'Schedule trigger: Every year on Dec 31 → Expire unused balances'
-    - 'Condition trigger: When available balance < 5 → Send low balance alert'
+      - "Event trigger: When LEAVE_REQUEST_SUBMITTED → Send email to manager"
+      - "Schedule trigger: Every month on 1st → Accrue monthly leave"
+      - "Schedule trigger: Every year on Dec 31 → Expire unused balances"
+      - "Condition trigger: When available balance < 5 → Send low balance alert"
 architecture:
   model: 6-Level Hierarchical
   levels:

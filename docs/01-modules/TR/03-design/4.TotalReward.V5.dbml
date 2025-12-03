@@ -1,0 +1,1444 @@
+/////////////////////////////////////////////////////////////
+//  TOTAL REWARD  –  Thin Persistence / Smart Service
+//  (uuid = pk mặc định, unless noted)
+//  REVISED: 21Nov2025
+//  CALCULATION RULES MODULE ADDED: 25Nov2025
+/////////////////////////////////////////////////////////////
+
+
+//***************************************************
+// * 1.  Core Compensation – Fixed Pay
+// ***************************************************/
+
+
+Table comp_core.salary_basis {
+  id              uuid [pk]
+  code            varchar(50) [unique]
+  name            varchar(200)
+  frequency       varchar(20)         // HOURLY | MONTHLY | ANNUAL
+  currency        char(3)
+  allow_components boolean [default:true]
+  metadata        jsonb
+  effective_start date
+  effective_end   date [null]
+  created_date    timestamp [default:`now()`]  // ADDED 21Nov2025: audit trail
+  created_by      uuid                          // ADDED 21Nov2025: audit trail
+  updated_date    timestamp [null]              // ADDED 21Nov2025: audit trail
+  updated_by      uuid [null]                   // ADDED 21Nov2025: audit trail
+  
+  Indexes {
+    (code),
+    (frequency),
+    (effective_start, effective_end)
+  }
+}
+
+
+Table comp_core.pay_component_def {
+  id              uuid [pk]
+  code            varchar(50) [unique]
+  name            varchar(200)
+  component_type  varchar(30)         // BASE | ALLOWANCE | BONUS | EQUITY | DEDUCTION | OVERTIME
+  frequency       varchar(20)
+  taxable         boolean [default:true]
+  prorated        boolean [default:true]  // ADDED 21Nov2025: critical for proration logic
+  default_currency char(3)
+  formula_json    jsonb   [null]          // KEPT 25Nov2025: still used for simple component-specific formulas
+  metadata        jsonb   [null]
+  effective_start date
+  effective_end   date [null]
+  is_active       boolean [default:true]  // ADDED 21Nov2025: status flag
+  created_date    timestamp [default:`now()`]  // ADDED 21Nov2025: audit trail
+  created_by      uuid                          // ADDED 21Nov2025: audit trail
+  updated_date    timestamp [null]              // ADDED 21Nov2025: audit trail
+  updated_by      uuid [null]                   // ADDED 21Nov2025: audit trail
+  
+  // ADDED 25Nov2025: Enhanced calculation fields for better rule management
+  calculation_method    varchar(50) [null]     // FIXED | FORMULA | PERCENTAGE | HOURLY | DAILY
+  proration_method      varchar(30) [null]     // CALENDAR_DAYS | WORKING_DAYS | NONE
+  tax_treatment         varchar(30) [null]     // FULLY_TAXABLE | TAX_EXEMPT | PARTIALLY_EXEMPT
+  tax_exempt_threshold  decimal(18,4) [null]   // For partially exempt (e.g., 730,000 for lunch)
+  is_subject_to_si      boolean [default:false] // Subject to social insurance?
+  si_calculation_basis  varchar(30) [null]     // FULL_AMOUNT | CAPPED | EXCLUDED
+  display_order         int [null]             // Sort order on payslip
+  
+  Indexes {
+    (component_type),
+    (is_active) [where: "is_active = true"],
+    (code),
+    (effective_start, effective_end),
+    (taxable),
+    (is_subject_to_si)  // ADDED 25Nov2025
+  }
+}
+
+
+Table comp_core.salary_basis_component_map {
+  salary_basis_id uuid [ref: > comp_core.salary_basis.id]
+  component_id    uuid [ref: > comp_core.pay_component_def.id]
+  mandatory_flag  boolean [default:false]
+  default_proration boolean [default:false]  // KEPT 25Nov2025: legacy field
+  sort_order      int [default:0]           // ADDED 21Nov2025: display ordering
+  created_date    timestamp [default:`now()`]  // ADDED 21Nov2025: audit trail
+  created_by      uuid                          // ADDED 21Nov2025: audit trail
+  
+  // ADDED 25Nov2025: Enhanced override capabilities
+  enable_proration      boolean [null]        // Override component's proration setting
+  proration_method      varchar(30) [null]    // Override component's proration method
+  calculation_order     int [null]            // Sequence in calculation flow
+  display_order         int [null]            // Display order in this basis
+  custom_formula_json   jsonb [null]          // Basis-specific formula override
+
+  Indexes { 
+    (salary_basis_id, component_id) [unique],
+    (component_id),
+    (mandatory_flag),
+    (calculation_order),  // ADDED 25Nov2025
+    (display_order)       // ADDED 25Nov2025
+  }
+}
+
+
+/* ----------  Grade & Ladder with SCD-2 ---------- */
+
+
+Table comp_core.grade_v {               // versioned Grade
+  id              uuid [pk]
+  grade_code      varchar(20)
+  name            varchar(100)
+  description     text [null]
+  job_level       int [null]              // ADDED 21Nov2025: hierarchy level
+  sort_order      int [default:0]         // ADDED 21Nov2025: display ordering
+  metadata        jsonb
+  effective_start date
+  effective_end   date [null]
+  version_number  int [default:1]         // ADDED 21Nov2025: SCD-2 version tracking
+  previous_version_id uuid [ref: > comp_core.grade_v.id, null]  // ADDED 21Nov2025: version chain
+  is_current_version boolean [default:true]  // ADDED 21Nov2025: current version flag
+  created_date    timestamp [default:`now()`]  // ADDED 21Nov2025: audit trail
+  created_by      uuid                          // ADDED 21Nov2025: audit trail
+  updated_date    timestamp [null]              // ADDED 21Nov2025: audit trail
+  updated_by      uuid [null]                   // ADDED 21Nov2025: audit trail
+
+  Indexes { 
+    (grade_code, effective_start),
+    (grade_code) [unique, where: "is_current_version = true"],  // ADDED 21Nov2025: unique current version
+    (job_level),                                                 // ADDED 21Nov2025: hierarchy queries
+    (is_current_version) [where: "is_current_version = true"]   // ADDED 21Nov2025: performance
+  }
+}
+
+
+Table comp_core.grade_ladder {
+  id              uuid [pk]
+  code            varchar(50) [unique]
+  name            varchar(200)
+  description     text [null]
+  ladder_type     varchar(50) [null]     // ADDED 21Nov2025: MANAGEMENT | TECHNICAL | SPECIALIST
+  metadata        jsonb
+  effective_start date
+  effective_end   date [null]
+  is_active       boolean [default:true]  // ADDED 21Nov2025: status flag
+  created_date    timestamp [default:`now()`]  // ADDED 21Nov2025: audit trail
+  created_by      uuid                          // ADDED 21Nov2025: audit trail
+  updated_date    timestamp [null]              // ADDED 21Nov2025: audit trail
+  updated_by      uuid [null]                   // ADDED 21Nov2025: audit trail
+  
+  Indexes {
+    (code),
+    (is_active) [where: "is_active = true"],
+    (ladder_type)
+  }
+}
+
+
+Table comp_core.grade_ladder_grade {
+  id              uuid [pk]
+  ladder_id       uuid [ref: > comp_core.grade_ladder.id]
+  grade_v_id      uuid [ref: > comp_core.grade_v.id]
+  sort_order      int [default:0]
+  created_date    timestamp [default:`now()`]  // ADDED 21Nov2025: audit trail
+  created_by      uuid                          // ADDED 21Nov2025: audit trail
+
+  Indexes { 
+    (ladder_id, sort_order),
+    (ladder_id, grade_v_id) [unique]  // ADDED 21Nov2025: prevent duplicate mapping
+  }
+}
+
+
+Table comp_core.grade_ladder_step {
+  id              uuid [pk]
+  ladder_id       uuid [ref: > comp_core.grade_ladder.id]
+  grade_v_id      uuid [ref: > comp_core.grade_v.id]
+  step_number     int
+  step_name       varchar(100) [null]
+  // REM 21Nov2025: step_amount     decimal(18,2) [null]
+  step_amount     decimal(18,4) [null]  // CHANGED 21Nov2025: increased precision
+  currency        char(3) [null]
+  effective_start date
+  effective_end   date [null]
+  created_date    timestamp [default:`now()`]  // ADDED 21Nov2025: audit trail
+  created_by      uuid                          // ADDED 21Nov2025: audit trail
+  updated_date    timestamp [null]              // ADDED 21Nov2025: audit trail
+  updated_by      uuid [null]                   // ADDED 21Nov2025: audit trail
+
+  Indexes { 
+    (ladder_id, step_number),
+    (ladder_id, grade_v_id, step_number, effective_start) [unique]
+  }
+}
+
+
+/* ----------  Pay Range (multi-scope) ---------- */
+
+Table comp_core.pay_range {
+  id              uuid [pk]
+  grade_v_id      uuid [ref: > comp_core.grade_v.id]
+  scope_type      varchar(20)                     // GLOBAL | LEGAL_ENTITY | BUSINESS_UNIT | POSITION
+  scope_uuid      uuid                            // dynamic FK
+  currency        char(3)
+  // REM 21Nov2025: min_amount      decimal(18,2)
+  // REM 21Nov2025: mid_amount      decimal(18,2)
+  // REM 21Nov2025: max_amount      decimal(18,2)
+  min_amount      decimal(18,4)  // CHANGED 21Nov2025: increased precision for forex
+  mid_amount      decimal(18,4)  // CHANGED 21Nov2025: increased precision for forex
+  max_amount      decimal(18,4)  // CHANGED 21Nov2025: increased precision for forex
+  range_spread_pct decimal(5,2) [null]  // ADDED 21Nov2025: calculated (max-min)/mid*100
+  metadata        jsonb   [null]
+  effective_start date
+  effective_end   date [null]
+  is_active       boolean [default:true]  // ADDED 21Nov2025: status flag
+  created_date    timestamp [default:`now()`]  // ADDED 21Nov2025: audit trail
+  created_by      uuid                          // ADDED 21Nov2025: audit trail
+  updated_date    timestamp [null]              // ADDED 21Nov2025: audit trail
+  updated_by      uuid [null]                   // ADDED 21Nov2025: audit trail
+
+  Indexes { 
+    (grade_v_id, scope_type, scope_uuid, effective_start),
+    (grade_v_id, is_active) [where: "is_active = true"],  // ADDED 21Nov2025: performance
+    (scope_type, scope_uuid),                              // ADDED 21Nov2025: scope queries
+    (effective_start, effective_end)                       // ADDED 21Nov2025: temporal queries
+  }
+}
+
+
+/* ----------  Compensation Review Cycle ---------- */
+
+
+Table comp_core.comp_plan {
+  id              uuid [pk]
+  code            varchar(50) [unique]
+  name            varchar(200)
+  description     text [null]           // ADDED 21Nov2025: detailed description
+  plan_type       varchar(30)          // MERIT | PROMOTION | MARKET_ADJUSTMENT | NEW_HIRE | EQUITY_CORRECTION | AD_HOC
+  eligibility_rule jsonb [null]
+  guideline_json  jsonb [null]         // ADDED 21Nov2025: merit matrices, guidelines, approval thresholds
+  metadata        jsonb [null]
+  effective_start date
+  effective_end   date [null]
+  is_active       boolean [default:true]  // ADDED 21Nov2025: status flag
+  created_date    timestamp [default:`now()`]  // ADDED 21Nov2025: audit trail
+  created_by      uuid                          // ADDED 21Nov2025: audit trail
+  updated_date    timestamp [null]              // ADDED 21Nov2025: audit trail
+  updated_by      uuid [null]                   // ADDED 21Nov2025: audit trail
+  
+  Indexes {
+    (code),
+    (plan_type),
+    (is_active) [where: "is_active = true"]
+  }
+}
+
+
+Table comp_core.comp_cycle {
+  id              uuid [pk]
+  plan_id         uuid [ref: > comp_core.comp_plan.id]
+  code            varchar(50) [unique]  // ADDED 21Nov2025: cycle identifier
+  name            varchar(200)
+  description     text [null]           // ADDED 21Nov2025: cycle description
+  period_start    date
+  period_end      date
+  effective_date  date                  // ADDED 21Nov2025: when adjustments take effect
+  // REM 21Nov2025: budget_amount   decimal(18,2) [null]
+  budget_amount   decimal(18,4) [null]  // CHANGED 21Nov2025: increased precision
+  budget_currency char(3) [null]        // ADDED 21Nov2025: explicit currency
+  workflow_state  jsonb [null]
+  status          varchar(20) [default:'DRAFT']  // DRAFT | OPEN | IN_REVIEW | APPROVED | CLOSED | CANCELLED
+  created_date    timestamp [default:`now()`]  // ADDED 21Nov2025: audit trail
+  created_by      uuid                          // ADDED 21Nov2025: audit trail
+  updated_date    timestamp [null]              // ADDED 21Nov2025: audit trail
+  updated_by      uuid [null]                   // ADDED 21Nov2025: audit trail
+  closed_date     timestamp [null]              // ADDED 21Nov2025: when cycle closed
+  closed_by       uuid [null]                   // ADDED 21Nov2025: who closed cycle
+  
+  Indexes {
+    (plan_id),
+    (code),
+    (status),
+    (period_start, period_end),
+    (effective_date)
+  }
+}
+
+
+Table comp_core.comp_adjustment {
+  id              uuid [pk]
+  cycle_id        uuid [ref: > comp_core.comp_cycle.id]
+  employee_id     uuid [ref: > employment.employee.id]
+  assignment_id   uuid [ref: > employment.assignment.id]  // ADDED 21Nov2025: link to assignment for grade context
+  component_id    uuid [ref: > comp_core.pay_component_def.id]
+  // REM 21Nov2025: current_amount  decimal(18,2) [null]
+  // REM 21Nov2025: proposed_amount decimal(18,2)
+  current_amount  decimal(18,4)  // CHANGED 21Nov2025: increased precision
+  proposed_amount decimal(18,4)  // CHANGED 21Nov2025: increased precision
+  increase_amount decimal(18,4) [null]  // ADDED 21Nov2025: computed/stored field
+  increase_pct    decimal(7,4) [null]   // ADDED 21Nov2025: computed/stored field
+  currency        char(3)
+  rationale_code  varchar(50) [null]    // ADDED 21Nov2025: standardized reason codes
+  // REM 21Nov2025: note            text [null]
+  rationale_text  text [null]           // CHANGED 21Nov2025: renamed from note for clarity
+  approval_status varchar(20) [default:'PENDING']  // DRAFT | PENDING | APPROVED | REJECTED | WITHDRAWN
+  workflow_state  jsonb [null]
+  submitted_date  timestamp [null]      // ADDED 21Nov2025: when submitted for approval
+  submitted_by    uuid [null]           // ADDED 21Nov2025: who submitted
+  approver_emp_id uuid [ref: > employment.employee.id, null]
+  // REM 21Nov2025: decision_date   date [null]
+  decision_date   timestamp [null]      // CHANGED 21Nov2025: timestamp for precise tracking
+  decision_note   text [null]           // ADDED 21Nov2025: approver's decision notes
+  created_date    timestamp [default:`now()`]  // ADDED 21Nov2025: audit trail
+  created_by      uuid                          // ADDED 21Nov2025: audit trail
+  updated_date    timestamp [null]              // ADDED 21Nov2025: audit trail
+  updated_by      uuid [null]                   // ADDED 21Nov2025: audit trail
+
+  Indexes { 
+    (cycle_id, employee_id),
+    (cycle_id, approval_status),
+    (employee_id),                       // ADDED 21Nov2025: employee history queries
+    (approver_emp_id),                   // ADDED 21Nov2025: approver workload queries
+    (assignment_id)                      // ADDED 21Nov2025: assignment-based queries
+  }
+}
+
+
+Table comp_core.employee_comp_snapshot {
+  id              uuid [pk]
+  employee_id     uuid [ref: > employment.employee.id]
+  assignment_id   uuid [ref: > employment.assignment.id]
+  component_id    uuid [ref: > comp_core.pay_component_def.id]
+  // REM 21Nov2025: amount          decimal(18,2)
+  amount          decimal(18,4)         // CHANGED 21Nov2025: increased precision
+  currency        char(3)
+  frequency       varchar(20)
+  status          varchar(20)          // PLANNED | ACTIVE | EXPIRED
+  source_type     varchar(30) [null]   // ADDED 21Nov2025: COMP_ADJUSTMENT | OFFER_PACKAGE | MASS_UPLOAD | MANUAL
+  source_ref      varchar(100) [null]  // CHANGED 21Nov2025: increased length from 50 to 100
+  effective_start date
+  effective_end   date [null]
+  metadata        jsonb [null]
+  created_date    timestamp [default:`now()`]  // ADDED 21Nov2025: audit trail
+  created_by      uuid                          // ADDED 21Nov2025: audit trail
+  updated_date    timestamp [null]              // ADDED 21Nov2025: audit trail
+  updated_by      uuid [null]                   // ADDED 21Nov2025: audit trail
+
+  Indexes { 
+    (employee_id, component_id, effective_start),
+    (employee_id, status, effective_start) [where: "status = 'ACTIVE'"],
+    (component_id, status),
+    (effective_start, effective_end),              // ADDED 21Nov2025: temporal queries
+    (assignment_id),                                // ADDED 21Nov2025: assignment queries
+    (source_type, source_ref)                      // ADDED 21Nov2025: source tracking
+  }
+}
+
+
+/* ----------  Budget Management ---------- */
+// NEW TABLE 21Nov2025: Budget allocation and tracking by organizational scope
+Table comp_core.budget_allocation {
+  id              uuid [pk]
+  cycle_id        uuid [ref: > comp_core.comp_cycle.id]
+  scope_type      varchar(30)  // GLOBAL | LEGAL_ENTITY | BUSINESS_UNIT | DEPARTMENT | TEAM
+  scope_uuid      uuid [null]
+  allocated_amount decimal(18,4)
+  utilized_amount decimal(18,4) [default:0]
+  utilization_pct decimal(5,2) [null]  // computed: (utilized/allocated)*100
+  currency        char(3)
+  created_date    timestamp [default:`now()`]
+  created_by      uuid
+  updated_date    timestamp [null]
+
+  Indexes {
+    (cycle_id, scope_type, scope_uuid) [unique],
+    (cycle_id),
+    (scope_type, scope_uuid)
+  }
+}
+
+
+//***************************************************
+// * 2.  Variable Pay – Bonus / Equity / Commission
+// ***************************************************/
+
+
+Table comp_incentive.bonus_plan {
+  id              uuid [pk]
+  code            varchar(50) [unique]
+  name            varchar(200)
+  description     text [null]           // ADDED 21Nov2025: plan description
+  bonus_type      varchar(30)          // STI | LTI | COMMISSION
+  equity_flag     boolean [default:false]
+  formula_json    jsonb [null]
+  eligibility_rule jsonb [null]
+  metadata        jsonb [null]
+  effective_start date
+  effective_end   date [null]
+  is_active       boolean [default:true]  // ADDED 21Nov2025: status flag
+  created_date    timestamp [default:`now()`]  // ADDED 21Nov2025: audit trail
+  created_by      uuid                          // ADDED 21Nov2025: audit trail
+  updated_date    timestamp [null]              // ADDED 21Nov2025: audit trail
+  updated_by      uuid [null]                   // ADDED 21Nov2025: audit trail
+  
+  Indexes {
+    (code),
+    (bonus_type),
+    (is_active) [where: "is_active = true"]
+  }
+}
+
+
+Table comp_incentive.bonus_cycle {
+  id              uuid [pk]
+  plan_id         uuid [ref: > comp_incentive.bonus_plan.id]
+  code            varchar(50) [unique]  // ADDED 21Nov2025: cycle identifier
+  name            varchar(200)
+  description     text [null]           // ADDED 21Nov2025: cycle description
+  period_start    date
+  period_end      date
+  // REM 21Nov2025: budget_amount   decimal(18,2)
+  budget_amount   decimal(18,4)         // CHANGED 21Nov2025: increased precision
+  currency        char(3)
+  workflow_state  jsonb [null]
+  status          varchar(20)
+  created_date    timestamp [default:`now()`]  // ADDED 21Nov2025: audit trail
+  created_by      uuid                          // ADDED 21Nov2025: audit trail
+  updated_date    timestamp [null]              // ADDED 21Nov2025: audit trail
+  updated_by      uuid [null]                   // ADDED 21Nov2025: audit trail
+  
+  Indexes {
+    (plan_id),
+    (code),
+    (status),
+    (period_start, period_end)
+  }
+}
+
+
+Table comp_incentive.bonus_pool {
+  id              uuid [pk]
+  cycle_id        uuid [ref: > comp_incentive.bonus_cycle.id]
+  legal_entity_id uuid [ref: > org_legal.entity.id]
+  name            varchar(200)
+  // REM 21Nov2025: budget_amount   decimal(18,2)
+  budget_amount   decimal(18,4)         // CHANGED 21Nov2025: increased precision
+  utilized_amount decimal(18,4) [default:0]  // ADDED 21Nov2025: track utilization
+  currency        char(3)
+  metadata        jsonb [null]
+  created_date    timestamp [default:`now()`]  // ADDED 21Nov2025: audit trail
+  created_by      uuid                          // ADDED 21Nov2025: audit trail
+  
+  Indexes {
+    (cycle_id),
+    (legal_entity_id)
+  }
+}
+
+
+Table comp_incentive.bonus_allocation {
+  id              uuid [pk]
+  pool_id         uuid [ref: > comp_incentive.bonus_pool.id]
+  employee_id     uuid [ref: > employment.employee.id]
+  // REM 21Nov2025: proposed_amount decimal(18,2)
+  // REM 21Nov2025: approved_amount decimal(18,2) [null]
+  proposed_amount decimal(18,4)         // CHANGED 21Nov2025: increased precision
+  approved_amount decimal(18,4) [null]  // CHANGED 21Nov2025: increased precision
+  currency        char(3)
+  status          varchar(20)    // DRAFT | PENDING | APPROVED | REJECTED
+  approver_emp_id uuid [ref: > employment.employee.id, null]
+  // REM 21Nov2025: decision_date   date [null]
+  decision_date   timestamp [null]      // CHANGED 21Nov2025: timestamp for precision
+  decision_note   text [null]           // ADDED 21Nov2025: approver notes
+  metadata        jsonb [null]
+  created_date    timestamp [default:`now()`]  // ADDED 21Nov2025: audit trail
+  created_by      uuid                          // ADDED 21Nov2025: audit trail
+  
+  Indexes {
+    (pool_id),
+    (employee_id),
+    (status),
+    (approver_emp_id)
+  }
+}
+
+
+/* ---- Equity Grant life-cycle ---- */
+Table comp_incentive.equity_grant {
+  id              uuid [pk]
+  employee_id     uuid [ref: > employment.employee.id]
+  plan_id         uuid [ref: > comp_incentive.bonus_plan.id]
+  grant_number    varchar(50) [unique]  // ADDED 21Nov2025: unique grant identifier
+  grant_date      date
+  unit_type       varchar(20)           // RSU | OPTION | SAR
+  total_units     int
+  vested_units    int [default:0]       // ADDED 21Nov2025: track vested units
+  exercised_units int [default:0]       // ADDED 21Nov2025: track exercised units
+  forfeited_units int [default:0]       // ADDED 21Nov2025: track forfeited units
+  // REM 21Nov2025: strike_price    decimal(18,4) [null]
+  strike_price    decimal(18,6) [null]  // CHANGED 21Nov2025: increased precision for stock price
+  fair_market_value decimal(18,6) [null]  // ADDED 21Nov2025: FMV at grant date
+  expiry_date     date [null]
+  vesting_sched_json jsonb
+  status          varchar(20)           // ACTIVE | FULLY_VESTED | FORFEITED | EXPIRED | EXERCISED
+  metadata        jsonb [null]
+  created_date    timestamp [default:`now()`]  // ADDED 21Nov2025: audit trail
+  created_by      uuid                          // ADDED 21Nov2025: audit trail
+  updated_date    timestamp [null]              // ADDED 21Nov2025: audit trail
+  updated_by      uuid [null]                   // ADDED 21Nov2025: audit trail
+  
+  Indexes {
+    (employee_id),
+    (grant_number),
+    (grant_date),
+    (status)
+  }
+}
+
+
+Table comp_incentive.equity_vesting_event {
+  id              uuid [pk]
+  grant_id        uuid [ref: > comp_incentive.equity_grant.id]
+  vest_date       date
+  vested_units    int
+  event_type      varchar(20)          // SCHEDULED | ACCELERATED | FORFEIT
+  payroll_batch_id uuid [null]
+  metadata        jsonb [null]
+  created_date    timestamp [default:`now()`]  // ADDED 21Nov2025: audit trail
+  created_by      uuid                          // ADDED 21Nov2025: audit trail
+  
+  Indexes {
+    (grant_id),
+    (vest_date),
+    (event_type)
+  }
+}
+
+
+Table comp_incentive.equity_txn {
+  id              uuid [pk]
+  grant_id        uuid [ref: > comp_incentive.equity_grant.id]
+  txn_date        date
+  txn_type        varchar(20)          // EXERCISE | CANCEL | FORFEIT | VEST
+  units           int
+  // REM 21Nov2025: price_per_unit  decimal(18,4) [null]
+  // REM 21Nov2025: cash_value      decimal(18,2) [null]
+  price_per_unit  decimal(18,6) [null]  // CHANGED 21Nov2025: increased precision for stock price
+  cash_value      decimal(18,4) [null]  // CHANGED 21Nov2025: increased precision
+  payroll_batch_id uuid [null]
+  metadata        jsonb [null]
+  created_date    timestamp [default:`now()`]  // ADDED 21Nov2025: audit trail
+  created_by      uuid                          // ADDED 21Nov2025: audit trail
+  
+  Indexes {
+    (grant_id),
+    (txn_date),
+    (txn_type)
+  }
+}
+
+
+//***************************************************
+// * 3.  Benefits, Reimbursement & Healthcare
+// ***************************************************/
+
+// REM 21Nov2025: Removed duplicate benefit.benefit_program table
+// Use benefit.benefit_plan instead for consistency
+
+Table benefit.benefit_plan {
+  id              uuid        [pk]
+  code            varchar(50) [unique]
+  name            varchar(255)
+  description     text [null]           // ADDED 21Nov2025: plan description
+  plan_category   varchar(50)           // CHANGED 21Nov2025: renamed from plan_category_code for clarity
+                                        // MEDICAL | DENTAL | VISION | LIFE | DISABILITY | RETIREMENT | PERK | WELLNESS
+  provider_name   varchar(255) [null]
+  sponsor_legal_entity_id uuid [ref: > org_legal.legal_entity.id, null]
+  eligibility_rule_json jsonb [null]
+  coverage_options_json jsonb [null]
+  // REM 21Nov2025: currency_id     uuid [ref: > common.currency.id, null]
+  currency        char(3) [null]        // CHANGED 21Nov2025: standardized to char(3) like other tables
+  premium_type    varchar(50) [null]    // CHANGED 21Nov2025: renamed from premium_type_code
+                                        // EMPLOYEE | EMPLOYER | SHARED
+  metadata        jsonb [null]
+  effective_start date                  // CHANGED 21Nov2025: renamed from effective_start_date
+  effective_end   date [null]           // CHANGED 21Nov2025: renamed from effective_end_date
+  is_active       boolean [default:true]  // CHANGED 21Nov2025: renamed from is_current_flag
+  created_date    timestamp [default:`now()`]  // CHANGED 21Nov2025: renamed from created_at
+  created_by      uuid                          // ADDED 21Nov2025: audit trail
+  updated_date    timestamp [null]              // CHANGED 21Nov2025: renamed from updated_at
+  updated_by      uuid [null]                   // ADDED 21Nov2025: audit trail
+  
+  Indexes {
+    (code),
+    (plan_category),
+    (is_active) [where: "is_active = true"]
+  }
+}
+
+
+Table benefit.benefit_option {
+  id              uuid [pk]
+  plan_id         uuid [ref: > benefit.benefit_plan.id]
+  code            varchar(50) [unique]
+  name            varchar(200)
+  coverage_tier   varchar(30)          // EMPLOYEE_ONLY | EMPLOYEE_SPOUSE | EMPLOYEE_FAMILY
+  // REM 21Nov2025: cost_employee   decimal(18,2) [null]
+  // REM 21Nov2025: cost_employer   decimal(18,2) [null]
+  cost_employee   decimal(18,4) [null]  // CHANGED 21Nov2025: increased precision
+  cost_employer   decimal(18,4) [null]  // CHANGED 21Nov2025: increased precision
+  currency        char(3)
+  formula_json    jsonb [null]
+  metadata        jsonb [null]
+  effective_start date
+  effective_end   date [null]
+  is_active       boolean [default:true]  // ADDED 21Nov2025: status flag
+  created_date    timestamp [default:`now()`]  // ADDED 21Nov2025: audit trail
+  created_by      uuid                          // ADDED 21Nov2025: audit trail
+  
+  Indexes {
+    (plan_id),
+    (code),
+    (is_active) [where: "is_active = true"]
+  }
+}
+
+
+Table benefit.eligibility_profile {
+  id              uuid [pk]
+  code            varchar(50) [unique]
+  name            varchar(200)
+  rule_json       jsonb
+  metadata        jsonb [null]
+  effective_start date
+  effective_end   date [null]
+  is_active       boolean [default:true]  // ADDED 21Nov2025: status flag
+  created_date    timestamp [default:`now()`]  // ADDED 21Nov2025: audit trail
+  created_by      uuid                          // ADDED 21Nov2025: audit trail
+  
+  Indexes {
+    (code),
+    (is_active) [where: "is_active = true"]
+  }
+}
+
+
+Table benefit.plan_eligibility {
+  plan_id         uuid [ref: > benefit.benefit_plan.id]
+  eligibility_id  uuid [ref: > benefit.eligibility_profile.id]
+  created_date    timestamp [default:`now()`]  // ADDED 21Nov2025: audit trail
+  created_by      uuid                          // ADDED 21Nov2025: audit trail
+
+  Indexes { (plan_id, eligibility_id) [unique] }
+}
+
+
+Table benefit.enrollment {
+  id                uuid [pk]
+  employee_id       uuid [ref: > employment.employee.id]
+  option_id         uuid [ref: > benefit.benefit_option.id]
+  coverage_start    date
+  coverage_end      date [null]
+  status            varchar(20)        // ACTIVE | WAIVED | TERMINATED | PENDING
+  // REM 21Nov2025: premium_employee  decimal(18,2) [null]
+  // REM 21Nov2025: premium_employer  decimal(18,2) [null]
+  premium_employee  decimal(18,4) [null]  // CHANGED 21Nov2025: increased precision
+  premium_employer  decimal(18,4) [null]  // CHANGED 21Nov2025: increased precision
+  currency          char(3)
+  metadata          jsonb [null]
+  created_date      timestamp [default:`now()`]  // ADDED 21Nov2025: audit trail
+  created_by        uuid                          // ADDED 21Nov2025: audit trail
+  updated_date      timestamp [null]              // ADDED 21Nov2025: audit trail
+  updated_by        uuid [null]                   // ADDED 21Nov2025: audit trail
+  
+  Indexes {
+    (employee_id),
+    (option_id),
+    (status),
+    (coverage_start, coverage_end)
+  }
+}
+
+
+Table benefit.reimbursement_request {
+  id              uuid [pk]
+  employee_id     uuid [ref: > employment.employee.id]
+  option_id       uuid [ref: > benefit.benefit_option.id]
+  request_type    varchar(30)          // EXPENSE | MEDICAL | WELLNESS | EDUCATION
+  request_date    date
+  status          varchar(20)          // DRAFT | SUBMITTED | APPROVED | REJECTED | PAID
+  // REM 21Nov2025: total_amount    decimal(18,2) [null]
+  // REM 21Nov2025: approved_amount decimal(18,2) [null]
+  total_amount    decimal(18,4) [null]  // CHANGED 21Nov2025: increased precision
+  approved_amount decimal(18,4) [null]  // CHANGED 21Nov2025: increased precision
+  currency        char(3)
+  approver_id     uuid [ref: > employment.employee.id, null]  // ADDED 21Nov2025: who approved
+  decision_date   timestamp [null]      // ADDED 21Nov2025: when decision made
+  decision_note   text [null]           // ADDED 21Nov2025: approver notes
+  metadata        jsonb [null]
+  created_at      timestamp [default:`now()`]
+  created_by      uuid                  // ADDED 21Nov2025: audit trail
+  updated_date    timestamp [null]      // ADDED 21Nov2025: audit trail
+  updated_by      uuid [null]           // ADDED 21Nov2025: audit trail
+  
+  Indexes {
+    (employee_id),
+    (option_id),
+    (status),
+    (request_date),
+    (approver_id)
+  }
+}
+
+
+Table benefit.reimbursement_line {
+  id              uuid [pk]
+  request_id      uuid [ref: > benefit.reimbursement_request.id]
+  line_number     int
+  description     varchar(255)
+  // REM 21Nov2025: amount          decimal(18,2)
+  amount          decimal(18,4)         // CHANGED 21Nov2025: increased precision
+  currency        char(3)
+  metadata        jsonb [null]
+
+  Indexes { (request_id, line_number) [unique] }
+}
+
+
+Table benefit.healthcare_claim_header {
+  id              uuid [pk]
+  employee_id     uuid [ref: > employment.employee.id]
+  insurer_claim_id varchar(50) [null]
+  service_date    date
+  claim_status    varchar(20)          // SUBMITTED | IN_REVIEW | APPROVED | REJECTED | PAID
+  // REM 21Nov2025: amount          decimal(18,2)
+  amount          decimal(18,4)         // CHANGED 21Nov2025: increased precision
+  currency        char(3)
+  metadata        jsonb [null]
+  created_at      timestamp [default:`now()`]
+  created_by      uuid                  // ADDED 21Nov2025: audit trail
+  
+  Indexes {
+    (employee_id),
+    (claim_status),
+    (service_date)
+  }
+}
+
+
+Table benefit.healthcare_claim_line {
+  id              uuid [pk]
+  claim_header_id uuid [ref: > benefit.healthcare_claim_header.id]
+  procedure_code  varchar(50)
+  description     text [null]
+  // REM 21Nov2025: charge_amount   decimal(18,2)
+  // REM 21Nov2025: allowed_amount  decimal(18,2) [null]
+  charge_amount   decimal(18,4)         // CHANGED 21Nov2025: increased precision
+  allowed_amount  decimal(18,4) [null]  // CHANGED 21Nov2025: increased precision
+  currency        char(3)
+  metadata        jsonb [null]
+  
+  Indexes {
+    (claim_header_id),
+    (procedure_code)
+  }
+}
+
+
+//***************************************************
+// * 4.  Recognition & Perks
+// ***************************************************/
+
+
+Table recognition.recognition_event_type {
+  code            varchar(50) [pk]
+  name            varchar(100)
+  description     text [null]
+  metadata        jsonb [null]
+  is_active       boolean [default:true]  // ADDED 21Nov2025: status flag
+}
+
+
+Table recognition.perk_category {
+  id              uuid [pk]
+  code            varchar(50) [unique]
+  name            varchar(100)
+  description     text [null]
+  is_active       boolean [default:true]
+  
+  Indexes {
+    (code),
+    (is_active) [where: "is_active = true"]
+  }
+}
+
+
+Table recognition.perk_catalog {
+  id              uuid [pk]
+  code            varchar(50) [unique]
+  name            varchar(200)
+  category_id     uuid [ref: > recognition.perk_category.id]
+  points_cost     int
+  inventory       int [null]
+  redeem_limit_per_employee int [null]
+  status          varchar(20) [default:'ACTIVE']
+  metadata        jsonb [null]
+  effective_start date
+  effective_end   date [null]
+  created_date    timestamp [default:`now()`]  // ADDED 21Nov2025: audit trail
+  created_by      uuid                          // ADDED 21Nov2025: audit trail
+  
+  Indexes {
+    (code),
+    (category_id),
+    (status),
+    (effective_start, effective_end)
+  }
+}
+
+
+Table recognition.point_account {
+  employee_id     uuid [pk, ref: > employment.employee.id]
+  balance         int [default:0]
+  lifetime_earned int [default:0]       // ADDED 21Nov2025: total earned all time
+  lifetime_spent  int [default:0]       // ADDED 21Nov2025: total spent all time
+  last_updated    timestamp [default:`now()`]
+  created_date    timestamp [default:`now()`]  // ADDED 21Nov2025: when account created
+}
+
+
+Table recognition.recognition_event {
+  id              uuid [pk]
+  employee_from_id uuid [ref: > employment.employee.id]
+  employee_to_id  uuid [ref: > employment.employee.id]
+  event_type_code varchar(50) [ref: > recognition.recognition_event_type.code]
+  points_awarded  int
+  reason          varchar(30) [null]    // ADDED 21Nov2025: PERFORMANCE | TEAMWORK | INNOVATION | VALUES
+  // REM 21Nov2025: status          varchar(20) [default:'APPROVED']
+  status          varchar(20) [default:'PENDING']  // CHANGED 21Nov2025: should default to PENDING not APPROVED
+  approver_id     uuid [ref: > employment.employee.id, null]
+  decision_date   timestamp [null]
+  message         text [null]
+  created_at      timestamp [default:`now()`]
+  metadata        jsonb [null]
+  
+  Indexes {
+    (employee_from_id),
+    (employee_to_id),
+    (event_type_code),
+    (status),
+    (created_at)
+  }
+}
+
+
+Table recognition.reward_point_txn {
+  id              uuid [pk]
+  employee_id     uuid [ref: > employment.employee.id]
+  points_delta    int                   // positive for earn, negative for spend
+  balance_after   int
+  txn_type        varchar(30)           // ADDED 21Nov2025: EARNED | SPENT | ADJUSTED | EXPIRED
+  reference       varchar(50) [null]
+  txn_date        timestamp [default:`now()`]
+  metadata        jsonb [null]
+  
+  Indexes {
+    (employee_id, txn_date),
+    (txn_type)
+  }
+}
+
+
+Table recognition.perk_redeem {
+  id              uuid [pk]
+  employee_id     uuid [ref: > employment.employee.id]
+  perk_id         uuid [ref: > recognition.perk_catalog.id]
+  points_spent    int
+  status          varchar(20) [default:'REQUESTED']  // REQUESTED | APPROVED | REJECTED | FULFILLED
+  request_date    timestamp [default:`now()`]
+  fulfillment_date timestamp [null]
+  fulfilled_by    uuid [ref: > employment.employee.id, null]  // ADDED 21Nov2025: who fulfilled
+  metadata        jsonb [null]
+  
+  Indexes {
+    (employee_id),
+    (perk_id),
+    (status),
+    (request_date)
+  }
+}
+
+
+/***************************************************
+ * 5.  Total-Reward Offer  (Retention / New hire)
+ ***************************************************/
+
+
+Table tr_offer.offer_template {
+  id              uuid [pk]
+  code            varchar(50) [unique]
+  name            varchar(200)
+  description     text [null]           // ADDED 21Nov2025: template description
+  version_no      int [default:1]
+  components_json jsonb
+  metadata        jsonb [null]
+  created_by      uuid [ref: > employment.employee.id]
+  created_at      timestamp [default:`now()`]
+  effective_start date
+  effective_end   date [null]
+  is_active       boolean [default:true]  // ADDED 21Nov2025: status flag
+  
+  Indexes {
+    (code, version_no) [unique],
+    (is_active) [where: "is_active = true"]
+  }
+}
+
+
+Table tr_offer.offer_template_event {
+  id              uuid [pk]
+  template_id     uuid [ref: > tr_offer.offer_template.id]
+  event_type      varchar(50)              // CREATED | UPDATED | ACTIVATED | DEACTIVATED
+  event_time      timestamp [default:`now()`]
+  event_by        uuid [ref: > employment.employee.id, null]  // ADDED 21Nov2025: who triggered event
+  metadata        jsonb [null]
+  
+  Indexes {
+    (template_id, event_time),
+    (event_type)
+  }
+}
+
+
+Table tr_offer.offer_package {
+  id              uuid [pk]
+  template_id     uuid [ref: > tr_offer.offer_template.id]
+  worker_id       uuid [ref: > person.worker.id]
+  employee_id     uuid [ref: > employment.employee.id, null]  // ADDED 21Nov2025: if existing employee
+  offer_type      varchar(30) [null]    // ADDED 21Nov2025: NEW_HIRE | PROMOTION | RETENTION | COUNTER_OFFER
+  currency        char(3)
+  // REM 21Nov2025: total_cash      decimal(18,2)
+  // REM 21Nov2025: total_value     decimal(18,2)
+  total_fixed_cash decimal(18,4) [null]  // ADDED 21Nov2025: fixed comp only
+  total_variable  decimal(18,4) [null]   // ADDED 21Nov2025: variable comp
+  total_benefits  decimal(18,4) [null]   // ADDED 21Nov2025: benefits value
+  total_cash      decimal(18,4)          // CHANGED 21Nov2025: precision + sum of fixed+variable
+  total_value     decimal(18,4)          // CHANGED 21Nov2025: precision + everything
+  cost_json       jsonb
+  status          varchar(20) [default:'DRAFT']  // DRAFT | PENDING | APPROVED | SENT | VIEWED | ACCEPTED | REJECTED | EXPIRED
+  approved_by     uuid [ref: > employment.employee.id, null]
+  approved_at     timestamp [null]
+  sent_date       date [null]           // ADDED 21Nov2025: when sent to candidate
+  expires_at      date [null]
+  metadata        jsonb [null]
+  created_at      timestamp [default:`now()`]
+  created_by      uuid                  // ADDED 21Nov2025: who created offer
+  updated_at      timestamp [null]
+  updated_by      uuid [null]           // ADDED 21Nov2025: who last updated
+  
+  Indexes {
+    (worker_id),
+    (employee_id),
+    (status),
+    (offer_type)
+  }
+}
+
+
+Table tr_offer.offer_event {
+  id              uuid [pk]
+  package_id      uuid [ref: > tr_offer.offer_package.id]
+  event_type      varchar(50)              // SENT | VIEWED | REMINDER | ACCEPTED | REJECTED | EXPIRED | WITHDRAWN
+  event_time      timestamp [default:`now()`]
+  event_by        uuid [null]           // ADDED 21Nov2025: who/what triggered event
+  metadata        jsonb [null]
+  
+  Indexes {
+    (package_id, event_time),
+    (event_type)
+  }
+}
+
+
+Table tr_offer.offer_acceptance {
+  id              uuid [pk]
+  package_id      uuid [ref: > tr_offer.offer_package.id]
+  accepted        boolean
+  accepted_at     timestamp [null]
+  rejected_at     timestamp [null]      // ADDED 21Nov2025: rejection timestamp
+  rejection_reason text [null]          // ADDED 21Nov2025: why rejected
+  signed_doc_url  varchar(255) [null]
+  metadata        jsonb [null]
+}
+
+
+//***************************************************
+// * 6.  Taxable Benefit Bridge
+// ***************************************************/
+
+
+Table tr_taxable.taxable_item {
+  id              uuid [pk]
+  source_module   varchar(30)          // BENEFIT | EQUITY | PERK | RECOGNITION
+  source_table    varchar(50)
+  source_id       uuid
+  employee_id     uuid [ref: > employment.employee.id]
+  benefit_type    varchar(50)              // GIFT_CARD | CAR_ALLOWANCE | EQUITY_VEST | etc
+  // REM 21Nov2025: taxable_amount  decimal(18,2)
+  taxable_amount  decimal(18,4)         // CHANGED 21Nov2025: increased precision
+  currency        char(3)
+  tax_year        smallint
+  payroll_batch_id uuid [null]
+  processed_flag  boolean [default:false]
+  processed_at    timestamp [null]
+  metadata        jsonb [null]
+  created_at      timestamp [default:`now()`]
+  
+  Indexes {
+    (employee_id, tax_year),
+    (source_module, source_table, source_id),
+    (processed_flag) [where: "processed_flag = false"],
+    (payroll_batch_id)
+  }
+}
+
+
+//***************************************************
+// * 7.  Total-Reward Statement & Analytics
+// ***************************************************/
+
+
+Table tr_statement.statement_config {
+  id              uuid [pk]
+  code            varchar(50) [unique]
+  name            varchar(200)
+  description     text [null]           // ADDED 21Nov2025: config description
+  version_no      int [default:1]
+  layout_json     jsonb
+  schedule_json   jsonb [null]
+  metadata        jsonb [null]
+  is_active       boolean [default:true]
+  created_by      uuid [ref: > employment.employee.id, null]
+  created_at      timestamp [default:`now()`]
+  updated_at      timestamp [null]
+  updated_by      uuid [null]           // ADDED 21Nov2025: who last updated
+
+  Indexes { 
+    (code, version_no) [unique],
+    (is_active) [where: "is_active = true"]
+  }
+}
+
+
+Table tr_statement.statement_section {
+  code            varchar(50) [pk]
+  name            varchar(100)
+  sort_order      int [default:0]
+  metadata        jsonb [null]
+  is_active       boolean [default:true]
+}
+
+
+Table tr_statement.statement_job {
+  id              uuid [pk]
+  config_id       uuid [ref: > tr_statement.statement_config.id]
+  period_start    date
+  period_end      date
+  status          varchar(20)              // PENDING | RUNNING | COMPLETED | FAILED
+  started_at      timestamp [null]
+  completed_at    timestamp [null]
+  file_url        varchar(255) [null]
+  error_message   text [null]           // ADDED 21Nov2025: error details if failed
+  metadata        jsonb [null]
+  created_by      uuid [ref: > employment.employee.id, null]
+  created_at      timestamp [default:`now()`]
+  updated_at      timestamp [null]
+
+  Indexes { 
+    (config_id, period_start, period_end) [unique],
+    (status),
+    (created_at)
+  }
+}
+
+
+Table tr_statement.statement_line {
+  id              uuid [pk]
+  job_id          uuid [ref: > tr_statement.statement_job.id]
+  employee_id     uuid [ref: > employment.employee.id]
+  section_code    varchar(50) [ref: > tr_statement.statement_section.code, null]
+  statement_json  jsonb
+  metadata        jsonb [null]
+
+  Indexes { 
+    (job_id, employee_id),
+    (employee_id),
+    (section_code)
+  }
+}
+
+
+//***************************************************
+// * 8.  Audit & Compliance
+// ***************************************************/
+
+// NEW TABLE 21Nov2025: Comprehensive audit trail for all Total Rewards modules
+Table tr_audit.audit_log {
+  id              uuid [pk]
+  event_type      varchar(50)          // COMP_CHANGED | BONUS_APPROVED | EQUITY_VESTED | etc
+  entity_type     varchar(50)          // TABLE name
+  entity_id       uuid                 // Record ID
+  action          varchar(20)          // CREATE | UPDATE | DELETE | APPROVE | REJECT | VIEW
+  user_id         uuid                 // Who performed action
+  user_role       varchar(50) [null]
+  ip_address      inet [null]
+  user_agent      text [null]
+  request_id      uuid [null]
+  old_values      jsonb [null]         // Previous state
+  new_values      jsonb [null]         // New state
+  change_summary  text [null]          // Human-readable change description
+  reason          text [null]          // Why change was made
+  timestamp       timestamp [default:`now()`]
+  
+  Indexes {
+    (entity_type, entity_id),
+    (user_id, timestamp),
+    (timestamp),
+    (event_type),
+    (action)
+  }
+}
+
+// Consider partitioning audit_log by month for performance:
+// CREATE TABLE tr_audit.audit_log_2025_11 PARTITION OF tr_audit.audit_log
+//   FOR VALUES FROM ('2025-11-01') TO ('2025-12-01');
+
+
+//***************************************************
+// * 9. CALCULATION RULES & FORMULAS (NEW MODULE)
+//      ADDED 25Nov2025: Global calculation rules
+// ***************************************************/
+
+// Layer 3: Global Calculation Rules
+Table comp_core.calculation_rule_def {
+  id              uuid [pk]
+  code            varchar(50) [unique, not null]
+  name            varchar(200) [not null]
+  rule_category   varchar(30) [not null]   // TAX | SOCIAL_INSURANCE | PRORATION | OVERTIME | ROUNDING | FOREX | ANNUALIZATION
+  rule_type       varchar(30) [not null]   // FORMULA | LOOKUP_TABLE | CONDITIONAL | RATE_TABLE | PROGRESSIVE
+  
+  country_code    char(2) [null]           // ISO country code: VN, SG, US, etc. NULL = global
+  jurisdiction    varchar(50) [null]       // State/Province/City if applicable
+  
+  formula_json    jsonb [not null]         // Actual calculation logic/data
+  
+  description     text [null]
+  legal_reference text [null]              // Legal citation (e.g., "Article 107, Labor Code 2019")
+  
+  effective_start date [not null]
+  effective_end   date [null]              // NULL = still effective
+  
+  version_number  int [default:1]          // For version tracking
+  previous_version_id uuid [ref: > comp_core.calculation_rule_def.id, null]
+  is_current_version boolean [default:true]
+  
+  metadata        jsonb [null]
+  
+  created_date    timestamp [default:`now()`]
+  created_by      uuid [not null]
+  updated_date    timestamp [null]
+  updated_by      uuid [null]
+  
+  Indexes {
+    (code),
+    (rule_category),
+    (rule_type),
+    (country_code),
+    (code, effective_start),
+    (code, is_current_version) [unique, where: "is_current_version = true"],
+    (is_current_version) [where: "is_current_version = true"],
+    (rule_category, country_code),
+    (effective_start, effective_end)
+  }
+  
+  Note: '''
+  25Nov2025: Global calculation rules table
+  - Stores tax tables, SI rates, OT multipliers, etc.
+  - Versioned with SCD-2 approach (previous_version_id)
+  - Country-specific via country_code
+  - formula_json contains the actual calculation logic
+  Examples:
+    - VN_PIT_2025: Progressive tax brackets for Vietnam
+    - VN_SI_2025: Social insurance rates
+    - VN_OT_MULT_2019: Overtime multipliers per Labor Code
+    - SG_CPF_2025: Singapore CPF rates
+  '''
+}
+
+
+// Bridge table: Link components to specific calculation rules
+Table comp_core.component_calculation_rule {
+  id              uuid [pk]
+  component_id    uuid [ref: > comp_core.pay_component_def.id, not null]
+  rule_id         uuid [ref: > comp_core.calculation_rule_def.id, not null]
+  
+  rule_scope      varchar(30) [not null]   // COMPONENT_CALC | TAX | PRORATION | VALIDATION | SI_CALCULATION
+  execution_order int [default:0]          // When multiple rules apply to same component
+  
+  override_params jsonb [null]             // Component-specific parameter overrides
+  
+  effective_start date [not null]
+  effective_end   date [null]
+  
+  created_date    timestamp [default:`now()`]
+  created_by      uuid [not null]
+  updated_date    timestamp [null]
+  updated_by      uuid [null]
+  
+  Indexes {
+    (component_id, rule_id, effective_start) [unique],
+    (component_id, rule_scope),
+    (rule_id),
+    (component_id, rule_scope, execution_order),
+    (effective_start, effective_end)
+  }
+  
+  Note: '''
+  25Nov2025: Links pay components to calculation rules
+  - Allows component-specific rule application
+  - execution_order determines calculation sequence
+  - override_params can customize rule behavior per component
+  Example: LAM_THEM_GIO component → VN_OT_MULT_2019 rule
+  '''
+}
+
+
+// Bridge table: Link salary basis to calculation rules
+Table comp_core.basis_calculation_rule {
+  id              uuid [pk]
+  salary_basis_id uuid [ref: > comp_core.salary_basis.id, not null]
+  rule_id         uuid [ref: > comp_core.calculation_rule_def.id, not null]
+  
+  rule_scope      varchar(30) [not null]   // PRORATION | TAX | ROUNDING | ANNUALIZATION | SI_CALCULATION | GROSS_TO_NET
+  execution_order int [default:0]          // Calculation sequence (e.g., 1=proration, 2=gross, 3=SI, 4=tax, 5=net)
+  
+  override_params jsonb [null]             // Basis-specific parameter overrides
+  
+  effective_start date [not null]
+  effective_end   date [null]
+  
+  created_date    timestamp [default:`now()`]
+  created_by      uuid [not null]
+  updated_date    timestamp [null]
+  updated_by      uuid [null]
+  
+  Indexes {
+    (salary_basis_id, rule_id, effective_start) [unique],
+    (salary_basis_id, rule_scope),
+    (rule_id),
+    (salary_basis_id, rule_scope, execution_order),
+    (effective_start, effective_end)
+  }
+  
+  Note: '''
+  25Nov2025: Links salary basis to calculation rules
+  - Defines which rules apply to entire basis
+  - execution_order critical for multi-step calculations (gross→SI→tax→net)
+  - override_params can customize rule behavior per basis
+  Example: LUONG_THANG_VN basis → VN_PIT_2025 + VN_SI_2025 rules
+  '''
+}
+
+
+// Optional: Pre-calculated tax/SI lookup for performance
+Table comp_core.tax_calculation_cache {
+  id              uuid [pk]
+  rule_id         uuid [ref: > comp_core.calculation_rule_def.id, not null]
+  
+  input_amount    decimal(18,4) [not null]      // Taxable income
+  output_tax      decimal(18,4) [not null]      // Calculated tax
+  output_details  jsonb [null]                  // Breakdown by bracket
+  
+  params_hash     varchar(64) [not null]        // Hash of input parameters for cache key
+  
+  calculated_at   timestamp [default:`now()`]
+  expires_at      timestamp [not null]
+  
+  Indexes {
+    (rule_id, params_hash) [unique],
+    (rule_id, input_amount),
+    (expires_at),
+    (calculated_at)
+  }
+  
+  Note: '''
+  25Nov2025: Performance optimization table
+  - Caches pre-calculated tax/SI amounts
+  - params_hash = MD5(rule_id + input_amount + deductions + etc)
+  - expires_at for cache invalidation
+  - Speeds up payroll processing for repeated calculations
+  '''
+}
+
+
+//***************************************************
+// * 10. COUNTRY/JURISDICTION CONFIGURATION
+//       ADDED 25Nov2025: Support multi-country
+// ***************************************************/
+
+Table comp_core.country_config {
+  id              uuid [pk]
+  country_code    char(2) [unique, not null]   // ISO 3166-1 alpha-2
+  country_name    varchar(100) [not null]
+  
+  currency_code   char(3) [not null]           // ISO 4217
+  
+  tax_system      varchar(30)                  // PROGRESSIVE | FLAT | DUAL | etc
+  si_system       varchar(30)                  // MANDATORY | OPTIONAL | HYBRID
+  
+  standard_working_hours_per_day   int [default:8]
+  standard_working_days_per_week   int [default:5]
+  standard_working_days_per_month  int [default:22]
+  
+  config_json     jsonb [null]                 // Country-specific configurations
+  
+  is_active       boolean [default:true]
+  
+  created_date    timestamp [default:`now()`]
+  created_by      uuid [not null]
+  updated_date    timestamp [null]
+  updated_by      uuid [null]
+  
+  Indexes {
+    (country_code),
+    (is_active)
+  }
+  
+  Note: '''
+  25Nov2025: Country-level configuration
+  - Standard working hours/days per country
+  - Links to tax/SI rules via country_code
+  - config_json stores country-specific settings
+  Example: VN → 8hrs/day, 26days/month, Progressive tax
+  '''
+}
+
+
+Table comp_core.holiday_calendar {
+  id              uuid [pk]
+  country_code    char(2) [ref: > comp_core.country_config.country_code, not null]
+  jurisdiction    varchar(50) [null]           // State/Province if applicable
+  
+  year            int [not null]
+  holiday_date    date [not null]
+  holiday_name    varchar(200) [not null]
+  holiday_type    varchar(30)                  // NATIONAL | REGIONAL | BANK | OPTIONAL
+  
+  is_paid         boolean [default:true]       // Paid holiday?
+  ot_multiplier   decimal(4,2) [null]          // OT multiplier if work on this day (e.g., 3.0)
+  
+  created_date    timestamp [default:`now()`]
+  created_by      uuid [not null]
+  
+  Indexes {
+    (country_code, year, holiday_date) [unique],
+    (country_code, jurisdiction, year),
+    (holiday_date),
+    (year)
+  }
+  
+  Note: '''
+  25Nov2025: Holiday calendar per country/jurisdiction
+  - Used for OT multiplier determination
+  - Used for proration calculations (exclude holidays from working days)
+  - Links to country_config via country_code
+  Example: VN 2025 → Tết Nguyên Đán, Quốc Khánh, etc.
+  '''
+}
+
+
+//***************************************************
+// * 11. RELATIONSHIPS & ADDITIONAL NOTES
+// ***************************************************/
+
+Note comp_core_relationships {
+  '''
+  KEY RELATIONSHIPS (Updated 25Nov2025):
+  
+  1. CALCULATION FLOW:
+     salary_basis 
+       → basis_calculation_rule → calculation_rule_def (tax, SI, rounding rules)
+       → salary_basis_component_map 
+         → pay_component_def 
+           → component_calculation_rule → calculation_rule_def (component formulas, OT rules)
+  
+  2. EMPLOYEE COMPENSATION:
+     employee_comp_snapshot 
+       → salary_basis_id → salary_basis
+       → component_id → pay_component_def
+       → components JSON array
+  
+  3. COMPENSATION CYCLES:
+     comp_plan → comp_cycle → comp_adjustment → employee_comp_snapshot (creates new snapshot)
+  
+  4. VERSIONING (SCD-2):
+     - grade_v: version_number + previous_version_id + is_current_version
+     - pay_range: effective_start/effective_end (no version chain yet)
+     - calculation_rule_def: version_number + previous_version_id + is_current_version
+     - employee_comp_snapshot: effective_start/effective_end
+  
+  5. MULTI-COUNTRY SUPPORT (NEW 25Nov2025):
+     country_config 
+       → calculation_rule_def (via country_code)
+       → holiday_calendar
+  
+  6. RULE EXECUTION ORDER:
+     basis_calculation_rule.execution_order defines:
+       1 = Proration rules (calculate prorated amounts)
+       2 = Component calculations (formulas, OT)
+       3 = Gross salary sum
+       4 = Social insurance deductions
+       5 = Tax calculations (PIT)
+       6 = Net salary calculation
+  
+  7. CALCULATION RULE EXAMPLES:
+     VN_PIT_2025:
+       - Progressive tax with 7 brackets
+       - Personal deduction: 15.5M VND/month
+       - Dependent deduction: 6.2M VND/person/month
+     
+     VN_SI_2025:
+       - Employee: 8% SI + 1.5% HI + 1% UI = 10.5%
+       - Employer: 14% SI + 3% HI + 1% UI + 0.5% LA = 18.5%
+       - Min: 2.34M, Max: 46.8M VND
+     
+     VN_OT_MULT_2019:
+       - Weekday normal: 1.5×
+       - Weekday night: 1.95×
+       - Weekend: 2.0×
+       - Holiday: 3.0×
+  
+  8. AUDIT TRAIL:
+     tr_audit.audit_log captures all changes with:
+       - Before/after values
+       - User/timestamp
+       - Change reason
+  '''
+}

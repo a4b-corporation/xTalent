@@ -138,7 +138,7 @@ metadata:
 - `type_id` - Links to UnitType
 - `parent_id` - Parent unit (for hierarchy)
 - `legal_entity_code` - Associated legal entity
-- `manager_worker_id` - Unit manager
+- `manager_employee_id` - Unit manager (must be Employee)
 - `path` - Materialized path (e.g., /division/department/team)
 - `level` - Hierarchy level (computed from path)
 - `cost_center_code` - Associated cost center
@@ -163,7 +163,7 @@ Units:
     parent: VNG-CORP
     path: "/VNG-CORP/VNG-ENG"
     level: 2
-    manager: WORKER-001
+    manager: EMPLOYEE-001
     
   - code: VNG-ENG-BACKEND
     name: "Backend Engineering Dept"
@@ -171,7 +171,7 @@ Units:
     parent: VNG-ENG
     path: "/VNG-CORP/VNG-ENG/VNG-ENG-BACKEND"
     level: 3
-    manager: WORKER-010
+    manager: EMPLOYEE-010
     
   - code: VNG-ENG-BACKEND-API
     name: "API Team"
@@ -179,7 +179,7 @@ Units:
     parent: VNG-ENG-BACKEND
     path: "/VNG-CORP/VNG-ENG/VNG-ENG-BACKEND/VNG-ENG-BACKEND-API"
     level: 4
-    manager: WORKER-050
+    manager: EMPLOYEE-050
 
 # Supervisory Hierarchy (parallel structure)
   - code: SUP-ENG-VP
@@ -187,7 +187,7 @@ Units:
     type: SUPERVISORY
     parent: null
     is_supervisory: true
-    manager: WORKER-001
+    manager: EMPLOYEE-001
     metadata:
       approval_levels:
         expense: 50000
@@ -198,7 +198,7 @@ Units:
     type: SUPERVISORY
     parent: SUP-ENG-VP
     is_supervisory: true
-    manager: WORKER-010
+    manager: EMPLOYEE-010
 ```
 
 **Business Rules**:
