@@ -1408,157 +1408,463 @@ entities:
         columns: [attendance_record_id]
   
   LeaveClass:
-    description: "High-level classification of leave types (e.g., Paid Time Off, Unpaid Leave, \nStatutory\
-      \ Leave). Used to group similar leave types and apply common policies.\n"
+    description: |\
+      High-level classification of leave types (e.g., Paid Time Off, Unpaid Leave, Statutory Leave).
+      Used to group similar leave types and apply common policies.
     attributes:
-    - id: string (UUID)
-    - code: string
-    - name: string
-    - description: string (nullable)
-    - category: enum [PAID, UNPAID, STATUTORY, SPECIAL]
-    - isActive: boolean
-    - displayOrder: integer
-    - effectiveDate: date
-    - endDate: date (nullable)
-    - createdAt: datetime
-    - updatedAt: datetime
+      id:
+        type: UUID
+        required: true
+        description: "Unique identifier"
+      code:
+        type: string
+        required: true
+        maxLength: 50
+        description: "Leave class code (e.g., PTO, UNPAID)"
+      name:
+        type: string
+        required: true
+        maxLength: 100
+        description: "Display name"
+      description:
+        type: text
+        required: false
+        description: "Detailed description"
+      category:
+        type: enum
+        values: [PAID, UNPAID, STATUTORY, SPECIAL]
+        required: true
+        description: "Category of leave"
+      displayOrder:
+        type: integer
+        required: false
+        default: 0
+        description: "Sort order for UI"
+      isActive:
+        type: boolean
+        required: true
+        default: true
+      effective_start_date:
+        type: date
+        required: true
+        description: "Start date of this version"
+      effective_end_date:
+        type: date
+        required: false
+        description: "End date of this version"
+      is_current_flag:
+        type: boolean
+        required: true
+        default: true
+        description: "Current version flag"
+      created_at:
+        type: datetime
+        required: true
+      created_by:
+        type: UUID
+        required: true
+      updated_at:
+        type: datetime
+        required: true
+      updated_by:
+        type: UUID
+        required: false
     relationships:
-    - hasLeaveTypes: LeaveType[]
-    - hasEligibilityRules: EligibilityRule[]
-    - hasValidationRules: ValidationRule[]
-    - hasAccrualRules: AccrualRule[]
-    - hasCarryoverRules: CarryoverRule[]
-    - hasLimitRules: LimitRule[]
-    - hasOverdraftRules: OverdraftRule[]
-    - hasProrationRules: ProrationRule[]
-    - hasRoundingRules: RoundingRule[]
+      hasLeaveTypes:
+        target: LeaveType
+        cardinality: 0..*
+        description: "Leave types belonging to this class"
+      hasEligibilityRules:
+        target: EligibilityRule
+        cardinality: 0..*
+      hasValidationRules:
+        target: ValidationRule
+        cardinality: 0..*
+      hasAccrualRules:
+        target: AccrualRule
+        cardinality: 0..*
+      hasCarryoverRules:
+        target: CarryoverRule
+        cardinality: 0..*
+      hasLimitRules:
+        target: LimitRule
+        cardinality: 0..*
+      hasOverdraftRules:
+        target: OverdraftRule
+        cardinality: 0..*
+      hasProrationRules:
+        target: ProrationRule
+        cardinality: 0..*
+      hasRoundingRules:
+        target: RoundingRule
+        cardinality: 0..*
     constraints:
-    - code must be unique
-    - name must be unique
-    - effectiveDate must be <= endDate if endDate is set
-    validations:
-    - 'code: required, uppercase, alphanumeric + underscore, max 50'
-    - 'name: required, max 255'
-    - 'category: required, must be valid enum value'
+      - name: uq_leave_class_code
+        type: unique
+        fields: [code]
+      - name: uq_leave_class_name
+        type: unique
+        fields: [name]
+    indexes:
+      - name: pk_leave_class
+        columns: [id]
+        type: primary_key
+      - name: idx_leave_class_code
+        columns: [code]
+
   LeaveType:
-    description: 'Specific type of leave (e.g., Annual Leave, Sick Leave, Maternity Leave).
-
+    description: |\
+      Specific type of leave (e.g., Annual Leave, Sick Leave, Maternity Leave).
       Each leave type has its own balance tracking and rules.
-
-      '
     attributes:
-    - id: string (UUID)
-    - leaveClassId: string (UUID)
-    - code: string
-    - name: string
-    - description: string (nullable)
-    - isPaid: boolean
-    - requiresApproval: boolean
-    - requiresDocumentation: boolean
-    - allowsHalfDay: boolean
-    - allowsHourly: boolean
-    - unitOfMeasure: enum [DAYS, HOURS]
-    - color: string (nullable)
-    - icon: string (nullable)
-    - isActive: boolean
-    - effectiveDate: date
-    - endDate: date (nullable)
-    - createdAt: datetime
-    - updatedAt: datetime
+      id:
+        type: UUID
+        required: true
+        description: "Unique identifier"
+      leaveClassId:
+        type: UUID
+        required: true
+        description: "Parent leave class"
+      code:
+        type: string
+        required: true
+        maxLength: 50
+        description: "Leave type code"
+      name:
+        type: string
+        required: true
+        maxLength: 100
+        description: "Display name"
+      description:
+        type: text
+        required: false
+      isPaid:
+        type: boolean
+        required: true
+        default: true
+        description: "Whether this leave is paid"
+      requiresApproval:
+        type: boolean
+        required: true
+        default: true
+        description: "Whether approval is required"
+      requiresDocumentation:
+        type: boolean
+        required: true
+        default: false
+        description: "Whether supporting docs required"
+      allowsHalfDay:
+        type: boolean
+        required: true
+        default: true
+      allowsHourly:
+        type: boolean
+        required: true
+        default: false
+      unitOfMeasure:
+        type: enum
+        values: [DAYS, HOURS]
+        required: true
+        default: DAYS
+      color:
+        type: string
+        required: false
+        maxLength: 7
+        description: "UI color hex code"
+      icon:
+        type: string
+        required: false
+        maxLength: 50
+        description: "UI icon name"
+      isActive:
+        type: boolean
+        required: true
+        default: true
+      effective_start_date:
+        type: date
+        required: true
+        description: "Start date of this version"
+      effective_end_date:
+        type: date
+        required: false
+        description: "End date of this version"
+      is_current_flag:
+        type: boolean
+        required: true
+        default: true
+        description: "Current version flag"
+      created_at:
+        type: datetime
+        required: true
+      created_by:
+        type: UUID
+        required: true
+      updated_at:
+        type: datetime
+        required: true
+      updated_by:
+        type: UUID
+        required: false
     relationships:
-    - belongsToClass: LeaveClass
-    - hasEligibilityRules: EligibilityRule[]
-    - hasValidationRules: ValidationRule[]
-    - hasAccrualRules: AccrualRule[]
-    - hasCarryoverRules: CarryoverRule[]
-    - hasLimitRules: LimitRule[]
-    - hasOverdraftRules: OverdraftRule[]
-    - hasProrationRules: ProrationRule[]
-    - hasRoundingRules: RoundingRule[]
-    - hasBalances: LeaveBalance[]
-    - hasRequests: LeaveRequest[]
+      belongsToClass:
+        target: LeaveClass
+        cardinality: "1"
+      hasEligibilityRules:
+        target: EligibilityRule
+        cardinality: 0..*
+      hasValidationRules:
+        target: ValidationRule
+        cardinality: 0..*
+      hasAccrualRules:
+        target: AccrualRule
+        cardinality: 0..*
+      hasCarryoverRules:
+        target: CarryoverRule
+        cardinality: 0..*
+      hasLimitRules:
+        target: LimitRule
+        cardinality: 0..*
+      hasOverdraftRules:
+        target: OverdraftRule
+        cardinality: 0..*
+      hasProrationRules:
+        target: ProrationRule
+        cardinality: 0..*
+      hasRoundingRules:
+        target: RoundingRule
+        cardinality: 0..*
+      hasBalances:
+        target: LeaveBalance
+        cardinality: 0..*
+      hasRequests:
+        target: LeaveRequest
+        cardinality: 0..*
     lifecycle:
-    - DRAFT → ACTIVE → INACTIVE
-    rules:
-    - Cannot deactivate if there are active balances with pending/approved requests
-    - If allowsHalfDay is true, unitOfMeasure must be DAYS
-    - If allowsHourly is true, unitOfMeasure must be HOURS
+      - DRAFT → ACTIVE → INACTIVE
+    businessRules:
+      - "Cannot deactivate if there are active balances with pending/approved requests"
+      - "If allowsHalfDay is true, unitOfMeasure must be DAYS"
+      - "If allowsHourly is true, unitOfMeasure must be HOURS"
     constraints:
-    - code must be unique
-    - name must be unique within leaveClass
-    - effectiveDate must be <= endDate if endDate is set
-    validations:
-    - 'code: required, uppercase, alphanumeric + underscore, max 50'
-    - 'name: required, max 255'
-    - 'leaveClassId: required, must reference existing LeaveClass'
+      - name: uq_leave_type_code
+        type: unique
+        fields: [code]
+      - name: uq_leave_type_name_class
+        type: unique
+        fields: [leaveClassId, name]
+    indexes:
+      - name: pk_leave_type
+        columns: [id]
+        type: primary_key
+      - name: idx_leave_type_code
+        columns: [code]
+      - name: idx_leave_type_class
+        columns: [leaveClassId]
   PeriodProfile:
-    description: "Defines the leave year/period structure (e.g., calendar year, \nfiscal year, hire anniversary).\n"
+    description: |\
+      Defines the leave year/period structure (e.g., calendar year, fiscal year, hire anniversary).
+      Used to determine accrual and reset cycles.
     attributes:
-    - id: string (UUID)
-    - code: string
-    - name: string
-    - periodType: enum [CALENDAR_YEAR, FISCAL_YEAR, HIRE_ANNIVERSARY, CUSTOM]
-    - startMonth: integer (nullable)
-    - startDay: integer (nullable)
-    - customStartDate: date (nullable)
-    - customEndDate: date (nullable)
-    - isActive: boolean
-    - createdAt: datetime
-    - updatedAt: datetime
+      id:
+        type: UUID
+        required: true
+        description: "Unique identifier"
+      code:
+        type: string
+        required: true
+        maxLength: 50
+        description: "Period profile code"
+      name:
+        type: string
+        required: true
+        maxLength: 100
+        description: "Display name"
+      periodType:
+        type: enum
+        values: [CALENDAR_YEAR, FISCAL_YEAR, HIRE_ANNIVERSARY, CUSTOM]
+        required: true
+        description: "Type of period definition"
+      startMonth:
+        type: integer
+        required: false
+        description: "Start month (1-12) for FISCAL_YEAR"
+      startDay:
+        type: integer
+        required: false
+        description: "Start day (1-31) for FISCAL_YEAR"
+      customStartDate:
+        type: date
+        required: false
+        description: "Start date for CUSTOM period"
+      customEndDate:
+        type: date
+        required: false
+        description: "End date for CUSTOM period"
+      isActive:
+        type: boolean
+        required: true
+        default: true
+      created_at:
+        type: datetime
+        required: true
+      created_by:
+        type: UUID
+        required: true
+      updated_at:
+        type: datetime
+        required: true
+      updated_by:
+        type: UUID
+        required: false
     relationships:
-    - usedByLeaveTypes: LeaveType[]
-    rules:
-    - If periodType is FISCAL_YEAR, startMonth and startDay must be set
-    - If periodType is CUSTOM, customStartDate and customEndDate must be set
-    - startMonth must be between 1 and 12
-    - startDay must be between 1 and 31
+      usedByLeaveTypes:
+        target: LeaveType
+        cardinality: 0..*
+        description: "Leave types using this period profile"
+    businessRules:
+      - "If periodType is FISCAL_YEAR, startMonth and startDay must be set"
+      - "If periodType is CUSTOM, customStartDate and customEndDate must be set"
+      - "startMonth must be between 1 and 12"
+      - "startDay must be between 1 and 31"
     constraints:
-    - code must be unique
+      - name: uq_period_profile_code
+        type: unique
+        fields: [code]
+    indexes:
+      - name: pk_period_profile
+        columns: [id]
+        type: primary_key
+      - name: idx_period_profile_code
+        columns: [code]
     examples:
-    - 'Calendar year: Jan 1 - Dec 31'
-    - 'Fiscal year: Apr 1 - Mar 31'
-    - 'Hire anniversary: Based on employee hire date'
+      - "Calendar year: Jan 1 - Dec 31"
+      - "Fiscal year: Apr 1 - Mar 31"
+      - "Hire anniversary: Based on employee hire date"
+
   EligibilityRule:
-    description: 'Defines who is eligible for a leave type based on criteria like
-
-      tenure, employment type, location, etc. Can be bound to a specific
-
-      LeaveType or to an entire LeaveClass.
-
-      '
+    description: |\
+      Defines who is eligible for a leave type based on criteria like tenure, employment type, location, etc.
+      Can be bound to a specific LeaveType or to an entire LeaveClass.
     attributes:
-    - id: string (UUID)
-    - code: string
-    - name: string
-    - description: string (nullable)
-    - leaveTypeId: string (UUID, nullable)
-    - leaveClassId: string (UUID, nullable)
-    - ruleType: enum [TENURE, EMPLOYMENT_TYPE, LOCATION, DEPARTMENT, JOB_LEVEL, CUSTOM]
-    - operator: enum [EQUALS, NOT_EQUALS, GREATER_THAN, LESS_THAN, IN, NOT_IN, CONTAINS]
-    - value: string
-    - minTenureMonths: integer (nullable)
-    - employmentTypes: string[] (nullable)
-    - locations: string[] (nullable)
-    - priority: integer
-    - isActive: boolean
-    - effectiveDate: date
-    - endDate: date (nullable)
-    - createdAt: datetime
-    - updatedAt: datetime
+      id:
+        type: UUID
+        required: true
+        description: "Unique identifier"
+      code:
+        type: string
+        required: true
+        maxLength: 50
+        description: "Rule code"
+      name:
+        type: string
+        required: true
+        maxLength: 100
+        description: "Rule name"
+      description:
+        type: text
+        required: false
+      leaveTypeId:
+        type: UUID
+        required: false
+        description: "Specific leave type this rule applies to"
+      leaveClassId:
+        type: UUID
+        required: false
+        description: "Entire leave class this rule applies to"
+      ruleType:
+        type: enum
+        values: [TENURE, EMPLOYMENT_TYPE, LOCATION, DEPARTMENT, JOB_LEVEL, CUSTOM]
+        required: true
+        description: "Type of eligibility criteria"
+      operator:
+        type: enum
+        values: [EQUALS, NOT_EQUALS, GREATER_THAN, LESS_THAN, IN, NOT_IN, CONTAINS]
+        required: true
+        description: "Comparison operator"
+      value:
+        type: string
+        required: false
+        description: "Value to compare against"
+      minTenureMonths:
+        type: integer
+        required: false
+        description: "Minimum months of service required"
+      employmentTypes:
+        type: array
+        items: string
+        required: false
+        description: "List of eligible employment types"
+      locations:
+        type: array
+        items: string
+        required: false
+        description: "List of eligible locations"
+      priority:
+        type: integer
+        required: true
+        default: 0
+        description: "Evaluation priority (lower runs first)"
+      isActive:
+        type: boolean
+        required: true
+        default: true
+      effective_start_date:
+        type: date
+        required: true
+        description: "Start date of this version"
+      effective_end_date:
+        type: date
+        required: false
+        description: "End date of this version"
+      is_current_flag:
+        type: boolean
+        required: true
+        default: true
+        description: "Current version flag"
+      created_at:
+        type: datetime
+        required: true
+      created_by:
+        type: UUID
+        required: true
+      updated_at:
+        type: datetime
+        required: true
+      updated_by:
+        type: UUID
+        required: false
     relationships:
-    - appliesTo: LeaveType | LeaveClass
-    rules:
-    - Either leaveTypeId OR leaveClassId must be set, not both
-    - If ruleType is TENURE, minTenureMonths must be set
-    - If ruleType is EMPLOYMENT_TYPE, employmentTypes must be set
-    - If ruleType is LOCATION, locations must be set
-    - Cannot have overlapping active rules for same leave type/class with same priority
+      appliesToLeaveType:
+        target: LeaveType
+        cardinality: 0..1
+      appliesToLeaveClass:
+        target: LeaveClass
+        cardinality: 0..1
+    businessRules:
+      - "Either leaveTypeId OR leaveClassId must be set, not both"
+      - "If ruleType is TENURE, minTenureMonths must be set"
+      - "If ruleType is EMPLOYMENT_TYPE, employmentTypes must be set"
+      - "If ruleType is LOCATION, locations must be set"
+      - "Cannot have overlapping active rules for same leave type/class with same priority"
     constraints:
-    - code must be unique
+      - name: uq_eligibility_rule_code
+        type: unique
+        fields: [code]
+      - name: chk_eligibility_target
+        type: check
+        condition: "(leaveTypeId IS NOT NULL AND leaveClassId IS NULL) OR (leaveTypeId IS NULL AND leaveClassId IS NOT NULL)"
+    indexes:
+      - name: pk_eligibility_rule
+        columns: [id]
+        type: primary_key
+      - name: idx_eligibility_rule_code
+        columns: [code]
+      - name: idx_eligibility_target
+        columns: [leaveTypeId, leaveClassId]
     examples:
-    - 'Tenure >= 6 months: minTenureMonths = 6'
-    - 'Employment type in [FULL_TIME, PART_TIME]: employmentTypes = [''FULL_TIME'', ''PART_TIME'']'
-    - 'Location = ''US'': locations = [''US'']'
+      - "Tenure >= 6 months: minTenureMonths = 6"
+      - "Employment type in [FULL_TIME, PART_TIME]"
+      - "Location = 'US'"
   ValidationRule:
     description: 'Defines validation rules for leave requests (e.g., advance notice,
 
