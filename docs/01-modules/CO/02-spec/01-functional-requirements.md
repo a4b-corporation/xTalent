@@ -1333,36 +1333,419 @@ System shall track which legal entity employs the worker for each work relations
 
 ---
 
-#### FR-WR-022: Work Relationship Contract Terms
+#### FR-WR-022: Employment Contract Management ✨ ENHANCED
+
+**Priority**: HIGH
+
+**User Story**:
+```
+As an HR Admin
+I want to manage employment contracts
+So that we track contract terms, renewals, and compliance
+```
+
+**Description**:
+System shall provide comprehensive contract management including templates, hierarchy, and compliance tracking.
+
+**Acceptance Criteria**:
+- Given an employee exists
+- When I create a contract
+- Then contract type is specified (PERMANENT, FIXED_TERM, PROBATION, SEASONAL)
+- And contract can reference a template for defaults
+- And contract start and end dates are set
+- And duration can be specified (value + unit: DAY, MONTH)
+- And contract can have parent relationship (AMENDMENT, ADDENDUM, RENEWAL, SUPERSESSION)
+- And probation period is tracked
+- And notice period is specified
+- And contract document (PDF) can be attached
+- And notifications are sent before contract expiry
+- And contract history is retained
+
+**Dependencies**: FR-WR-001, FR-CFG-002 (for CONTRACT_TYPE), FR-CONTRACT-001 (templates)
+
+**Business Rules**: BR-CONTRACT-001, BR-CONTRACT-002, BR-CONTRACT-003
+
+**Related Entities**: Contract, ContractTemplate, Employee
+
+**API Endpoints**: 
+- POST /api/v1/contracts
+- PUT /api/v1/contracts/{id}
+- GET /api/v1/contracts/{id}
+
+---
+
+#### FR-CONTRACT-001: Contract Template Management ✨ NEW
+
+**Priority**: HIGH
+
+**User Story**:
+```
+As an HR Administrator
+I want to create and manage contract templates
+So that contracts are standardized and compliant
+```
+
+**Description**:
+System shall allow creating contract templates with pre-configured terms, duration rules, and compliance requirements.
+
+**Acceptance Criteria**:
+- Given I am an HR Administrator
+- When I create a contract template
+- Then I can specify template code and name
+- And I can specify contract type (PERMANENT, FIXED_TERM, PROBATION, SEASONAL)
+- And I can scope template by country, legal entity, or business unit
+- And I can set default duration (value + unit)
+- And I can set min/max duration limits
+- And I can configure probation requirements
+- And I can configure renewal rules (allows renewal, max renewals, notice days)
+- And I can set default notice period
+- And I can specify legal requirements (JSONB)
+- And I can link to document template
+- And I can link to approval workflow
+- And template can be activated/deactivated
+- And template history is retained (SCD Type 2)
+
+**Dependencies**: FR-CFG-002 (for CONTRACT_TYPE)
+
+**Business Rules**: BR-CONTRACT-TEMPLATE-001, BR-CONTRACT-TEMPLATE-002
+
+**Related Entities**: ContractTemplate
+
+**API Endpoints**:
+- GET /api/v1/contract-templates
+- GET /api/v1/contract-templates/{id}
+- POST /api/v1/contract-templates
+- PUT /api/v1/contract-templates/{id}
+- DELETE /api/v1/contract-templates/{id}
+
+---
+
+#### FR-CONTRACT-002: Contract Template Selection ✨ NEW
 
 **Priority**: MEDIUM
 
 **User Story**:
 ```
 As an HR Admin
-I want to track contract terms for work relationships
-So that we manage contract renewals
+I want to select a template when creating a contract
+So that default values are auto-populated
 ```
 
 **Description**:
-System shall allow tracking contract terms and renewal dates for work relationships.
+System shall allow selecting a contract template during contract creation and inherit default values.
 
 **Acceptance Criteria**:
-- Given a work relationship exists
-- When I add contract terms
-- Then contract type is specified (PERMANENT, FIXED_TERM, etc.)
-- And contract start and end dates are set
-- And contract renewal date is tracked
-- And notifications are sent before contract expiry
-- And contract history is retained
+- Given I am creating a contract
+- When I select a contract template
+- Then default duration is auto-populated
+- And probation settings are auto-populated
+- And notice period is auto-populated
+- And I can override template defaults
+- And system validates against template constraints (min/max duration)
+- And end_date is auto-calculated from start_date + duration
+- And probation_end_date is auto-calculated if required
 
-**Dependencies**: FR-WR-001, FR-CFG-002 (for CONTRACT_TYPE)
+**Dependencies**: FR-CONTRACT-001, FR-WR-022
 
-**Business Rules**: BR-WR-031
+**Business Rules**: BR-CONTRACT-002
 
-**Related Entities**: WorkRelationship
+**Related Entities**: Contract, ContractTemplate
+
+**API Endpoints**: GET /api/v1/contract-templates/search (with filters)
 
 ---
+
+#### FR-CONTRACT-003: Contract Hierarchy Management ✨ NEW
+
+**Priority**: HIGH
+
+**User Story**:
+```
+As an HR Admin
+I want to track contract amendments and renewals
+So that I have complete contract history
+```
+
+**Description**:
+System shall support contract parent-child relationships with relationship types.
+
+**Acceptance Criteria**:
+- Given an existing contract
+- When I create a related contract
+- Then I can specify parent contract
+- And I must specify relationship type:
+  - AMENDMENT: Modify existing terms (e.g., salary increase)
+  - ADDENDUM: Add new clauses (e.g., add bonus structure)
+  - RENEWAL: Extend contract period (e.g., re-sign for another year)
+  - SUPERSESSION: Replace contract type (e.g., Probation → Permanent)
+- And system validates relationship rules
+- And contract hierarchy is displayed
+- And all versions are retained
+- And I can view contract history timeline
+
+**Dependencies**: FR-WR-022
+
+**Business Rules**: BR-CONTRACT-004
+
+**Related Entities**: Contract
+
+**API Endpoints**:
+- POST /api/v1/contracts/{id}/amend
+- POST /api/v1/contracts/{id}/renew
+- POST /api/v1/contracts/{id}/supersede
+- GET /api/v1/contracts/{id}/hierarchy
+
+---
+
+#### FR-CONTRACT-004: Contract Amendment ✨ NEW
+
+**Priority**: MEDIUM
+
+**User Story**:
+```
+As an HR Admin
+I want to amend an existing contract
+So that I can modify terms without creating a new contract
+```
+
+**Description**:
+System shall allow creating contract amendments to modify existing terms.
+
+**Acceptance Criteria**:
+- Given an active contract exists
+- When I create an amendment
+- Then parent_contract_id is set to original contract
+- And parent_relationship_type is set to AMENDMENT
+- And I can modify salary, working hours, or other terms
+- And amendment effective date is specified
+- And original contract remains in history
+- And amendment is linked to parent
+
+**Dependencies**: FR-WR-022, FR-CONTRACT-003
+
+**Business Rules**: BR-CONTRACT-005
+
+**Related Entities**: Contract
+
+**API Endpoints**: POST /api/v1/contracts/{id}/amend
+
+---
+
+#### FR-CONTRACT-005: Contract Renewal ✨ NEW
+
+**Priority**: HIGH
+
+**User Story**:
+```
+As an HR Admin
+I want to renew expiring contracts
+So that employment continues seamlessly
+```
+
+**Description**:
+System shall support contract renewal with validation against template rules.
+
+**Acceptance Criteria**:
+- Given a contract is expiring
+- When I renew the contract
+- Then parent_contract_id is set to expiring contract
+- And parent_relationship_type is set to RENEWAL
+- And new start_date = old end_date + 1 day
+- And new duration is specified
+- And system validates against max_renewals (from template)
+- And renewal count is tracked
+- And notification is sent before renewal deadline
+
+**Dependencies**: FR-WR-022, FR-CONTRACT-001, FR-CONTRACT-003
+
+**Business Rules**: BR-CONTRACT-006
+
+**Related Entities**: Contract, ContractTemplate
+
+**API Endpoints**: POST /api/v1/contracts/{id}/renew
+
+---
+
+#### FR-CONTRACT-006: Contract Supersession ✨ NEW
+
+**Priority**: MEDIUM
+
+**User Story**:
+```
+As an HR Admin
+I want to replace a contract with a different type
+So that I can convert probation to permanent
+```
+
+**Description**:
+System shall allow superseding a contract with a different contract type.
+
+**Acceptance Criteria**:
+- Given a contract exists
+- When I supersede the contract
+- Then parent_contract_id is set to original contract
+- And parent_relationship_type is set to SUPERSESSION
+- And new contract_type is different from parent
+- And common use case: PROBATION → PERMANENT
+- And supersession date is specified
+- And original contract is ended
+- And new contract becomes active
+
+**Dependencies**: FR-WR-022, FR-CONTRACT-003
+
+**Business Rules**: BR-CONTRACT-007
+
+**Related Entities**: Contract
+
+**API Endpoints**: POST /api/v1/contracts/{id}/supersede
+
+---
+
+#### FR-CONTRACT-007: Contract Expiry Notifications ✨ ENHANCED
+
+**Priority**: MEDIUM
+
+**User Story**:
+```
+As an HR Manager
+I want to receive notifications before contracts expire
+So that I can take action (renew or terminate)
+```
+
+**Description**:
+System shall send automated notifications before contract expiry based on template rules.
+
+**Acceptance Criteria**:
+- Given a fixed-term contract exists
+- When contract is approaching expiry
+- Then notifications are sent based on template.renewal_notice_days
+- And notifications are sent to HR Admin and Manager
+- And notification includes contract details and renewal options
+- And notification frequency can be configured
+- And notification can be email or in-app
+- And notification history is logged
+
+**Dependencies**: FR-WR-022, FR-CONTRACT-001
+
+**Business Rules**: None
+
+**Related Entities**: Contract, ContractTemplate
+
+**API Endpoints**: GET /api/v1/contracts/expiring (for dashboard)
+
+---
+
+#### FR-CONTRACT-008: Contract Compliance Validation ✨ NEW
+
+**Priority**: HIGH
+
+**User Story**:
+```
+As an HR Admin
+I want contracts to be validated against labor laws
+So that we remain compliant
+```
+
+**Description**:
+System shall validate contracts against country-specific labor law requirements from templates.
+
+**Acceptance Criteria**:
+- Given I create or update a contract
+- When I submit the contract
+- Then system validates against template.legal_requirements
+- And system enforces max_duration (e.g., VN: 36 months for fixed-term)
+- And system enforces max_renewals
+- And system validates mandatory clauses
+- And validation errors are displayed clearly
+- And compliance rules can be configured per country/template
+
+**Dependencies**: FR-WR-022, FR-CONTRACT-001
+
+**Business Rules**: BR-CONTRACT-008
+
+**Related Entities**: Contract, ContractTemplate
+
+**API Endpoints**: POST /api/v1/contracts/validate
+
+---
+
+#### FR-CONTRACT-009: Contract Document Management ✨ NEW
+
+**Priority**: MEDIUM
+
+**User Story**:
+```
+As an HR Admin
+I want to attach signed contract documents
+So that we have legal proof
+```
+
+**Description**:
+System shall allow attaching contract documents (PDF) to contract records.
+
+**Acceptance Criteria**:
+- Given a contract exists
+- When I attach a document
+- Then document is linked via document_id
+- And document type is CONTRACT
+- And document is stored securely
+- And document can be downloaded
+- And document access is controlled (HR + Employee only)
+- And document version history is tracked
+- And multiple documents can be attached (original + amendments)
+
+**Dependencies**: FR-WR-022, FR-WR-017 (document attachment)
+
+**Business Rules**: None
+
+**Related Entities**: Contract, Document
+
+**API Endpoints**:
+- POST /api/v1/contracts/{id}/documents
+- GET /api/v1/contracts/{id}/documents
+
+---
+
+#### FR-CONTRACT-010: Contract Reporting ✨ NEW
+
+**Priority**: MEDIUM
+
+**User Story**:
+```
+As an HR Manager
+I want to view contract reports
+So that I can analyze contract distribution and expiry
+```
+
+**Description**:
+System shall provide contract analytics and reports.
+
+**Acceptance Criteria**:
+- Given contracts exist
+- When I request contract reports
+- Then I can view:
+  - Contract distribution by type (PERMANENT, FIXED_TERM, etc.)
+  - Contracts expiring in next 30/60/90 days
+  - Renewal history and trends
+  - Compliance violations
+  - Template usage statistics
+- And reports can be filtered by date range, country, business unit
+- And reports can be exported to Excel
+- And reports can be visualized as charts
+
+**Dependencies**: FR-WR-022
+
+**Business Rules**: None
+
+**Related Entities**: Contract, ContractTemplate
+
+**API Endpoints**:
+- GET /api/v1/reports/contracts/distribution
+- GET /api/v1/reports/contracts/expiring
+- GET /api/v1/reports/contracts/renewals
+
+---
+
 
 #### FR-WR-023: Work Relationship Probation Tracking
 

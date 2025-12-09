@@ -535,6 +535,303 @@ CREATE INDEX idx_employees_hire_date ON employees(hire_date);
 
 ---
 
+#### Entity: Contract ✨ ENHANCED
+
+**Purpose**: Employment contract details with hierarchy and template support
+
+**Table**: `contracts`
+
+**Attributes**:
+
+| Field | Type | Required | Max Length | Default | Classification | Description |
+|-------|------|----------|------------|---------|----------------|-------------|
+| `id` | UUID | Yes | - | UUID() | PUBLIC | Primary key |
+| `employee_id` | UUID | Yes | - | - | PUBLIC | FK to employees |
+| `template_id` | UUID | No | - | NULL | INTERNAL | FK to contract_templates |
+| `parent_contract_id` | UUID | No | - | NULL | INTERNAL | FK to parent contract |
+| `parent_relationship_type` | VARCHAR | No | 20 | NULL | INTERNAL | AMENDMENT, ADDENDUM, RENEWAL, SUPERSESSION |
+| `contract_type_code` | VARCHAR | Yes | 50 | - | PUBLIC | PERMANENT, FIXED_TERM, PROBATION, SEASONAL |
+| `start_date` | DATE | Yes | - | - | PUBLIC | Contract start date |
+| `end_date` | DATE | No | - | NULL | PUBLIC | Contract end date |
+| `duration_value` | INTEGER | No | - | NULL | INTERNAL | Duration value (e.g., 12) |
+| `duration_unit` | VARCHAR | No | 10 | NULL | INTERNAL | DAY, MONTH |
+| `working_hours_per_week` | DECIMAL(4,2) | No | - | NULL | INTERNAL | Standard hours per week |
+| `probation_required` | BOOLEAN | No | - | false | INTERNAL | Probation required flag |
+| `probation_end_date` | DATE | No | - | NULL | INTERNAL | Probation end date |
+| `notice_period_days` | INTEGER | No | - | NULL | INTERNAL | Notice period in days |
+| `termination_date` | DATE | No | - | NULL | CONFIDENTIAL | Contract termination date |
+| `termination_reason_code` | VARCHAR | No | 50 | NULL | CONFIDENTIAL | Termination reason |
+| `base_salary` | DECIMAL(15,2) | No | - | NULL | RESTRICTED | Base salary amount |
+| `salary_currency_code` | VARCHAR | No | 3 | NULL | RESTRICTED | ISO currency code |
+| `salary_frequency_code` | VARCHAR | No | 20 | NULL | RESTRICTED | MONTHLY, ANNUAL, HOURLY |
+| `primary_work_location_id` | UUID | No | - | NULL | INTERNAL | FK to locations |
+| `governing_law_country` | VARCHAR | No | 3 | NULL | INTERNAL | ISO country code |
+| `signed_date` | DATE | No | - | NULL | INTERNAL | Contract signing date |
+| `signatory_employee_id` | UUID | No | - | NULL | INTERNAL | Employee signatory |
+| `signatory_employer_id` | UUID | No | - | NULL | INTERNAL | Employer signatory |
+| `document_id` | UUID | No | - | NULL | INTERNAL | FK to documents |
+| `status` | VARCHAR | Yes | 20 | ACTIVE | PUBLIC | ACTIVE, EXPIRED, TERMINATED |
+| `metadata` | JSONB | No | - | {} | INTERNAL | Additional attributes |
+| `effective_start_date` | DATE | Yes | - | - | PUBLIC | SCD Type 2 start |
+| `effective_end_date` | DATE | No | - | NULL | PUBLIC | SCD Type 2 end |
+| `is_current_flag` | BOOLEAN | Yes | - | true | PUBLIC | SCD Type 2 current |
+
+**Validation Rules**:
+
+```yaml
+VR-CONTRACT-001: Contract Type Valid
+  rule: "contract_type_code must be valid"
+  values: [PERMANENT, FIXED_TERM, PROBATION, SEASONAL]
+  error: "Invalid contract type"
+
+VR-CONTRACT-002: Fixed Term End Date Required
+  rule: "end_date required for FIXED_TERM contracts"
+  condition: "contract_type_code = 'FIXED_TERM' THEN end_date IS NOT NULL"
+  error: "End date required for fixed-term contracts"
+
+VR-CONTRACT-003: Permanent No End Date
+  rule: "end_date must be NULL for PERMANENT contracts"
+  condition: "contract_type_code = 'PERMANENT' THEN end_date IS NULL"
+  error: "Permanent contracts cannot have end date"
+
+VR-CONTRACT-004: Duration Consistency
+  rule: "duration_value and duration_unit must both be provided or both NULL"
+  condition: "(duration_value IS NULL AND duration_unit IS NULL) OR (duration_value IS NOT NULL AND duration_unit IS NOT NULL)"
+  error: "Duration value and unit must both be provided"
+
+VR-CONTRACT-005: Parent Relationship Type Required
+  rule: "parent_relationship_type required if parent_contract_id provided"
+  condition: "parent_contract_id IS NOT NULL THEN parent_relationship_type IS NOT NULL"
+  error: "Parent relationship type required when parent contract specified"
+
+VR-CONTRACT-006: End Date After Start
+  rule: "end_date must be after start_date if provided"
+  condition: "end_date IS NULL OR end_date > start_date"
+  error: "End date must be after start date"
+
+VR-CONTRACT-007: Probation End Date Required
+  rule: "probation_end_date required if contract_type = PROBATION"
+  condition: "contract_type_code = 'PROBATION' THEN probation_end_date IS NOT NULL"
+  error: "Probation end date required for probation contracts"
+
+VR-CONTRACT-008: Notice Period Range
+  rule: "notice_period_days must be between 0 and 365"
+  condition: "notice_period_days IS NULL OR (notice_period_days BETWEEN 0 AND 365)"
+  error: "Notice period must be 0-365 days"
+
+VR-CONTRACT-009: Salary Currency Required
+  rule: "salary_currency_code required if base_salary provided"
+  condition: "base_salary IS NOT NULL THEN salary_currency_code IS NOT NULL"
+  error: "Currency code required when salary specified"
+
+VR-CONTRACT-010: One Active Contract Per Employee
+  rule: "Employee can have only one ACTIVE contract"
+  error: "Employee already has active contract"
+```
+
+**Constraints**:
+
+```sql
+-- Check dates
+CONSTRAINT ck_contract_dates 
+  CHECK (end_date IS NULL OR end_date > start_date);
+
+-- Check fixed-term end date
+CONSTRAINT ck_contract_fixed_term_end_date 
+  CHECK (contract_type_code != 'FIXED_TERM' OR end_date IS NOT NULL);
+
+-- Check permanent no end date
+CONSTRAINT ck_contract_permanent_no_end_date 
+  CHECK (contract_type_code != 'PERMANENT' OR end_date IS NULL);
+
+-- Check duration consistency
+CONSTRAINT ck_contract_duration_consistency 
+  CHECK ((duration_value IS NULL AND duration_unit IS NULL) OR 
+         (duration_value IS NOT NULL AND duration_unit IS NOT NULL));
+
+-- Check parent relationship type
+CONSTRAINT ck_contract_parent_relationship 
+  CHECK (parent_contract_id IS NULL OR parent_relationship_type IS NOT NULL);
+
+-- Check notice period
+CONSTRAINT ck_contract_notice_period 
+  CHECK (notice_period_days IS NULL OR (notice_period_days BETWEEN 0 AND 365));
+
+-- Check salary currency
+CONSTRAINT ck_contract_salary_currency 
+  CHECK (base_salary IS NULL OR salary_currency_code IS NOT NULL);
+
+-- Foreign keys
+CONSTRAINT fk_contract_employee 
+  FOREIGN KEY (employee_id) REFERENCES employees(id);
+
+CONSTRAINT fk_contract_template 
+  FOREIGN KEY (template_id) REFERENCES contract_templates(id);
+
+CONSTRAINT fk_contract_parent 
+  FOREIGN KEY (parent_contract_id) REFERENCES contracts(id);
+
+CONSTRAINT fk_contract_location 
+  FOREIGN KEY (primary_work_location_id) REFERENCES locations(id);
+
+CONSTRAINT fk_contract_document 
+  FOREIGN KEY (document_id) REFERENCES documents(id);
+```
+
+**Indexes**:
+
+```sql
+CREATE UNIQUE INDEX pk_contracts ON contracts(id);
+CREATE INDEX idx_contracts_employee ON contracts(employee_id);
+CREATE INDEX idx_contracts_template ON contracts(template_id) WHERE template_id IS NOT NULL;
+CREATE INDEX idx_contracts_parent ON contracts(parent_contract_id) WHERE parent_contract_id IS NOT NULL;
+CREATE INDEX idx_contracts_status ON contracts(status, is_current_flag);
+CREATE INDEX idx_contracts_dates ON contracts(start_date, end_date);
+CREATE INDEX idx_contracts_type ON contracts(contract_type_code);
+CREATE INDEX idx_contracts_expiring ON contracts(end_date) 
+  WHERE end_date IS NOT NULL AND status = 'ACTIVE';
+```
+
+**Business Rules**: BR-CONTRACT-001, BR-CONTRACT-002, BR-CONTRACT-003, BR-CONTRACT-004, BR-CONTRACT-008, BR-CONTRACT-009, BR-CONTRACT-010
+
+---
+
+#### Entity: ContractTemplate ✨ NEW
+
+**Purpose**: Pre-configured contract templates for standardization and compliance
+
+**Table**: `contract_templates`
+
+**Attributes**:
+
+| Field | Type | Required | Max Length | Default | Classification | Description |
+|-------|------|----------|------------|---------|----------------|-------------|
+| `id` | UUID | Yes | - | UUID() | PUBLIC | Primary key |
+| `code` | VARCHAR | Yes | 50 | - | PUBLIC | Unique template code |
+| `name` | VARCHAR | Yes | 200 | - | PUBLIC | Template name |
+| `contract_type_code` | VARCHAR | Yes | 50 | - | PUBLIC | PERMANENT, FIXED_TERM, PROBATION, SEASONAL |
+| `country_code` | VARCHAR | No | 3 | NULL | PUBLIC | ISO country code (scope) |
+| `legal_entity_id` | UUID | No | - | NULL | PUBLIC | FK to entities (scope) |
+| `business_unit_id` | UUID | No | - | NULL | PUBLIC | FK to business_units (scope) |
+| `default_duration_value` | INTEGER | No | - | NULL | INTERNAL | Default duration value |
+| `default_duration_unit` | VARCHAR | No | 10 | NULL | INTERNAL | DAY, MONTH |
+| `min_duration_value` | INTEGER | No | - | NULL | INTERNAL | Minimum duration |
+| `max_duration_value` | INTEGER | No | - | NULL | INTERNAL | Maximum duration |
+| `probation_required` | BOOLEAN | No | - | false | INTERNAL | Probation required flag |
+| `probation_duration_value` | INTEGER | No | - | NULL | INTERNAL | Probation duration |
+| `probation_duration_unit` | VARCHAR | No | 10 | NULL | INTERNAL | DAY, MONTH |
+| `allows_renewal` | BOOLEAN | No | - | false | INTERNAL | Renewal allowed flag |
+| `max_renewals` | INTEGER | No | - | NULL | INTERNAL | Maximum renewal count |
+| `renewal_notice_days` | INTEGER | No | - | NULL | INTERNAL | Renewal notice period |
+| `default_notice_period_days` | INTEGER | No | - | NULL | INTERNAL | Default notice period |
+| `legal_requirements` | JSONB | No | - | {} | INTERNAL | Country-specific legal rules |
+| `document_template_id` | UUID | No | - | NULL | INTERNAL | FK to document templates |
+| `approval_workflow_id` | UUID | No | - | NULL | INTERNAL | FK to workflows |
+| `is_active` | BOOLEAN | Yes | - | true | PUBLIC | Active flag |
+| `metadata` | JSONB | No | - | {} | INTERNAL | Additional attributes |
+| `effective_start_date` | DATE | Yes | - | - | PUBLIC | SCD Type 2 start |
+| `effective_end_date` | DATE | No | - | NULL | PUBLIC | SCD Type 2 end |
+| `is_current_flag` | BOOLEAN | Yes | - | true | PUBLIC | SCD Type 2 current |
+
+**Validation Rules**:
+
+```yaml
+VR-TEMPLATE-001: Code Unique
+  rule: "code must be unique"
+  error: "Template code already exists"
+
+VR-TEMPLATE-002: Code Format
+  rule: "code must match pattern: ^[A-Z][A-Z0-9_-]*$"
+  example: "VN_TECH_FIXED_12M, SG_SALES_PROBATION"
+  error: "Code must be uppercase with underscores/hyphens"
+
+VR-TEMPLATE-003: Contract Type Valid
+  rule: "contract_type_code must be valid"
+  values: [PERMANENT, FIXED_TERM, PROBATION, SEASONAL]
+  error: "Invalid contract type"
+
+VR-TEMPLATE-004: Scope Required
+  rule: "At least one scope (country, legal entity, or business unit) required"
+  condition: "country_code IS NOT NULL OR legal_entity_id IS NOT NULL OR business_unit_id IS NOT NULL"
+  error: "At least one scope must be specified"
+
+VR-TEMPLATE-005: Fixed Term Max Duration Required
+  rule: "max_duration_value required for FIXED_TERM templates"
+  condition: "contract_type_code = 'FIXED_TERM' THEN max_duration_value IS NOT NULL"
+  error: "Maximum duration required for fixed-term templates"
+
+VR-TEMPLATE-006: Duration Range Valid
+  rule: "default_duration must be within min/max range"
+  condition: "default_duration_value IS NULL OR (default_duration_value >= min_duration_value AND default_duration_value <= max_duration_value)"
+  error: "Default duration must be within min/max range"
+
+VR-TEMPLATE-007: Probation Duration Required
+  rule: "probation_duration_value required if probation_required = true"
+  condition: "probation_required = false OR probation_duration_value IS NOT NULL"
+  error: "Probation duration required when probation is required"
+
+VR-TEMPLATE-008: Renewal Notice Required
+  rule: "renewal_notice_days required if allows_renewal = true"
+  condition: "allows_renewal = false OR renewal_notice_days IS NOT NULL"
+  error: "Renewal notice days required when renewal allowed"
+
+VR-TEMPLATE-009: Max Renewals Consistency
+  rule: "max_renewals must be NULL or 0 if allows_renewal = false"
+  condition: "allows_renewal = true OR max_renewals IS NULL OR max_renewals = 0"
+  error: "Max renewals must be 0 when renewal not allowed"
+```
+
+**Constraints**:
+
+```sql
+-- Unique template code
+CONSTRAINT uk_contract_template_code 
+  UNIQUE (code);
+
+-- Check scope
+CONSTRAINT ck_contract_template_scope 
+  CHECK (country_code IS NOT NULL OR legal_entity_id IS NOT NULL OR business_unit_id IS NOT NULL);
+
+-- Check duration range
+CONSTRAINT ck_contract_template_duration_range 
+  CHECK (default_duration_value IS NULL OR min_duration_value IS NULL OR max_duration_value IS NULL OR 
+         (default_duration_value >= min_duration_value AND default_duration_value <= max_duration_value));
+
+-- Check probation
+CONSTRAINT ck_contract_template_probation 
+  CHECK (probation_required = false OR probation_duration_value IS NOT NULL);
+
+-- Check renewal
+CONSTRAINT ck_contract_template_renewal_notice 
+  CHECK (allows_renewal = false OR renewal_notice_days IS NOT NULL);
+
+CONSTRAINT ck_contract_template_max_renewals 
+  CHECK (allows_renewal = true OR max_renewals IS NULL OR max_renewals = 0);
+
+-- Foreign keys
+CONSTRAINT fk_contract_template_entity 
+  FOREIGN KEY (legal_entity_id) REFERENCES entities(id);
+
+CONSTRAINT fk_contract_template_business_unit 
+  FOREIGN KEY (business_unit_id) REFERENCES business_units(id);
+```
+
+**Indexes**:
+
+```sql
+CREATE UNIQUE INDEX pk_contract_templates ON contract_templates(id);
+CREATE UNIQUE INDEX uk_contract_templates_code ON contract_templates(code);
+CREATE INDEX idx_contract_templates_type ON contract_templates(contract_type_code);
+CREATE INDEX idx_contract_templates_country ON contract_templates(country_code) WHERE country_code IS NOT NULL;
+CREATE INDEX idx_contract_templates_entity ON contract_templates(legal_entity_id) WHERE legal_entity_id IS NOT NULL;
+CREATE INDEX idx_contract_templates_bu ON contract_templates(business_unit_id) WHERE business_unit_id IS NOT NULL;
+CREATE INDEX idx_contract_templates_active ON contract_templates(is_active, is_current_flag);
+```
+
+**Business Rules**: BR-CONTRACT-TEMPLATE-001, BR-CONTRACT-TEMPLATE-002, BR-CONTRACT-TEMPLATE-003
+
+---
+
 ### Phase 1: Assignment Management
 
 #### Entity: Assignment

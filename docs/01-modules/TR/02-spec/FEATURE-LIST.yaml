@@ -1,0 +1,1177 @@
+# Total Rewards (TR) Module - Feature List
+# Version: 1.0
+# Last Updated: 2025-12-08
+# Status: Complete - Ready for Implementation Planning
+
+module:
+  code: TR
+  name: "Total Rewards"
+  description: "Comprehensive compensation, benefits, and rewards management"
+  version: "1.0"
+
+# ============================================================================
+# EPIC 1: CORE COMPENSATION
+# ============================================================================
+
+features:
+  # Feature 001: Salary Basis Management
+  - id: "TR-001"
+    name: "salary-basis-management"
+    title: "Salary Basis Management"
+    description: "Define and manage salary basis templates for different employee types and countries"
+    priority: HIGH
+    complexity: MEDIUM
+    epic: "Core Compensation"
+    
+    sources:
+      concept_guides:
+        - "01-concept/01-compensation-management-guide.md"
+      
+      functional_requirements:
+        - "FR-TR-COMP-001"
+      
+      business_rules:
+        - "BR-TR-COMP-001"
+        - "BR-TR-COMP-002"
+        - "BR-TR-COMP-003"
+      
+      entities:
+        - "SalaryBasis"
+        - "SalaryBasisComponentMap"
+      
+      apis:
+        - "POST /api/v1/compensation/salary-bases"
+        - "GET /api/v1/compensation/salary-bases"
+        - "PUT /api/v1/compensation/salary-bases/{id}"
+    
+    dependencies:
+      - "CO-Currency"
+      - "CO-LegalEntity"
+    
+    status: "PLANNED"
+    estimated_effort: "5 days"
+
+  # Feature 002: Pay Component Definition
+  - id: "TR-002"
+    name: "pay-component-definition"
+    title: "Pay Component Definition"
+    description: "Define pay components with tax treatment and calculation methods"
+    priority: HIGH
+    complexity: HIGH
+    epic: "Core Compensation"
+    
+    sources:
+      concept_guides:
+        - "01-concept/01-compensation-management-guide.md"
+      
+      functional_requirements:
+        - "FR-TR-COMP-002"
+        - "FR-TR-COMP-010"
+        - "FR-TR-COMP-011"
+      
+      business_rules:
+        - "BR-TR-COMP-004"
+        - "BR-TR-COMP-005"
+        - "BR-TR-COMP-006"
+        - "BR-TR-COMP-030"
+        - "BR-TR-COMP-031"
+      
+      entities:
+        - "PayComponentDefinition"
+        - "ComponentCalculationRule"
+        - "ComponentDependency"
+        - "ProrationRule"
+      
+      apis:
+        - "POST /api/v1/compensation/pay-components"
+        - "GET /api/v1/compensation/pay-components"
+        - "POST /api/v1/compensation/component-dependencies"
+    
+    dependencies:
+      - "TR-001"
+    
+    status: "PLANNED"
+    estimated_effort: "8 days"
+
+  # Feature 003: Grade Structure Management
+  - id: "TR-003"
+    name: "grade-structure-management"
+    title: "Grade Structure & Career Ladders"
+    description: "Manage salary grades, career ladders, and pay ranges with SCD Type 2"
+    priority: HIGH
+    complexity: HIGH
+    epic: "Core Compensation"
+    
+    sources:
+      concept_guides:
+        - "01-concept/01-compensation-management-guide.md"
+      
+      functional_requirements:
+        - "FR-TR-COMP-003"
+      
+      business_rules:
+        - "BR-TR-COMP-007"
+        - "BR-TR-COMP-008"
+        - "BR-TR-COMP-009"
+        - "BR-TR-COMP-010"
+      
+      entities:
+        - "GradeVersion"
+        - "GradeLadder"
+        - "GradeLadderGrade"
+        - "GradeLadderStep"
+        - "PayRange"
+      
+      apis:
+        - "POST /api/v1/compensation/grades"
+        - "PUT /api/v1/compensation/grades/{id}"
+        - "POST /api/v1/compensation/career-ladders"
+        - "POST /api/v1/compensation/pay-ranges"
+    
+    dependencies:
+      - "CO-LegalEntity"
+      - "CO-BusinessUnit"
+    
+    status: "PLANNED"
+    estimated_effort: "10 days"
+
+  # Feature 004: Compensation Cycles
+  - id: "TR-004"
+    name: "compensation-cycles"
+    title: "Compensation Cycle Management"
+    description: "Run annual merit reviews, promotions, and market adjustments"
+    priority: HIGH
+    complexity: HIGH
+    epic: "Core Compensation"
+    
+    sources:
+      concept_guides:
+        - "01-concept/01-compensation-management-guide.md"
+      
+      functional_requirements:
+        - "FR-TR-COMP-004"
+        - "FR-TR-COMP-005"
+        - "FR-TR-COMP-006"
+        - "FR-TR-COMP-007"
+        - "FR-TR-COMP-008"
+        - "FR-TR-COMP-009"
+        - "FR-TR-COMP-018"
+      
+      business_rules:
+        - "BR-TR-COMP-011 to BR-TR-COMP-026"
+        - "BR-TR-COMP-049 to BR-TR-COMP-051"
+      
+      entities:
+        - "CompensationPlan"
+        - "CompensationCycle"
+        - "CompensationAdjustment"
+        - "BudgetAllocation"
+        - "EmployeeCompensationSnapshot"
+        - "SalaryHistory"
+      
+      apis:
+        - "POST /api/v1/compensation/plans"
+        - "POST /api/v1/compensation/cycles"
+        - "POST /api/v1/compensation/adjustments"
+        - "POST /api/v1/compensation/adjustments/{id}/approve"
+        - "POST /api/v1/compensation/cycles/{id}/finalize"
+    
+    dependencies:
+      - "TR-002"
+      - "TR-003"
+      - "PM-PerformanceRatings"
+    
+    status: "PLANNED"
+    estimated_effort: "15 days"
+
+  # Feature 005: Pay Equity Analysis
+  - id: "TR-005"
+    name: "pay-equity-analysis"
+    title: "Pay Equity Analysis"
+    description: "Analyze and address pay gaps across protected groups"
+    priority: HIGH
+    complexity: MEDIUM
+    epic: "Core Compensation"
+    
+    sources:
+      concept_guides:
+        - "01-concept/01-compensation-management-guide.md"
+      
+      functional_requirements:
+        - "FR-TR-COMP-013"
+        - "FR-TR-COMP-014"
+      
+      business_rules:
+        - "BR-TR-COMP-037 to BR-TR-COMP-041"
+      
+      entities:
+        - "EmployeeCompensationSnapshot"
+        - "PayRange"
+      
+      apis:
+        - "POST /api/v1/compensation/pay-equity/analyze"
+        - "GET /api/v1/compensation/compa-ratio/dashboard"
+    
+    dependencies:
+      - "TR-003"
+      - "TR-004"
+      - "CO-Employee"
+    
+    status: "PLANNED"
+    estimated_effort: "8 days"
+
+# ============================================================================
+# EPIC 2: VARIABLE PAY
+# ============================================================================
+
+  # Feature 006: Bonus Management
+  - id: "TR-006"
+    name: "bonus-management"
+    title: "Bonus Plan & Cycle Management"
+    description: "Manage STI/LTI bonus programs with performance multipliers"
+    priority: HIGH
+    complexity: HIGH
+    epic: "Variable Pay"
+    
+    sources:
+      concept_guides:
+        - "01-concept/02-variable-pay-guide.md"
+      
+      functional_requirements:
+        - "FR-TR-VAR-001"
+        - "FR-TR-VAR-002"
+        - "FR-TR-VAR-003"
+        - "FR-TR-VAR-004"
+        - "FR-TR-VAR-005"
+        - "FR-TR-VAR-012"
+        - "FR-TR-VAR-015"
+      
+      business_rules:
+        - "BR-TR-VAR-001 to BR-TR-VAR-016"
+        - "BR-TR-VAR-040 to BR-TR-VAR-042"
+        - "BR-TR-VAR-048 to BR-TR-VAR-050"
+      
+      entities:
+        - "BonusPlan"
+        - "BonusCycle"
+        - "BonusPool"
+        - "BonusAllocation"
+      
+      apis:
+        - "POST /api/v1/variable-pay/bonus-plans"
+        - "POST /api/v1/variable-pay/bonus-cycles"
+        - "POST /api/v1/variable-pay/bonus-allocations"
+        - "POST /api/v1/variable-pay/bonus-allocations/{id}/approve"
+        - "POST /api/v1/variable-pay/bonus-cycles/{id}/finalize"
+    
+    dependencies:
+      - "TR-002"
+      - "PM-PerformanceRatings"
+    
+    status: "PLANNED"
+    estimated_effort: "12 days"
+
+  # Feature 007: Equity Compensation
+  - id: "TR-007"
+    name: "equity-compensation"
+    title: "Equity Grant & Vesting Management"
+    description: "Manage RSU, Options, SAR with vesting schedules and exercise"
+    priority: HIGH
+    complexity: HIGH
+    epic: "Variable Pay"
+    
+    sources:
+      concept_guides:
+        - "01-concept/02-variable-pay-guide.md"
+      
+      functional_requirements:
+        - "FR-TR-VAR-006"
+        - "FR-TR-VAR-007"
+        - "FR-TR-VAR-008"
+        - "FR-TR-VAR-013"
+      
+      business_rules:
+        - "BR-TR-VAR-017 to BR-TR-VAR-028"
+        - "BR-TR-VAR-043 to BR-TR-VAR-045"
+      
+      entities:
+        - "EquityGrant"
+        - "EquityVestingEvent"
+        - "EquityTransaction"
+      
+      apis:
+        - "POST /api/v1/variable-pay/equity-grants"
+        - "GET /api/v1/variable-pay/equity-grants/{id}/vesting-events"
+        - "POST /api/v1/variable-pay/equity-grants/{id}/exercise"
+        - "GET /api/v1/variable-pay/cap-table"
+    
+    dependencies:
+      - "TR-006"
+      - "PR-Payroll"
+    
+    status: "PLANNED"
+    estimated_effort: "10 days"
+
+  # Feature 008: Commission Management
+  - id: "TR-008"
+    name: "commission-management"
+    title: "Commission Plan & Processing"
+    description: "Manage sales commissions with tiered rates and quota tracking"
+    priority: MEDIUM
+    complexity: MEDIUM
+    epic: "Variable Pay"
+    
+    sources:
+      concept_guides:
+        - "01-concept/02-variable-pay-guide.md"
+      
+      functional_requirements:
+        - "FR-TR-VAR-009"
+        - "FR-TR-VAR-010"
+        - "FR-TR-VAR-011"
+      
+      business_rules:
+        - "BR-TR-VAR-029 to BR-TR-VAR-039"
+      
+      entities:
+        - "CommissionPlan"
+        - "CommissionTier"
+        - "CommissionTransaction"
+      
+      apis:
+        - "POST /api/v1/variable-pay/commission-plans"
+        - "POST /api/v1/variable-pay/commission-plans/{id}/tiers"
+        - "POST /api/v1/variable-pay/commission-transactions/import"
+    
+    dependencies:
+      - "CRM-SalesData"
+    
+    status: "PLANNED"
+    estimated_effort: "8 days"
+
+# ============================================================================
+# EPIC 3: BENEFITS
+# ============================================================================
+
+  # Feature 009: Benefit Plan Management
+  - id: "TR-009"
+    name: "benefit-plan-management"
+    title: "Benefit Plan Setup & Configuration"
+    description: "Configure benefit plans with coverage options and premium pricing"
+    priority: HIGH
+    complexity: HIGH
+    epic: "Benefits"
+    
+    sources:
+      concept_guides:
+        - "01-concept/03-benefits-administration-guide.md"
+      
+      functional_requirements:
+        - "FR-TR-BEN-001"
+        - "FR-TR-BEN-002"
+        - "FR-TR-BEN-018"
+      
+      business_rules:
+        - "BR-TR-BEN-001 to BR-TR-BEN-006"
+        - "BR-TR-BEN-058 to BR-TR-BEN-060"
+      
+      entities:
+        - "BenefitPlan"
+        - "BenefitOption"
+        - "EligibilityProfile"
+        - "PlanEligibility"
+      
+      apis:
+        - "POST /api/v1/benefits/plans"
+        - "POST /api/v1/benefits/plans/{id}/options"
+        - "POST /api/v1/benefits/eligibility-profiles"
+    
+    dependencies:
+      - "CO-LegalEntity"
+      - "TR-Eligibility"
+    
+    status: "PLANNED"
+    estimated_effort: "10 days"
+
+  # Feature 010: Benefit Enrollment
+  - id: "TR-010"
+    name: "benefit-enrollment"
+    title: "Benefit Enrollment Management"
+    description: "Manage open enrollment, new hire, and life event enrollments"
+    priority: HIGH
+    complexity: HIGH
+    epic: "Benefits"
+    
+    sources:
+      concept_guides:
+        - "01-concept/03-benefits-administration-guide.md"
+      
+      functional_requirements:
+        - "FR-TR-BEN-003"
+        - "FR-TR-BEN-004"
+        - "FR-TR-BEN-005"
+        - "FR-TR-BEN-008"
+        - "FR-TR-BEN-014"
+        - "FR-TR-BEN-019"
+        - "FR-TR-BEN-020"
+      
+      business_rules:
+        - "BR-TR-BEN-007 to BR-TR-BEN-016"
+        - "BR-TR-BEN-024 to BR-TR-BEN-027"
+        - "BR-TR-BEN-045 to BR-TR-BEN-047"
+        - "BR-TR-BEN-061 to BR-TR-BEN-066"
+      
+      entities:
+        - "EnrollmentPeriod"
+        - "Enrollment"
+        - "LifeEvent"
+      
+      apis:
+        - "POST /api/v1/benefits/enrollment-periods"
+        - "POST /api/v1/benefits/enrollments"
+        - "POST /api/v1/benefits/life-events"
+        - "GET /api/v1/benefits/reports/enrollment-summary"
+        - "POST /api/v1/benefits/carrier-files/generate"
+    
+    dependencies:
+      - "TR-009"
+      - "TR-011"
+    
+    status: "PLANNED"
+    estimated_effort: "15 days"
+
+  # Feature 011: Dependent Management
+  - id: "TR-011"
+    name: "dependent-management"
+    title: "Dependent & Beneficiary Management"
+    description: "Manage employee dependents with verification and beneficiary designation"
+    priority: HIGH
+    complexity: MEDIUM
+    epic: "Benefits"
+    
+    sources:
+      concept_guides:
+        - "01-concept/03-benefits-administration-guide.md"
+      
+      functional_requirements:
+        - "FR-TR-BEN-006"
+        - "FR-TR-BEN-007"
+        - "FR-TR-BEN-009"
+      
+      business_rules:
+        - "BR-TR-BEN-017 to BR-TR-BEN-023"
+        - "BR-TR-BEN-028 to BR-TR-BEN-031"
+      
+      entities:
+        - "EmployeeDependent"
+        - "BenefitBeneficiary"
+      
+      apis:
+        - "POST /api/v1/benefits/dependents"
+        - "POST /api/v1/benefits/dependents/verification/initiate"
+        - "POST /api/v1/benefits/enrollments/{id}/beneficiaries"
+    
+    dependencies:
+      - "CO-Employee"
+    
+    status: "PLANNED"
+    estimated_effort: "8 days"
+
+  # Feature 012: Claims & Reimbursements
+  - id: "TR-012"
+    name: "claims-reimbursements"
+    title: "Healthcare Claims & Reimbursements"
+    description: "Process healthcare claims and expense reimbursements"
+    priority: MEDIUM
+    complexity: MEDIUM
+    epic: "Benefits"
+    
+    sources:
+      concept_guides:
+        - "01-concept/03-benefits-administration-guide.md"
+      
+      functional_requirements:
+        - "FR-TR-BEN-010"
+        - "FR-TR-BEN-011"
+        - "FR-TR-BEN-012"
+        - "FR-TR-BEN-013"
+      
+      business_rules:
+        - "BR-TR-BEN-032 to BR-TR-BEN-044"
+      
+      entities:
+        - "ReimbursementRequest"
+        - "ReimbursementLine"
+        - "HealthcareClaimHeader"
+        - "HealthcareClaimLine"
+      
+      apis:
+        - "POST /api/v1/benefits/reimbursements"
+        - "POST /api/v1/benefits/reimbursements/{id}/approve"
+        - "POST /api/v1/benefits/healthcare-claims"
+    
+    dependencies:
+      - "TR-010"
+    
+    status: "PLANNED"
+    estimated_effort: "10 days"
+
+  # Feature 013: COBRA Administration
+  - id: "TR-013"
+    name: "cobra-administration"
+    title: "COBRA Continuation Coverage"
+    description: "Manage COBRA continuation coverage for terminated employees (US)"
+    priority: LOW
+    complexity: MEDIUM
+    epic: "Benefits"
+    
+    sources:
+      concept_guides:
+        - "01-concept/03-benefits-administration-guide.md"
+      
+      functional_requirements:
+        - "FR-TR-BEN-016"
+      
+      business_rules:
+        - "BR-TR-BEN-051 to BR-TR-BEN-054"
+      
+      entities:
+        - "Enrollment"
+        - "LifeEvent"
+      
+      apis:
+        - "POST /api/v1/benefits/cobra/generate-notice"
+        - "POST /api/v1/benefits/cobra/elect"
+    
+    dependencies:
+      - "TR-010"
+      - "CO-Termination"
+    
+    status: "PLANNED"
+    estimated_effort: "5 days"
+
+# ============================================================================
+# EPIC 4: RECOGNITION
+# ============================================================================
+
+  # Feature 014: Recognition Programs
+  - id: "TR-014"
+    name: "recognition-programs"
+    title: "Recognition Program Management"
+    description: "Manage peer recognition, awards, and points-based rewards"
+    priority: MEDIUM
+    complexity: MEDIUM
+    epic: "Recognition"
+    
+    sources:
+      concept_guides:
+        - "01-concept/recognition-guide.md (planned)"
+      
+      functional_requirements:
+        - "FR-TR-REC-001"
+        - "FR-TR-REC-002"
+        - "FR-TR-REC-003"
+        - "FR-TR-REC-004"
+        - "FR-TR-REC-005"
+        - "FR-TR-REC-010"
+      
+      business_rules:
+        - "BR-TR-REC-001 to BR-TR-REC-013"
+        - "BR-TR-REC-029 to BR-TR-REC-031"
+      
+      entities:
+        - "RecognitionProgram"
+        - "RecognitionAward"
+        - "RecognitionNomination"
+        - "RecognitionTransaction"
+        - "PointBalance"
+      
+      apis:
+        - "POST /api/v1/recognition/programs"
+        - "POST /api/v1/recognition/give"
+        - "POST /api/v1/recognition/nominations"
+        - "GET /api/v1/recognition/feed"
+    
+    dependencies:
+      - "CO-Employee"
+    
+    status: "PLANNED"
+    estimated_effort: "10 days"
+
+  # Feature 015: Redemption Catalog
+  - id: "TR-015"
+    name: "redemption-catalog"
+    title: "Redemption Catalog & Orders"
+    description: "Manage redemption catalog and point redemption orders"
+    priority: MEDIUM
+    complexity: MEDIUM
+    epic: "Recognition"
+    
+    sources:
+      concept_guides:
+        - "01-concept/recognition-guide.md (planned)"
+      
+      functional_requirements:
+        - "FR-TR-REC-006"
+        - "FR-TR-REC-007"
+      
+      business_rules:
+        - "BR-TR-REC-017 to BR-TR-REC-022"
+      
+      entities:
+        - "RedemptionCatalog"
+        - "RedemptionItem"
+        - "RedemptionOrder"
+      
+      apis:
+        - "POST /api/v1/recognition/catalog/items"
+        - "POST /api/v1/recognition/redemptions"
+    
+    dependencies:
+      - "TR-014"
+    
+    status: "PLANNED"
+    estimated_effort: "6 days"
+
+# ============================================================================
+# EPIC 5: OFFER MANAGEMENT
+# ============================================================================
+
+  # Feature 016: Offer Management
+  - id: "TR-016"
+    name: "offer-management"
+    title: "Job Offer Creation & Management"
+    description: "Create, approve, and deliver job offers with e-signature"
+    priority: HIGH
+    complexity: HIGH
+    epic: "Offer Management"
+    
+    sources:
+      concept_guides:
+        - "01-concept/offer-management-guide.md (planned)"
+      
+      functional_requirements:
+        - "FR-TR-OFFER-001"
+        - "FR-TR-OFFER-002"
+        - "FR-TR-OFFER-003"
+        - "FR-TR-OFFER-004"
+        - "FR-TR-OFFER-005"
+        - "FR-TR-OFFER-006"
+        - "FR-TR-OFFER-007"
+        - "FR-TR-OFFER-008"
+        - "FR-TR-OFFER-009"
+        - "FR-TR-OFFER-010"
+        - "FR-TR-OFFER-011"
+      
+      business_rules:
+        - "BR-TR-OFFER-001 to BR-TR-OFFER-033"
+      
+      entities:
+        - "OfferTemplate"
+        - "OfferPackage"
+        - "OfferComponent"
+        - "OfferApproval"
+        - "OfferAcceptance"
+        - "OfferLetter"
+      
+      apis:
+        - "POST /api/v1/offers/templates"
+        - "POST /api/v1/offers/packages"
+        - "POST /api/v1/offers/packages/{id}/approve"
+        - "POST /api/v1/offers/packages/{id}/generate-letter"
+        - "POST /api/v1/offers/letters/{id}/send"
+        - "POST /api/v1/offers/candidate/{token}/accept"
+        - "POST /api/v1/offers/packages/{id}/create-employee"
+    
+    dependencies:
+      - "TR-001"
+      - "TR-002"
+      - "TR-003"
+      - "ATS-Candidates"
+      - "E-Signature-Service"
+    
+    status: "PLANNED"
+    estimated_effort: "15 days"
+
+# ============================================================================
+# EPIC 6: TR STATEMENT
+# ============================================================================
+
+  # Feature 017: TR Statements
+  - id: "TR-017"
+    name: "tr-statements"
+    title: "Total Rewards Statement Generation"
+    description: "Generate and deliver personalized total rewards statements"
+    priority: MEDIUM
+    complexity: MEDIUM
+    epic: "TR Statement"
+    
+    sources:
+      concept_guides:
+        - "01-concept/tr-statement-guide.md (planned)"
+      
+      functional_requirements:
+        - "FR-TR-STMT-001"
+        - "FR-TR-STMT-002"
+        - "FR-TR-STMT-003"
+        - "FR-TR-STMT-004"
+        - "FR-TR-STMT-005"
+        - "FR-TR-STMT-006"
+      
+      business_rules:
+        - "BR-TR-STMT-001 to BR-TR-STMT-018"
+      
+      entities:
+        - "TRStatement"
+        - "TRStatementSection"
+        - "TRStatementDelivery"
+      
+      apis:
+        - "POST /api/v1/tr-statements/templates"
+        - "POST /api/v1/tr-statements/generate"
+        - "POST /api/v1/tr-statements/deliver"
+        - "GET /api/v1/tr-statements/employees/{id}/current"
+    
+    dependencies:
+      - "TR-004"
+      - "TR-006"
+      - "TR-010"
+    
+    status: "PLANNED"
+    estimated_effort: "8 days"
+
+# ============================================================================
+# EPIC 7: DEDUCTIONS
+# ============================================================================
+
+  # Feature 018: Deduction Management
+  - id: "TR-018"
+    name: "deduction-management"
+    title: "Payroll Deduction Management"
+    description: "Manage voluntary, mandatory deductions, garnishments, and loans"
+    priority: HIGH
+    complexity: HIGH
+    epic: "Deductions"
+    
+    sources:
+      concept_guides:
+        - "01-concept/deductions-guide.md (planned)"
+      
+      functional_requirements:
+        - "FR-TR-DED-001"
+        - "FR-TR-DED-002"
+        - "FR-TR-DED-003"
+        - "FR-TR-DED-004"
+        - "FR-TR-DED-005"
+        - "FR-TR-DED-006"
+        - "FR-TR-DED-007"
+        - "FR-TR-DED-008"
+        - "FR-TR-DED-009"
+      
+      business_rules:
+        - "BR-TR-DED-001 to BR-TR-DED-031"
+      
+      entities:
+        - "DeductionType"
+        - "DeductionRule"
+        - "EmployeeDeduction"
+        - "DeductionTransaction"
+        - "Garnishment"
+        - "LoanRepayment"
+      
+      apis:
+        - "POST /api/v1/deductions/types"
+        - "POST /api/v1/deductions/employee-deductions"
+        - "POST /api/v1/deductions/garnishments"
+        - "POST /api/v1/deductions/loans"
+        - "POST /api/v1/deductions/process"
+    
+    dependencies:
+      - "PR-Payroll"
+    
+    status: "PLANNED"
+    estimated_effort: "12 days"
+
+# ============================================================================
+# EPIC 8: TAX WITHHOLDING
+# ============================================================================
+
+  # Feature 019: Tax Withholding
+  - id: "TR-019"
+    name: "tax-withholding"
+    title: "Tax Withholding & Compliance"
+    description: "Multi-country tax calculation, withholding, and compliance"
+    priority: HIGH
+    complexity: VERY_HIGH
+    epic: "Tax Withholding"
+    
+    sources:
+      concept_guides:
+        - "01-concept/tax-compliance-guide.md (planned)"
+      
+      functional_requirements:
+        - "FR-TR-TAX-001"
+        - "FR-TR-TAX-002"
+        - "FR-TR-TAX-003"
+        - "FR-TR-TAX-004"
+        - "FR-TR-TAX-005"
+        - "FR-TR-TAX-006"
+        - "FR-TR-TAX-007"
+        - "FR-TR-TAX-008"
+        - "FR-TR-TAX-009"
+        - "FR-TR-TAX-010"
+        - "FR-TR-TAX-011"
+      
+      business_rules:
+        - "BR-TR-TAX-001 to BR-TR-TAX-034"
+      
+      entities:
+        - "TaxJurisdiction"
+        - "TaxBracket"
+        - "TaxRule"
+        - "EmployeeTaxProfile"
+        - "TaxWithholdingTransaction"
+        - "TaxFiling"
+      
+      apis:
+        - "POST /api/v1/tax/jurisdictions"
+        - "POST /api/v1/tax/jurisdictions/{id}/brackets"
+        - "PUT /api/v1/tax/employees/{id}/profile"
+        - "POST /api/v1/tax/calculate"
+        - "POST /api/v1/tax/forms/generate"
+        - "POST /api/v1/tax/year-end/process"
+    
+    dependencies:
+      - "TR-020"
+      - "PR-Payroll"
+    
+    status: "PLANNED"
+    estimated_effort: "20 days"
+
+# ============================================================================
+# EPIC 9: TAXABLE BRIDGE
+# ============================================================================
+
+  # Feature 020: Taxable Bridge
+  - id: "TR-020"
+    name: "taxable-bridge"
+    title: "Component Tax Mapping & Taxable Wages"
+    description: "Map compensation components to tax categories and calculate taxable wages"
+    priority: HIGH
+    complexity: HIGH
+    epic: "Taxable Bridge"
+    
+    sources:
+      concept_guides:
+        - "01-concept/tax-compliance-guide.md (planned)"
+      
+      functional_requirements:
+        - "FR-TR-BRIDGE-001"
+        - "FR-TR-BRIDGE-002"
+        - "FR-TR-BRIDGE-003"
+        - "FR-TR-BRIDGE-004"
+        - "FR-TR-BRIDGE-005"
+      
+      business_rules:
+        - "BR-TR-BRIDGE-001 to BR-TR-BRIDGE-015"
+      
+      entities:
+        - "TaxCategory"
+        - "ComponentTaxMapping"
+        - "TaxableWageCalculation"
+        - "TaxableComponent"
+      
+      apis:
+        - "POST /api/v1/tax-bridge/categories"
+        - "POST /api/v1/tax-bridge/mappings"
+        - "POST /api/v1/tax-bridge/calculate-taxable-wages"
+        - "POST /api/v1/tax-bridge/fringe-benefits"
+    
+    dependencies:
+      - "TR-002"
+    
+    status: "PLANNED"
+    estimated_effort: "8 days"
+
+# ============================================================================
+# EPIC 10: AUDIT & COMPLIANCE
+# ============================================================================
+
+  # Feature 021: Audit Trail
+  - id: "TR-021"
+    name: "audit-trail"
+    title: "Comprehensive Audit Trail"
+    description: "Track all changes, approvals, and data access for compliance"
+    priority: MEDIUM
+    complexity: MEDIUM
+    epic: "Audit & Compliance"
+    
+    sources:
+      concept_guides:
+        - "01-concept/audit-compliance-guide.md (planned)"
+      
+      functional_requirements:
+        - "FR-TR-AUDIT-001"
+        - "FR-TR-AUDIT-002"
+        - "FR-TR-AUDIT-003"
+        - "FR-TR-AUDIT-004"
+        - "FR-TR-AUDIT-005"
+        - "FR-TR-AUDIT-006"
+        - "FR-TR-AUDIT-007"
+      
+      business_rules:
+        - "BR-TR-AUDIT-001 to BR-TR-AUDIT-022"
+      
+      entities:
+        - "AuditLog"
+        - "ChangeHistory"
+        - "ApprovalHistory"
+        - "DataRetentionPolicy"
+      
+      apis:
+        - "GET /api/v1/audit/logs"
+        - "GET /api/v1/audit/approvals"
+        - "GET /api/v1/audit/access-logs"
+        - "POST /api/v1/audit/reports/generate"
+        - "POST /api/v1/audit/export"
+    
+    dependencies:
+      - "All TR features"
+    
+    status: "PLANNED"
+    estimated_effort: "10 days"
+
+# ============================================================================
+# EPIC 11: CALCULATION ENGINE
+# ============================================================================
+
+  # Feature 022: Calculation Engine
+  - id: "TR-022"
+    name: "calculation-engine"
+    title: "Formula & Rule Calculation Engine"
+    description: "High-performance calculation engine for formulas and business rules"
+    priority: HIGH
+    complexity: VERY_HIGH
+    epic: "Calculation Engine"
+    
+    sources:
+      concept_guides:
+        - "01-concept/calculation-engine-guide.md (planned)"
+      
+      functional_requirements:
+        - "FR-TR-CALC-001"
+        - "FR-TR-CALC-002"
+        - "FR-TR-CALC-003"
+        - "FR-TR-CALC-004"
+        - "FR-TR-CALC-005"
+        - "FR-TR-CALC-006"
+        - "FR-TR-CALC-007"
+        - "FR-TR-CALC-008"
+        - "FR-TR-CALC-010"
+        - "FR-TR-CALC-011"
+      
+      business_rules:
+        - "BR-TR-CALC-001 to BR-TR-CALC-034"
+      
+      entities:
+        - "CalculationFormula"
+        - "FormulaVersion"
+        - "FormulaVariable"
+        - "CalculationRule"
+        - "RuleTest"
+        - "FormulaExecution"
+      
+      apis:
+        - "POST /api/v1/calculation/formulas"
+        - "POST /api/v1/calculation/variables"
+        - "POST /api/v1/calculation/rules"
+        - "POST /api/v1/calculation/tests"
+        - "POST /api/v1/calculation/execute"
+        - "POST /api/v1/calculation/execute/batch"
+    
+    dependencies:
+      - "All calculation-dependent features"
+    
+    status: "PLANNED"
+    estimated_effort: "20 days"
+
+# ============================================================================
+# CROSS-CUTTING FEATURES
+# ============================================================================
+
+  # Feature 023: Eligibility Engine
+  - id: "TR-023"
+    name: "eligibility-engine"
+    title: "Hybrid Eligibility Engine"
+    description: "Dynamic rule evaluation with cached membership for benefits and programs"
+    priority: HIGH
+    complexity: HIGH
+    epic: "Cross-Cutting"
+    
+    sources:
+      concept_guides:
+        - "01-concept/09-eligibility-rules-guide.md"
+      
+      functional_requirements:
+        - "FR-TR-BEN-018"
+      
+      business_rules:
+        - "BR-TR-BEN-058 to BR-TR-BEN-060"
+      
+      entities:
+        - "EligibilityProfile"
+        - "EligibilityMember"
+        - "PlanEligibility"
+      
+      apis:
+        - "POST /api/v1/eligibility/profiles"
+        - "GET /api/v1/eligibility/profiles/{id}/preview"
+        - "POST /api/v1/eligibility/evaluate"
+    
+    dependencies:
+      - "CO-Employee"
+    
+    status: "PLANNED"
+    estimated_effort: "8 days"
+
+# ============================================================================
+# FEATURE SUMMARY
+# ============================================================================
+
+summary:
+  total_features: 23
+  
+  by_priority:
+    HIGH: 14
+    MEDIUM: 7
+    LOW: 2
+  
+  by_complexity:
+    VERY_HIGH: 2
+    HIGH: 12
+    MEDIUM: 9
+  
+  by_epic:
+    "Core Compensation": 5
+    "Variable Pay": 3
+    "Benefits": 5
+    "Recognition": 2
+    "Offer Management": 1
+    "TR Statement": 1
+    "Deductions": 1
+    "Tax Withholding": 1
+    "Taxable Bridge": 1
+    "Audit & Compliance": 1
+    "Calculation Engine": 1
+    "Cross-Cutting": 1
+  
+  by_status:
+    PLANNED: 23
+    IN_PROGRESS: 0
+    COMPLETED: 0
+  
+  total_estimated_effort: "220 days"
+  
+  dependencies:
+    internal_modules:
+      - "CO (Core)"
+      - "PM (Performance Management)"
+      - "PR (Payroll)"
+      - "TA (Time & Attendance)"
+    
+    external_systems:
+      - "ATS/Recruiting"
+      - "E-Signature Service"
+      - "Insurance Carriers"
+      - "Tax Authorities"
+      - "CRM (for commissions)"
+  
+  functional_requirements_coverage:
+    total_frs: 131
+    covered_by_features: 131
+    coverage_percentage: 100%
+  
+  entities_coverage:
+    total_entities: 70
+    covered_by_features: 70
+    coverage_percentage: 100%
+
+# ============================================================================
+# IMPLEMENTATION PHASES
+# ============================================================================
+
+implementation_phases:
+  phase_1_foundation:
+    name: "Foundation & Core Compensation"
+    duration: "8 weeks"
+    features:
+      - "TR-001"  # Salary Basis
+      - "TR-002"  # Pay Components
+      - "TR-003"  # Grade Structure
+      - "TR-020"  # Taxable Bridge
+      - "TR-022"  # Calculation Engine
+      - "TR-023"  # Eligibility Engine
+    estimated_effort: "69 days"
+  
+  phase_2_compensation_cycles:
+    name: "Compensation Cycles & Variable Pay"
+    duration: "6 weeks"
+    features:
+      - "TR-004"  # Compensation Cycles
+      - "TR-005"  # Pay Equity
+      - "TR-006"  # Bonus Management
+      - "TR-007"  # Equity Compensation
+      - "TR-008"  # Commission Management
+    estimated_effort: "55 days"
+  
+  phase_3_benefits:
+    name: "Benefits Administration"
+    duration: "8 weeks"
+    features:
+      - "TR-009"  # Benefit Plans
+      - "TR-010"  # Benefit Enrollment
+      - "TR-011"  # Dependent Management
+      - "TR-012"  # Claims & Reimbursements
+    estimated_effort: "43 days"
+  
+  phase_4_offers_deductions:
+    name: "Offers, Deductions & Tax"
+    duration: "8 weeks"
+    features:
+      - "TR-016"  # Offer Management
+      - "TR-018"  # Deduction Management
+      - "TR-019"  # Tax Withholding
+    estimated_effort: "47 days"
+  
+  phase_5_engagement:
+    name: "Recognition & Statements"
+    duration: "4 weeks"
+    features:
+      - "TR-014"  # Recognition Programs
+      - "TR-015"  # Redemption Catalog
+      - "TR-017"  # TR Statements
+      - "TR-013"  # COBRA
+    estimated_effort: "29 days"
+  
+  phase_6_compliance:
+    name: "Audit & Compliance"
+    duration: "2 weeks"
+    features:
+      - "TR-021"  # Audit Trail
+    estimated_effort: "10 days"
+
+# ============================================================================
+# NOTES
+# ============================================================================
+
+notes:
+  - "All features follow MODULE-DOCUMENTATION-STANDARDS"
+  - "Functional requirements provide detailed acceptance criteria"
+  - "Business rules extracted from FRs and documented separately"
+  - "API endpoints follow RESTful conventions"
+  - "Entities mapped to ontology (tr-ontology.yaml)"
+  - "Concept guides provide user-facing documentation"
+  - "Implementation phases can be adjusted based on business priorities"
+  - "Estimated effort includes development, testing, and documentation"
+  - "Dependencies must be implemented before dependent features"
+  - "Cross-cutting features (Eligibility, Calculation Engine) are foundational"

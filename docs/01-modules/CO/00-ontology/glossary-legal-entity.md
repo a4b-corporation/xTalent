@@ -80,6 +80,7 @@ This glossary defines the legal entity structure entities used in the xTalent HC
 | `name_vi` | string(150) | No | Vietnamese name |
 | `name_en` | string(150) | No | English name |
 | `type_id` | UUID | Yes | Entity type reference |
+| `country_code` | string(2) | Yes | Country of legal registration (ISO-3166 alpha-2) |
 | `parent_id` | UUID | No | Parent legal entity |
 | `path` | string(255) | No | Hierarchical path (e.g., /parent/child) |
 | `effective_start_date` | date | Yes | Effective start date |
@@ -98,6 +99,8 @@ This glossary defines the legal entity structure entities used in the xTalent HC
 
 **Business Rules:**
 - Entity code must be unique across all legal entities
+- Country code represents legal jurisdiction (country of incorporation)
+- Country code may differ from physical office address country
 - Path must reflect actual hierarchy
 - SCD Type 2 for tracking changes over time
 - Parent entity must be of allowed type per EntityType metadata
@@ -111,6 +114,7 @@ code: VNG_HOLDING
 name_vi: Tập đoàn VNG
 name_en: VNG Corporation
 type_id: type_holding
+country_code: VN
 parent_id: null
 path: /VNG_HOLDING
 
@@ -120,6 +124,7 @@ code: VNG_CORP
 name_vi: Công ty Cổ phần VNG
 name_en: VNG Corporation JSC
 type_id: type_company
+country_code: VN
 parent_id: entity_vng_holding
 path: /VNG_HOLDING/VNG_CORP
 
@@ -129,6 +134,7 @@ code: VNG_HN_BRANCH
 name_vi: Chi nhánh Hà Nội
 name_en: Hanoi Branch
 type_id: type_branch
+country_code: VN
 parent_id: entity_vng_corp
 path: /VNG_HOLDING/VNG_CORP/VNG_HN_BRANCH
 ```
@@ -202,6 +208,7 @@ path: /VNG_HOLDING/VNG_CORP/VNG_HN_BRANCH
 - At least one address should be provided
 - Tax ID required for tax entities
 - Email suffix should match corporate domain
+- Address country may differ from Entity.country_code (legal jurisdiction)
 
 **Example:**
 

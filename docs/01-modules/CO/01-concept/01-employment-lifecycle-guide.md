@@ -1,7 +1,7 @@
 # Employment Lifecycle Guide
 
 **Version**: 2.0  
-**Last Updated**: 2025-12-02  
+**Last Updated**: 2025-12-09  
 **Audience**: Business Users, HR Administrators  
 **Reading Time**: 30-45 minutes
 
@@ -431,6 +431,102 @@ Worker: Cường
           hire_date: 2024-01-01
           original_hire_date: 2020-01-01  # Preserved!
           seniority_date: 2020-01-01  # Continuous service
+```
+
+### 💡 Deep Dive: Contract Management
+
+#### Contract Hierarchy
+Contracts support parent-child relationships via `parent_contract_id` and `parent_relationship_type`:
+
+| Relationship Type | Purpose | Example |
+|-------------------|---------|----------|
+| **AMENDMENT** | Modify existing terms | Salary increase during probation |
+| **ADDENDUM** | Add new clauses | Add bonus structure to existing contract |
+| **RENEWAL** | Extend contract period | Re-sign for another year |
+| **SUPERSESSION** | Replace contract type | Probation → Permanent |
+
+**Example Hierarchy**:
+```yaml
+# Contract #1: Probation
+Contract:
+  id: CONTRACT-001
+  employee_id: EMP-001
+  contract_type: PROBATION
+  parent_contract_id: null
+  parent_relationship_type: null
+  start_date: 2024-01-01
+  end_date: 2024-03-01
+
+# Contract #2: Salary Amendment (during probation)
+Contract:
+  id: CONTRACT-002
+  employee_id: EMP-001
+  contract_type: PROBATION
+  parent_contract_id: CONTRACT-001
+  parent_relationship_type: AMENDMENT
+  start_date: 2024-02-01  # Effective date of amendment
+  base_salary: 60000000  # Increased from 50M
+
+# Contract #3: Permanent (replaces probation)
+Contract:
+  id: CONTRACT-003
+  employee_id: EMP-001
+  contract_type: PERMANENT
+  parent_contract_id: CONTRACT-001
+  parent_relationship_type: SUPERSESSION
+  start_date: 2024-03-01
+  end_date: null
+
+# Contract #4: Renewal (after 1 year)
+Contract:
+  id: CONTRACT-004
+  employee_id: EMP-001
+  contract_type: PERMANENT
+  parent_contract_id: CONTRACT-003
+  parent_relationship_type: RENEWAL
+  start_date: 2025-03-01
+```
+
+#### Contract Templates
+**ContractTemplate** provides pre-configured contract terms:
+
+```yaml
+# Example: Vietnam Tech - Fixed Term 12 Months
+ContractTemplate:
+  code: "VN_TECH_FIXED_12M"
+  name: "Vietnam Tech - Fixed Term 12 Months"
+  contract_type: FIXED_TERM
+  country: VN
+  business_unit_id: <Tech_BU>
+  
+  # Duration defaults
+  default_duration_value: 12
+  default_duration_unit: MONTH
+  max_duration_value: 36  # VN labor law limit
+  
+  # Probation
+  probation_required: true
+  probation_duration_value: 60
+  probation_duration_unit: DAY
+  
+  # Renewal
+  allows_renewal: true
+  max_renewals: 2
+  
+  # Compliance
+  legal_requirements:
+    max_consecutive_fixed_terms: 2
+    mandatory_clauses: ["social_insurance", "termination_notice"]
+```
+
+**Using Templates**:
+```yaml
+Contract:
+  template_id: <VN_TECH_FIXED_12M>
+  start_date: 2024-01-01
+  # Auto-calculated from template:
+  end_date: 2024-12-31  # start + 12 MONTH
+  probation_end_date: 2024-03-01  # start + 60 DAY
 ```
 
 ---

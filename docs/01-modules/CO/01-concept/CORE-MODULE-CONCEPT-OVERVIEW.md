@@ -1,7 +1,7 @@
 # Core Module (CO) - Concept Overview
 
 **Version**: 2.0  
-**Last Updated**: 2025-12-02  
+**Last Updated**: 2025-12-09  
 **Module Code**: CO  
 **Purpose**: Foundational HR Data Model
 
@@ -542,7 +542,7 @@ Country: Vietnam
 
 **Entities (6)**:
 - EntityType - Types of legal entities
-- Entity - Legal entity instances
+- Entity - Legal entity instances (with country_code for legal jurisdiction)
 - EntityProfile - Extended entity information
 - EntityRepresentative - Legal representatives
 - EntityLicense - Business licenses
@@ -550,10 +550,13 @@ Country: Vietnam
 
 **Hierarchy**:
 ```
-Parent Corporation
-  ├─ Subsidiary Vietnam (100% owned)
-  ├─ Subsidiary Singapore (100% owned)
-  └─ Joint Venture Thailand (51% owned)
+Parent Corporation (SG)
+  ├─ Subsidiary Vietnam (VN) - 100% owned
+  ├─ Subsidiary Singapore (SG) - 100% owned
+  └─ Joint Venture Thailand (TH) - 51% owned
+  
+Note: Country code represents legal registration country,
+      which may differ from physical office location.
 ```
 
 ---
@@ -623,16 +626,19 @@ Parent Corporation
 ### 7. Employment (Employment Relationships)
 **Purpose**: Employment relationships and assignments
 
-**Entities (6)**:
+**Entities (7)** ✨ ENHANCED:
 - WorkRelationship - Overall work relationship ✨ NEW
 - Employee - Employment contract details
-- Contract - Contract specifics
+- Contract - Contract specifics with hierarchy support
+- ContractTemplate - Pre-configured contract terms ✨ NEW
 - Assignment - Job assignments
 - EmployeeIdentifier - Employee numbers
 - GlobalAssignment - International assignments
 
 **Key Concepts**:
 - 4-level hierarchy (Worker → WorkRelationship → Employee → Assignment)
+- Contract relationships (AMENDMENT, ADDENDUM, RENEWAL, SUPERSESSION)
+- Contract templates for standardization and compliance
 - Flexible staffing models (POSITION_BASED vs JOB_BASED)
 - Solid/dotted line reporting
 - Assignment reasons (HIRE, TRANSFER, PROMOTION, etc.)

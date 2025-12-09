@@ -83,6 +83,7 @@ sub_modules:
       - WorkRelationship
       - Employee
       - Contract
+      - ContractTemplate
       - Assignment
       - EmployeeIdentifier
       - GlobalAssignment
@@ -2377,7 +2378,8 @@ entities:
   Contract:
     description: |
       Employment contracts for employees.
-      Supports contract hierarchy (parent-child for renewals).
+      Supports contract hierarchy (parent-child) with relationship types (AMENDMENT, RENEWAL, etc.).
+      Can reference ContractTemplate for default configuration.
     attributes:
       id:
         type: UUID
@@ -2385,10 +2387,13 @@ entities:
       employee_id:
         type: UUID
         required: true
+      template_id:
+        type: UUID
+        description: "Reference to ContractTemplate for defaults"
       contract_type_code:
         type: string
         maxLength: 50
-        description: "PERMANENT, FIXED_TERM, PROBATION"
+        description: "PERMANENT, FIXED_TERM, PROBATION, SEASONAL"
       work_schedule_type_code:
         type: string
         maxLength: 50
@@ -2401,10 +2406,14 @@ entities:
         default: false
       parent_contract_id:
         type: UUID
-        description: "Parent contract for renewals"
+        description: "Parent contract for hierarchy"
+      parent_relationship_type:
+        type: string
+        maxLength: 50
+        description: "AMENDMENT, ADDENDUM, RENEWAL, SUPERSESSION"
       document_id:
         type: UUID
-        description: "Contract document file"
+        description: "Contract document file (PDF)"
       is_main:
         type: boolean
         default: true
@@ -2416,6 +2425,47 @@ entities:
         required: true
       end_date:
         type: date
+      duration_value:
+        type: integer
+        description: "Duration value (e.g., 12, 60)"
+      duration_unit:
+        type: string
+        maxLength: 10
+        description: "DAY, MONTH"
+      probation_end_date:
+        type: date
+        description: "End date of probation period"
+      notice_period_days:
+        type: integer
+        description: "Notice period for termination"
+      termination_date:
+        type: date
+        description: "Actual termination date"
+      termination_reason_code:
+        type: string
+        maxLength: 50
+        description: "Reason for termination"
+      base_salary:
+        type: decimal
+        description: "Basic salary amount"
+      salary_currency_code:
+        type: string
+        maxLength: 3
+        description: "Currency code (ISO-4217)"
+      salary_frequency_code:
+        type: string
+        maxLength: 20
+        description: "MONTHLY, BIWEEKLY, WEEKLY, HOURLY"
+      working_hours_per_week:
+        type: decimal
+        description: "Working hours per week"
+      governing_law_country:
+        type: string
+        maxLength: 2
+        description: "Country code for governing law"
+      signed_date:
+        type: date
+        description: "Date contract was signed"
       metadata:
         type: jsonb
         description: "Terms, appendices, special clauses"
@@ -2427,6 +2477,9 @@ entities:
       employee:
         target: Employee
         cardinality: "1"
+      template:
+        target: ContractTemplate
+        cardinality: "0..1"
       parentContract:
         target: Contract
         cardinality: "0..1"
@@ -2436,6 +2489,139 @@ entities:
       document:
         target: Document
         cardinality: "0..1"
+    businessRules:
+      - "If contract_type_code = FIXED_TERM, end_date is required"
+      - "If contract_type_code = PERMANENT, end_date must be null"
+      - "If parent_contract_id is not null, parent_relationship_type is required"
+      - "If template_id is provided, inherit defaults but allow override"
+      - "If duration_value is provided, end_date = start_date + duration"
+      - "Only one primary_flag=true contract per employee at a time"
+
+  ContractTemplate:
+    description: |
+      Configuration templates for contract types.
+      Defines default parameters, duration limits, and compliance rules.
+      Supports hierarchy: Global → Country → Legal Entity → Business Unit.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      code:
+        type: string
+        maxLength: 50
+        required: true
+        description: "Unique template code (e.g., VN_TECH_FIXED_12M)"
+      name:
+        type: string
+        maxLength: 150
+        required: true
+      description:
+        type: text
+      contract_type_code:
+        type: string
+        maxLength: 50
+        required: true
+        description: "PERMANENT, FIXED_TERM, PROBATION, SEASONAL"
+      country_code:
+        type: string
+        maxLength: 2
+        description: "Country code (null = global)"
+      legal_entity_code:
+        type: string
+        maxLength: 50
+        description: "Legal entity code (optional)"
+      business_unit_id:
+        type: UUID
+        description: "Business unit (optional)"
+      default_duration_value:
+        type: integer
+      default_duration_unit:
+        type: string
+        maxLength: 10
+        description: "DAY, MONTH"
+      min_duration_value:
+        type: integer
+      min_duration_unit:
+        type: string
+        maxLength: 10
+      max_duration_value:
+        type: integer
+      max_duration_unit:
+        type: string
+        maxLength: 10
+      probation_required:
+        type: boolean
+        default: false
+      probation_duration_value:
+        type: integer
+      probation_duration_unit:
+        type: string
+        maxLength: 10
+      allows_renewal:
+        type: boolean
+        default: false
+      max_renewals:
+        type: integer
+      renewal_notice_days:
+        type: integer
+      auto_renewal:
+        type: boolean
+        default: false
+      default_notice_period_days:
+        type: integer
+      default_work_schedule_type:
+        type: string
+        maxLength: 50
+      default_working_hours_per_week:
+        type: decimal
+      legal_requirements:
+        type: jsonb
+        description: "Country/BU-specific compliance rules"
+      document_template_id:
+        type: UUID
+        description: "Reference to document template"
+      approval_workflow_id:
+        type: UUID
+        description: "Reference to approval workflow"
+      metadata:
+        type: jsonb
+      is_active:
+        type: boolean
+        default: true
+      effective_start_date:
+        type: date
+        required: true
+      effective_end_date:
+        type: date
+      is_current_flag:
+        type: boolean
+        default: true
+      created_at:
+        type: timestamp
+      updated_at:
+        type: timestamp
+    relationships:
+      businessUnit:
+        target: Unit
+        cardinality: "0..1"
+    constraints:
+      - name: "unique_template_code"
+        type: unique
+        fields: [code]
+      - name: "unique_template_scope"
+        type: unique
+        fields: [contract_type_code, country_code, legal_entity_code, business_unit_id, effective_start_date]
+    businessRules:
+      - "If contract_type_code = PERMANENT, max_duration_value must be null"
+      - "If contract_type_code = FIXED_TERM, max_duration_value is required for compliance"
+      - "code must be unique across all templates"
+      - "Templates can be scoped by country, legal entity, or business unit"
+    indexes:
+      - name: "idx_contract_template_code"
+        columns: [code]
+        unique: true
+      - name: "idx_contract_template_scope"
+        columns: [contract_type_code, country_code, legal_entity_code, business_unit_id]
 
   Assignment:
     description: |\

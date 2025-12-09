@@ -16,9 +16,10 @@ The Employment sub-module manages the **4-level hierarchy** from work relationsh
 1. ✨ **WorkRelationship** (NEW)
 2. **Employee**
 3. **Contract**
-4. **Assignment**
-5. **EmployeeIdentifier**
-6. **GlobalAssignment**
+4. **ContractTemplate** ✨ (NEW) - Contract Configuration Templates
+5. **Assignment**
+6. **EmployeeIdentifier**
+7. **GlobalAssignment**
 
 ---
 
@@ -132,7 +133,8 @@ Worker → WorkRelationship (type=EMPLOYEE) → Employee
 - Support contract hierarchies (renewals)
 
 **Key Attributes**:
-- `employee_id` or `work_relationship_id` - Contract holder
+- `employee_id` - Contract holder
+- `template_id` ✨ - Reference to `ContractTemplate` (inherits default configuration).
 - `contract_type_code`:
   - `PERMANENT` - Indefinite term
   - `FIXED_TERM` - Fixed duration (e.g., 12 months)
@@ -142,24 +144,149 @@ Worker → WorkRelationship (type=EMPLOYEE) → Employee
   - `FULL_TIME` - 40 hours/week
   - `PART_TIME` - < 40 hours/week
   - `FLEXIBLE` - Flexible hours
-- `parent_contract_id` - For renewals, links to previous contract
+- `parent_contract_id` - Links to previous contract
+- `parent_relationship_type` ✨:
+  - `AMENDMENT` - Modifies existing terms.
+  - `ADDENDUM` - Adds new terms.
+  - `RENEWAL` - Re-sign / Extension.
+  - `SUPERSESSION` - Complete replacement (e.g., Probation → Permanent).
 - `contract_number` - Official contract number
 - `start_date` / `end_date` - Contract validity period
+- `duration_value` / `duration_unit` ✨ - Duration (e.g., 12 MONTH, 60 DAY).
+- `document_id` - Contract document (signed PDF file).
+- `probation_end_date` ✨ - Probation end date.
+- `notice_period_days` ✨ - Notice period for termination.
+- `base_salary` / `salary_currency_code` / `salary_frequency_code` ✨ - Basic compensation reference.
+- `working_hours_per_week` ✨ - Working hours per week.
 - `supplier_id` - Vendor (for outsourced workers)
 
 **Business Rules**:
-- ✅ Only one primary contract per employee at a time
-- ✅ Fixed-term contracts must have end_date
-- ✅ Renewal contracts link via parent_contract_id
+- ✅ Only one primary contract (`primary_flag=true`) per employee at a time
+- ✅ Fixed-term contracts (`FIXED_TERM`) must have `end_date`
+- ✅ If `parent_contract_id` is not null → `parent_relationship_type` is required
+- ✅ If `template_id` is selected → inherits default configuration, allows override
+- ✅ If `duration_value` is provided → `end_date` = `start_date` + duration
 - ⚠️ Contract dates must be within work relationship dates
 
 **Contract Hierarchy Example**:
+```yaml
+# Initial probation contract
+Contract#1:
+  type: PROBATION
+  parent_id: null
+  parent_relationship_type: null
+  start: 2023-01-01
+  end: 2023-03-01
+
+# Salary amendment (Amendment)
+Contract#2:
+  type: PROBATION
+  parent_id: Contract#1
+  parent_relationship_type: AMENDMENT
+  start: 2023-02-01  # Effective date of amendment
+  base_salary: 60000000  # Increased from 50M
+
+# Permanent contract (Supersession)
+Contract#3:
+  type: PERMANENT
+  parent_id: Contract#1
+  parent_relationship_type: SUPERSESSION
+  start: 2023-03-01
+  end: null
+
+# Renewal after 1 year (Renewal)
+Contract#4:
+  type: PERMANENT
+  parent_id: Contract#3
+  parent_relationship_type: RENEWAL
+  start: 2024-03-01
 ```
-Initial Contract (2023-01-01 to 2023-12-31)
-  ↓ parent_contract_id
-Renewal #1 (2024-01-01 to 2024-12-31)
-  ↓ parent_contract_id  
-Renewal #2 / Permanent (2025-01-01 onwards)
+
+---
+
+### ContractTemplate ✨ NEW
+
+**Definition**: Configuration template for contract types, defining default parameters and compliance rules.
+
+**Purpose**:
+- Standardize contract terms by type, country, and unit.
+- Automate calculation of duration, probation, and notice periods.
+- Ensure compliance with labor regulations (e.g., VN max 36 months for fixed-term).
+- Reduce manual data entry errors.
+
+**Key Attributes**:
+- `code` - Template code (e.g., "VN_TECH_FIXED_12M").
+- `name` - Template name.
+- `contract_type_code` - Applicable contract type.
+- `country_code` - Country (null = global).
+- `legal_entity_code` - Specific legal entity (optional).
+- `business_unit_id` - Specific business unit (optional).
+- **Duration Configuration**:
+  - `default_duration_value` / `default_duration_unit` - Default duration.
+  - `min_duration_value` / `min_duration_unit` - Minimum duration.
+  - `max_duration_value` / `max_duration_unit` - Maximum duration.
+- **Probation Configuration**:
+  - `probation_required` - Is probation required?
+  - `probation_duration_value` / `probation_duration_unit` - Probation period.
+- **Renewal Configuration**:
+  - `allows_renewal` - Allow renewal?
+  - `max_renewals` - Maximum number of renewals.
+  - `renewal_notice_days` - Notice days before renewal.
+- **Termination Configuration**:
+  - `default_notice_period_days` - Default notice period.
+- **Legal Compliance**:
+  - `legal_requirements` (jsonb) - Specific legal requirements.
+
+**Business Rules**:
+- ✅ Each template must have unique `code`.
+- ✅ If `contract_type_code = PERMANENT` → `max_duration_value` must be null.
+- ✅ If `contract_type_code = FIXED_TERM` → `max_duration_value` is required (compliance).
+- ✅ Supports hierarchy: Global → Country → Legal Entity → Business Unit.
+
+**Examples**:
+```yaml
+# Vietnam Tech - Fixed Term 12 Months
+ContractTemplate#1:
+  code: "VN_TECH_FIXED_12M"
+  name: "Vietnam Tech - Fixed Term 12 Months"
+  contract_type: FIXED_TERM
+  country: VN
+  business_unit_id: <Tech_BU>
+  
+  default_duration_value: 12
+  default_duration_unit: MONTH
+  max_duration_value: 36
+  max_duration_unit: MONTH  # VN labor law
+  
+  probation_required: true
+  probation_duration_value: 60
+  probation_duration_unit: DAY
+  
+  allows_renewal: true
+  max_renewals: 2
+  renewal_notice_days: 30
+  
+  default_notice_period_days: 30
+  
+  legal_requirements:
+    max_consecutive_fixed_terms: 2
+    mandatory_clauses: ["social_insurance", "termination_notice"]
+    labor_code_reference: "VN_LC_2019_Article_22"
+
+# Singapore Sales - Probation 3 Months
+ContractTemplate#2:
+  code: "SG_SALES_PROBATION_3M"
+  name: "Singapore Sales - Probation 3 Months"
+  contract_type: PROBATION
+  country: SG
+  business_unit_id: <Sales_BU>
+  
+  default_duration_value: 3
+  default_duration_unit: MONTH
+  max_duration_value: 6
+  max_duration_unit: MONTH
+  
+  default_notice_period_days: 7
 ```
 
 ---

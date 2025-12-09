@@ -16,9 +16,10 @@ Phân hệ Việc làm quản lý **hệ thống phân cấp 4 cấp độ** t�
 1. ✨ **WorkRelationship** (MỚI) - Quan hệ công việc
 2. **Employee** - Nhân viên
 3. **Contract** - Hợp đồng
-4. **Assignment** - Phân công công việc
-5. **EmployeeIdentifier** - Định danh nhân viên
-6. **GlobalAssignment** - Phân công toàn cầu
+4. **ContractTemplate** ✨ (MỚI) - Mẫu cấu hình hợp đồng
+5. **Assignment** - Phân công công việc
+6. **EmployeeIdentifier** - Định danh nhân viên
+7. **GlobalAssignment** - Phân công toàn cầu
 
 ---
 
@@ -132,7 +133,8 @@ Worker → WorkRelationship (type=EMPLOYEE) → Employee
 - Hỗ trợ phân cấp hợp đồng (gia hạn).
 
 **Các thuộc tính chính**:
-- `employee_id` hoặc `work_relationship_id` - Người đứng tên hợp đồng.
+- `employee_id` - Người đứng tên hợp đồng.
+- `template_id` ✨ - Tham chiếu đến `ContractTemplate` (kế thừa cấu hình mặc định).
 - `contract_type_code`:
   - `PERMANENT` - Không xác định thời hạn.
   - `FIXED_TERM` - Có thời hạn (ví dụ: 12 tháng).
@@ -142,24 +144,149 @@ Worker → WorkRelationship (type=EMPLOYEE) → Employee
   - `FULL_TIME` - Toàn thời gian (40 giờ/tuần).
   - `PART_TIME` - Bán thời gian (< 40 giờ/tuần).
   - `FLEXIBLE` - Giờ giấc linh hoạt.
-- `parent_contract_id` - Cho việc gia hạn, liên kết với hợp đồng trước đó.
+- `parent_contract_id` - Liên kết với hợp đồng trước đó.
+- `parent_relationship_type` ✨:
+  - `AMENDMENT` - Sửa đổi điều khoản hiện tại.
+  - `ADDENDUM` - Bổ sung điều khoản mới.
+  - `RENEWAL` - Tái ký / Gia hạn.
+  - `SUPERSESSION` - Thay thế hoàn toàn (vd: Thử việc → Chính thức).
 - `contract_number` - Số hợp đồng chính thức.
 - `start_date` / `end_date` - Thời hạn hiệu lực hợp đồng.
+- `duration_value` / `duration_unit` ✨ - Thời hạn (vd: 12 MONTH, 60 DAY).
+- `document_id` - Tài liệu hợp đồng (file PDF đã ký).
+- `probation_end_date` ✨ - Ngày kết thúc thử việc.
+- `notice_period_days` ✨ - Số ngày báo trước khi chấm dứt.
+- `base_salary` / `salary_currency_code` / `salary_frequency_code` ✨ - Tham chiếu lương cơ bản.
+- `working_hours_per_week` ✨ - Số giờ làm việc/tuần.
 - `supplier_id` - Nhà cung cấp (đối với nhân sự thuê ngoài).
 
 **Quy tắc nghiệp vụ**:
-- ✅ Chỉ một hợp đồng chính cho mỗi nhân viên tại một thời điểm.
-- ✅ Hợp đồng có thời hạn phải có `end_date`.
-- ✅ Hợp đồng gia hạn liên kết qua `parent_contract_id`.
+- ✅ Chỉ một hợp đồng chính (`primary_flag=true`) cho mỗi nhân viên tại một thời điểm.
+- ✅ Hợp đồng có thời hạn (`FIXED_TERM`) phải có `end_date`.
+- ✅ Nếu `parent_contract_id` không null → `parent_relationship_type` bắt buộc.
+- ✅ Nếu `template_id` được chọn → kế thừa cấu hình mặc định, cho phép override.
+- ✅ Nếu `duration_value` được cung cấp → `end_date` = `start_date` + duration.
 - ⚠️ Ngày hợp đồng phải nằm trong khoảng thời gian của quan hệ công việc.
 
 **Ví dụ Phân cấp Hợp đồng**:
+```yaml
+# Hợp đồng thử việc ban đầu
+Contract#1:
+  type: PROBATION
+  parent_id: null
+  parent_relationship_type: null
+  start: 2023-01-01
+  end: 2023-03-01
+
+# Phụ lục tăng lương (Amendment)
+Contract#2:
+  type: PROBATION
+  parent_id: Contract#1
+  parent_relationship_type: AMENDMENT
+  start: 2023-02-01  # Ngày hiệu lực sửa đổi
+  base_salary: 60000000  # Tăng từ 50M
+
+# Hợp đồng chính thức (Supersession)
+Contract#3:
+  type: PERMANENT
+  parent_id: Contract#1
+  parent_relationship_type: SUPERSESSION
+  start: 2023-03-01
+  end: null
+
+# Tái ký sau 1 năm (Renewal)
+Contract#4:
+  type: PERMANENT
+  parent_id: Contract#3
+  parent_relationship_type: RENEWAL
+  start: 2024-03-01
 ```
-Hợp đồng Ban đầu (01/01/2023 đến 31/12/2023)
-  ↓ parent_contract_id
-Gia hạn #1 (01/01/2024 đến 31/12/2024)
-  ↓ parent_contract_id  
-Gia hạn #2 / Chính thức (01/01/2025 trở đi)
+
+---
+
+### ContractTemplate ✨ MỚI
+
+**Định nghĩa**: Mẫu cấu hình cho các loại hợp đồng, định nghĩa các thông số mặc định và quy tắc tuân thủ.
+
+**Mục đích**:
+- Chuẩn hóa các điều khoản hợp đồng theo loại, quốc gia, đơn vị.
+- Tự động hóa tính toán thời hạn, thử việc, thông báo chấm dứt.
+- Đảm bảo tuân thủ quy định pháp luật (vd: VN max 36 tháng cho hợp đồng có thời hạn).
+- Giảm thiểu lỗi nhập liệu thủ công.
+
+**Các thuộc tính chính**:
+- `code` - Mã mẫu (vd: "VN_TECH_FIXED_12M").
+- `name` - Tên mẫu.
+- `contract_type_code` - Loại hợp đồng áp dụng.
+- `country_code` - Quốc gia (null = toàn cầu).
+- `legal_entity_code` - Pháp nhân cụ thể (tùy chọn).
+- `business_unit_id` - Đơn vị kinh doanh cụ thể (tùy chọn).
+- **Cấu hình thời hạn**:
+  - `default_duration_value` / `default_duration_unit` - Thời hạn mặc định.
+  - `min_duration_value` / `min_duration_unit` - Thời hạn tối thiểu.
+  - `max_duration_value` / `max_duration_unit` - Thời hạn tối đa.
+- **Cấu hình thử việc**:
+  - `probation_required` - Bắt buộc thử việc?
+  - `probation_duration_value` / `probation_duration_unit` - Thời gian thử việc.
+- **Cấu hình gia hạn**:
+  - `allows_renewal` - Cho phép gia hạn?
+  - `max_renewals` - Số lần gia hạn tối đa.
+  - `renewal_notice_days` - Số ngày thông báo trước khi gia hạn.
+- **Cấu hình chấm dứt**:
+  - `default_notice_period_days` - Số ngày báo trước mặc định.
+- **Tuân thủ pháp luật**:
+  - `legal_requirements` (jsonb) - Quy định pháp luật cụ thể.
+
+**Quy tắc nghiệp vụ**:
+- ✅ Mỗi mẫu phải có `code` duy nhất.
+- ✅ Nếu `contract_type_code = PERMANENT` → `max_duration_value` phải null.
+- ✅ Nếu `contract_type_code = FIXED_TERM` → `max_duration_value` bắt buộc (tuân thủ).
+- ✅ Hỗ trợ phân cấp: Global → Country → Legal Entity → Business Unit.
+
+**Ví dụ**:
+```yaml
+# Mẫu hợp đồng có thời hạn 12 tháng - Việt Nam - Phòng Công nghệ
+ContractTemplate#1:
+  code: "VN_TECH_FIXED_12M"
+  name: "Vietnam Tech - Fixed Term 12 Months"
+  contract_type: FIXED_TERM
+  country: VN
+  business_unit_id: <Tech_BU>
+  
+  default_duration_value: 12
+  default_duration_unit: MONTH
+  max_duration_value: 36
+  max_duration_unit: MONTH  # VN labor law
+  
+  probation_required: true
+  probation_duration_value: 60
+  probation_duration_unit: DAY
+  
+  allows_renewal: true
+  max_renewals: 2
+  renewal_notice_days: 30
+  
+  default_notice_period_days: 30
+  
+  legal_requirements:
+    max_consecutive_fixed_terms: 2
+    mandatory_clauses: ["social_insurance", "termination_notice"]
+    labor_code_reference: "VN_LC_2019_Article_22"
+
+# Mẫu thử việc 3 tháng - Singapore - Phòng Sales
+ContractTemplate#2:
+  code: "SG_SALES_PROBATION_3M"
+  name: "Singapore Sales - Probation 3 Months"
+  contract_type: PROBATION
+  country: SG
+  business_unit_id: <Sales_BU>
+  
+  default_duration_value: 3
+  default_duration_unit: MONTH
+  max_duration_value: 6
+  max_duration_unit: MONTH
+  
+  default_notice_period_days: 7
 ```
 
 ---

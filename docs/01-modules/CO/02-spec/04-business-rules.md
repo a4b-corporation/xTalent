@@ -653,35 +653,475 @@ WHEN setting employment type
 
 ---
 
-#### BR-WR-022: Contract Type Validation
+### Category: Contract Management ✨ NEW
 
-**Priority**: MEDIUM
+#### BR-CONTRACT-001: Contract Creation Validation
+
+**Priority**: HIGH
 
 **Description**:
-Contract type validation rules.
+Contract must meet all prerequisites and validation rules.
 
 **Conditions**:
 ```
-WHEN setting contract type
+WHEN creating a new contract
 ```
 
 **Rules**:
-1. Contract type must be valid code value
-2. PERMANENT: No end date required
-3. FIXED_TERM: End date required
-4. CASUAL: No end date required
-5. Contract expiry notification required for FIXED_TERM
+1. Employee must exist and be active
+2. Contract type is required (PERMANENT, FIXED_TERM, PROBATION, SEASONAL)
+3. Start date is required
+4. If contract_type = FIXED_TERM → end_date IS REQUIRED
+5. If contract_type = PERMANENT → end_date MUST BE NULL
+6. If contract_type = PROBATION → probation_end_date IS REQUIRED
+7. If template_id provided → inherit template defaults
+8. Duration_value and duration_unit must both be provided or both be null
+9. If duration provided → end_date = start_date + duration (auto-calculated)
+10. Only one active contract per employee at a time
 
 **Exceptions**:
 - None
 
 **Error Messages**:
-- `WR_CONTRACT_TYPE_INVALID`: "Invalid contract type"
-- `WR_FIXED_TERM_END_DATE_REQUIRED`: "End date required for FIXED_TERM contract"
+- `CONTRACT_EMPLOYEE_REQUIRED`: "Employee is required"
+- `CONTRACT_TYPE_REQUIRED`: "Contract type is required"
+- `CONTRACT_FIXED_TERM_END_DATE_REQUIRED`: "End date required for FIXED_TERM contract"
+- `CONTRACT_PERMANENT_END_DATE_NOT_ALLOWED`: "End date not allowed for PERMANENT contract"
+- `CONTRACT_ACTIVE_EXISTS`: "Employee already has active contract"
 
-**Related FRs**: FR-WR-022
+**Related FRs**: FR-WR-022, FR-CONTRACT-001
 
-**Related Entities**: WorkRelationship
+**Related Entities**: Contract, Employee, ContractTemplate
+
+---
+
+#### BR-CONTRACT-002: Contract Template Inheritance
+
+**Priority**: HIGH
+
+**Description**:
+When template is selected, contract inherits defaults but allows overrides with validation.
+
+**Conditions**:
+```
+WHEN creating contract with template_id
+```
+
+**Rules**:
+1. Template must exist and be active
+2. If duration not specified → use template.default_duration_value/unit
+3. If probation not specified → use template.probation_required and template.probation_duration
+4. If notice_period not specified → use template.default_notice_period_days
+5. Validate duration against template.min_duration and template.max_duration
+6. If template.probation_required = true → probation_end_date MUST be set
+7. Template scope (country/legal_entity/business_unit) must match contract context
+
+**Exceptions**:
+- User can override template defaults if within constraints
+
+**Error Messages**:
+- `CONTRACT_TEMPLATE_INACTIVE`: "Contract template is inactive"
+- `CONTRACT_DURATION_BELOW_MIN`: "Duration {value} {unit} is below minimum {min} {unit}"
+- `CONTRACT_DURATION_ABOVE_MAX`: "Duration {value} {unit} exceeds maximum {max} {unit}"
+- `CONTRACT_PROBATION_REQUIRED`: "Probation is required by template"
+- `CONTRACT_TEMPLATE_SCOPE_MISMATCH`: "Template scope does not match contract context"
+
+**Related FRs**: FR-CONTRACT-001, FR-CONTRACT-002
+
+**Related Entities**: Contract, ContractTemplate
+
+---
+
+#### BR-CONTRACT-003: Contract Duration Calculation
+
+**Priority**: HIGH
+
+**Description**:
+Contract end date auto-calculation based on duration.
+
+**Conditions**:
+```
+WHEN duration_value and duration_unit are provided
+```
+
+**Rules**:
+1. If duration_unit = DAY → end_date = start_date + duration_value days
+2. If duration_unit = MONTH → end_date = start_date + duration_value months
+3. End date calculation uses business day rules (skip weekends/holidays)
+4. If end_date manually provided → must match calculated end_date (within 1 day tolerance)
+5. Duration cannot be negative or zero
+
+**Exceptions**:
+- PERMANENT contracts have no duration
+
+**Error Messages**:
+- `CONTRACT_DURATION_INVALID`: "Duration must be positive"
+- `CONTRACT_END_DATE_MISMATCH`: "End date does not match calculated value from duration"
+
+**Related FRs**: FR-WR-022, FR-CONTRACT-002
+
+**Related Entities**: Contract
+
+---
+
+#### BR-CONTRACT-004: Contract Parent Relationship Validation
+
+**Priority**: HIGH
+
+**Description**:
+Contract parent-child relationship validation rules.
+
+**Conditions**:
+```
+WHEN parent_contract_id is provided
+```
+
+**Rules**:
+1. If parent_contract_id IS NOT NULL → parent_relationship_type IS REQUIRED
+2. Parent contract must exist
+3. Parent contract must belong to same employee
+4. Valid relationship types: AMENDMENT, ADDENDUM, RENEWAL, SUPERSESSION
+5. AMENDMENT: At least one field must differ from parent
+6. SUPERSESSION: contract_type must differ from parent
+7. RENEWAL: parent contract must be FIXED_TERM and expiring/expired
+8. Cannot create circular parent relationships
+9. Parent contract should be ended when child becomes active (for SUPERSESSION)
+
+**Exceptions**:
+- None
+
+**Error Messages**:
+- `CONTRACT_PARENT_RELATIONSHIP_TYPE_REQUIRED`: "Parent relationship type required when parent contract specified"
+- `CONTRACT_PARENT_NOT_FOUND`: "Parent contract not found"
+- `CONTRACT_PARENT_EMPLOYEE_MISMATCH`: "Parent contract belongs to different employee"
+- `CONTRACT_SUPERSESSION_TYPE_SAME`: "SUPERSESSION requires different contract type"
+- `CONTRACT_CIRCULAR_RELATIONSHIP`: "Circular parent relationship detected"
+
+**Related FRs**: FR-CONTRACT-003, FR-CONTRACT-004, FR-CONTRACT-005, FR-CONTRACT-006
+
+**Related Entities**: Contract
+
+---
+
+#### BR-CONTRACT-005: Contract Amendment Validation
+
+**Priority**: MEDIUM
+
+**Description**:
+Contract amendment specific validation.
+
+**Conditions**:
+```
+WHEN parent_relationship_type = AMENDMENT
+```
+
+**Rules**:
+1. Parent contract must be active
+2. Amendment must modify at least one field (salary, hours, location, etc.)
+3. Amendment effective date must be >= parent start_date
+4. Amendment cannot change contract_type
+5. Amendment cannot change employee_id
+6. Multiple amendments allowed for same parent
+
+**Exceptions**:
+- None
+
+**Error Messages**:
+- `CONTRACT_AMENDMENT_NO_CHANGES`: "Amendment must modify at least one field"
+- `CONTRACT_AMENDMENT_TYPE_CHANGE`: "Amendment cannot change contract type"
+- `CONTRACT_AMENDMENT_PARENT_INACTIVE`: "Parent contract must be active"
+
+**Related FRs**: FR-CONTRACT-004
+
+**Related Entities**: Contract
+
+---
+
+#### BR-CONTRACT-006: Contract Renewal Validation
+
+**Priority**: HIGH
+
+**Description**:
+Contract renewal specific validation.
+
+**Conditions**:
+```
+WHEN parent_relationship_type = RENEWAL
+```
+
+**Rules**:
+1. Parent contract must be FIXED_TERM
+2. Parent contract must be expiring or expired
+3. New start_date should be parent.end_date + 1 day (or parent.end_date if same day renewal)
+4. If template has max_renewals → validate renewal count <= max_renewals
+5. Renewal count is tracked (count parent's renewals + 1)
+6. Renewal must have same contract_type as parent (typically FIXED_TERM)
+7. Renewal notification must be sent before parent expiry (per template.renewal_notice_days)
+
+**Exceptions**:
+- HR_ADMIN can override max_renewals limit with justification
+
+**Error Messages**:
+- `CONTRACT_RENEWAL_NOT_FIXED_TERM`: "Only FIXED_TERM contracts can be renewed"
+- `CONTRACT_RENEWAL_NOT_EXPIRING`: "Parent contract is not expiring"
+- `CONTRACT_RENEWAL_MAX_EXCEEDED`: "Maximum {max} renewals exceeded"
+- `CONTRACT_RENEWAL_START_DATE_INVALID`: "Renewal start date must follow parent end date"
+
+**Related FRs**: FR-CONTRACT-005
+
+**Related Entities**: Contract, ContractTemplate
+
+---
+
+#### BR-CONTRACT-007: Contract Supersession Validation
+
+**Priority**: MEDIUM
+
+**Description**:
+Contract supersession specific validation.
+
+**Conditions**:
+```
+WHEN parent_relationship_type = SUPERSESSION
+```
+
+**Rules**:
+1. Parent contract must exist
+2. New contract_type must differ from parent.contract_type
+3. Common pattern: PROBATION → PERMANENT
+4. Supersession date must be >= parent.start_date
+5. Parent contract should be ended when supersession becomes active
+6. Only one supersession allowed per parent contract
+
+**Exceptions**:
+- None
+
+**Error Messages**:
+- `CONTRACT_SUPERSESSION_TYPE_SAME`: "Supersession requires different contract type"
+- `CONTRACT_SUPERSESSION_ALREADY_EXISTS`: "Parent contract already superseded"
+
+**Related FRs**: FR-CONTRACT-006
+
+**Related Entities**: Contract
+
+---
+
+#### BR-CONTRACT-008: Contract Compliance Validation
+
+**Priority**: HIGH
+
+**Description**:
+Country-specific labor law compliance validation.
+
+**Conditions**:
+```
+WHEN creating or updating contract
+```
+
+**Rules**:
+1. Vietnam (VN):
+   - FIXED_TERM max duration: 36 months
+   - FIXED_TERM max consecutive renewals: 1 (total 2 contracts)
+   - PROBATION max duration: 60 days (non-management), 180 days (management)
+2. Singapore (SG):
+   - No specific max duration for FIXED_TERM
+   - PROBATION max duration: 180 days
+3. Compliance rules loaded from template.legal_requirements (JSONB)
+4. Validate mandatory clauses per country
+5. Validate notice period per country labor law
+
+**Exceptions**:
+- Special contracts (executives) may have different rules with approval
+
+**Error Messages**:
+- `CONTRACT_COMPLIANCE_VN_DURATION_EXCEEDED`: "VN: Fixed-term contract cannot exceed 36 months"
+- `CONTRACT_COMPLIANCE_VN_RENEWALS_EXCEEDED`: "VN: Maximum 1 renewal allowed for fixed-term"
+- `CONTRACT_COMPLIANCE_PROBATION_EXCEEDED`: "Probation period exceeds legal maximum"
+- `CONTRACT_COMPLIANCE_MANDATORY_CLAUSE_MISSING`: "Mandatory clause '{clause}' missing"
+
+**Related FRs**: FR-CONTRACT-008
+
+**Related Entities**: Contract, ContractTemplate
+
+---
+
+#### BR-CONTRACT-009: Contract Probation Validation
+
+**Priority**: MEDIUM
+
+**Description**:
+Probation period validation rules.
+
+**Conditions**:
+```
+WHEN probation_end_date is provided
+```
+
+**Rules**:
+1. Probation_end_date must be > start_date
+2. Probation period = probation_end_date - start_date
+3. Probation period must not exceed country-specific limits
+4. If template.probation_required = true → probation_end_date IS REQUIRED
+5. Probation can be extended once (create AMENDMENT)
+6. Probation must be confirmed before end date (create SUPERSESSION to PERMANENT)
+
+**Exceptions**:
+- Senior/executive roles may have longer probation with approval
+
+**Error Messages**:
+- `CONTRACT_PROBATION_REQUIRED`: "Probation period required by template"
+- `CONTRACT_PROBATION_EXCEEDS_LIMIT`: "Probation period exceeds {max} days limit"
+- `CONTRACT_PROBATION_END_BEFORE_START`: "Probation end date must be after start date"
+
+**Related FRs**: FR-WR-023
+
+**Related Entities**: Contract, ContractTemplate
+
+---
+
+#### BR-CONTRACT-010: Contract Termination Validation
+
+**Priority**: HIGH
+
+**Description**:
+Contract termination validation rules.
+
+**Conditions**:
+```
+WHEN terminating a contract
+```
+
+**Rules**:
+1. Termination_date is required
+2. Termination_date must be >= start_date
+3. Termination_reason_code is required
+4. Notice period must be respected (per contract.notice_period_days or template.default_notice_period_days)
+5. If FIXED_TERM contract terminated early → early termination reason required
+6. All related assignments must be ended
+7. Employee status must be updated
+
+**Exceptions**:
+- Emergency termination can bypass notice period with approval
+
+**Error Messages**:
+- `CONTRACT_TERMINATION_DATE_REQUIRED`: "Termination date is required"
+- `CONTRACT_TERMINATION_REASON_REQUIRED`: "Termination reason is required"
+- `CONTRACT_NOTICE_PERIOD_NOT_MET`: "Notice period of {days} days not met"
+- `CONTRACT_EARLY_TERMINATION_REASON_REQUIRED`: "Early termination reason required for FIXED_TERM"
+
+**Related FRs**: FR-WR-003
+
+**Related Entities**: Contract
+
+---
+
+### Category: Contract Template Management ✨ NEW
+
+#### BR-CONTRACT-TEMPLATE-001: Template Creation Validation
+
+**Priority**: HIGH
+
+**Description**:
+Contract template must meet all requirements.
+
+**Conditions**:
+```
+WHEN creating contract template
+```
+
+**Rules**:
+1. Template code is required and must be unique
+2. Template name is required
+3. Contract_type_code is required
+4. If contract_type = FIXED_TERM → max_duration_value IS REQUIRED
+5. If contract_type = PERMANENT → max_duration_value MUST BE NULL
+6. If default_duration provided → must be within min/max range
+7. If probation_required = true → probation_duration_value IS REQUIRED
+8. Scope: At least one of country_code, legal_entity_id, or business_unit_id must be specified
+9. Legal_requirements must be valid JSON if provided
+
+**Exceptions**:
+- None
+
+**Error Messages**:
+- `TEMPLATE_CODE_REQUIRED`: "Template code is required"
+- `TEMPLATE_CODE_DUPLICATE`: "Template code already exists"
+- `TEMPLATE_FIXED_TERM_MAX_DURATION_REQUIRED`: "Max duration required for FIXED_TERM template"
+- `TEMPLATE_DURATION_OUT_OF_RANGE`: "Default duration must be between min and max"
+- `TEMPLATE_SCOPE_REQUIRED`: "At least one scope (country/legal entity/business unit) required"
+
+**Related FRs**: FR-CONTRACT-001
+
+**Related Entities**: ContractTemplate
+
+---
+
+#### BR-CONTRACT-TEMPLATE-002: Template Scope Validation
+
+**Priority**: MEDIUM
+
+**Description**:
+Template scope hierarchy validation.
+
+**Conditions**:
+```
+WHEN selecting template for contract
+```
+
+**Rules**:
+1. Template selection priority (most specific first):
+   - Business Unit specific (if business_unit_id matches)
+   - Legal Entity specific (if legal_entity_id matches)
+   - Country specific (if country_code matches)
+   - Global (no scope specified)
+2. Template must be active (is_active = true)
+3. Template effective dates must include contract start_date
+4. Only one template per scope combination
+
+**Exceptions**:
+- None
+
+**Error Messages**:
+- `TEMPLATE_NOT_FOUND_FOR_SCOPE`: "No active template found for scope"
+- `TEMPLATE_MULTIPLE_FOUND`: "Multiple templates found for scope, cannot determine which to use"
+- `TEMPLATE_NOT_EFFECTIVE`: "Template not effective for contract start date"
+
+**Related FRs**: FR-CONTRACT-002
+
+**Related Entities**: ContractTemplate
+
+---
+
+#### BR-CONTRACT-TEMPLATE-003: Template Renewal Rules Validation
+
+**Priority**: MEDIUM
+
+**Description**:
+Template renewal configuration validation.
+
+**Conditions**:
+```
+WHEN setting renewal rules in template
+```
+
+**Rules**:
+1. If allows_renewal = false → max_renewals MUST BE 0 or NULL
+2. If allows_renewal = true → max_renewals SHOULD BE >= 1
+3. If allows_renewal = true → renewal_notice_days IS REQUIRED
+4. Renewal_notice_days must be positive integer
+5. Renewal_notice_days typically between 30-90 days
+
+**Exceptions**:
+- None
+
+**Error Messages**:
+- `TEMPLATE_RENEWAL_INCONSISTENT`: "If allows_renewal = false, max_renewals must be 0"
+- `TEMPLATE_RENEWAL_NOTICE_REQUIRED`: "Renewal notice days required when renewal allowed"
+- `TEMPLATE_RENEWAL_NOTICE_INVALID`: "Renewal notice days must be positive"
+
+**Related FRs**: FR-CONTRACT-001
+
+**Related Entities**: ContractTemplate
 
 ---
 

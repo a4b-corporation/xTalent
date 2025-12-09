@@ -625,6 +625,520 @@ Terminate employee
 
 ---
 
+## 📄 Phase 1: Contract Management ✨ NEW
+
+### Contract Template Management
+
+#### GET /api/v1/contract-templates
+Get all contract templates
+
+**Authorization**: `HR_ADMIN`, `HR_MANAGER`
+
+**Query Parameters**:
+- `country_code`: string (optional)
+- `legal_entity_id`: uuid (optional)
+- `business_unit_id`: uuid (optional)
+- `contract_type`: enum (optional)
+- `is_active`: boolean (default: true)
+
+**Response** (200 OK):
+```json
+{
+  "templates": [
+    {
+      "id": "uuid",
+      "code": "VN_TECH_FIXED_12M",
+      "name": "Vietnam Tech - Fixed Term 12 Months",
+      "contract_type_code": "FIXED_TERM",
+      "country_code": "VN",
+      "business_unit_id": "uuid",
+      "default_duration_value": 12,
+      "default_duration_unit": "MONTH",
+      "is_active": true
+    }
+  ],
+  "total": 15
+}
+```
+
+**Related FRs**: FR-CONTRACT-001
+
+---
+
+#### GET /api/v1/contract-templates/{id}
+Get contract template details
+
+**Authorization**: `HR_ADMIN`, `HR_MANAGER`
+
+**Response** (200 OK):
+```json
+{
+  "id": "uuid",
+  "code": "VN_TECH_FIXED_12M",
+  "name": "Vietnam Tech - Fixed Term 12 Months",
+  "contract_type_code": "FIXED_TERM",
+  "country_code": "VN",
+  "legal_entity_id": null,
+  "business_unit_id": "uuid",
+  "default_duration_value": 12,
+  "default_duration_unit": "MONTH",
+  "min_duration_value": 6,
+  "max_duration_value": 36,
+  "probation_required": true,
+  "probation_duration_value": 60,
+  "probation_duration_unit": "DAY",
+  "allows_renewal": true,
+  "max_renewals": 2,
+  "renewal_notice_days": 30,
+  "default_notice_period_days": 30,
+  "legal_requirements": {
+    "max_consecutive_fixed_terms": 2,
+    "mandatory_clauses": ["social_insurance", "termination_notice"]
+  },
+  "is_active": true,
+  "created_at": "2025-01-01T00:00:00Z"
+}
+```
+
+**Related FRs**: FR-CONTRACT-001
+
+---
+
+#### POST /api/v1/contract-templates
+Create contract template
+
+**Authorization**: `HR_ADMIN`
+
+**Request**:
+```json
+{
+  "code": "SG_SALES_PROBATION_3M",
+  "name": "Singapore Sales - Probation 3 Months",
+  "contract_type_code": "PROBATION",
+  "country_code": "SG",
+  "business_unit_id": "uuid",
+  "default_duration_value": 3,
+  "default_duration_unit": "MONTH",
+  "max_duration_value": 6,
+  "probation_required": true,
+  "probation_duration_value": 90,
+  "probation_duration_unit": "DAY",
+  "default_notice_period_days": 7,
+  "is_active": true
+}
+```
+
+**Response** (201 Created):
+```json
+{
+  "id": "uuid",
+  "code": "SG_SALES_PROBATION_3M",
+  "name": "Singapore Sales - Probation 3 Months",
+  "created_at": "2025-12-09T10:00:00Z"
+}
+```
+
+**Business Rules**: BR-CONTRACT-TEMPLATE-001
+
+**Related FRs**: FR-CONTRACT-001
+
+---
+
+#### PUT /api/v1/contract-templates/{id}
+Update contract template
+
+**Authorization**: `HR_ADMIN`
+
+**Request**:
+```json
+{
+  "default_duration_value": 4,
+  "max_duration_value": 6,
+  "is_active": true
+}
+```
+
+**Response** (200 OK):
+```json
+{
+  "id": "uuid",
+  "code": "SG_SALES_PROBATION_3M",
+  "updated_at": "2025-12-09T11:00:00Z",
+  "version": 2
+}
+```
+
+**SCD Type 2**: Creates new version with effective dating
+
+**Related FRs**: FR-CONTRACT-001
+
+---
+
+### Contract CRUD Operations
+
+#### POST /api/v1/contracts
+Create employment contract
+
+**Authorization**: `HR_ADMIN`
+
+**Request**:
+```json
+{
+  "employee_id": "uuid",
+  "template_id": "uuid",
+  "contract_type_code": "PROBATION",
+  "start_date": "2025-01-01",
+  "duration_value": 60,
+  "duration_unit": "DAY",
+  "probation_end_date": "2025-03-01",
+  "notice_period_days": 7,
+  "base_salary": 50000000,
+  "salary_currency_code": "VND",
+  "salary_frequency_code": "MONTHLY",
+  "working_hours_per_week": 40,
+  "governing_law_country": "VN"
+}
+```
+
+**Response** (201 Created):
+```json
+{
+  "id": "uuid",
+  "employee_id": "uuid",
+  "contract_type_code": "PROBATION",
+  "start_date": "2025-01-01",
+  "end_date": "2025-03-01",
+  "status": "ACTIVE",
+  "created_at": "2025-12-09T10:00:00Z"
+}
+```
+
+**Business Rules**: BR-CONTRACT-001, BR-CONTRACT-002, BR-CONTRACT-003
+
+**Related FRs**: FR-WR-022, FR-CONTRACT-002
+
+---
+
+#### GET /api/v1/contracts/{id}
+Get contract details
+
+**Authorization**: `HR_ADMIN`, `HR_MANAGER`, `MANAGER` (own team), `EMPLOYEE` (self)
+
+**Response** (200 OK):
+```json
+{
+  "id": "uuid",
+  "employee_id": "uuid",
+  "template_id": "uuid",
+  "parent_contract_id": null,
+  "parent_relationship_type": null,
+  "contract_type_code": "PROBATION",
+  "start_date": "2025-01-01",
+  "end_date": "2025-03-01",
+  "duration_value": 60,
+  "duration_unit": "DAY",
+  "probation_end_date": "2025-03-01",
+  "notice_period_days": 7,
+  "base_salary": 50000000,
+  "salary_currency_code": "VND",
+  "working_hours_per_week": 40,
+  "status": "ACTIVE",
+  "created_at": "2025-12-09T10:00:00Z"
+}
+```
+
+**Related FRs**: FR-WR-022
+
+---
+
+#### PUT /api/v1/contracts/{id}
+Update contract
+
+**Authorization**: `HR_ADMIN`
+
+**Request**:
+```json
+{
+  "base_salary": 60000000,
+  "effective_date": "2025-02-01"
+}
+```
+
+**Response** (200 OK):
+```json
+{
+  "id": "uuid",
+  "base_salary": 60000000,
+  "updated_at": "2025-12-09T11:00:00Z",
+  "version": 2
+}
+```
+
+**Related FRs**: FR-WR-022
+
+---
+
+### Contract Hierarchy Operations
+
+#### POST /api/v1/contracts/{id}/amend
+Create contract amendment
+
+**Authorization**: `HR_ADMIN`
+
+**Request**:
+```json
+{
+  "effective_date": "2025-02-01",
+  "base_salary": 60000000,
+  "working_hours_per_week": 35,
+  "reason": "Salary adjustment and reduced hours"
+}
+```
+
+**Response** (201 Created):
+```json
+{
+  "id": "uuid",
+  "parent_contract_id": "{id}",
+  "parent_relationship_type": "AMENDMENT",
+  "effective_date": "2025-02-01",
+  "created_at": "2025-12-09T10:00:00Z"
+}
+```
+
+**Business Rules**: BR-CONTRACT-004, BR-CONTRACT-005
+
+**Related FRs**: FR-CONTRACT-004
+
+---
+
+#### POST /api/v1/contracts/{id}/renew
+Renew contract
+
+**Authorization**: `HR_ADMIN`
+
+**Request**:
+```json
+{
+  "start_date": "2025-04-01",
+  "duration_value": 12,
+  "duration_unit": "MONTH",
+  "base_salary": 65000000
+}
+```
+
+**Response** (201 Created):
+```json
+{
+  "id": "uuid",
+  "parent_contract_id": "{id}",
+  "parent_relationship_type": "RENEWAL",
+  "start_date": "2025-04-01",
+  "end_date": "2026-03-31",
+  "renewal_count": 1,
+  "created_at": "2025-12-09T10:00:00Z"
+}
+```
+
+**Business Rules**: BR-CONTRACT-004, BR-CONTRACT-006
+
+**Related FRs**: FR-CONTRACT-005
+
+---
+
+#### POST /api/v1/contracts/{id}/supersede
+Supersede contract (e.g., Probation → Permanent)
+
+**Authorization**: `HR_ADMIN`
+
+**Request**:
+```json
+{
+  "contract_type_code": "PERMANENT",
+  "start_date": "2025-03-01",
+  "base_salary": 65000000,
+  "notice_period_days": 30
+}
+```
+
+**Response** (201 Created):
+```json
+{
+  "id": "uuid",
+  "parent_contract_id": "{id}",
+  "parent_relationship_type": "SUPERSESSION",
+  "contract_type_code": "PERMANENT",
+  "start_date": "2025-03-01",
+  "end_date": null,
+  "created_at": "2025-12-09T10:00:00Z"
+}
+```
+
+**Business Rules**: BR-CONTRACT-004, BR-CONTRACT-007
+
+**Related FRs**: FR-CONTRACT-006
+
+---
+
+#### GET /api/v1/contracts/{id}/hierarchy
+Get contract hierarchy
+
+**Authorization**: `HR_ADMIN`, `HR_MANAGER`
+
+**Response** (200 OK):
+```json
+{
+  "root_contract": {
+    "id": "uuid",
+    "contract_type_code": "PROBATION",
+    "start_date": "2025-01-01",
+    "end_date": "2025-03-01"
+  },
+  "children": [
+    {
+      "id": "uuid",
+      "parent_relationship_type": "AMENDMENT",
+      "effective_date": "2025-02-01",
+      "changes": ["base_salary"]
+    },
+    {
+      "id": "uuid",
+      "parent_relationship_type": "SUPERSESSION",
+      "contract_type_code": "PERMANENT",
+      "start_date": "2025-03-01"
+    }
+  ]
+}
+```
+
+**Related FRs**: FR-CONTRACT-003
+
+---
+
+### Contract Document Management
+
+#### POST /api/v1/contracts/{id}/documents
+Attach contract document
+
+**Authorization**: `HR_ADMIN`
+
+**Request** (multipart/form-data):
+```
+file: contract_signed.pdf
+document_type: CONTRACT
+description: Signed employment contract
+```
+
+**Response** (201 Created):
+```json
+{
+  "id": "uuid",
+  "contract_id": "{id}",
+  "document_type": "CONTRACT",
+  "file_name": "contract_signed.pdf",
+  "file_size": 245678,
+  "uploaded_at": "2025-12-09T10:00:00Z"
+}
+```
+
+**Related FRs**: FR-CONTRACT-009
+
+---
+
+#### GET /api/v1/contracts/{id}/documents
+Get contract documents
+
+**Authorization**: `HR_ADMIN`, `HR_MANAGER`, `EMPLOYEE` (self)
+
+**Response** (200 OK):
+```json
+{
+  "documents": [
+    {
+      "id": "uuid",
+      "document_type": "CONTRACT",
+      "file_name": "contract_signed.pdf",
+      "file_url": "/api/v1/documents/{doc_id}/download",
+      "uploaded_at": "2025-12-09T10:00:00Z"
+    }
+  ]
+}
+```
+
+**Related FRs**: FR-CONTRACT-009
+
+---
+
+### Contract Reporting
+
+#### GET /api/v1/contracts/expiring
+Get expiring contracts
+
+**Authorization**: `HR_ADMIN`, `HR_MANAGER`
+
+**Query Parameters**:
+- `days_ahead`: integer (default: 30)
+- `contract_type`: enum (optional)
+- `business_unit_id`: uuid (optional)
+
+**Response** (200 OK):
+```json
+{
+  "expiring_contracts": [
+    {
+      "id": "uuid",
+      "employee_id": "uuid",
+      "employee_name": "Nguyễn Văn An",
+      "contract_type_code": "FIXED_TERM",
+      "end_date": "2025-12-31",
+      "days_until_expiry": 22,
+      "renewal_count": 0,
+      "max_renewals": 2,
+      "can_renew": true
+    }
+  ],
+  "total": 15
+}
+```
+
+**Related FRs**: FR-CONTRACT-007, FR-CONTRACT-010
+
+---
+
+#### GET /api/v1/reports/contracts/distribution
+Get contract distribution report
+
+**Authorization**: `HR_ADMIN`, `HR_MANAGER`
+
+**Query Parameters**:
+- `as_of_date`: date (default: today)
+- `business_unit_id`: uuid (optional)
+
+**Response** (200 OK):
+```json
+{
+  "as_of_date": "2025-12-09",
+  "total_contracts": 1500,
+  "by_type": {
+    "PERMANENT": 1200,
+    "FIXED_TERM": 250,
+    "PROBATION": 50
+  },
+  "by_country": {
+    "VN": 1000,
+    "SG": 400,
+    "US": 100
+  },
+  "expiring_30_days": 15,
+  "expiring_60_days": 28,
+  "expiring_90_days": 45
+}
+```
+
+**Related FRs**: FR-CONTRACT-010
+
+---
+
 ## 📋 Phase 1: Assignment Management
 
 ### Assignment CRUD

@@ -1,7 +1,7 @@
 # Core Module - Data Model Guide
 
 **Version**: 2.0  
-**Last Updated**: 2025-12-02  
+**Last Updated**: 2025-12-09  
 **Module**: Core (CO)
 
 ---
@@ -130,6 +130,8 @@ erDiagram
     WorkRelationship ||--o| Employee : "if type=EMPLOYEE"
     WorkRelationship ||--|{ Assignment : has
     Employee ||--|{ Contract : has
+    Contract }o--|| ContractTemplate : "uses template"
+    Contract }o--|| Contract : "parent of"
     
     WorkRelationship {
         UUID id PK
@@ -143,6 +145,23 @@ erDiagram
         string employee_code
         date hire_date
         date probation_end_date
+    }
+    
+    ContractTemplate {
+        UUID id PK
+        string code "VN_TECH_FIXED_12M"
+        string contract_type_code
+        int default_duration_value
+        string default_duration_unit
+    }
+    
+    Contract {
+        UUID id PK
+        UUID template_id FK
+        UUID parent_contract_id FK
+        string parent_relationship_type
+        int duration_value
+        string duration_unit
     }
     
     Assignment {
@@ -162,7 +181,8 @@ erDiagram
 | **WorkRelationship** | The overall legal/business relationship. | `type`, `legal_entity_code`, `start_date` |
 | **Employee** | Specific employment contract details (only for Employees). | `employee_code`, `hire_date`, `seniority_date` |
 | **Assignment** | The actual job being performed in a specific unit. | `staffing_model`, `position_id`, `manager_assignment_id` |
-| **Contract** | Legal documents and terms. | `contract_type` (Fixed/Permanent), `duration` |
+| **ContractTemplate** | Pre-configured contract terms by type/country/unit. | `code`, `default_duration`, `legal_requirements` |
+| **Contract** | Legal documents and terms with hierarchy support. | `template_id`, `parent_relationship_type`, `duration` |
 
 ### 💡 Deep Dive: The 4-Level Hierarchy
 1.  **Worker**: The human.
@@ -176,6 +196,18 @@ Defined at the `Assignment` level:
     -   *Rule*: `position_id` is REQUIRED. `job_id` derived from Position.
 -   **JOB_BASED**: Flexible. Assignment links directly to a `Job`. Used for high-volume/contractors.
     -   *Rule*: `position_id` is NULL. `job_id` is REQUIRED.
+
+### 💡 Deep Dive: Contract Templates & Relationships
+**ContractTemplate** provides standardized contract configurations:
+- **Scope Hierarchy**: Global → Country → Legal Entity → Business Unit
+- **Auto-calculation**: Duration, probation period, notice period
+- **Compliance**: Country-specific rules (e.g., VN max 36 months for fixed-term)
+
+**Contract Relationships** via `parent_relationship_type`:
+- **AMENDMENT**: Modify existing terms (e.g., salary increase)
+- **ADDENDUM**: Add new clauses (e.g., add bonus structure)
+- **RENEWAL**: Extend contract period (e.g., re-sign for another year)
+- **SUPERSESSION**: Replace contract type (e.g., Probation → Permanent)
 
 ---
 
