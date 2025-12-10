@@ -435,103 +435,62 @@ Worker: Cường
 
 ### 💡 Deep Dive: Contract Management
 
-#### Contract Hierarchy
-Contracts support parent-child relationships via `parent_contract_id` and `parent_relationship_type`:
+> **📘 For comprehensive contract management documentation, see [Contract Management Guide](./10-contract-management-guide.md)**
 
-| Relationship Type | Purpose | Example |
-|-------------------|---------|----------|
-| **AMENDMENT** | Modify existing terms | Salary increase during probation |
-| **ADDENDUM** | Add new clauses | Add bonus structure to existing contract |
-| **RENEWAL** | Extend contract period | Re-sign for another year |
-| **SUPERSESSION** | Replace contract type | Probation → Permanent |
+Employment contracts define the terms and conditions of employment. The xTalent system supports:
 
-**Example Hierarchy**:
+**Contract Types**:
+- **PERMANENT**: Indefinite duration, no end date
+- **FIXED_TERM**: Specific duration with end date (max 36 months in Vietnam)
+- **PROBATION**: Trial period (60-180 days)
+- **SEASONAL**: Recurring seasonal work
+
+**Contract Hierarchy**: Contracts can have parent-child relationships to track changes:
+- **AMENDMENT**: Modify existing terms (e.g., salary increase)
+- **ADDENDUM**: Add new clauses (e.g., add bonus structure)
+- **RENEWAL**: Extend contract period (e.g., re-sign for another year)
+- **SUPERSESSION**: Replace contract type (e.g., Probation → Permanent)
+
+**Contract Templates**: Pre-configured templates ensure standardization and compliance:
 ```yaml
-# Contract #1: Probation
-Contract:
-  id: CONTRACT-001
-  employee_id: EMP-001
-  contract_type: PROBATION
-  parent_contract_id: null
-  parent_relationship_type: null
-  start_date: 2024-01-01
-  end_date: 2024-03-01
-
-# Contract #2: Salary Amendment (during probation)
-Contract:
-  id: CONTRACT-002
-  employee_id: EMP-001
-  contract_type: PROBATION
-  parent_contract_id: CONTRACT-001
-  parent_relationship_type: AMENDMENT
-  start_date: 2024-02-01  # Effective date of amendment
-  base_salary: 60000000  # Increased from 50M
-
-# Contract #3: Permanent (replaces probation)
-Contract:
-  id: CONTRACT-003
-  employee_id: EMP-001
-  contract_type: PERMANENT
-  parent_contract_id: CONTRACT-001
-  parent_relationship_type: SUPERSESSION
-  start_date: 2024-03-01
-  end_date: null
-
-# Contract #4: Renewal (after 1 year)
-Contract:
-  id: CONTRACT-004
-  employee_id: EMP-001
-  contract_type: PERMANENT
-  parent_contract_id: CONTRACT-003
-  parent_relationship_type: RENEWAL
-  start_date: 2025-03-01
-```
-
-#### Contract Templates
-**ContractTemplate** provides pre-configured contract terms:
-
-```yaml
-# Example: Vietnam Tech - Fixed Term 12 Months
-ContractTemplate:
-  code: "VN_TECH_FIXED_12M"
-  name: "Vietnam Tech - Fixed Term 12 Months"
-  contract_type: FIXED_TERM
-  country: VN
-  business_unit_id: <Tech_BU>
-  
-  # Duration defaults
-  default_duration_value: 12
-  default_duration_unit: MONTH
-  max_duration_value: 36  # VN labor law limit
-  
-  # Probation
+# Example: Vietnam Tech Fixed-Term Template
+template:
+  code: VN_TECH_FIXED_12M
+  country_code: VN
+  default_duration: 12 MONTH
+  max_duration: 36 MONTH  # Vietnam labor law
+  max_renewals: 1  # Vietnam: max 2 consecutive contracts
   probation_required: true
-  probation_duration_value: 60
-  probation_duration_unit: DAY
-  
-  # Renewal
-  allows_renewal: true
-  max_renewals: 2
-  
-  # Compliance
-  legal_requirements:
-    max_consecutive_fixed_terms: 2
-    mandatory_clauses: ["social_insurance", "termination_notice"]
+  probation_duration: 60 DAY
 ```
 
-**Using Templates**:
+**Quick Example - Probation to Permanent**:
 ```yaml
-Contract:
-  template_id: <VN_TECH_FIXED_12M>
-  start_date: 2024-01-01
-  # Auto-calculated from template:
-  end_date: 2024-12-31  # start + 12 MONTH
-  probation_end_date: 2024-03-01  # start + 60 DAY
+# 1. Initial Probation Contract
+contract_1:
+  contract_type: PROBATION
+  start_date: 2025-01-01
+  end_date: 2025-03-01
+  base_salary: 50000000
+
+# 2. Supersession to Permanent (after probation passes)
+contract_2:
+  parent_contract_id: contract_1.id
+  parent_relationship_type: SUPERSESSION
+  contract_type: PERMANENT
+  start_date: 2025-03-01
+  end_date: null  # Permanent has no end date
+  base_salary: 60000000  # Often includes raise
 ```
+
+**For detailed information**, see:
+- [Contract Management Guide](./10-contract-management-guide.md) - Complete contract lifecycle, templates, hierarchy, renewals, and compliance
+- [Data Model Guide](./04-data-model-guide.md#contract-entities) - Contract entity relationships
+- [Business Rules](../02-spec/04-business-rules.md#contract-management) - Contract validation rules
 
 ---
 
-## 📊 Level 4: Assignment (Job Assignment)
+## Level 4: Assignment (Job & Organization)
 
 ### Purpose
 **Specific job assignment** - what job/position the person is doing, in which department, reporting to whom.
