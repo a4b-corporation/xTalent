@@ -120,6 +120,13 @@ sub_modules:
       - Opportunity
       - OpportunitySkill
       - OpportunityApplication
+  
+  Eligibility:
+    description: "Cross-module eligibility engine (added 2025-12-11)"
+    entities:
+      - EligibilityProfile
+      - EligibilityMember
+      - EligibilityEvaluation
 
 # =============================================================================
 # ENTITY DEFINITIONS
@@ -4311,3 +4318,258 @@ notes:
         consent_type_code: "MARKETING_EMAILS"
         status: "DENIED"
         consent_date: "2025-01-01T10:05:00Z"
+
+  # ===========================================================================
+  # ELIGIBILITY SCHEMA - Cross-Module Eligibility Engine
+  # ===========================================================================
+  # Added: 2025-12-11
+  # Purpose: Shared eligibility management for TA, TR, and other modules
+  # Pattern: Hybrid Model (Default + Override) with Dynamic Group evaluation
+
+  EligibilityProfile:
+    description: |
+      Defines eligibility criteria for HR programs across modules (Absence, Benefits, 
+      Compensation). Uses dynamic rules to determine WHO is eligible based on 
+      organizational attributes (BU, LE, country, grade, tenure, etc.).
+      
+      Supports Hybrid Model: Can be set as default at Class/Type level or 
+      overridden at individual rule level.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      code:
+        type: string
+        required: true
+        maxLength: 50
+        description: "Unique identifier (e.g., ELIG_SENIOR_STAFF, ELIG_VN_FULLTIME)"
+      name:
+        type: string
+        required: true
+        maxLength: 255
+        description: "Display name"
+      domain:
+        type: enum
+        values: [ABSENCE, BENEFITS, COMPENSATION, CORE]
+        required: true
+        description: "Which module uses this profile"
+      description:
+        type: text
+        description: "Business rationale for this eligibility"
+      rule_json:
+        type: jsonb
+        required: true
+        description: "Dynamic criteria (organizational scope)"
+      priority:
+        type: integer
+        default: 10
+        description: "Evaluation priority (higher = evaluated first)"
+      is_active:
+        type: boolean
+        default: true
+      effective_start_date:
+        type: date
+        required: true
+      effective_end_date:
+        type: date
+      is_current_flag:
+        type: boolean
+        default: true
+      created_at:
+        type: timestamp
+        default: now()
+      updated_at:
+        type: timestamp
+    relationships:
+      hasMembers:
+        target: EligibilityMember
+        cardinality: "0..*"
+        description: "Cached membership list"
+      hasEvaluations:
+        target: EligibilityEvaluation
+        cardinality: "0..*"
+        description: "Audit trail of evaluations"
+      usedByLeaveClasses:
+        description: "TA module - LeaveClass default eligibility"
+      usedByLeaveTypes:
+        description: "TA module - LeaveType default eligibility"
+      usedByAbsenceRules:
+        description: "TA module - Rule-level override eligibility"
+      usedByBenefitPlans:
+        description: "TR module - BenefitPlan default eligibility"
+      usedByBenefitOptions:
+        description: "TR module - BenefitOption override eligibility"
+      usedByCompensationPlans:
+        description: "TR module - VariablePayPlan default eligibility"
+    constraints:
+      - name: "unique_eligibility_code"
+        type: unique
+        fields: [code]
+      - name: "unique_domain_code_date"
+        type: unique
+        fields: [domain, code, effective_start_date]
+    businessRules:
+      - "rule_json contains organizational scope (BU, LE, country, grade, tenure, etc.)"
+      - "Object scope (leaveTypeId, benefitPlanId) stored in consuming entity"
+      - "Hybrid model: Can be default at Class/Type or override at Rule level"
+      - "Domain determines which module can use this profile"
+      - "CORE domain profiles can be used by any module"
+    indexes:
+      - name: "idx_eligibility_domain"
+        columns: [domain, is_active]
+      - name: "idx_eligibility_code"
+        columns: [code]
+        unique: true
+    examples:
+      - code: "ELIG_SENIOR_STAFF"
+        name: "Senior Staff (G4+)"
+        domain: "CORE"
+        rule_json:
+          grades: ["G4", "G5", "M3", "M4", "M5"]
+          employment_types: ["FULL_TIME"]
+      - code: "ELIG_VN_FULLTIME"
+        name: "Vietnam Full-Time Employees"
+        domain: "ABSENCE"
+        rule_json:
+          countries: ["VN"]
+          employment_types: ["FULL_TIME"]
+          min_tenure_months: 3
+
+  EligibilityMember:
+    description: |
+      Cached membership list for fast eligibility lookups. Stores which employees 
+      currently match an eligibility profile. Updated automatically when employee 
+      data changes or when profile rules are modified.
+      
+      Provides O(1) performance for eligibility checks.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      profile_id:
+        type: UUID
+        required: true
+        description: "EligibilityProfile reference"
+      employee_id:
+        type: UUID
+        required: true
+        description: "Employee reference"
+      start_date:
+        type: date
+        required: true
+        description: "When eligibility began"
+      end_date:
+        type: date
+        description: "When eligibility ended (NULL if active)"
+      last_evaluated_at:
+        type: timestamp
+        required: true
+        description: "Last evaluation timestamp"
+      evaluation_source:
+        type: enum
+        values: [AUTO, MANUAL, OVERRIDE]
+        required: true
+        description: "How membership was determined"
+      evaluation_reason:
+        type: text
+        description: "Why employee was added/removed"
+      metadata:
+        type: jsonb
+        description: "Additional context"
+    relationships:
+      belongsToProfile:
+        target: EligibilityProfile
+        cardinality: "1"
+      belongsToEmployee:
+        target: Employee
+        cardinality: "1"
+    constraints:
+      - name: "unique_member_profile_employee_start"
+        type: unique
+        fields: [profile_id, employee_id, start_date]
+    businessRules:
+      - "Cannot have overlapping active memberships for same profile and employee"
+      - "end_date NULL means currently eligible"
+      - "AUTO source: System-evaluated based on rule_json"
+      - "MANUAL source: HR manually added"
+      - "OVERRIDE source: Exception/special case"
+    indexes:
+      - name: "idx_member_lookup"
+        columns: [profile_id, employee_id]
+        where: "end_date IS NULL"
+      - name: "idx_member_employee"
+        columns: [employee_id, profile_id]
+        where: "end_date IS NULL"
+      - name: "idx_member_profile"
+        columns: [profile_id, start_date]
+    examples:
+      - profile_id: "ELIG_SENIOR_STAFF_UUID"
+        employee_id: "EMP_001_UUID"
+        start_date: "2025-01-01"
+        end_date: null
+        evaluation_source: "AUTO"
+        evaluation_reason: "Promoted to G4"
+
+  EligibilityEvaluation:
+    description: |
+      Audit log of eligibility evaluations. Tracks when and why employees were 
+      evaluated for eligibility profiles. Provides complete audit trail for 
+      compliance and troubleshooting.
+    attributes:
+      id:
+        type: UUID
+        required: true
+      profile_id:
+        type: UUID
+        required: true
+      employee_id:
+        type: UUID
+        required: true
+      evaluated_at:
+        type: timestamp
+        required: true
+        default: now()
+      evaluation_result:
+        type: enum
+        values: [ELIGIBLE, NOT_ELIGIBLE]
+        required: true
+      evaluation_reason:
+        type: text
+        required: true
+        description: "Why this result (which criteria matched/failed)"
+      triggered_by:
+        type: enum
+        values: [EMPLOYEE_CHANGE, RULE_CHANGE, MANUAL, SCHEDULED]
+        required: true
+        description: "What triggered this evaluation"
+      triggered_by_id:
+        type: UUID
+        description: "User ID if manually triggered"
+      metadata:
+        type: jsonb
+        description: "Evaluation details (criteria checked, values)"
+    relationships:
+      forProfile:
+        target: EligibilityProfile
+        cardinality: "1"
+      forEmployee:
+        target: Employee
+        cardinality: "1"
+    businessRules:
+      - "Immutable audit log - no updates or deletes"
+      - "Created every time eligibility is evaluated"
+      - "Used for compliance reporting and troubleshooting"
+    indexes:
+      - name: "idx_eval_profile_date"
+        columns: [profile_id, evaluated_at]
+      - name: "idx_eval_employee_date"
+        columns: [employee_id, evaluated_at]
+      - name: "idx_eval_trigger"
+        columns: [triggered_by, evaluated_at]
+    examples:
+      - profile_id: "ELIG_SENIOR_STAFF_UUID"
+        employee_id: "EMP_001_UUID"
+        evaluated_at: "2025-01-01T10:00:00Z"
+        evaluation_result: "ELIGIBLE"
+        evaluation_reason: "Grade=G4, EmploymentType=FULL_TIME"
+        triggered_by: "EMPLOYEE_CHANGE"

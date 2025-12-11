@@ -8,8 +8,8 @@
 
 - **Feature**: Absence Management
 - **Module**: Time & Absence (TA)
-- **Version**: 1.0
-- **Last Updated**: 2025-12-01
+- **Version**: 1.1
+- **Last Updated**: 2025-12-11
 - **Author**: xTalent Documentation Team
 - **Status**: Draft
 
@@ -289,6 +289,40 @@ function hasOverlap(newRequest, existingRequests):
 
 ---
 
+### BR-ABS-005: Eligibility Check
+
+**Category**: Validation  
+**Description**: Employee must be eligible for the requested leave type based on centralized eligibility rules  
+**Applies To**: LeaveRequest creation  
+**Architecture**: Uses **Hybrid Eligibility Model** from Core module  
+**Priority**: High  
+
+**Resolution Logic**:
+1. Check if AccrualRule (or other applicable rule) has `eligibility_profile_id` → Use this profile (OVERRIDE)
+2. Else check if LeaveType has `default_eligibility_profile_id` → Use this profile
+3. Else check if LeaveClass has `default_eligibility_profile_id` → Use this profile
+4. Else no restriction (ALL ELIGIBLE)
+
+**Validation**:
+```
+function isEligible(employee, leaveType):
+  // Get applicable eligibility profile
+  profile = resolveEligibilityProfile(leaveType)
+  
+  if profile is null:
+    return true  // No restriction
+  
+  // Check cached membership (O(1) lookup)
+  return isMemberOf(employee.id, profile.id, today)
+```
+
+**Error**: "Employee not eligible for this leave type. Eligibility criteria: {criteria}"  
+**Error Code**: TA_ABS_005
+
+**Reference**: See [Eligibility Engine Guide](../../CO/01-concept/11-eligibility-engine-guide.md) for detailed architecture
+
+---
+
 ### BR-ABS-010: Working Days Calculation
 
 **Category**: Calculation  
@@ -381,6 +415,8 @@ else: allocation = 25 days
 - [Concept Overview](../01-concept/01-concept-overview.md)
 - [Absence Ontology](../00-ontology/absence-ontology.yaml)
 - [Absence Glossary](../00-ontology/absence-glossary.md)
+- [Eligibility Engine Guide](../../CO/01-concept/11-eligibility-engine-guide.md) - Centralized eligibility architecture
+- [Eligibility Glossary](../../CO/00-ontology/glossary-eligibility.md) - Eligibility terminology
 
 ---
 

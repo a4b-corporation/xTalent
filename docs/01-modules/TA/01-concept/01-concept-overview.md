@@ -169,7 +169,7 @@ Specific categories of leave (Annual, Sick, Maternity, etc.), each with its own 
 
 #### Leave Rules
 Independent, reusable rules that govern leave behavior:
-- **Eligibility**: Who can use this leave type
+- **Eligibility**: Who can use this leave type (managed via centralized `EligibilityProfile` in Core module)
 - **Validation**: Request validation (advance notice, max days, blackout periods)
 - **Accrual**: How leave is earned over time
 - **Carryover**: Handling unused leave at period end
@@ -177,6 +177,8 @@ Independent, reusable rules that govern leave behavior:
 - **Overdraft**: Negative balance allowance
 - **Proration**: Partial period calculations
 - **Rounding**: Fractional day handling
+
+**Hybrid Eligibility Model**: Rules can reference eligibility profiles at Class level (default), Type level (override class), or Rule level (override type). See [Eligibility Engine Guide](../../CO/01-concept/11-eligibility-engine-guide.md) for details.
 
 #### Leave Balance
 The amount of leave available to an employee for each leave type, calculated as:
@@ -497,17 +499,20 @@ Defines which days are working days and standard hours, used for calculating wor
 - [Time & Attendance Ontology](../00-ontology/time-attendance-ontology.yaml) - T&A domain model
 - [Absence Glossary](../00-ontology/absence-glossary.md) - Absence terminology
 - [Time & Attendance Glossary](../00-ontology/time-attendance-glossary.md) - T&A terminology
+- [Eligibility Engine Guide](../../CO/01-concept/11-eligibility-engine-guide.md) - Centralized eligibility architecture
+- [Eligibility Glossary](../../CO/00-ontology/glossary-eligibility.md) - Eligibility terminology
 - [Module Summary](../00-ontology/TA-MODULE-SUMMARY.yaml) - Complete module overview
 - [Specifications](../02-spec/) - Detailed requirements
 
 ---
 
-**Document Version**: 2.0  
-**Last Updated**: 2025-12-01  
+**Document Version**: 2.1  
+**Last Updated**: 2025-12-11  
 **Author**: xTalent Documentation Team  
 **Reviewers**: [To be assigned]  
 **Architecture**: 6-Level Hierarchical Model (Time & Attendance)
 
 **Version History**:
+- v2.1 (2025-12-11): Added centralized eligibility architecture references
 - v2.0 (2025-12-01): Updated Time & Attendance to 6-level hierarchical architecture
 - v1.0 (2025-12-01): Initial version with flat model

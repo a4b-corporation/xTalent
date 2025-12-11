@@ -1463,6 +1463,10 @@ entities:
         required: false
         default: 0
         description: "Sort order for UI"
+      default_eligibility_profile_id:
+        type: UUID
+        required: false
+        description: "Default eligibility profile for all leave types in this class (Hybrid Model)"
       isActive:
         type: boolean
         required: true
@@ -1599,6 +1603,10 @@ entities:
         required: false
         maxLength: 50
         description: "UI icon name"
+      default_eligibility_profile_id:
+        type: UUID
+        required: false
+        description: "Default eligibility profile for all rules under this leave type (Hybrid Model - can override class)"
       isActive:
         type: boolean
         required: true
@@ -2058,6 +2066,10 @@ entities:
         type: UUID
         required: false
         description: "Entire leave class this rule applies to"
+      eligibility_profile_id:
+        type: UUID
+        required: false
+        description: "Eligibility profile override (Hybrid Model - overrides LeaveType/LeaveClass default)"
       accrualMethod:
         type: enum
         values: [UPFRONT, MONTHLY, BIWEEKLY, WEEKLY, DAILY, HOURLY, CUSTOM]
@@ -2091,16 +2103,20 @@ entities:
         type: integer
         required: false
         description: "Months to wait before accrual starts"
-      isProrated:
+      allowsHourly:
         type: boolean
         required: true
         default: false
-        description: "Whether to prorate accrual"
-      priority:
+        description: "Whether hourly leave requests are allowed"
+      default_eligibility_profile_id:
+        type: UUID
+        required: false
+        description: "Default eligibility profile for all rules under this leave type (Hybrid Model - can override class)"
+      displayOrder:
         type: integer
-        required: true
+        required: false
         default: 0
-        description: "Evaluation priority"
+        description: "Sort order for UI"
       isActive:
         type: boolean
         required: true
@@ -2198,6 +2214,10 @@ entities:
         type: UUID
         required: false
         description: "Entire leave class this rule applies to"
+      eligibility_profile_id:
+        type: UUID
+        required: false
+        description: "Eligibility profile override (Hybrid Model - overrides LeaveType/LeaveClass default)"
       carryoverType:
         type: enum
         values: [NONE, UNLIMITED, LIMITED, EXPIRE_ALL, PAYOUT]
@@ -2328,6 +2348,10 @@ entities:
         type: UUID
         required: false
         description: "Entire leave class this rule applies to"
+      eligibility_profile_id:
+        type: UUID
+        required: false
+        description: "Eligibility profile override (Hybrid Model - overrides LeaveType/LeaveClass default)"
       limitType:
         type: enum
         values: [MAX_PER_YEAR, MAX_PER_REQUEST, MAX_PER_MONTH, MAX_PER_QUARTER, MIN_PER_REQUEST]
@@ -2441,6 +2465,10 @@ entities:
         type: UUID
         required: false
         description: "Entire leave class this rule applies to"
+      eligibility_profile_id:
+        type: UUID
+        required: false
+        description: "Eligibility profile override (Hybrid Model - overrides LeaveType/LeaveClass default)"
       allowOverdraft:
         type: boolean
         required: true
@@ -2567,6 +2595,10 @@ entities:
         type: UUID
         required: false
         description: "Entire leave class this rule applies to"
+      eligibility_profile_id:
+        type: UUID
+        required: false
+        description: "Eligibility profile override (Hybrid Model - overrides LeaveType/LeaveClass default)"
       prorationType:
         type: enum
         values: [START_DATE, END_DATE, SCHEDULE, NONE]
@@ -2680,6 +2712,10 @@ entities:
         type: UUID
         required: false
         description: "Entire leave class this rule applies to"
+      eligibility_profile_id:
+        type: UUID
+        required: false
+        description: "Eligibility profile override (Hybrid Model - overrides LeaveType/LeaveClass default)"
       roundingMethod:
         type: enum
         values: [UP, DOWN, NEAREST, NEAREST_HALF, NEAREST_QUARTER, NO_ROUNDING]

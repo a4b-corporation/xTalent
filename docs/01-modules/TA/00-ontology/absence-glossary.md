@@ -96,6 +96,202 @@ EligibilityRule #2:
 
 ---
 
+## Eligibility & Hybrid Model
+
+### Eligibility Architecture Overview
+
+**Định nghĩa**: Hệ thống quản lý eligibility tập trung (centralized) cho phép xác định **WHO** is eligible (ai đủ điều kiện) tách biệt khỏi **WHAT** they're eligible for (đủ điều kiện cho cái gì).
+
+**Key Innovation**: 
+- **Organizational Scope** (WHO): Managed by `EligibilityProfile` in Core module
+- **Object Scope** (WHAT): Managed by `leaveTypeId`, `leaveClassId` in TA module
+
+**Tham khảo**: Xem [Eligibility Engine Guide](../../CO/01-concept/11-eligibility-engine-guide.md) và [Eligibility Glossary](../../CO/00-ontology/glossary-eligibility.md) để hiểu chi tiết về kiến trúc eligibility.
+
+---
+
+### Hybrid Eligibility Model
+
+**Định nghĩa**: Mô hình kết hợp giữa **Default Eligibility** (ở cấp Class/Type) và **Override Eligibility** (ở cấp Rule).
+
+**Hierarchy**:
+```
+LeaveClass (default_eligibility_profile_id)
+  ↓
+LeaveType (default_eligibility_profile_id) - can override class
+  ↓
+AccrualRule (eligibility_profile_id) - can override type
+CarryoverRule (eligibility_profile_id) - can override type
+LimitRule (eligibility_profile_id) - can override type
+... (other rules)
+```
+
+**Resolution Logic**:
+1. Check if rule has `eligibility_profile_id` → Use this (OVERRIDE) ✅
+2. Else check if LeaveType has `default_eligibility_profile_id` → Use this
+3. Else check if LeaveClass has `default_eligibility_profile_id` → Use this
+4. Else no restriction (ALL ELIGIBLE) ✅
+
+**Ví dụ - Simple Case (All Rules Use Default)**:
+```yaml
+LeaveClass: PTO
+  default_eligibility_profile_id: "ELIG_ALL_FULLTIME"
+
+LeaveType: ANNUAL_LEAVE
+  leave_class_id: PTO
+  default_eligibility_profile_id: null  # Inherit from class
+
+AccrualRule: STANDARD
+  leave_type_id: ANNUAL_LEAVE
+  eligibility_profile_id: null  # Inherit from type → class
+  accrual_amount: 1.67
+
+CarryoverRule: STANDARD
+  leave_type_id: ANNUAL_LEAVE
+  eligibility_profile_id: null  # Inherit from type → class
+  max_carryover: 5
+
+→ Result: All rules use ELIG_ALL_FULLTIME (full-time employees only)
+```
+
+**Ví dụ - Complex Case (Different Rules, Different Eligibility)**:
+```yaml
+LeaveClass: PTO
+  default_eligibility_profile_id: "ELIG_ALL_FULLTIME"
+
+LeaveType: ANNUAL_LEAVE
+  leave_class_id: PTO
+  default_eligibility_profile_id: null
+
+# Junior staff: 12 days/year
+AccrualRule: JUNIOR_ACCRUAL
+  leave_type_id: ANNUAL_LEAVE
+  eligibility_profile_id: "ELIG_JUNIOR"  # OVERRIDE
+  accrual_amount: 1.0
+
+# Senior staff: 15 days/year
+AccrualRule: SENIOR_ACCRUAL
+  leave_type_id: ANNUAL_LEAVE
+  eligibility_profile_id: "ELIG_SENIOR"  # OVERRIDE
+  accrual_amount: 1.25
+
+# Everyone can carry over
+CarryoverRule: STANDARD
+  leave_type_id: ANNUAL_LEAVE
+  eligibility_profile_id: null  # Use default (all full-time)
+  max_carryover: 5
+
+→ Result:
+  - Employee G2: Gets JUNIOR_ACCRUAL (12 days), can carry over 5
+  - Employee G5: Gets SENIOR_ACCRUAL (15 days), can carry over 5
+  - Part-time: No accrual (not in ELIG_ALL_FULLTIME)
+```
+
+---
+
+### EligibilityProfile (Core Module)
+
+**Định nghĩa**: Dynamic eligibility rules định nghĩa **WHO** is eligible dựa trên organizational attributes.
+
+**Key Attributes**:
+- `code`: Unique identifier (e.g., `ELIG_SENIOR_STAFF`)
+- `domain`: `ABSENCE`, `BENEFITS`, `COMPENSATION`, or `CORE`
+- `rule_json`: Dynamic criteria (organizational scope)
+
+**Rule JSON Structure**:
+```json
+{
+  "business_units": ["BU_SALES", "BU_TECH"],
+  "legal_entities": ["LE_VN", "LE_SG"],
+  "countries": ["VN", "SG"],
+  "grades": ["G4", "G5", "M3", "M4", "M5"],
+  "employment_types": ["FULL_TIME"],
+  "min_tenure_months": 6,
+  "departments": ["SALES", "MARKETING"]
+}
+```
+
+**Ví dụ**:
+```yaml
+# Eligibility Profile (Core Module)
+EligibilityProfile: ELIG_VN_SENIOR
+  code: "ELIG_VN_SENIOR"
+  domain: "CORE"  # Can be used by any module
+  rule_json:
+    countries: ["VN"]
+    grades: ["G4", "G5", "M3", "M4", "M5"]
+    employment_types: ["FULL_TIME"]
+    min_tenure_months: 12
+
+# Used in TA Module
+LeaveClass: PTO
+  default_eligibility_profile_id: "ELIG_VN_SENIOR"
+
+AccrualRule: SENIOR_ACCRUAL
+  leave_type_id: "ANNUAL_LEAVE"
+  eligibility_profile_id: "ELIG_VN_SENIOR"
+  accrual_amount: 1.67
+```
+
+**Benefits**:
+- ✅ **Reusability**: Define once, use across TA, TR, and other modules
+- ✅ **Performance**: O(1) lookups via cached membership (`EligibilityMember`)
+- ✅ **Consistency**: Unified eligibility logic across system
+- ✅ **Flexibility**: Hybrid model supports simple and complex scenarios
+
+---
+
+### When to Use Default vs Override
+
+**Use Default** (at Class/Type level):
+- ✅ Most rules share same eligibility
+- ✅ Simple, consistent eligibility
+- ✅ Easier maintenance
+
+**Use Override** (at Rule level):
+- ✅ Different rules need different eligibility
+- ✅ Tiered benefits/policies (junior vs senior)
+- ✅ Special cases or exceptions
+
+---
+
+### Migration from Old Eligibility Model
+
+**Before** (Old Model - Embedded Eligibility):
+```yaml
+AccrualRule:
+  leaveTypeId: "ANNUAL_LEAVE"
+  minTenureMonths: 6
+  employmentTypes: ["FULL_TIME"]
+  applicableCountries: ["VN"]
+  accrualAmount: 1.67
+```
+
+**After** (New Model - Centralized Eligibility):
+```yaml
+# Step 1: Create EligibilityProfile (Core Module)
+EligibilityProfile:
+  code: "ELIG_VN_FULLTIME"
+  domain: "CORE"
+  rule_json:
+    countries: ["VN"]
+    employment_types: ["FULL_TIME"]
+    min_tenure_months: 6
+
+# Step 2: Reference in AccrualRule (TA Module)
+AccrualRule:
+  leaveTypeId: "ANNUAL_LEAVE"
+  eligibility_profile_id: "ELIG_VN_FULLTIME"  # Reference
+  accrualAmount: 1.67
+```
+
+**Key Changes**:
+- ❌ Removed: `minTenureMonths`, `employmentTypes`, `applicableCountries` from rules
+- ✅ Added: `default_eligibility_profile_id` to LeaveClass and LeaveType
+- ✅ Added: `eligibility_profile_id` to all absence rules
+
+---
+
 ### Eligibility Rule
 **Định nghĩa**: Quy tắc xác định nhân viên nào đủ điều kiện sử dụng leave type.
 
@@ -522,6 +718,7 @@ Working Days: 2 days (Friday and Monday, excluding Sat-Sun)
 
 ---
 
-**Version**: 2.0  
-**Last Updated**: 2025-11-28  
+**Version**: 2.1  
+**Last Updated**: 2025-12-11  
 **Maintained By**: xTalent Documentation Team
+

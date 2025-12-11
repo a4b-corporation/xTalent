@@ -53,6 +53,7 @@ This directory contains comprehensive conceptual guides for the Core Module. The
 | [Staffing Models Guide](./08-staffing-models-guide.md) | HR, Finance | Position-based vs Job-based | 📝 Planned |
 | [Data Security & Privacy Guide](./09-data-security-guide.md) | All | Data classification, GDPR/PDPA | 📝 Planned |
 | [Migration Guide](./10-migration-guide.md) | Technical | Data migration strategies | 📝 Planned |
+| [Eligibility Engine Guide](./11-eligibility-engine-guide.md) | All | Cross-module eligibility management | ✅ Complete |
 
 ---
 

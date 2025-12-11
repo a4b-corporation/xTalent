@@ -496,7 +496,7 @@ Worker:
 
 ## 🏗️ Module Structure
 
-The Core Module is organized into **11 sub-modules**:
+The Core Module is organized into **12 sub-modules**:
 
 ### 1. Common (Master Data)
 **Purpose**: System-wide reference data and lookup tables
@@ -719,6 +719,55 @@ Place: Ho Chi Minh City
 - Skill-based job matching
 - Career mobility
 - Talent retention
+
+---
+
+### 12. Eligibility (Cross-Module Eligibility Engine) ✨ NEW
+**Purpose**: Centralized eligibility management for HR programs across all modules
+
+**Entities (3)**:
+- EligibilityProfile - Dynamic eligibility rules
+- EligibilityMember - Cached membership for fast lookups
+- EligibilityEvaluation - Audit trail of evaluations
+
+**Key Concepts**:
+- **Hybrid Model**: Default eligibility at Class/Type level + Override at Rule level
+- **Organizational Scope**: WHO is eligible (BU, LE, country, grade, tenure)
+- **Object Scope**: WHAT they're eligible for (stays in consuming entity)
+- **Dynamic Groups**: Rule-based evaluation with cached membership
+- **Cross-Module**: Shared eligibility profiles across TA, TR, and other modules
+
+**Example**:
+```yaml
+# Eligibility Profile (Core Module)
+EligibilityProfile: ELIG_SENIOR_STAFF
+  domain: CORE  # Shared across modules
+  rule_json:
+    grades: ["G4", "G5", "M3", "M4", "M5"]
+    employment_types: ["FULL_TIME"]
+    min_tenure_months: 12
+
+# Used in TA Module
+AccrualRule:
+  leaveTypeId: "ANNUAL_LEAVE"  # Object scope
+  eligibility_profile_id: "ELIG_SENIOR_STAFF"  # WHO
+  accrual_amount: 1.67
+
+# Used in TR Module
+BenefitOption:
+  benefitPlanId: "HEALTH_INSURANCE"  # Object scope
+  eligibility_profile_id: "ELIG_SENIOR_STAFF"  # WHO
+  coverage: 100000
+```
+
+**Benefits**:
+- ✅ Reusability: Define eligibility once, use everywhere
+- ✅ Performance: O(1) lookups via cached membership
+- ✅ Consistency: Unified eligibility logic across system
+- ✅ Flexibility: Hybrid model supports simple and complex scenarios
+- ✅ Auditability: Complete evaluation history
+
+**See Also**: [Eligibility Engine Guide](./11-eligibility-engine-guide.md) for detailed documentation
 
 ---
 
