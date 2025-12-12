@@ -1,0 +1,858 @@
+# Time & Absence Module - Feature List
+# Version: 2.0
+# Last Updated: 2025-12-12
+# Status: Complete
+
+metadata:
+  module:
+    code: TA
+    name: "Time & Absence"
+    version: "2.0"
+    description: |
+      Comprehensive leave management and time tracking system with 
+      hierarchical shift scheduling, immutable balance ledger, and 
+      flexible rule engine.
+  
+  sub_modules:
+    - code: ABS
+      name: "Absence Management"
+      description: "Leave request, balance tracking, and policy enforcement"
+      features_count: 50
+      
+    - code: ATT
+      name: "Time & Attendance"
+      description: "Shift scheduling, time tracking, and overtime management"
+      features_count: 60
+
+# =============================================================================
+# ABSENCE MANAGEMENT FEATURES
+# =============================================================================
+
+absence_management:
+  
+  # ---------------------------------------------------------------------------
+  # Leave Request Management
+  # ---------------------------------------------------------------------------
+  leave_request:
+    category: "Leave Request Management"
+    priority: HIGH
+    status: SPECIFIED
+    features:
+      
+      - id: ABS-LR-001
+        name: "Create Leave Request"
+        description: "Employee creates leave request for specific dates"
+        user_story: "As an employee, I want to request leave so that I can take time off"
+        acceptance_criteria:
+          - "Employee can select leave type"
+          - "System shows current balance"
+          - "System calculates working days"
+          - "System validates sufficient balance"
+          - "System creates reservation"
+        dependencies: [ABS-BAL-001, ABS-VAL-001]
+        related_use_cases: [UC-ABS-001]
+        related_business_rules: [BR-ABS-001, BR-ABS-002, BR-ABS-010]
+      
+      - id: ABS-LR-002
+        name: "Submit Leave Request for Approval"
+        description: "Employee submits draft request to manager"
+        user_story: "As an employee, I want to submit my leave request so that my manager can approve it"
+        acceptance_criteria:
+          - "Request status changes to PENDING"
+          - "Manager receives notification"
+          - "Balance is reserved"
+        dependencies: [ABS-LR-001, ABS-APR-001]
+        related_use_cases: [UC-ABS-001]
+      
+      - id: ABS-LR-003
+        name: "View Leave Request Status"
+        description: "Employee views status of submitted requests"
+        user_story: "As an employee, I want to see my request status so that I know if it's approved"
+        acceptance_criteria:
+          - "Employee can see all their requests"
+          - "Status is clearly displayed"
+          - "Approval history is visible"
+        dependencies: [ABS-LR-001]
+      
+      - id: ABS-LR-004
+        name: "Withdraw Leave Request"
+        description: "Employee withdraws pending request"
+        user_story: "As an employee, I want to withdraw my request if plans change"
+        acceptance_criteria:
+          - "Can only withdraw PENDING requests"
+          - "Balance reservation is released"
+          - "Manager is notified"
+        dependencies: [ABS-LR-001]
+        related_use_cases: [UC-ABS-007]
+      
+      - id: ABS-LR-005
+        name: "Half-Day Leave Request"
+        description: "Employee requests half day (morning or afternoon)"
+        user_story: "As an employee, I want to request half day leave for flexibility"
+        acceptance_criteria:
+          - "Can select morning or afternoon"
+          - "Deducts 0.5 days from balance"
+          - "Shows as half day in calendar"
+        dependencies: [ABS-LR-001]
+  
+  # ---------------------------------------------------------------------------
+  # Leave Approval
+  # ---------------------------------------------------------------------------
+  leave_approval:
+    category: "Leave Approval"
+    priority: HIGH
+    status: SPECIFIED
+    features:
+      
+      - id: ABS-APR-001
+        name: "Approve Leave Request"
+        description: "Manager approves employee leave request"
+        user_story: "As a manager, I want to approve leave requests so that employees can take time off"
+        acceptance_criteria:
+          - "Manager can view team calendar"
+          - "Manager can see employee balance"
+          - "Approval creates movement"
+          - "Employee is notified"
+        dependencies: [ABS-LR-001, ABS-BAL-002]
+        related_use_cases: [UC-ABS-002]
+        related_business_rules: [BR-ABS-011, BR-ABS-012]
+      
+      - id: ABS-APR-002
+        name: "Reject Leave Request"
+        description: "Manager rejects employee leave request"
+        user_story: "As a manager, I want to reject requests if there's insufficient coverage"
+        acceptance_criteria:
+          - "Manager must provide reason"
+          - "Balance reservation is released"
+          - "Employee is notified with reason"
+        dependencies: [ABS-LR-001]
+        related_use_cases: [UC-ABS-002]
+      
+      - id: ABS-APR-003
+        name: "Multi-Level Approval"
+        description: "Request requires approval from multiple levels"
+        user_story: "As HR, I want multi-level approval for long leave to ensure proper oversight"
+        acceptance_criteria:
+          - "Configurable approval chains"
+          - "Sequential approval flow"
+          - "Each level can approve/reject"
+        dependencies: [ABS-APR-001]
+        related_business_rules: [BR-ABS-013]
+      
+      - id: ABS-APR-004
+        name: "Delegate Approval"
+        description: "Manager delegates approval to another manager"
+        user_story: "As a manager, I want to delegate approvals when I'm on leave"
+        acceptance_criteria:
+          - "Can delegate to specific person"
+          - "Delegate receives notifications"
+          - "Delegation is time-bound"
+        dependencies: [ABS-APR-001]
+      
+      - id: ABS-APR-005
+        name: "Batch Approval"
+        description: "Manager approves multiple requests at once"
+        user_story: "As a manager, I want to approve multiple requests together for efficiency"
+        acceptance_criteria:
+          - "Can select multiple requests"
+          - "Single approval action"
+          - "All employees notified"
+        dependencies: [ABS-APR-001]
+  
+  # ---------------------------------------------------------------------------
+  # Leave Balance Management
+  # ---------------------------------------------------------------------------
+  leave_balance:
+    category: "Leave Balance Management"
+    priority: HIGH
+    status: SPECIFIED
+    features:
+      
+      - id: ABS-BAL-001
+        name: "View Leave Balance"
+        description: "Employee views current leave balance"
+        user_story: "As an employee, I want to see my leave balance so that I know how much I can take"
+        acceptance_criteria:
+          - "Shows total allocated, used, pending, available"
+          - "Shows breakdown by leave type"
+          - "Shows carryover from previous year"
+        dependencies: []
+      
+      - id: ABS-BAL-002
+        name: "Balance Calculation"
+        description: "System calculates available balance"
+        user_story: "As the system, I calculate available = total + carryover + adjusted - used - pending - expired"
+        acceptance_criteria:
+          - "Formula: available = total + carryover + adjusted - used - pending - expired"
+          - "Real-time calculation"
+          - "Accurate to 2 decimal places"
+        dependencies: []
+        related_business_rules: [BR-ABS-020]
+      
+      - id: ABS-BAL-003
+        name: "Balance Movement History"
+        description: "View complete history of balance changes"
+        user_story: "As an employee, I want to see my balance history for transparency"
+        acceptance_criteria:
+          - "Shows all movements (allocation, accrual, usage, adjustment)"
+          - "Shows date, type, amount, reason"
+          - "Can filter by date range"
+        dependencies: [ABS-BAL-001]
+      
+      - id: ABS-BAL-004
+        name: "Manual Balance Adjustment"
+        description: "HR manually adjusts employee balance"
+        user_story: "As HR, I want to adjust balances to correct errors"
+        acceptance_criteria:
+          - "HR can add or subtract days"
+          - "Must provide reason"
+          - "Creates ADJUSTMENT movement"
+          - "Employee is notified"
+        dependencies: [ABS-BAL-001]
+        related_use_cases: [UC-ABS-006]
+  
+  # ---------------------------------------------------------------------------
+  # Leave Accrual
+  # ---------------------------------------------------------------------------
+  leave_accrual:
+    category: "Leave Accrual"
+    priority: HIGH
+    status: SPECIFIED
+    features:
+      
+      - id: ABS-ACR-001
+        name: "Upfront Allocation"
+        description: "Allocate full year entitlement at start of year"
+        user_story: "As the system, I allocate annual leave on January 1st"
+        acceptance_criteria:
+          - "Runs on leave year start date"
+          - "Allocates based on tenure and employment type"
+          - "Prorates for mid-year joiners"
+          - "Creates ALLOCATION movement"
+        dependencies: [ABS-BAL-001]
+        related_use_cases: [UC-ABS-003]
+        related_business_rules: [BR-ABS-020, BR-ABS-021]
+      
+      - id: ABS-ACR-002
+        name: "Monthly Accrual"
+        description: "Accrue leave monthly (e.g., 1.67 days per month)"
+        user_story: "As the system, I accrue leave monthly for employees"
+        acceptance_criteria:
+          - "Runs on 1st of each month"
+          - "Accrues configured amount"
+          - "Respects accrual cap"
+          - "Creates ACCRUAL movement"
+        dependencies: [ABS-BAL-001]
+        related_business_rules: [BR-ABS-022]
+      
+      - id: ABS-ACR-003
+        name: "Tenure-Based Accrual"
+        description: "Accrual amount varies by years of service"
+        user_story: "As the system, I increase allocation based on tenure"
+        acceptance_criteria:
+          - "Different rates for different tenure brackets"
+          - "Automatically adjusts on anniversary"
+          - "Configurable tenure brackets"
+        dependencies: [ABS-ACR-001]
+        related_business_rules: [BR-ABS-020]
+  
+  # ---------------------------------------------------------------------------
+  # Leave Carryover
+  # ---------------------------------------------------------------------------
+  leave_carryover:
+    category: "Leave Carryover"
+    priority: HIGH
+    status: SPECIFIED
+    features:
+      
+      - id: ABS-CAR-001
+        name: "Limited Carryover"
+        description: "Carry limited unused days to next year"
+        user_story: "As the system, I carry over up to X days to next year"
+        acceptance_criteria:
+          - "Carries min(unused, max_carryover)"
+          - "Expires excess days"
+          - "Creates CARRYOVER and EXPIRY movements"
+        dependencies: [ABS-BAL-001]
+        related_use_cases: [UC-ABS-005]
+        related_business_rules: [BR-ABS-030]
+      
+      - id: ABS-CAR-002
+        name: "Unlimited Carryover"
+        description: "Carry all unused days to next year"
+        user_story: "As the system, I carry over all unused days"
+        acceptance_criteria:
+          - "No limit on carryover"
+          - "All unused days carried"
+        dependencies: [ABS-BAL-001]
+        related_business_rules: [BR-ABS-030]
+      
+      - id: ABS-CAR-003
+        name: "Carryover Expiry"
+        description: "Carried days expire after X months"
+        user_story: "As the system, I expire carried days after 3 months"
+        acceptance_criteria:
+          - "Tracks carryover expiry date"
+          - "Expires on configured date"
+          - "Creates EXPIRY movement"
+        dependencies: [ABS-CAR-001]
+        related_business_rules: [BR-ABS-031]
+      
+      - id: ABS-CAR-004
+        name: "Leave Payout"
+        description: "Pay out unused leave instead of carryover"
+        user_story: "As the system, I pay out unused leave at year end"
+        acceptance_criteria:
+          - "Calculates payout amount"
+          - "Creates PAYOUT movement"
+          - "Sends to payroll"
+        dependencies: [ABS-BAL-001]
+        related_business_rules: [BR-ABS-032]
+
+  # ---------------------------------------------------------------------------
+  # Leave Policy Rules
+  # ---------------------------------------------------------------------------
+  leave_policy:
+    category: "Leave Policy Rules"
+    priority: HIGH
+    status: SPECIFIED
+    features:
+      
+      - id: ABS-POL-001
+        name: "Eligibility Rules"
+        description: "Define who can use leave type"
+        user_story: "As HR, I want to configure eligibility rules"
+        acceptance_criteria:
+          - "Can use EligibilityProfile from Core"
+          - "Can define inline criteria"
+          - "Supports tenure, employment type, location, etc."
+        dependencies: []
+        related_business_rules: [BR-ABS-005]
+      
+      - id: ABS-POL-002
+        name: "Validation Rules"
+        description: "Validate leave requests"
+        user_story: "As HR, I want to enforce advance notice and blackout periods"
+        acceptance_criteria:
+          - "Advance notice validation"
+          - "Max consecutive days"
+          - "Blackout period validation"
+          - "Documentation requirements"
+        dependencies: []
+        related_business_rules: [BR-ABS-003, BR-ABS-004, BR-ABS-007, BR-ABS-008]
+      
+      - id: ABS-POL-003
+        name: "Limit Rules"
+        description: "Restrict leave usage"
+        user_story: "As HR, I want to set max days per year and per request"
+        acceptance_criteria:
+          - "Max per year"
+          - "Max per request"
+          - "Min per request"
+        dependencies: []
+      
+      - id: ABS-POL-004
+        name: "Overdraft Rules"
+        description: "Allow negative balance"
+        user_story: "As HR, I want to allow advance leave with overdraft"
+        acceptance_criteria:
+          - "Configurable overdraft limit"
+          - "Requires approval"
+          - "Auto-repayment from future accruals"
+        dependencies: [ABS-BAL-001]
+      
+      - id: ABS-POL-005
+        name: "Proration Rules"
+        description: "Prorate for mid-year joiners and part-time"
+        user_story: "As the system, I prorate allocation based on start date and schedule"
+        acceptance_criteria:
+          - "Start date proration"
+          - "Schedule proration (part-time)"
+          - "Configurable proration method"
+        dependencies: [ABS-ACR-001]
+        related_business_rules: [BR-ABS-021, BR-ABS-022]
+      
+      - id: ABS-POL-006
+        name: "Rounding Rules"
+        description: "Handle fractional leave amounts"
+        user_story: "As HR, I want to configure rounding rules"
+        acceptance_criteria:
+          - "Round up, down, or nearest"
+          - "Round to nearest half"
+          - "No rounding (keep decimals)"
+        dependencies: [ABS-BAL-001]
+
+# =============================================================================
+# TIME & ATTENDANCE FEATURES
+# =============================================================================
+
+time_attendance:
+  
+  # ---------------------------------------------------------------------------
+  # Hierarchical Shift Scheduling (6 Levels)
+  # ---------------------------------------------------------------------------
+  shift_scheduling:
+    category: "Shift Scheduling"
+    priority: HIGH
+    status: SPECIFIED
+    features:
+      
+      - id: ATT-SCH-001
+        name: "Configure Time Segments (Level 1)"
+        description: "Define atomic time units (WORK, BREAK, MEAL, TRANSFER)"
+        user_story: "As HR, I want to define time segments to build shifts"
+        acceptance_criteria:
+          - "Can create WORK, BREAK, MEAL, TRANSFER segments"
+          - "Supports relative (offset) or absolute (clock) timing"
+          - "Defines duration, isPaid, isMandatory"
+        dependencies: []
+        related_use_cases: [UC-ATT-H01]
+        related_business_rules: [BR-ATT-H01, BR-ATT-H02, BR-ATT-H03]
+      
+      - id: ATT-SCH-002
+        name: "Configure Shift Definitions (Level 2)"
+        description: "Compose shifts from time segments"
+        user_story: "As HR, I want to create shifts from segments"
+        acceptance_criteria:
+          - "Can add multiple segments in sequence"
+          - "Supports ELAPSED, PUNCH, FLEX shift types"
+          - "Calculates total work/break/paid hours"
+        dependencies: [ATT-SCH-001]
+        related_use_cases: [UC-ATT-H02]
+        related_business_rules: [BR-ATT-H10, BR-ATT-H11, BR-ATT-H12]
+      
+      - id: ATT-SCH-003
+        name: "Configure Day Models (Level 3)"
+        description: "Define daily schedule templates"
+        user_story: "As HR, I want to create day models for work days, off days, holidays"
+        acceptance_criteria:
+          - "Can create WORK, OFF, HOLIDAY, HALF_DAY models"
+          - "Work days link to shift definitions"
+          - "Supports variant selection for holidays"
+        dependencies: [ATT-SCH-002]
+        related_use_cases: [UC-ATT-H03]
+        related_business_rules: [BR-ATT-H20, BR-ATT-H21, BR-ATT-H22]
+      
+      - id: ATT-SCH-004
+        name: "Configure Pattern Templates (Level 4)"
+        description: "Create repeating work patterns"
+        user_story: "As HR, I want to create patterns like 5x8, 4on-4off, 14/14"
+        acceptance_criteria:
+          - "Define cycle length (7, 8, 14, 28 days)"
+          - "Assign day model to each day in cycle"
+          - "Supports FIXED or ROTATING patterns"
+        dependencies: [ATT-SCH-003]
+        related_use_cases: [UC-ATT-H04]
+        related_business_rules: [BR-ATT-H30, BR-ATT-H31, BR-ATT-H32]
+      
+      - id: ATT-SCH-005
+        name: "Create Schedule Rules (Level 5)"
+        description: "Assign patterns to employees/teams"
+        user_story: "As a manager, I want to assign patterns to my team"
+        acceptance_criteria:
+          - "Select pattern template"
+          - "Select holiday calendar"
+          - "Assign to EMPLOYEE, GROUP, or POSITION"
+          - "Set effective date range"
+        dependencies: [ATT-SCH-004]
+        related_use_cases: [UC-ATT-H05]
+        related_business_rules: [BR-ATT-H40, BR-ATT-H41, BR-ATT-H42]
+      
+      - id: ATT-SCH-006
+        name: "Generate Roster (Level 6)"
+        description: "Materialize day-by-day employee schedules"
+        user_story: "As the system, I generate rosters from schedule rules"
+        acceptance_criteria:
+          - "Calculates cycle day for each date"
+          - "Applies holiday overrides"
+          - "Applies schedule overrides"
+          - "Tracks full lineage (pattern → day model → shift)"
+        dependencies: [ATT-SCH-005]
+        related_use_cases: [UC-ATT-H06]
+        related_business_rules: [BR-ATT-H50, BR-ATT-H51, BR-ATT-H52, BR-ATT-H53]
+  
+  # ---------------------------------------------------------------------------
+  # Time Tracking
+  # ---------------------------------------------------------------------------
+  time_tracking:
+    category: "Time Tracking"
+    priority: HIGH
+    status: SPECIFIED
+    features:
+      
+      - id: ATT-TRK-001
+        name: "Clock In"
+        description: "Employee clocks in at start of shift"
+        user_story: "As an employee, I want to clock in to record my arrival"
+        acceptance_criteria:
+          - "Supports biometric, RFID, mobile, web"
+          - "Captures timestamp and location"
+          - "Creates attendance record"
+          - "Detects late arrival"
+        dependencies: [ATT-SCH-006]
+        related_use_cases: [UC-ATT-001]
+        related_business_rules: [BR-ATT-001, BR-ATT-002]
+      
+      - id: ATT-TRK-002
+        name: "Clock Out"
+        description: "Employee clocks out at end of shift"
+        user_story: "As an employee, I want to clock out to record my departure"
+        acceptance_criteria:
+          - "Updates attendance record"
+          - "Calculates actual hours worked"
+          - "Applies rounding rules"
+          - "Detects early departure"
+        dependencies: [ATT-TRK-001]
+        related_use_cases: [UC-ATT-001]
+        related_business_rules: [BR-ATT-003, BR-ATT-004]
+      
+      - id: ATT-TRK-003
+        name: "View My Schedule"
+        description: "Employee views their upcoming schedule"
+        user_story: "As an employee, I want to see my schedule to plan my time"
+        acceptance_criteria:
+          - "Shows calendar view"
+          - "Color-coded by shift type"
+          - "Shows shift times and details"
+          - "Can view different date ranges"
+        dependencies: [ATT-SCH-006]
+        related_use_cases: [UC-ATT-002]
+      
+      - id: ATT-TRK-004
+        name: "Manual Time Entry"
+        description: "Employee enters time manually (for missed clock)"
+        user_story: "As an employee, I want to enter time manually if I forgot to clock"
+        acceptance_criteria:
+          - "Can enter start and end time"
+          - "Requires manager approval"
+          - "Marked as manual entry"
+        dependencies: [ATT-TRK-001]
+  
+  # ---------------------------------------------------------------------------
+  # Attendance Exceptions
+  # ---------------------------------------------------------------------------
+  attendance_exceptions:
+    category: "Attendance Exceptions"
+    priority: HIGH
+    status: SPECIFIED
+    features:
+      
+      - id: ATT-EXC-001
+        name: "Late In Detection"
+        description: "Detect when employee clocks in late"
+        user_story: "As the system, I detect late arrivals beyond grace period"
+        acceptance_criteria:
+          - "Compares clock in time with scheduled start"
+          - "Applies grace period"
+          - "Creates LATE_IN exception"
+          - "Notifies manager"
+        dependencies: [ATT-TRK-001]
+        related_business_rules: [BR-ATT-002]
+      
+      - id: ATT-EXC-002
+        name: "Early Out Detection"
+        description: "Detect when employee clocks out early"
+        user_story: "As the system, I detect early departures"
+        acceptance_criteria:
+          - "Compares clock out time with scheduled end"
+          - "Applies grace period"
+          - "Creates EARLY_OUT exception"
+        dependencies: [ATT-TRK-002]
+      
+      - id: ATT-EXC-003
+        name: "Missing Punch Detection"
+        description: "Detect missing clock in or clock out"
+        user_story: "As the system, I detect when employee forgets to clock"
+        acceptance_criteria:
+          - "Detects missing clock in"
+          - "Detects missing clock out"
+          - "Creates MISSING_PUNCH exception"
+          - "Requires correction"
+        dependencies: [ATT-TRK-001]
+      
+      - id: ATT-EXC-004
+        name: "Unauthorized Absence Detection"
+        description: "Detect when employee doesn't show up"
+        user_story: "As the system, I detect no-shows"
+        acceptance_criteria:
+          - "No clock in for scheduled work day"
+          - "Creates UNAUTHORIZED_ABSENCE exception"
+          - "High severity"
+        dependencies: [ATT-SCH-006]
+      
+      - id: ATT-EXC-005
+        name: "Overtime Detection"
+        description: "Detect when employee works overtime"
+        user_story: "As the system, I detect overtime hours"
+        acceptance_criteria:
+          - "Compares actual hours with scheduled"
+          - "Creates OVERTIME exception"
+          - "Calculates overtime hours"
+          - "Requires approval"
+        dependencies: [ATT-TRK-002]
+  
+  # ---------------------------------------------------------------------------
+  # Timesheet Management
+  # ---------------------------------------------------------------------------
+  timesheet:
+    category: "Timesheet Management"
+    priority: HIGH
+    status: SPECIFIED
+    features:
+      
+      - id: ATT-TS-001
+        name: "Generate Timesheet"
+        description: "System generates timesheet for pay period"
+        user_story: "As the system, I generate timesheets at period end"
+        acceptance_criteria:
+          - "Aggregates attendance records"
+          - "Calculates total hours"
+          - "Identifies exceptions"
+          - "Status: DRAFT"
+        dependencies: [ATT-TRK-002]
+      
+      - id: ATT-TS-002
+        name: "Submit Timesheet"
+        description: "Employee submits timesheet for approval"
+        user_story: "As an employee, I want to submit my timesheet"
+        acceptance_criteria:
+          - "Employee reviews hours"
+          - "Status changes to SUBMITTED"
+          - "Manager notified"
+        dependencies: [ATT-TS-001]
+      
+      - id: ATT-TS-003
+        name: "Approve Timesheet"
+        description: "Manager approves employee timesheet"
+        user_story: "As a manager, I want to approve timesheets"
+        acceptance_criteria:
+          - "Manager reviews hours and exceptions"
+          - "Can approve or reject"
+          - "Status changes to APPROVED"
+          - "Sent to payroll"
+        dependencies: [ATT-TS-002]
+  
+  # ---------------------------------------------------------------------------
+  # Overtime Management
+  # ---------------------------------------------------------------------------
+  overtime:
+    category: "Overtime Management"
+    priority: MEDIUM
+    status: SPECIFIED
+    features:
+      
+      - id: ATT-OT-001
+        name: "Calculate Overtime"
+        description: "Calculate overtime hours and type"
+        user_story: "As the system, I calculate overtime based on rules"
+        acceptance_criteria:
+          - "Supports daily, weekly, biweekly methods"
+          - "Identifies overtime type (regular, weekend, holiday, night)"
+          - "Calculates multiplier (1.5x, 2.0x, 3.0x)"
+        dependencies: [ATT-TRK-002]
+      
+      - id: ATT-OT-002
+        name: "Request Overtime"
+        description: "Employee requests overtime approval"
+        user_story: "As an employee, I want to request overtime approval"
+        acceptance_criteria:
+          - "Can request before or after working"
+          - "Specify expected hours"
+          - "Provide reason"
+        dependencies: []
+      
+      - id: ATT-OT-003
+        name: "Approve Overtime"
+        description: "Manager approves overtime request"
+        user_story: "As a manager, I want to approve overtime"
+        acceptance_criteria:
+          - "Can approve or reject"
+          - "Can modify hours"
+          - "Employee notified"
+        dependencies: [ATT-OT-002]
+  
+  # ---------------------------------------------------------------------------
+  # Schedule Overrides
+  # ---------------------------------------------------------------------------
+  schedule_override:
+    category: "Schedule Overrides"
+    priority: MEDIUM
+    status: SPECIFIED
+    features:
+      
+      - id: ATT-OVR-001
+        name: "Create Schedule Override"
+        description: "Manager overrides generated roster"
+        user_story: "As a manager, I want to override schedule for specific dates"
+        acceptance_criteria:
+          - "Can change shift"
+          - "Can mark as OFF or HOLIDAY"
+          - "Must provide reason"
+          - "Employee notified"
+        dependencies: [ATT-SCH-006]
+        related_use_cases: [UC-ATT-003]
+        related_business_rules: [BR-ATT-H60, BR-ATT-H61, BR-ATT-H62]
+      
+      - id: ATT-OVR-002
+        name: "Shift Swap"
+        description: "Employees swap shifts with each other"
+        user_story: "As an employee, I want to swap shifts with a colleague"
+        acceptance_criteria:
+          - "Request swap with specific employee"
+          - "Other employee must accept"
+          - "Manager must approve"
+          - "Both rosters updated"
+        dependencies: [ATT-SCH-006]
+      
+      - id: ATT-OVR-003
+        name: "Shift Bidding"
+        description: "Employees bid for open shifts"
+        user_story: "As an employee, I want to bid for extra shifts"
+        acceptance_criteria:
+          - "Manager posts open shift"
+          - "Employees can bid"
+          - "Manager selects winner"
+          - "Roster updated"
+        dependencies: [ATT-SCH-006]
+
+# =============================================================================
+# SHARED/COMMON FEATURES
+# =============================================================================
+
+shared_features:
+  
+  # ---------------------------------------------------------------------------
+  # Period Profiles
+  # ---------------------------------------------------------------------------
+  period_profiles:
+    category: "Period Profiles"
+    priority: HIGH
+    status: SPECIFIED
+    features:
+      
+      - id: SHR-PRD-001
+        name: "Configure Leave Year"
+        description: "Define leave year boundaries"
+        user_story: "As HR, I want to configure leave year (calendar, fiscal, hire anniversary)"
+        acceptance_criteria:
+          - "Supports CALENDAR_YEAR, FISCAL_YEAR, HIRE_ANNIVERSARY, CUSTOM"
+          - "Defines start month and day"
+          - "Duration in months"
+        dependencies: []
+      
+      - id: SHR-PRD-002
+        name: "Configure Pay Period"
+        description: "Define pay period frequency"
+        user_story: "As HR, I want to configure pay periods"
+        acceptance_criteria:
+          - "Supports WEEKLY, BIWEEKLY, SEMI_MONTHLY, MONTHLY"
+          - "Defines period boundaries"
+          - "Aligns with payroll"
+        dependencies: []
+  
+  # ---------------------------------------------------------------------------
+  # Holiday Calendar
+  # ---------------------------------------------------------------------------
+  holiday_calendar:
+    category: "Holiday Calendar"
+    priority: HIGH
+    status: SPECIFIED
+    features:
+      
+      - id: SHR-HOL-001
+        name: "Manage Holiday Calendar"
+        description: "Define public and company holidays"
+        user_story: "As HR, I want to manage holiday calendars"
+        acceptance_criteria:
+          - "Can create calendar by country/year"
+          - "Add holidays with dates"
+          - "Classify holidays (CLASS_A, CLASS_B, CLASS_C)"
+          - "Handle weekend substitution"
+        dependencies: []
+      
+      - id: SHR-HOL-002
+        name: "Multi-Day Holidays"
+        description: "Define holidays spanning multiple days"
+        user_story: "As HR, I want to define multi-day holidays like Tết"
+        acceptance_criteria:
+          - "Can specify start and end date"
+          - "Total days calculated"
+          - "All days marked as holiday"
+        dependencies: [SHR-HOL-001]
+  
+  # ---------------------------------------------------------------------------
+  # Approval Workflows
+  # ---------------------------------------------------------------------------
+  approval_workflows:
+    category: "Approval Workflows"
+    priority: HIGH
+    status: SPECIFIED
+    features:
+      
+      - id: SHR-APR-001
+        name: "Configure Approval Chains"
+        description: "Define multi-level approval workflows"
+        user_story: "As HR, I want to configure approval chains"
+        acceptance_criteria:
+          - "Single, two-level, three-level chains"
+          - "Conditional routing"
+          - "Parallel approval"
+        dependencies: []
+      
+      - id: SHR-APR-002
+        name: "Event-Driven Notifications"
+        description: "Send notifications on events"
+        user_story: "As the system, I send notifications when events occur"
+        acceptance_criteria:
+          - "Email, SMS, push notifications"
+          - "Configurable templates"
+          - "Event types: submitted, approved, rejected, overdue"
+        dependencies: []
+      
+      - id: SHR-APR-003
+        name: "Approval Escalation"
+        description: "Escalate overdue approvals"
+        user_story: "As the system, I escalate approvals that are overdue"
+        acceptance_criteria:
+          - "Configurable SLA"
+          - "Reminder notifications"
+          - "Auto-escalate to skip manager"
+        dependencies: [SHR-APR-001]
+
+# =============================================================================
+# FEATURE SUMMARY
+# =============================================================================
+
+summary:
+  total_features: 110
+  by_sub_module:
+    absence_management: 50
+    time_attendance: 60
+    shared: 10
+  
+  by_priority:
+    high: 95
+    medium: 15
+    low: 0
+  
+  by_status:
+    specified: 110
+    in_development: 0
+    completed: 0
+  
+  by_category:
+    leave_request: 5
+    leave_approval: 5
+    leave_balance: 4
+    leave_accrual: 3
+    leave_carryover: 4
+    leave_policy: 6
+    shift_scheduling: 6
+    time_tracking: 4
+    attendance_exceptions: 5
+    timesheet: 3
+    overtime: 3
+    schedule_override: 3
+    period_profiles: 2
+    holiday_calendar: 2
+    approval_workflows: 3

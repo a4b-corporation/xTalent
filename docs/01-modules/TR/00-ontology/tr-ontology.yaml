@@ -2083,10 +2083,16 @@ entities:
             },
             "company_multiplier_range": [0.8, 1.2]
           }
+      default_eligibility_profile_id:
+        type: UUID
+        required: false
+        description: "FK to Core.EligibilityProfile (Hybrid Model - default eligibility for this plan)"
       eligibility_rule:
         type: jsonb
+        deprecated: true
         description: |
-          Eligibility criteria:
+          DEPRECATED: Use default_eligibility_profile_id instead.
+          Legacy eligibility criteria - kept for backward compatibility.
           {
             "min_tenure_months": 6,
             "employment_types": ["FULL_TIME"],
@@ -2679,9 +2685,14 @@ entities:
             },
             "cap": 500000
           }
+      default_eligibility_profile_id:
+        type: UUID
+        required: false
+        description: "FK to Core.EligibilityProfile (Hybrid Model - default eligibility for this plan)"
       eligibility_rule:
         type: jsonb
-        description: "Eligibility criteria (roles, tenure, etc.)"
+        deprecated: true
+        description: "DEPRECATED: Use default_eligibility_profile_id instead. Legacy eligibility criteria."
       metadata:
         type: jsonb
       effective_start_date:
@@ -2767,6 +2778,10 @@ entities:
         type: decimal
         precision: [18, 4]
         description: "Flat commission amount (alternative to rate)"
+      eligibility_profile_id:
+        type: UUID
+        required: false
+        description: "FK to Core.EligibilityProfile (Hybrid Model - override plan default)"
       effective_start_date:
         type: date
         required: true
@@ -2970,10 +2985,16 @@ entities:
       sponsor_legal_entity_id:
         type: UUID
         description: "FK to Core.LegalEntity (sponsoring entity)"
+      default_eligibility_profile_id:
+        type: UUID
+        required: false
+        description: "FK to Core.EligibilityProfile (Hybrid Model - default eligibility for this plan)"
       eligibility_rule_json:
         type: jsonb
+        deprecated: true
         description: |
-          Eligibility criteria:
+          DEPRECATED: Use default_eligibility_profile_id instead.
+          Legacy eligibility criteria - kept for backward compatibility during migration.
           {
             "employment_types": ["FULL_TIME"],
             "min_tenure_months": 3,
@@ -3100,6 +3121,10 @@ entities:
             "employee_contribution_pct": 0.30,
             "employer_contribution_pct": 0.70
           }
+      eligibility_profile_id:
+        type: UUID
+        required: false
+        description: "FK to Core.EligibilityProfile (Hybrid Model - override plan default)"
       metadata:
         type: jsonb
       effective_start_date:
@@ -4043,6 +4068,10 @@ entities:
         type: boolean
         default: false
         description: "Whether event requires manager approval"
+      default_eligibility_profile_id:
+        type: UUID
+        required: false
+        description: "FK to Core.EligibilityProfile (Hybrid Model - default eligibility for this event type)"
       metadata:
         type: jsonb
       is_active:
@@ -4136,6 +4165,10 @@ entities:
         maxLength: 500
       description:
         type: text
+      eligibility_profile_id:
+        type: UUID
+        required: false
+        description: "FK to Core.EligibilityProfile (Hybrid Model - who can redeem this perk)"
       metadata:
         type: jsonb
       effective_start_date:

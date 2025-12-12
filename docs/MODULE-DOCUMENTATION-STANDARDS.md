@@ -79,11 +79,17 @@ xTalent/docs/01-modules/[MODULE-CODE]/
 | Document | Status | Owner | Purpose |
 |----------|--------|-------|---------|
 | `01-concept/README.md` | **REQUIRED** | PO/BA | Concept guides index |
-| `01-[topic]-guide.md` | **REQUIRED** | PO/BA | Core concept guide #1 |
-| `02-[topic]-guide.md` | **REQUIRED** | PO/BA | Core concept guide #2 |
-| `0N-[topic]-guide.md` | **REQUIRED** | PO/BA | Additional guides (min 5) |
+| `01-concept-overview.md` | **REQUIRED** | PO/BA | High-level module overview |
+| `02-conceptual-guide.md` | **REQUIRED** | PO/BA | Workflows and system behaviors |
+| `03-[topic]-guide.md` | **REQUIRED** | PO/BA | Topic-specific guide #1 |
+| `0N-[topic]-guide.md` | **REQUIRED** | PO/BA | Additional topic guides |
 
-**Minimum Required Guides**: 5-7 guides covering core concepts
+**Minimum Required Guides**: 5-7 total guides (overview + conceptual + 3-5 topic guides)
+
+**Guide Structure**:
+- **01-concept-overview.md**: What the module is, problems it solves, scope, key concepts, business value
+- **02-conceptual-guide.md**: How the system works - workflows, behaviors, entity interactions
+- **03-0N-[topic]-guide.md**: Deep dives into specific topics (policies, scheduling, tracking, etc.)
 
 ### Phase 2: Specification (Requirements)
 
@@ -295,7 +301,479 @@ Example 1: [Scenario name]
 
 ---
 
-### Template 3: Concept Guide
+### Template 2A: Concept Overview
+
+**File**: `01-concept/01-concept-overview.md`
+
+**Purpose**: Provides high-level understanding of what the module is, what problems it solves, its scope, key concepts, and business value. This is the entry point for all stakeholders.
+
+```markdown
+# [Module Name] - Concept Overview
+
+**Version**: 2.0  
+**Last Updated**: YYYY-MM-DD  
+**Audience**: All stakeholders (Business Users, HR Administrators, Managers, Developers)  
+**Reading Time**: 15-20 minutes
+
+---
+
+## 📋 What is this module?
+
+> [One-paragraph description of the module, its purpose, and its sub-modules]
+
+The module consists of [N] integrated sub-modules:
+- **[Sub-module 1]**: [Brief description]
+- **[Sub-module 2]**: [Brief description]
+
+---
+
+## 🎯 Problem Statement
+
+### What problem does this solve?
+
+**[Sub-module 1] Challenges**:
+- [Challenge 1]
+- [Challenge 2]
+- [Challenge 3]
+
+**[Sub-module 2] Challenges**:
+- [Challenge 1]
+- [Challenge 2]
+- [Challenge 3]
+
+### Who are the users?
+
+**[User Role 1]**:
+- [Action/Capability 1]
+- [Action/Capability 2]
+- [Action/Capability 3]
+
+**[User Role 2]**:
+- [Action/Capability 1]
+- [Action/Capability 2]
+- [Action/Capability 3]
+
+**[User Role 3]**:
+- [Action/Capability 1]
+- [Action/Capability 2]
+
+---
+
+## 💡 High-Level Solution
+
+### How does this module solve the problem?
+
+**[Sub-module 1] Solution**:
+
+[Description of how this sub-module works, including:]
+1. [Key capability 1]
+2. [Key capability 2]
+3. [Key capability 3]
+
+**[Sub-module 2] Solution**:
+
+[Description of how this sub-module works, including:]
+1. [Key capability 1]
+2. [Key capability 2]
+3. [Key capability 3]
+
+---
+
+## 📦 Scope
+
+### What's included?
+
+**[Sub-module 1]** ✅:
+- [Feature/Capability 1]
+- [Feature/Capability 2]
+- [Feature/Capability 3]
+- [Feature/Capability 4]
+
+**[Sub-module 2]** ✅:
+- [Feature/Capability 1]
+- [Feature/Capability 2]
+- [Feature/Capability 3]
+
+**Shared Components** ✅:
+- [Shared component 1]
+- [Shared component 2]
+- [Shared component 3]
+
+### What's NOT included?
+
+❌ [Out of scope item 1] (handled by [Other Module])
+❌ [Out of scope item 2]
+❌ [Out of scope item 3]
+❌ [Out of scope item 4]
+
+---
+
+## 🔑 Key Concepts
+
+### [Sub-module 1] Concepts
+
+#### [Concept 1]
+[Brief explanation of the concept, 2-3 sentences]
+
+#### [Concept 2]
+[Brief explanation of the concept, 2-3 sentences]
+
+#### [Concept 3]
+[Brief explanation of the concept, 2-3 sentences]
+
+### [Sub-module 2] Concepts
+
+#### [Concept 4]
+[Brief explanation of the concept, 2-3 sentences]
+
+#### [Concept 5]
+[Brief explanation of the concept, 2-3 sentences]
+
+### Shared Concepts
+
+#### [Shared Concept 1]
+[Brief explanation of the concept, 2-3 sentences]
+
+---
+
+## 💼 Business Value
+
+### Benefits
+
+**Efficiency**:
+- [Efficiency benefit 1]
+- [Efficiency benefit 2]
+- [Efficiency benefit 3]
+
+**Accuracy**:
+- [Accuracy benefit 1]
+- [Accuracy benefit 2]
+- [Accuracy benefit 3]
+
+**Compliance**:
+- [Compliance benefit 1]
+- [Compliance benefit 2]
+- [Compliance benefit 3]
+
+**Visibility**:
+- [Visibility benefit 1]
+- [Visibility benefit 2]
+
+**[Other Category]**:
+- [Benefit 1]
+- [Benefit 2]
+
+### Success Metrics
+
+**[Sub-module 1]**:
+- [Metric 1 with target]
+- [Metric 2 with target]
+- [Metric 3 with target]
+
+**[Sub-module 2]**:
+- [Metric 1 with target]
+- [Metric 2 with target]
+- [Metric 3 with target]
+
+---
+
+## 🔗 Integration Points
+
+**[Module 1] ([CODE])**:
+- [Integration point 1]
+- [Integration point 2]
+
+**[Module 2] ([CODE])**:
+- [Integration point 1]
+- [Integration point 2]
+
+**[External System 1]**:
+- [Integration point 1]
+- [Integration point 2]
+
+---
+
+## 📋 Assumptions & Dependencies
+
+### Assumptions
+
+**[Sub-module 1]**:
+- [Assumption 1]
+- [Assumption 2]
+
+**[Sub-module 2]**:
+- [Assumption 1]
+- [Assumption 2]
+
+### Dependencies
+
+**Required**:
+- [Required dependency 1]
+- [Required dependency 2]
+
+**Optional**:
+- [Optional dependency 1]
+- [Optional dependency 2]
+
+---
+
+## 🚀 Future Enhancements
+
+**[Sub-module 1]**:
+- [Enhancement 1]
+- [Enhancement 2]
+
+**[Sub-module 2]**:
+- [Enhancement 1]
+- [Enhancement 2]
+
+---
+
+## 📖 Glossary
+
+| Term | Definition |
+|------|------------|
+| **[Term 1]** | [Definition] |
+| **[Term 2]** | [Definition] |
+| **[Term 3]** | [Definition] |
+
+---
+
+## 📚 Related Documents
+
+- [Conceptual Guide](./02-conceptual-guide.md) - How the system works
+- [Ontology](../00-ontology/[module]-ontology.yaml) - Data model
+- [Glossary](../00-ontology/glossary-index.md) - Complete terminology
+- [Specifications](../02-spec/) - Detailed requirements
+
+---
+
+**Document Version**: 1.0  
+**Created**: YYYY-MM-DD  
+**Last Review**: YYYY-MM-DD  
+**Author**: xTalent Documentation Team
+```
+
+---
+
+### Template 2B: Conceptual Guide
+
+**File**: `01-concept/02-conceptual-guide.md`
+
+**Purpose**: Explains HOW the system works at a conceptual level, covering workflows, behaviors, and entity interactions. This is the operational guide for understanding system mechanics.
+
+```markdown
+# [Module Name] - Conceptual Guide
+
+> This document explains HOW the [Module Name] system works at a conceptual level, covering workflows, behaviors, and interactions across all sub-modules.
+
+---
+
+## 📋 System Overview
+
+[Brief overview of how the system operates, including:]
+- [Key architectural pattern 1]
+- [Key architectural pattern 2]
+- [Integration approach]
+
+---
+
+## 🔄 Key Workflows
+
+### Workflow 1: [Workflow Name]
+
+#### Overview
+[Brief description of what this workflow accomplishes]
+
+#### Actors
+- **[Actor 1]**: [Role and responsibilities]
+- **[Actor 2]**: [Role and responsibilities]
+- **[System]**: [Automated behaviors]
+
+#### Trigger
+[What initiates this workflow]
+
+#### Steps
+
+```mermaid
+sequenceDiagram
+    participant Actor1
+    participant System
+    participant Entity1
+    participant Actor2
+    
+    Actor1->>System: [Action]
+    System->>Entity1: [Action]
+    System->>Actor2: [Notification]
+    Actor2->>System: [Response]
+```
+
+**Detailed Steps**:
+
+1. **[Step Name]**
+   - What happens: [Description]
+   - Who: [Actor]
+   - System behavior: [What the system does]
+   - Business rules applied: [Rules that govern this step]
+
+2. **[Step Name]**
+   - What happens: [Description]
+   - Who: [Actor]
+   - System behavior: [What the system does]
+   - Business rules applied: [Rules that govern this step]
+
+[Continue for all steps...]
+
+#### Decision Points
+
+| Decision | Condition | Outcome |
+|----------|-----------|---------|
+| [Decision 1] | [Condition] | [Outcome] |
+| [Decision 2] | [Condition] | [Outcome] |
+
+#### Outcomes
+
+- **Success**: [Description of successful outcome]
+- **Failure**: [Description of failure outcome]
+- **Partial**: [Description of partial outcome if applicable]
+
+#### Variations
+
+**Variation 1: [Variation Name]**
+- Condition: [When this variation applies]
+- Difference: [How it differs from main flow]
+- Flow: [Brief description of different flow]
+
+---
+
+### Workflow 2: [Workflow Name]
+
+[Same structure as Workflow 1]
+
+---
+
+## ⚙️ Domain Behaviors
+
+### Behavior 1: [Behavior Name]
+
+**What it does**: [Description of the behavior]
+
+**When it happens**: [Trigger conditions]
+
+**How it works**:
+1. [Step 1]
+2. [Step 2]
+3. [Step 3]
+
+**Business rules**:
+- [Rule 1]
+- [Rule 2]
+- [Rule 3]
+
+**Example**:
+> [Concrete example with sample data showing the behavior in action]
+
+---
+
+### Behavior 2: [Behavior Name]
+
+[Same structure as Behavior 1]
+
+---
+
+## 🔗 Entity Interactions
+
+### How [Entity A] and [Entity B] Work Together
+
+[Detailed explanation of how these entities interact, including:]
+
+**[Scenario 1]**:
+1. [Step 1]
+2. [Step 2]
+3. [Step 3]
+
+**[Scenario 2]**:
+1. [Step 1]
+2. [Step 2]
+3. [Step 3]
+
+---
+
+### How [Entity C] and [Entity D] Work Together
+
+[Same structure as above]
+
+---
+
+## 🎯 Design Patterns
+
+### Pattern 1: [Pattern Name]
+
+**Purpose**: [Why this pattern is used]
+
+**How it works**: [Description of the pattern]
+
+**Entities involved**:
+- [Entity 1]
+- [Entity 2]
+
+**Example**:
+```yaml
+[YAML example showing the pattern]
+```
+
+---
+
+## ✅ Best Practices
+
+### 1. [Practice Area]
+
+✅ **DO**:
+- [Best practice 1]
+- [Best practice 2]
+
+❌ **DON'T**:
+- [Anti-pattern 1]
+- [Anti-pattern 2]
+
+---
+
+## ⚠️ Common Pitfalls
+
+### Pitfall 1: [Pitfall Name]
+
+❌ **Wrong**:
+```yaml
+[Example of incorrect approach]
+```
+
+✅ **Correct**:
+```yaml
+[Example of correct approach]
+```
+
+**Why**: [Explanation]
+
+---
+
+## 📚 Related Documents
+
+- [Concept Overview](./01-concept-overview.md) - What the module is
+- [Topic Guides](./03-*.md) - Deep dives into specific topics
+- [Ontology](../00-ontology/[module]-ontology.yaml) - Data model
+- [Specifications](../02-spec/) - Detailed requirements
+
+---
+
+**Document Version**: 1.0  
+**Created**: YYYY-MM-DD  
+**Last Review**: YYYY-MM-DD  
+**Author**: xTalent Documentation Team
+```
+
+---
+
+### Template 3: Topic-Specific Concept Guide
 
 **File**: `01-concept/[NN]-[topic]-guide.md`
 
@@ -797,14 +1275,24 @@ Phase 5: Handoff to Dev Team
 
 | Aspect | Core (CO) | Time & Attendance (TA) | [Your Module] |
 |--------|-----------|------------------------|---------------|
-| **Ontology** | ✅ core-ontology.yaml | ⚠️ Different format | ❓ TBD |
-| **Glossaries** | ✅ 7 glossaries | ⚠️ Missing | ❓ TBD |
-| **Concept Guides** | ✅ 7 guides | ⚠️ Different structure | ❓ TBD |
+| **Ontology** | ✅ core-ontology.yaml | ✅ time-attendance-ontology.yaml, absence-ontology.yaml | ❓ TBD |
+| **Glossaries** | ✅ 7 glossaries | ⚠️ In progress | ❓ TBD |
+| **Concept Overview** | ⚠️ To be created | ✅ 01-concept-overview.md | ❓ TBD |
+| **Conceptual Guide** | ⚠️ To be created | ✅ 02-conceptual-guide.md | ❓ TBD |
+| **Topic Guides** | ✅ 5+ guides | ⚠️ 0 guides (7 planned) | ❓ TBD |
+| **Total Concept Guides** | ✅ 7 guides | ⚠️ 2/7 guides (in progress) | ❓ TBD |
 | **Functional Req** | ✅ Standardized | ⚠️ Different format | ❓ TBD |
 | **API Spec** | ✅ Standardized | ⚠️ Missing | ❓ TBD |
 | **Business Rules** | ✅ Standardized | ⚠️ Different format | ❓ TBD |
 | **Integration Guide** | ✅ Present | ❌ Missing | ❓ TBD |
 | **Feature List** | ✅ Present | ❌ Missing | ❓ TBD |
+
+**Goal**: All modules should have ✅ in all rows.
+
+**TA Module Progress**: 
+- ✅ Has excellent concept-overview and conceptual-guide (now standardized)
+- ⚠️ Needs 5 more topic-specific guides (03-09) to complete concept documentation
+- ⚠️ Spec documents need standardization
 
 **Goal**: All modules should have ✅ in all rows.
 

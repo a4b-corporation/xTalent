@@ -1,7 +1,25 @@
 # Eligibility Rules Guide
 
-**Version**: 1.0  
-**Last Updated**: 2025-12-08  
+**Version**: 2.1  
+**Last Updated**: 2025-12-11  
+**Module**: Total Rewards (TR)  
+**Status**: 🔄 Migrating to Core Eligibility Architecture
+
+---
+
+> [!IMPORTANT]
+> **Migration to Core Eligibility Engine (v2.1+)**
+> 
+> As of version 2.1, TR module is migrating from its own eligibility implementation to the **centralized Core Eligibility Engine**. This guide is being updated to reflect the new architecture.
+> 
+> **Key Changes**:
+> - TR-specific `EligibilityProfile` → **DEPRECATED** - Use `Core.EligibilityProfile`
+> - `eligibility_rule_json` fields → **DEPRECATED** - Use `default_eligibility_profile_id`
+> - New **Hybrid Model**: Default eligibility at plan level + Override at option/tier level
+> 
+> **Primary Reference**: See [Core Eligibility Engine Guide](../../CO/01-concept/11-eligibility-engine-guide.md) for complete architecture documentation.
+
+---
 **Audience**: HR Administrators, System Administrators  
 **Reading Time**: 20-25 minutes
 

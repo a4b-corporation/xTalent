@@ -1,16 +1,17 @@
 //===============================================================
-//  SCHEMA: Time & Attendance + Absence - Database Design v5.1
-//  Revision: 2025-12-12
-//  Model: 6-Level Hierarchical Architecture + Absence Management
-//  Based on: Time_Attendance_Concept_Design.docx + 3.Absence.v4.dbml
+//  SCHEMA: Time & Attendance - Database Design v5
+//  Revision: 2025-12-01
+//  Model: 6-Level Hierarchical Architecture
+//  Based on: Time_Attendance_Concept_Design.docx
 //===============================================================
 //
-//  CHANGES in v5.1 (2025-12-12):
-//  - Merged Absence v4 tables (11 new tables)
-//  - Integrated Centralized Eligibility Architecture
-//  - Added default_eligibility_profile_id to leave_type, leave_class, leave_policy
-//  - Deprecated eligibility_json in leave_class (backward compatible)
-//  - All changes marked with "changed 12dec2025"
+//  HIERARCHICAL LEVELS:
+//  Level 1: TIME SEGMENT (Atomic unit - WORK, BREAK, MEAL, TRANSFER)
+//  Level 2: SHIFT (Composition of segments - ELAPSED, PUNCH, FLEX)
+//  Level 3: DAY MODEL (Daily work schedule - WORK, OFF, HOLIDAY)
+//  Level 4: PATTERN (Period work schedule - cycle of day models)
+//  Level 5: WORK SCHEDULE RULE (Pattern + calendar + rotation)
+//  Level 6: ROSTER (Assignment to employees/groups)
 //
 //===============================================================
 
@@ -947,9 +948,6 @@ Table absence.leave_type {
   overlap_policy    varchar(30)                 // 'ALLOW'|'DENY'
   support_scope     varchar(50)                 // 'VN:LE,SG:BU'
   
-  // [v5.1] ELIGIBILITY - changed 12dec2025
-  default_eligibility_profile_id uuid [null, ref: > core.eligibility_profile.id]
-  
   metadata          jsonb
   is_active         boolean [default:true]
   effective_start   date
@@ -957,8 +955,6 @@ Table absence.leave_type {
   
   created_at        timestamp [default:`now()`] // 2025-12-01 NEW
   updated_at        timestamp [null]            // 2025-12-01 NEW
-  
-  Note: 'changed 12dec2025: Added default_eligibility_profile_id for hybrid eligibility model'
 }
 
 // 2025-12-01 KEEP: Giữ nguyên thiết kế v4
@@ -979,13 +975,7 @@ Table absence.leave_class {
   
   period_profile    jsonb
   posting_map       jsonb
-  
-  // [v5.1] ELIGIBILITY - changed 12dec2025
-  default_eligibility_profile_id uuid [null, ref: > core.eligibility_profile.id]
-  
-  // DEPRECATED - changed 12dec2025: Use default_eligibility_profile_id instead
   eligibility_json  jsonb  [null]
-  
   rules_json        jsonb  [null]
   
   emit_expire_turnover boolean [default:false]
@@ -1000,56 +990,9 @@ Table absence.leave_class {
   
   created_at        timestamp [default:`now()`] // 2025-12-01 NEW
   updated_at        timestamp [null]            // 2025-12-01 NEW
-  
-  Note: 'changed 12dec2025: Added default_eligibility_profile_id. eligibility_json DEPRECATED - use Core.EligibilityProfile for new implementations'
 }
 
 // 2025-12-01 KEEP: Giữ nguyên thiết kế v4
-
-
-/*----------- 2.1 Leave Policy (NEW from Absence v4) ----------*/
-// [v5.1] NEW TABLE - changed 12dec2025: Merged from 3.Absence.v4.dbml
-Table absence.leave_policy {
-  id                uuid [pk]
-  type_code         varchar(50) [ref: > absence.leave_type.code]
-  code              varchar(50) [unique]
-  name              varchar(100)
-  
-  // [v5.1] ELIGIBILITY - changed 12dec2025
-  default_eligibility_profile_id uuid [null, ref: > core.eligibility_profile.id]
-  
-  // Rule JSONs (keep for flexibility - complex business logic)
-  accrual_rule_json jsonb  [null]
-  carry_rule_json   jsonb  [null]
-  overdraft_allowed boolean [default:false]
-  overdraft_limit_hours decimal(6,2) [null]
-  metadata          jsonb
-  
-  check_limit_line  boolean [default:true]
-  
-  effective_start   date
-  effective_end     date [null]
-  
-  // [v5.1] Additional rules - changed 12dec2025
-  limit_rule_json   jsonb  [null]
-  validation_json   jsonb  [null]
-  rounding_json     jsonb  [null]
-  proration_json    jsonb  [null]
-  
-  Note: 'changed 12dec2025: Created with default_eligibility_profile_id for organizational scope. Rule JSONs kept for complex business logic flexibility'
-}
-
-// [v5.1] NEW TABLE - changed 12dec2025: Policy assignment
-Table absence.policy_assignment {
-  id                uuid [pk]
-  policy_id         uuid [ref: > absence.leave_policy.id]
-  assignment_type   varchar(20)                 // EMPLOYEE, BU, LE, GRADE
-  assignment_id     uuid                        // id thực thể
-  effective_start   date
-  effective_end     date [null]
-  
-  Note: 'changed 12dec2025: Merged from 3.Absence.v4.dbml'
-}
 
 
 /*----------- 3. Leave Instant (Giữ nguyên v4) -----------------*/
@@ -1086,46 +1029,6 @@ Table absence.leave_instant {
     (state_code)
   }
 }
-
-
-/*----------- 3.1 Leave Instant Detail (NEW from Absence v4) ---*/
-// [v5.1] NEW TABLE - changed 12dec2025: Grant/lot tracking with FEFO
-Table absence.leave_instant_detail {
-  id                uuid [pk]
-  instant_id        uuid [ref: > absence.leave_instant.id]
-  lot_kind          varchar(20)       // GRANT|CARRY|BONUS|TRANSFER|OTHER
-  eff_date          date
-  expire_date       date [null]
-  lot_qty           decimal(10,2)     // tổng số được cấp cho lot
-  used_qty          decimal(10,2) [default: 0.00]
-  priority          smallint [default: 100] // FEFO/độ ưu tiên trừ
-  tag               varchar(50) [null]
-  metadata          jsonb
-  
-  Indexes { 
-    (instant_id, eff_date)
-    (instant_id, expire_date) 
-  }
-  
-  Note: 'changed 12dec2025: Merged from 3.Absence.v4.dbml - FEFO engine tracking'
-}
-
-
-/*----------- 3.2 Leave Event Definition (NEW from Absence v4) -*/
-// [v5.1] NEW TABLE - changed 12dec2025: Event definitions
-Table absence.leave_event_def {
-  id                uuid [pk]
-  code              varchar(50) [unique]  // ACCRUAL|BOOK_HOLD|START_POST|ADJUST|EXPIRE|CARRY|RESET_LIMIT
-  name              varchar(100)
-  trigger_kind      varchar(20)           // SCHEDULED|REQUEST_BASED|MANUAL|API
-  schedule_expr     varchar(100) [null]   // nếu SCHEDULED (cron/iso)
-  policy_refs       jsonb  [null]         // danh sách policy code/ID cần áp dụng
-  metadata          jsonb
-  is_active         boolean [default:true]
-  
-  Note: 'changed 12dec2025: Merged from 3.Absence.v4.dbml'
-}
-
 
 // 2025-12-01 KEEP: Giữ nguyên thiết kế v4
 

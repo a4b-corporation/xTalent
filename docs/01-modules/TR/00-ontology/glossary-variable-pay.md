@@ -1,7 +1,7 @@
 # Variable Pay - Glossary
 
-**Version**: 2.0  
-**Last Updated**: 2025-12-04  
+**Version**: 2.1  
+**Last Updated**: 2025-12-11  
 **Module**: Total Rewards (TR)  
 **Sub-module**: Variable Pay
 

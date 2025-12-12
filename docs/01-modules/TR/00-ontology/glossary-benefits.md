@@ -1,7 +1,7 @@
 # Benefits - Glossary
 
-**Version**: 2.0  
-**Last Updated**: 2025-12-04  
+**Version**: 2.1  
+**Last Updated**: 2025-12-11  
 **Module**: Total Rewards (TR)  
 **Sub-module**: Benefits
 
@@ -204,6 +204,58 @@ rule_json:
 **Attributes**:
 - `plan_id`: FK to BenefitPlan
 - `eligibility_id`: FK to EligibilityProfile
+
+---
+
+## Centralized Eligibility Architecture (v2.1+)
+
+### Migration to Core Eligibility
+
+**Status**: 🔄 In Progress - Migrating from TR-specific eligibility to centralized Core eligibility
+
+**Background**: TR module originally had its own `EligibilityProfile` entity. As of v2.1, we are migrating to use the **Core Module's centralized Eligibility Engine** for better cross-module reusability and performance.
+
+**Key Changes**:
+
+1. **BenefitPlan**: 
+   - ✅ NEW: `default_eligibility_profile_id` → FK to `Core.EligibilityProfile`
+   - ⚠️ DEPRECATED: `eligibility_rule_json` → Use Core eligibility instead
+
+2. **BenefitOption**:
+   - ✅ NEW: `eligibility_profile_id` → Override plan default
+
+3. **TR.EligibilityProfile**:
+   - ⚠️ DEPRECATED: Use `Core.EligibilityProfile` instead
+
+**Hybrid Eligibility Model**:
+
+```yaml
+BenefitPlan: Health Insurance
+  default_eligibility_profile_id: "ELIG_ALL_FULLTIME"  # Default for all options
+  
+  BenefitOption: Basic
+    eligibility_profile_id: null  # Inherits plan default
+  
+  BenefitOption: Premium
+    eligibility_profile_id: "ELIG_SENIOR_STAFF"  # Override
+  
+  BenefitOption: Executive
+    eligibility_profile_id: "ELIG_EXECUTIVES"  # Override
+```
+
+**Benefits of Centralized Approach**:
+- ✅ **Reusability**: Same eligibility profile used across TA, TR, and other modules
+- ✅ **Performance**: O(1) lookups via cached membership
+- ✅ **Consistency**: Unified eligibility logic across system
+- ✅ **Flexibility**: Hybrid model supports both simple and complex scenarios
+
+**Migration Path**:
+1. Create `Core.EligibilityProfile` matching existing `eligibility_rule_json`
+2. Set `default_eligibility_profile_id` on BenefitPlan
+3. Keep `eligibility_rule_json` for backward compatibility (deprecated)
+4. Eventually remove `eligibility_rule_json` after full migration
+
+**Reference**: See [Core Eligibility Engine Guide](../../CO/01-concept/11-eligibility-engine-guide.md) for detailed architecture.
 
 ---
 
