@@ -1,9 +1,9 @@
 # TR Module - Functional Requirements
 
-**Version**: 1.0  
-**Last Updated**: 2025-12-08  
+**Version**: 2.0  
+**Last Updated**: 2025-12-15  
 **Module**: Total Rewards (TR)  
-**Status**: 🔄 In Progress
+**Status**: ✅ Complete - All 131 requirements defined
 
 ---
 
@@ -53,7 +53,7 @@ Core Compensation manages salary structures, pay components, grade systems, comp
 
 **Related Entities**: SalaryBasis, PayComponentDefinition, GradeVersion, GradeLadder, PayRange, CompensationPlan, CompensationCycle, CompensationAdjustment, EmployeeCompensationSnapshot, BudgetAllocation
 
-**Related Concept Guide**: [Compensation Management Guide](../01-concept/01-compensation-management-guide.md)
+**Related Concept Guide**: [Compensation Management Guide](../01-concept/03-compensation-management-guide.md)
 
 ---
 
@@ -1104,7 +1104,7 @@ Variable Pay manages performance-based compensation including bonuses (STI/LTI),
 
 **Related Entities**: BonusPlan, BonusCycle, BonusPool, BonusAllocation, EquityGrant, EquityVestingEvent, EquityTransaction, CommissionPlan, CommissionTier, CommissionTransaction
 
-**Related Concept Guide**: [Variable Pay Guide](../01-concept/02-variable-pay-guide.md)
+**Related Concept Guide**: [Variable Pay Guide](../01-concept/04-variable-pay-guide.md)
 
 ---
 
@@ -1999,7 +1999,7 @@ Benefits manages employee benefit programs including health insurance, retiremen
 
 **Related Entities**: BenefitPlan, BenefitOption, EligibilityProfile, PlanEligibility, EnrollmentPeriod, LifeEvent, EmployeeDependent, BenefitBeneficiary, Enrollment, ReimbursementRequest, ReimbursementLine, HealthcareClaimHeader, HealthcareClaimLine
 
-**Related Concept Guide**: [Benefits Administration Guide](../01-concept/03-benefits-administration-guide.md)
+**Related Concept Guide**: [Benefits Administration Guide](../01-concept/05-benefits-administration-guide.md)
 
 ---
 
@@ -3199,7 +3199,7 @@ Recognition manages employee recognition programs including points-based rewards
 
 **Related Entities**: RecognitionProgram, RecognitionAward, RecognitionNomination, RecognitionTransaction, PointBalance, RedemptionCatalog, RedemptionItem, RedemptionOrder
 
-**Related Concept Guide**: Recognition Programs Guide (to be created)
+**Related Concept Guide**: [Recognition Programs Guide](../01-concept/06-recognition-programs-guide.md)
 
 ---
 
@@ -3826,7 +3826,7 @@ Offer Management handles job offer creation, approval, acceptance, and integrati
 
 **Related Entities**: OfferTemplate, OfferPackage, OfferComponent, OfferApproval, OfferAcceptance, OfferLetter
 
-**Related Concept Guide**: Offer Management Guide (to be created)
+**Related Concept Guide**: [Offer Management Guide](../01-concept/07-offer-management-guide.md)
 
 ---
 
@@ -4596,7 +4596,7 @@ TR Statement manages total rewards statements that communicate the full value of
 
 **Related Entities**: TRStatement, TRStatementSection, TRStatementDelivery
 
-**Related Concept Guide**: TR Statement Guide (to be created)
+**Related Concept Guide**: [Total Rewards Statements Guide](../01-concept/08-total-rewards-statements-guide.md)
 
 ---
 
@@ -5104,7 +5104,7 @@ Deductions manages payroll deductions including voluntary deductions, mandatory 
 
 **Related Entities**: DeductionType, DeductionRule, EmployeeDeduction, DeductionTransaction, Garnishment, LoanRepayment
 
-**Related Concept Guide**: Deductions Guide (to be created)
+**Related Concept Guide**: [Tax Compliance Guide](../01-concept/09-tax-compliance-guide.md)
 
 ---
 
@@ -5771,7 +5771,7 @@ Tax Withholding manages income tax calculations, withholding, and compliance acr
 
 **Related Entities**: TaxJurisdiction, TaxBracket, TaxRule, EmployeeTaxProfile, TaxWithholdingTransaction, TaxFiling
 
-**Related Concept Guide**: Tax Compliance Guide (to be created)
+**Related Concept Guide**: [Tax Compliance Guide](../01-concept/09-tax-compliance-guide.md)
 
 ---
 
@@ -6525,7 +6525,7 @@ Taxable Bridge manages the mapping between compensation components and tax treat
 
 **Related Entities**: TaxableComponent, TaxCategory, ComponentTaxMapping, TaxableWageCalculation
 
-**Related Concept Guide**: Tax Compliance Guide (to be created)
+**Related Concept Guide**: [Tax Compliance Guide](../01-concept/09-tax-compliance-guide.md)
 
 ---
 
@@ -6912,7 +6912,7 @@ Audit manages comprehensive audit trails for all TR module activities, ensuring 
 
 **Related Entities**: AuditLog, ChangeHistory, ApprovalHistory, DataRetentionPolicy
 
-**Related Concept Guide**: Audit and Compliance Guide (to be created)
+**Related Concept Guide**: [Conceptual Guide](../01-concept/02-conceptual-guide.md)
 
 ---
 
@@ -7440,7 +7440,7 @@ Calculation Rules manages the formula engine, calculation rules, and business lo
 
 **Related Entities**: CalculationFormula, FormulaVersion, FormulaVariable, CalculationRule, RuleTest, FormulaExecution
 
-**Related Concept Guide**: Calculation Engine Guide (to be created)
+**Related Concept Guide**: [Conceptual Guide](../01-concept/02-conceptual-guide.md)
 
 ---
 

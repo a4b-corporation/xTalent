@@ -6576,21 +6576,564 @@ THEN offer COBRA continuation
 
 ---
 
-### BR-TR-BEN-046 to BR-TR-BEN-055: [COBRA & Compliance Rules]
+### BR-TR-BEN-046: COBRA Notice Generation
 
-**Note**: Due to length constraints, rules BR-BEN-046 to BR-BEN-055 cover:
-- BR-BEN-046: COBRA Notice Generation
-- BR-BEN-047: COBRA Premium Calculation (102%)
-- BR-BEN-048: COBRA Payment Processing
-- BR-BEN-049: COBRA Termination Rules
-- BR-BEN-050: ACA Compliance (Affordable Care Act)
-- BR-BEN-051: HIPAA Compliance
-- BR-BEN-052: Plan Document Requirements
-- BR-BEN-053: Summary Plan Description (SPD)
-- BR-BEN-054: Annual Notices
-- BR-BEN-055: Compliance Reporting
+**Priority**: HIGH
 
-[Each follows same detailed format with Priority, Description, Conditions, Rules, Exceptions, Error Messages, Examples, Related Requirements, and Related Entities]
+**Description**:
+System must automatically generate COBRA continuation coverage notices within 14 days of qualifying event.
+
+**Conditions**:
+```
+IF qualifying_event occurs
+AND employee has group health coverage
+AND employer has 20+ employees
+THEN generate COBRA notice within 14 days
+```
+
+**Rules**:
+1. Notice must be sent within 14 days of qualifying event
+2. Notice includes:
+   - Rights and obligations
+   - Coverage options
+   - Premium amounts (102% of total cost)
+   - Election deadline (60 days)
+   - Contact information
+3. Delivery methods: mail, email (with confirmation)
+4. Track delivery status
+5. Maintain notice history for audit
+
+**Exceptions**:
+- Termination for gross misconduct: no COBRA required
+- Small employers (<20 employees): exempt
+
+**Error Messages**:
+- `ERR_BEN_046`: "COBRA notice generation failed: {error}."
+- `WARN_BEN_046`: "COBRA notice deadline approaching for event {event_id}."
+
+**Examples**:
+```yaml
+Example: Employee Termination
+  Input:
+    employee_id: EMP_001
+    event_type: TERMINATION
+    event_date: "2025-03-15"
+    coverage: MEDICAL_FAMILY
+  
+  System Actions:
+    1. Create LifeEvent (type: TERMINATION)
+    2. Generate COBRA notice
+    3. Send notice by 2025-03-29 (14 days)
+    4. Set election deadline: 2025-05-14 (60 days)
+  
+  Notice Includes:
+    - Coverage continuation rights
+    - Premium: 4,500,000 VND/month (102% of 4,411,765)
+    - Election period: 60 days
+    - Payment due dates
+  
+  Validation:
+    BR-TR-BEN-046: PASS
+  
+  Output:
+    COBRA notice generated and sent
+```
+
+**Related Requirements**:
+- FR-TR-BEN-016
+
+**Related Entities**:
+- LifeEvent
+- Enrollment
+- COBRANotice
+
+---
+
+### BR-TR-BEN-047: COBRA Premium Calculation
+
+**Priority**: HIGH
+
+**Description**:
+COBRA premiums must be calculated at 102% of total cost (employee + employer portions).
+
+**Conditions**:
+```
+IF employee elects COBRA
+THEN premium = (employee_cost + employer_cost) × 1.02
+```
+
+**Rules**:
+1. Premium = 102% of total cost (covers admin fees)
+2. Includes both employee and employer portions
+3. Premium can increase with plan cost changes
+4. Must notify of premium changes 30 days in advance
+5. Disability extension: 150% of total cost (months 19-29)
+
+**Exceptions**:
+- Disability extension: 150% premium after month 18
+
+**Error Messages**:
+- `ERR_BEN_047`: "COBRA premium calculation error: {error}."
+
+**Examples**:
+```yaml
+Example: COBRA Premium Calculation
+  Input:
+    plan: MEDICAL_FAMILY
+    employee_cost: 1,200,000 VND
+    employer_cost: 3,600,000 VND
+    total_cost: 4,800,000 VND
+  
+  Calculation:
+    COBRA_premium = 4,800,000 × 1.02 = 4,896,000 VND/month
+  
+  Validation:
+    BR-TR-BEN-047: PASS
+  
+  Output:
+    Monthly COBRA premium: 4,896,000 VND
+```
+
+**Related Requirements**:
+- FR-TR-BEN-016
+
+**Related Entities**:
+- Enrollment
+- BenefitOption
+
+---
+
+### BR-TR-BEN-048: COBRA Payment Processing
+
+**Priority**: HIGH
+
+**Description**:
+COBRA payments must be received by due date to maintain coverage.
+
+**Conditions**:
+```
+IF COBRA payment due
+AND payment not received by grace period end
+THEN terminate coverage
+```
+
+**Rules**:
+1. Initial payment due: 45 days from election
+2. Subsequent payments: 1st of each month
+3. Grace period: 30 days
+4. Late payment: coverage continues during grace period
+5. Non-payment: coverage terminates end of grace period
+6. Retroactive termination if no payment
+
+**Exceptions**:
+- Payment disputes: hold termination pending resolution
+
+**Error Messages**:
+- `ERR_BEN_048`: "COBRA payment overdue for enrollment {id}."
+- `WARN_BEN_048`: "COBRA payment due in {days} days."
+
+**Examples**:
+```yaml
+Example: COBRA Payment Timeline
+  Input:
+    election_date: "2025-04-01"
+    coverage_start: "2025-04-01"
+    monthly_premium: 4,896,000 VND
+  
+  Payment Schedule:
+    Initial Payment:
+      Due: 2025-05-16 (45 days from election)
+      Covers: April + May
+      Amount: 9,792,000 VND
+    
+    June Payment:
+      Due: 2025-06-01
+      Grace Period: Until 2025-07-01
+      Amount: 4,896,000 VND
+  
+  Scenario: Late Payment
+    Payment Due: 2025-06-01
+    Payment Received: 2025-06-25
+    Status: ACTIVE (within grace period)
+  
+  Scenario: Non-Payment
+    Payment Due: 2025-06-01
+    Grace Period Ends: 2025-07-01
+    No Payment Received
+    Action: Terminate coverage 2025-07-01
+  
+  Validation:
+    BR-TR-BEN-048: PASS
+```
+
+**Related Requirements**:
+- FR-TR-BEN-016
+
+**Related Entities**:
+- Enrollment
+- COBRAPayment
+
+---
+
+### BR-TR-BEN-049: COBRA Termination Rules
+
+**Priority**: HIGH
+
+**Description**:
+COBRA coverage must terminate when specific conditions are met.
+
+**Conditions**:
+```
+IF termination_condition met
+THEN end COBRA coverage
+```
+
+**Rules**:
+1. Automatic termination when:
+   - Maximum period reached (18/36 months)
+   - Premium not paid (after grace period)
+   - Covered by another group plan
+   - Eligible for Medicare
+   - Employer ceases to maintain group plan
+2. Notice required: 30 days before termination
+3. Final premium prorated if mid-month termination
+
+**Exceptions**:
+- Disability extension: 29 months total (vs 18)
+
+**Error Messages**:
+- `ERR_BEN_049`: "COBRA termination failed: {error}."
+
+**Examples**:
+```yaml
+Example: COBRA Period Expiration
+  Input:
+    event_type: TERMINATION
+    event_date: "2025-03-15"
+    coverage_type: MEDICAL
+    cobra_period: 18 months
+  
+  Timeline:
+    Start: 2025-03-15
+    End: 2026-09-15 (18 months later)
+  
+  Termination:
+    Notice Sent: 2026-08-15 (30 days before)
+    Coverage Ends: 2026-09-15
+    Final Premium: Prorated for 15 days
+  
+  Validation:
+    BR-TR-BEN-049: PASS
+```
+
+**Related Requirements**:
+- FR-TR-BEN-016
+
+**Related Entities**:
+- Enrollment
+- LifeEvent
+
+---
+
+### BR-TR-BEN-050: ACA Compliance (Affordable Care Act)
+
+**Priority**: HIGH
+
+**Description**:
+Ensure compliance with ACA requirements for applicable large employers (50+ FTE).
+
+**Conditions**:
+```
+IF employer has 50+ full-time equivalent employees
+THEN must comply with ACA employer mandate
+```
+
+**Rules**:
+1. Offer coverage to 95% of full-time employees
+2. Coverage must be affordable (≤9.12% of household income)
+3. Coverage must provide minimum value (≥60% actuarial value)
+4. Generate Form 1095-C for all full-time employees
+5. File Form 1094-C with IRS annually
+6. Track employee hours for FTE calculation
+7. Penalties for non-compliance:
+   - No coverage: $2,970/employee/year
+   - Unaffordable coverage: $4,460/employee/year
+
+**Exceptions**:
+- Small employers (<50 FTE): exempt from mandate
+
+**Error Messages**:
+- `ERR_BEN_050`: "ACA compliance violation: {violation}."
+- `WARN_BEN_050`: "Coverage affordability threshold exceeded for {count} employees."
+
+**Examples**:
+```yaml
+Example: ACA Affordability Check
+  Input:
+    employee_salary: 50,000,000 VND/month (≈$2,100 USD)
+    employee_premium: 500,000 VND/month (≈$21 USD)
+    annual_salary: $25,200 USD
+    annual_premium: $252 USD
+  
+  Calculation:
+    affordability_pct = ($252 / $25,200) × 100 = 1.0%
+    threshold = 9.12%
+  
+  Validation:
+    BR-TR-BEN-050: PASS (1.0% < 9.12%)
+  
+  Output:
+    Coverage is affordable
+```
+
+**Related Requirements**:
+- FR-TR-BEN-017
+
+**Related Entities**:
+- BenefitPlan
+- Enrollment
+- Employee
+
+---
+
+### BR-TR-BEN-051: HIPAA Compliance
+
+**Priority**: HIGH
+
+**Description**:
+Protect employee health information per HIPAA privacy and security rules.
+
+**Conditions**:
+```
+IF handling protected health information (PHI)
+THEN apply HIPAA safeguards
+```
+
+**Rules**:
+1. Privacy Rule:
+   - Limit use/disclosure of PHI
+   - Employee rights to access/amend records
+   - Notice of privacy practices
+2. Security Rule:
+   - Administrative safeguards (access controls)
+   - Physical safeguards (secure facilities)
+   - Technical safeguards (encryption)
+3. Breach Notification:
+   - Notify affected individuals within 60 days
+   - Notify HHS if >500 individuals affected
+4. Business Associate Agreements with vendors
+5. Annual HIPAA training for staff
+
+**Exceptions**:
+- Treatment, payment, operations: PHI use allowed
+- Employee authorization: broader use permitted
+
+**Error Messages**:
+- `ERR_BEN_051`: "HIPAA violation detected: {violation}."
+- `WARN_BEN_051`: "Unauthorized PHI access attempt by {user}."
+
+**Related Requirements**:
+- FR-TR-BEN-017
+
+**Related Entities**:
+- EmployeeDependent
+- HealthcareClaimHeader
+- ReimbursementRequest
+
+---
+
+### BR-TR-BEN-052: Plan Document Requirements
+
+**Priority**: MEDIUM
+
+**Description**:
+Maintain required plan documents for ERISA compliance.
+
+**Conditions**:
+```
+IF benefit plan is ERISA-covered
+THEN maintain required plan documents
+```
+
+**Rules**:
+1. Required documents:
+   - Plan Document (legal plan terms)
+   - Summary Plan Description (SPD)
+   - Summary of Material Modifications (SMM)
+   - Summary of Benefits and Coverage (SBC)
+2. Document retention: 6 years minimum
+3. Make available to participants upon request
+4. Update SPD every 5 years (or sooner if changes)
+5. Distribute SPD to new participants within 90 days
+
+**Exceptions**:
+- Government plans: exempt from ERISA
+- Church plans: exempt from ERISA
+
+**Error Messages**:
+- `ERR_BEN_052`: "Required plan document missing: {document}."
+
+**Related Requirements**:
+- FR-TR-BEN-017
+
+**Related Entities**:
+- BenefitPlan
+- PlanDocument
+
+---
+
+### BR-TR-BEN-053: Summary Plan Description (SPD)
+
+**Priority**: MEDIUM
+
+**Description**:
+Generate and distribute Summary Plan Description to participants.
+
+**Conditions**:
+```
+IF new benefit plan created
+OR material plan changes
+THEN generate/update SPD
+```
+
+**Rules**:
+1. SPD must include:
+   - Plan name and type
+   - Employer information
+   - Plan administrator contact
+   - Eligibility requirements
+   - Benefits provided
+   - Claims procedures
+   - ERISA rights statement
+2. Written in plain language
+3. Distribute to new participants within 90 days
+4. Update every 5 years (or when material changes)
+5. Available in multiple languages if needed
+
+**Exceptions**:
+- None
+
+**Error Messages**:
+- `ERR_BEN_053`: "SPD generation failed: {error}."
+
+**Related Requirements**:
+- FR-TR-BEN-017
+
+**Related Entities**:
+- BenefitPlan
+- PlanDocument
+
+---
+
+### BR-TR-BEN-054: Annual Notices
+
+**Priority**: MEDIUM
+
+**Description**:
+Distribute required annual notices to plan participants.
+
+**Conditions**:
+```
+IF annual notice due date approaching
+THEN generate and distribute notices
+```
+
+**Rules**:
+1. Required annual notices:
+   - CHIP Notice (Children's Health Insurance)
+   - Medicare Part D Creditable Coverage Notice
+   - HIPAA Privacy Notice (if changes)
+   - WHCRA Notice (Women's Health/Cancer Rights)
+   - Newborns' Act Notice
+   - NMHPA Notice (Mental Health Parity)
+2. Timing: Annually before open enrollment
+3. Delivery: Mail, email, or posted on intranet
+4. Track distribution and acknowledgment
+5. Maintain proof of delivery
+
+**Exceptions**:
+- Some notices only if plan features apply
+
+**Error Messages**:
+- `ERR_BEN_054`: "Annual notice distribution failed: {error}."
+
+**Related Requirements**:
+- FR-TR-BEN-017
+
+**Related Entities**:
+- BenefitPlan
+- Enrollment
+
+---
+
+### BR-TR-BEN-055: Compliance Reporting
+
+**Priority**: MEDIUM
+
+**Description**:
+Generate and file required compliance reports with government agencies.
+
+**Conditions**:
+```
+IF reporting deadline approaching
+THEN generate compliance reports
+```
+
+**Rules**:
+1. Required reports:
+   - Form 5500 (Annual Return/Report) - DOL
+   - Form 1094-C/1095-C (ACA) - IRS
+   - PCORI Fee (Patient-Centered Outcomes Research) - IRS
+   - ERISA Annual Report
+   - State-specific reports
+2. Filing deadlines:
+   - Form 5500: Last day of 7th month after plan year end
+   - Form 1094-C/1095-C: February 28 (paper) or March 31 (electronic)
+   - PCORI Fee: July 31
+3. Electronic filing required for large filers
+4. Maintain filed reports for 6 years
+
+**Exceptions**:
+- Small plans: simplified Form 5500-SF
+- Fully insured plans: some exemptions
+
+**Error Messages**:
+- `ERR_BEN_055`: "Compliance report generation failed: {error}."
+- `WARN_BEN_055`: "Compliance report deadline in {days} days."
+
+**Examples**:
+```yaml
+Example: Form 5500 Filing
+  Input:
+    plan_year: 2024
+    plan_year_end: "2024-12-31"
+    participants: 500
+  
+  Requirements:
+    Form: 5500 (full form, >100 participants)
+    Filing Deadline: 2025-07-31
+    Filing Method: Electronic (EFAST2)
+  
+  Attachments:
+    - Schedule A (Insurance Information)
+    - Schedule C (Service Provider Information)
+    - Schedule H (Financial Information)
+    - Accountant's Report
+  
+  Validation:
+    BR-TR-BEN-055: PASS
+  
+  Output:
+    Form 5500 generated and ready for filing
+```
+
+**Related Requirements**:
+- FR-TR-BEN-017
+
+**Related Entities**:
+- BenefitPlan
+- Enrollment
+- ComplianceReport
 
 ---
 
@@ -6638,21 +7181,689 @@ THEN generate enrollment reports
 
 ---
 
-### BR-TR-BEN-057 to BR-TR-BEN-066: [Reporting & Integration Rules]
+### BR-TR-BEN-057: Carrier File Generation (EDI 834)
 
-**Note**: Rules BR-BEN-057 to BR-BEN-066 cover:
-- BR-BEN-057: Carrier File Generation (EDI 834)
-- BR-BEN-058: Premium Billing Reconciliation
-- BR-BEN-059: Payroll Deduction Integration
-- BR-BEN-060: Benefits Statement Generation
-- BR-BEN-061: Carrier File Validation
-- BR-BEN-062: File Transmission Security
-- BR-BEN-063: Reconciliation Reporting
-- BR-BEN-064: Audit Trail
-- BR-BEN-065: Data Retention
-- BR-BEN-066: Integration Error Handling
+**Priority**: HIGH
 
-[Each follows same detailed format]
+**Description**:
+Generate EDI 834 enrollment files for transmission to insurance carriers.
+
+**Conditions**:
+```
+IF enrollment changes occur
+THEN generate carrier file for transmission
+```
+
+**Rules**:
+1. File format: EDI 834 (Benefit Enrollment and Maintenance)
+2. File frequency: Daily, weekly, or monthly (per carrier)
+3. Include transactions:
+   - New enrollments (001)
+   - Changes (021)
+   - Terminations (024)
+   - Reinstatements (025)
+4. Required data elements:
+   - Member demographics
+   - Coverage effective dates
+   - Plan/option selections
+   - Dependent information
+   - Premium amounts
+5. File naming convention: `{carrier}_{date}_{sequence}.834`
+6. Validate before transmission
+
+**Exceptions**:
+- Some carriers use proprietary formats (not EDI)
+
+**Error Messages**:
+- `ERR_BEN_057`: "Carrier file generation failed: {error}."
+- `WARN_BEN_057`: "Carrier file contains {count} validation warnings."
+
+**Examples**:
+```yaml
+Example: Monthly Carrier File
+  Input:
+    carrier: "Bao_Viet"
+    period: "2025-03"
+    enrollments: 50 new, 20 changes, 10 terms
+  
+  File Generation:
+    Filename: BaoViet_20250401_001.834
+    Transactions: 80 total
+    
+    Sample Transaction (New Enrollment):
+      ISA*00*          *00*          *ZZ*SENDER         *ZZ*RECEIVER       *250401*1200*^*00501*000000001*0*P*:~
+      GS*BE*SENDER*RECEIVER*20250401*1200*1*X*005010X220A1~
+      ST*834*0001*005010X220A1~
+      BGN*00*12345*20250401*1200****2~
+      REF*38*POLICY123~
+      DTP*007*D8*20250401~
+      N1*P5*VNG Corporation~
+      INS*Y*18*021*20*A***FT~
+      REF*0F*EMP_001~
+      NM1*IL*1*NGUYEN*VAN*A***MI*123456789~
+      HD*021**HLT*MEDICAL_FAMILY~
+      DTP*348*D8*20250401~
+      SE*12*0001~
+      GE*1*1~
+      IEA*1*000000001~
+  
+  Validation:
+    BR-TR-BEN-057: PASS
+    All required segments present
+    Data elements valid
+  
+  Output:
+    File generated: BaoViet_20250401_001.834
+    Ready for transmission
+```
+
+**Related Requirements**:
+- FR-TR-BEN-014
+
+**Related Entities**:
+- Enrollment
+- BenefitPlan
+- CarrierFile
+
+---
+
+### BR-TR-BEN-058: Premium Billing Reconciliation
+
+**Priority**: HIGH
+
+**Description**:
+Reconcile premium billing from carriers with internal enrollment records.
+
+**Conditions**:
+```
+IF carrier invoice received
+THEN reconcile with enrollment data
+```
+
+**Rules**:
+1. Match carrier invoice to enrollment records
+2. Verify:
+   - Number of enrolled members
+   - Coverage tiers
+   - Premium amounts per member
+   - Total invoice amount
+3. Identify discrepancies:
+   - Missing enrollments
+   - Incorrect premiums
+   - Terminated members still billed
+4. Generate reconciliation report
+5. Resolve discrepancies with carrier
+6. Approve invoice for payment
+
+**Exceptions**:
+- Timing differences: enrollment effective vs billing period
+
+**Error Messages**:
+- `ERR_BEN_058`: "Premium reconciliation failed: {error}."
+- `WARN_BEN_058`: "Premium discrepancy detected: expected {expected}, billed {billed}."
+
+**Examples**:
+```yaml
+Example: Monthly Premium Reconciliation
+  Input:
+    carrier: "Bao Viet"
+    invoice_period: "2025-03"
+    invoice_amount: 450,000,000 VND
+    invoice_members: 150
+  
+  Internal Records:
+    enrolled_members: 148
+    expected_premium: 444,000,000 VND
+  
+  Reconciliation:
+    Member Count Variance: +2 (invoice has 2 extra)
+    Premium Variance: +6,000,000 VND
+  
+  Investigation:
+    Extra Members:
+      - EMP_099: Terminated 2025-02-28, still on invoice
+      - EMP_105: Never enrolled, incorrect addition
+    
+    Resolution:
+      - Request credit for EMP_099: 3,000,000 VND
+      - Request removal of EMP_105: 3,000,000 VND
+      - Adjusted invoice: 444,000,000 VND
+  
+  Validation:
+    BR-TR-BEN-058: PASS (after adjustment)
+  
+  Output:
+    Reconciliation complete
+    Adjusted invoice approved for payment
+```
+
+**Related Requirements**:
+- FR-TR-BEN-015
+
+**Related Entities**:
+- Enrollment
+- CarrierInvoice
+- BillingReconciliation
+
+---
+
+### BR-TR-BEN-059: Payroll Deduction Integration
+
+**Priority**: HIGH
+
+**Description**:
+Integrate benefit premium deductions with payroll system.
+
+**Conditions**:
+```
+IF payroll cycle starts
+THEN calculate and send deduction amounts
+```
+
+**Rules**:
+1. Calculate employee premium deductions per pay period
+2. Prorate for mid-period enrollment changes
+3. Generate deduction file for payroll:
+   - Employee ID
+   - Deduction code
+   - Deduction amount
+   - Effective date
+4. Handle multiple deductions per employee (medical, dental, etc.)
+5. Validate total deductions don't exceed salary
+6. Send to payroll before payroll cutoff
+7. Reconcile actual deductions with expected
+
+**Exceptions**:
+- Unpaid leave: suspend deductions, may require catch-up
+
+**Error Messages**:
+- `ERR_BEN_059`: "Payroll deduction integration failed: {error}."
+- `WARN_BEN_059`: "Deduction amount {amount} exceeds {pct}% of salary for employee {id}."
+
+**Examples**:
+```yaml
+Example: Bi-Weekly Payroll Deduction
+  Input:
+    employee_id: EMP_001
+    pay_frequency: BI_WEEKLY
+    enrollments:
+      - Medical: 1,200,000 VND/month
+      - Dental: 200,000 VND/month
+      - Life: 50,000 VND/month
+    total_monthly: 1,450,000 VND
+  
+  Calculation:
+    pay_periods_per_month: 2.167 (26 pay periods / 12 months)
+    deduction_per_period: 1,450,000 / 2.167 = 669,130 VND
+  
+  Deduction File:
+    employee_id: EMP_001
+    deductions:
+      - code: BEN_MEDICAL, amount: 553,680 VND
+      - code: BEN_DENTAL, amount: 92,280 VND
+      - code: BEN_LIFE, amount: 23,070 VND
+    total: 669,030 VND
+  
+  Validation:
+    BR-TR-BEN-059: PASS
+    Deductions calculated correctly
+  
+  Output:
+    Deduction file sent to payroll
+```
+
+**Related Requirements**:
+- FR-TR-BEN-014
+
+**Related Entities**:
+- Enrollment
+- PayrollDeduction
+- EmployeeCompensationSnapshot
+
+---
+
+### BR-TR-BEN-060: Benefits Statement Generation
+
+**Priority**: MEDIUM
+
+**Description**:
+Generate personalized benefits statements for employees.
+
+**Conditions**:
+```
+IF statement generation requested
+THEN create benefits statement for employee
+```
+
+**Rules**:
+1. Statement includes:
+   - Current enrollments
+   - Coverage details
+   - Premium costs (employee + employer)
+   - Total value of benefits
+   - Dependents covered
+   - Effective dates
+2. Statement formats: PDF, online portal
+3. Generation triggers:
+   - Annual (before open enrollment)
+   - On-demand (employee request)
+   - After enrollment changes
+4. Personalized with employee data
+5. Secure delivery (encrypted email or portal)
+
+**Exceptions**:
+- None
+
+**Error Messages**:
+- `ERR_BEN_060`: "Benefits statement generation failed: {error}."
+
+**Examples**:
+```yaml
+Example: Annual Benefits Statement
+  Input:
+    employee_id: EMP_001
+    statement_date: "2025-10-01"
+    statement_type: ANNUAL
+  
+  Statement Content:
+    Employee: Nguyen Van A
+    Period: 2025
+    
+    Current Enrollments:
+      Medical Insurance:
+        Plan: Premium Medical Plan
+        Coverage: Employee + Family
+        Monthly Premium:
+          You Pay: 1,200,000 VND
+          Employer Pays: 3,600,000 VND
+        Annual Value: 57,600,000 VND
+      
+      Dental Insurance:
+        Plan: Standard Dental
+        Coverage: Employee + Family
+        Monthly Premium:
+          You Pay: 200,000 VND
+          Employer Pays: 600,000 VND
+        Annual Value: 9,600,000 VND
+      
+      Life Insurance:
+        Plan: Basic Life
+        Coverage: Employee Only (50M VND)
+        Monthly Premium:
+          You Pay: 0 VND
+          Employer Pays: 50,000 VND
+        Annual Value: 600,000 VND
+    
+    Total Annual Benefit Value: 67,800,000 VND
+    Your Annual Cost: 16,800,000 VND
+    Employer Annual Cost: 51,000,000 VND
+  
+  Validation:
+    BR-TR-BEN-060: PASS
+  
+  Output:
+    Statement generated: BenefitsStatement_EMP001_2025.pdf
+    Sent to employee portal
+```
+
+**Related Requirements**:
+- FR-TR-BEN-017
+
+**Related Entities**:
+- Enrollment
+- BenefitPlan
+- BenefitsStatement
+
+---
+
+### BR-TR-BEN-061: Carrier File Validation
+
+**Priority**: HIGH
+
+**Description**:
+Validate carrier files before transmission to ensure data quality.
+
+**Conditions**:
+```
+IF carrier file generated
+THEN validate before transmission
+```
+
+**Rules**:
+1. Validation checks:
+   - File format compliance (EDI 834 standards)
+   - Required segments present
+   - Data element formats correct
+   - Dates valid and logical
+   - SSN/Tax ID format valid
+   - No duplicate members
+   - Effective dates in future or recent past
+2. Severity levels:
+   - ERROR: Blocks transmission, must fix
+   - WARNING: Allows transmission, should review
+   - INFO: Informational only
+3. Generate validation report
+4. Auto-fix minor issues if possible
+5. Require manual review for errors
+
+**Exceptions**:
+- Emergency transmissions: warnings can be overridden
+
+**Error Messages**:
+- `ERR_BEN_061`: "Carrier file validation failed: {count} errors found."
+- `WARN_BEN_061`: "Carrier file has {count} warnings."
+
+**Examples**:
+```yaml
+Example: File Validation
+  Input:
+    filename: BaoViet_20250401_001.834
+    transactions: 80
+  
+  Validation Results:
+    ERRORS (2):
+      - Line 45: Invalid SSN format for member EMP_023
+      - Line 67: Effective date in past (>90 days) for EMP_034
+    
+    WARNINGS (3):
+      - Line 12: Missing middle initial for EMP_005
+      - Line 29: Dependent age >26, verify eligibility
+      - Line 55: Premium amount differs from plan default
+    
+    INFO (1):
+      - File contains 2 reinstatements (unusual)
+  
+  Actions Required:
+    1. Fix SSN format for EMP_023
+    2. Verify effective date for EMP_034
+    3. Review warnings before transmission
+  
+  Validation:
+    BR-TR-BEN-061: FAIL (2 errors)
+  
+  Output:
+    File blocked from transmission
+    Validation report generated
+```
+
+**Related Requirements**:
+- FR-TR-BEN-014
+
+**Related Entities**:
+- CarrierFile
+- ValidationError
+
+---
+
+### BR-TR-BEN-062: File Transmission Security
+
+**Priority**: HIGH
+
+**Description**:
+Ensure secure transmission of carrier files containing sensitive data.
+
+**Conditions**:
+```
+IF transmitting carrier file
+THEN apply security measures
+```
+
+**Rules**:
+1. Encryption:
+   - Files encrypted before transmission (AES-256)
+   - Secure protocols: SFTP, HTTPS, AS2
+2. Authentication:
+   - Certificate-based authentication
+   - Strong passwords (if password-based)
+3. Transmission logging:
+   - Track all file transmissions
+   - Log success/failure
+   - Maintain audit trail
+4. Confirmation:
+   - Require carrier acknowledgment
+   - Retry failed transmissions
+   - Alert on repeated failures
+5. Data masking in logs (no SSN/sensitive data)
+
+**Exceptions**:
+- None (security always required)
+
+**Error Messages**:
+- `ERR_BEN_062`: "File transmission failed: {error}."
+- `WARN_BEN_062`: "Transmission retry {attempt} of 3 for file {filename}."
+
+**Related Requirements**:
+- FR-TR-BEN-014
+
+**Related Entities**:
+- CarrierFile
+- TransmissionLog
+
+---
+
+### BR-TR-BEN-063: Reconciliation Reporting
+
+**Priority**: MEDIUM
+
+**Description**:
+Generate reconciliation reports for enrollment and billing.
+
+**Conditions**:
+```
+IF reconciliation period ends
+THEN generate reconciliation reports
+```
+
+**Rules**:
+1. Report types:
+   - Enrollment reconciliation (system vs carrier)
+   - Premium reconciliation (billed vs expected)
+   - Payroll deduction reconciliation (deducted vs expected)
+2. Report frequency: Monthly, quarterly
+3. Include:
+   - Summary statistics
+   - Discrepancy details
+   - Resolution status
+   - Aging of unresolved items
+4. Distribution: HR, Finance, Benefits team
+5. Track resolution of discrepancies
+
+**Exceptions**:
+- None
+
+**Error Messages**:
+- `ERR_BEN_063`: "Reconciliation report generation failed: {error}."
+
+**Related Requirements**:
+- FR-TR-BEN-015
+
+**Related Entities**:
+- Enrollment
+- BillingReconciliation
+- ReconciliationReport
+
+---
+
+### BR-TR-BEN-064: Audit Trail
+
+**Priority**: HIGH
+
+**Description**:
+Maintain comprehensive audit trail for all benefit transactions.
+
+**Conditions**:
+```
+IF benefit transaction occurs
+THEN log to audit trail
+```
+
+**Rules**:
+1. Log all transactions:
+   - Enrollments (new, change, term)
+   - Dependent additions/removals
+   - Beneficiary changes
+   - Life events
+   - Premium changes
+   - Carrier file transmissions
+2. Audit record includes:
+   - Transaction type
+   - Employee ID
+   - Before/after values
+   - User who made change
+   - Timestamp
+   - Source (employee, HR, system)
+   - Reason/justification
+3. Immutable audit records
+4. Retention: 7 years minimum
+5. Searchable and reportable
+
+**Exceptions**:
+- None
+
+**Error Messages**:
+- `ERR_BEN_064`: "Audit log write failed: {error}."
+
+**Related Requirements**:
+- FR-TR-BEN-014
+
+**Related Entities**:
+- AuditLog
+- Enrollment
+- LifeEvent
+
+---
+
+### BR-TR-BEN-065: Data Retention
+
+**Priority**: MEDIUM
+
+**Description**:
+Retain benefit data per regulatory and business requirements.
+
+**Conditions**:
+```
+IF data retention period expires
+THEN archive or purge data
+```
+
+**Rules**:
+1. Retention periods:
+   - Active enrollments: Indefinite
+   - Terminated enrollments: 7 years
+   - Audit logs: 7 years
+   - Carrier files: 7 years
+   - COBRA records: 7 years
+   - Compliance reports: 7 years
+   - Dependent verification: 7 years
+2. Archive process:
+   - Move to archive storage after retention period
+   - Maintain accessibility for audit
+   - Compress for storage efficiency
+3. Purge process:
+   - After archive retention (7+ years)
+   - Secure deletion (unrecoverable)
+   - Log purge actions
+4. Legal holds: suspend purge if litigation
+
+**Exceptions**:
+- Legal holds: retain indefinitely until released
+
+**Error Messages**:
+- `ERR_BEN_065`: "Data retention process failed: {error}."
+
+**Related Requirements**:
+- FR-TR-BEN-017
+
+**Related Entities**:
+- Enrollment
+- AuditLog
+- DataRetentionPolicy
+
+---
+
+### BR-TR-BEN-066: Integration Error Handling
+
+**Priority**: HIGH
+
+**Description**:
+Handle integration errors gracefully and ensure data consistency.
+
+**Conditions**:
+```
+IF integration error occurs
+THEN handle error and alert
+```
+
+**Rules**:
+1. Error types:
+   - Carrier file transmission failure
+   - Payroll integration failure
+   - Premium reconciliation mismatch
+   - Data validation error
+2. Error handling:
+   - Log error with full context
+   - Retry transient errors (3 attempts)
+   - Alert responsible team
+   - Queue for manual resolution
+   - Track until resolved
+3. Data consistency:
+   - Rollback partial transactions
+   - Maintain data integrity
+   - No orphaned records
+4. Escalation:
+   - Auto-escalate after 24 hours unresolved
+   - Critical errors: immediate escalation
+5. Resolution tracking:
+   - Assign to team member
+   - Track resolution time
+   - Document resolution
+
+**Exceptions**:
+- None
+
+**Error Messages**:
+- `ERR_BEN_066`: "Integration error: {error}. Queued for resolution."
+- `WARN_BEN_066`: "Integration error unresolved for {hours} hours."
+
+**Examples**:
+```yaml
+Example: Carrier File Transmission Failure
+  Input:
+    filename: BaoViet_20250401_001.834
+    transmission_attempt: 1
+    error: "Connection timeout"
+  
+  Error Handling:
+    1. Log error with full details
+    2. Wait 5 minutes
+    3. Retry transmission (attempt 2)
+    4. If fails again, wait 15 minutes
+    5. Retry transmission (attempt 3)
+    6. If still fails:
+       - Alert Benefits team
+       - Queue for manual resolution
+       - Track in error queue
+  
+  Escalation:
+    If unresolved after 4 hours:
+      - Escalate to Benefits Manager
+      - Consider manual transmission
+  
+  Validation:
+    BR-TR-BEN-066: PASS (error handled)
+  
+  Output:
+    Error logged and queued
+    Team alerted
+```
+
+**Related Requirements**:
+- FR-TR-BEN-014
+
+**Related Entities**:
+- IntegrationError
+- ErrorQueue
+- AuditLog
 
 ---
 
@@ -7201,20 +8412,486 @@ THEN validate:
 
 ---
 
-### BR-TR-REC-012 to BR-TR-REC-020: [Nominations & Approvals Rules]
+### BR-TR-REC-012: Duplicate Nomination Prevention
 
-**Note**: Rules BR-REC-012 to BR-REC-020 cover:
-- BR-REC-012: Duplicate Nomination Prevention
-- BR-REC-013: Nomination Approval Workflow
-- BR-REC-014: Approval Thresholds
-- BR-REC-015: Approval Delegation
-- BR-REC-016: Nomination Denial Reasons
-- BR-REC-017: Nomination Frequency Limits
-- BR-REC-018: Batch Nomination Processing
-- BR-REC-019: Nomination Notification
-- BR-REC-020: Approval SLA Enforcement
+**Priority**: MEDIUM
 
-[Each follows same detailed format with Priority, Description, Conditions, Rules, Exceptions, Error Messages, Examples, Related Requirements, and Related Entities]
+**Description**:
+Prevent duplicate nominations for the same employee within a short timeframe.
+
+**Conditions**:
+```
+IF nominating employee
+AND same nominator nominated same employee for same event type
+AND within 30 days
+THEN reject as duplicate
+```
+
+**Rules**:
+1. Cannot nominate same employee for same event type within 30 days
+2. Different event types allowed (e.g., Teamwork + Innovation)
+3. Different nominators can nominate same employee
+4. System tracks nomination history per nominator-nominee-event combination
+5. Warning shown before submission if potential duplicate
+
+**Exceptions**:
+- Service anniversaries: auto-generated, no duplicate check
+- Manager can override duplicate check with justification
+
+**Error Messages**:
+- `ERR_REC_012`: "Duplicate nomination: You already nominated {employee} for {event_type} on {date}."
+- `WARN_REC_012`: "You nominated this employee recently. Are you sure you want to submit?"
+
+**Examples**:
+```yaml
+Example: Duplicate Prevention
+  Input:
+    nominator: John Doe
+    nominee: Jane Smith
+    event_type: TEAMWORK_EXCELLENCE
+    date: "2025-12-15"
+  
+  Check History:
+    Previous Nomination:
+      nominator: John Doe
+      nominee: Jane Smith
+      event_type: TEAMWORK_EXCELLENCE
+      date: "2025-11-20" (25 days ago)
+  
+  Validation:
+    BR-TR-REC-012: FAIL (within 30 days)
+  
+  Output:
+    Error: ERR_REC_012
+    Suggestion: "Try a different event type or wait until Dec 20"
+```
+
+**Related Requirements**:
+- FR-TR-REC-004
+
+**Related Entities**:
+- RecognitionNomination
+- RecognitionTransaction
+
+---
+
+### BR-TR-REC-013: Nomination Approval Workflow
+
+**Priority**: HIGH
+
+**Description**:
+Route high-value nominations through approval workflow.
+
+**Conditions**:
+```
+IF nomination points > approval_threshold
+THEN require approval before awarding
+```
+
+**Rules**:
+1. Nominations >500 points require approval
+2. Approval routing:
+   - 500-1000 points: Manager's manager
+   - 1000-2000 points: Director
+   - >2000 points: VP or above
+3. Approver can:
+   - Approve (award points)
+   - Reject (with reason)
+   - Adjust points (within limits)
+4. Auto-approve if no response in 5 business days
+5. Nominator and nominee notified of decision
+
+**Exceptions**:
+- Service anniversaries: auto-approved (system-generated)
+- CEO awards: no approval needed
+
+**Error Messages**:
+- `ERR_REC_013`: "Nomination requires approval from {approver_role}."
+
+**Examples**:
+```yaml
+Example: High-Value Nomination
+  Input:
+    nominator: Sarah Johnson (Manager)
+    nominee: Mike Chen
+    event_type: INNOVATION_AWARD
+    points: 1,500
+  
+  Approval Routing:
+    Threshold: 1,000 points
+    Required Approver: Director (Tom Wilson)
+    Notification: Email + In-app
+    SLA: 5 business days
+  
+  Workflow:
+    1. Nomination submitted (status: PENDING_APPROVAL)
+    2. Tom Wilson notified
+    3. Tom approves (status: APPROVED)
+    4. Points awarded to Mike Chen
+    5. Sarah and Mike notified
+  
+  Validation:
+    BR-TR-REC-013: PASS
+```
+
+**Related Requirements**:
+- FR-TR-REC-004
+
+**Related Entities**:
+- RecognitionNomination
+- RecognitionApproval
+
+---
+
+### BR-TR-REC-014: Approval Thresholds
+
+**Priority**: HIGH
+
+**Description**:
+Define approval thresholds based on points value and organizational hierarchy.
+
+**Conditions**:
+```
+IF nomination points >= threshold
+THEN route to appropriate approver level
+```
+
+**Rules**:
+1. Threshold levels:
+   - <500: Auto-approved
+   - 500-1000: Manager's manager
+   - 1000-2000: Director
+   - 2000-5000: VP
+   - >5000: C-level
+2. Thresholds configurable per legal entity
+3. Multiple approvals required for >5000 points
+4. Budget impact considered in approval
+5. Approver must be higher in hierarchy than nominator
+
+**Exceptions**:
+- Emergency recognition: CEO can override thresholds
+
+**Error Messages**:
+- `ERR_REC_014`: "Points value {points} requires {approver_level} approval."
+
+**Related Requirements**:
+- FR-TR-REC-004
+
+**Related Entities**:
+- RecognitionApproval
+- ApprovalThreshold
+
+---
+
+### BR-TR-REC-015: Approval Delegation
+
+**Priority**: MEDIUM
+
+**Description**:
+Allow approvers to delegate approval authority when unavailable.
+
+**Conditions**:
+```
+IF approver unavailable (OOO, on leave)
+THEN delegate to designated backup
+```
+
+**Rules**:
+1. Approver can designate backup approver
+2. Delegation period: start and end dates
+3. Backup must be same or higher level
+4. Delegation logged for audit
+5. Original approver can revoke delegation anytime
+6. System auto-routes to backup during delegation period
+
+**Exceptions**:
+- C-level approvals: cannot be delegated
+
+**Error Messages**:
+- `ERR_REC_015`: "Approval delegation failed: {reason}."
+
+**Related Requirements**:
+- FR-TR-REC-004
+
+**Related Entities**:
+- RecognitionApproval
+- ApprovalDelegation
+
+---
+
+### BR-TR-REC-016: Nomination Denial Reasons
+
+**Priority**: MEDIUM
+
+**Description**:
+Require documented reason when denying nominations.
+
+**Conditions**:
+```
+IF approver denies nomination
+THEN must provide denial reason
+```
+
+**Rules**:
+1. Denial reason required (min 20 characters)
+2. Common reasons:
+   - Insufficient justification
+   - Duplicate recognition
+   - Not aligned with event type
+   - Budget constraints
+   - Timing issues
+3. Denial reason visible to nominator only
+4. Nominee not notified of denied nominations
+5. Nominator can resubmit with modifications
+
+**Exceptions**:
+- None
+
+**Error Messages**:
+- `ERR_REC_016`: "Denial reason required (minimum 20 characters)."
+
+**Examples**:
+```yaml
+Example: Nomination Denial
+  Input:
+    nomination_id: NOM-2025-001
+    approver: Tom Wilson (Director)
+    action: DENY
+    reason: "The described achievement is part of normal job duties and doesn't meet the Innovation Award criteria. Consider submitting for Teamwork Excellence instead."
+  
+  System Actions:
+    1. Update nomination status: DENIED
+    2. Log denial with reason
+    3. Notify nominator (Sarah) with reason
+    4. Do NOT notify nominee (Mike)
+    5. Allow resubmission
+  
+  Validation:
+    BR-TR-REC-016: PASS (reason > 20 chars)
+```
+
+**Related Requirements**:
+- FR-TR-REC-004
+
+**Related Entities**:
+- RecognitionNomination
+- RecognitionApproval
+
+---
+
+### BR-TR-REC-017: Nomination Frequency Limits
+
+**Priority**: MEDIUM
+
+**Description**:
+Limit nomination frequency to prevent gaming the system.
+
+**Conditions**:
+```
+IF nominator exceeds frequency limit
+THEN warn or block nomination
+```
+
+**Rules**:
+1. Limits per nominator:
+   - Max 10 nominations per month
+   - Max 3 nominations per week
+   - Max 1 nomination per day for same nominee
+2. Limits configurable by program
+3. Warnings at 80% of limit
+4. Managers have higher limits (20/month)
+5. Limits reset monthly
+
+**Exceptions**:
+- Service anniversaries: excluded from limits
+- HR administrators: no limits
+
+**Error Messages**:
+- `ERR_REC_017`: "Nomination limit reached: {current}/{max} this month."
+- `WARN_REC_017`: "You have submitted {count} nominations this month (limit: {max})."
+
+**Related Requirements**:
+- FR-TR-REC-004
+
+**Related Entities**:
+- RecognitionNomination
+- NominationLimit
+
+---
+
+### BR-TR-REC-018: Batch Nomination Processing
+
+**Priority**: LOW
+
+**Description**:
+Allow managers to nominate multiple employees at once for team achievements.
+
+**Conditions**:
+```
+IF nominating multiple employees
+THEN validate each and process as batch
+```
+
+**Rules**:
+1. Max 50 employees per batch nomination
+2. All nominees receive same points
+3. Same event type and message for all
+4. Individual validation per nominee
+5. Partial success allowed (some approved, some rejected)
+6. Batch summary report generated
+
+**Exceptions**:
+- None
+
+**Error Messages**:
+- `ERR_REC_018`: "Batch nomination failed: {failed_count} of {total_count} nominations invalid."
+
+**Examples**:
+```yaml
+Example: Team Achievement Batch
+  Input:
+    nominator: Sarah Johnson (Manager)
+    nominees: [Mike, Jane, Tom, Lisa, John] (5 employees)
+    event_type: TEAM_ACHIEVEMENT
+    points: 500 each
+    message: "Outstanding Q4 performance - 120% of target!"
+  
+  Processing:
+    Nominee 1 (Mike): ✅ Valid, points awarded
+    Nominee 2 (Jane): ✅ Valid, points awarded
+    Nominee 3 (Tom): ❌ Not eligible (probation)
+    Nominee 4 (Lisa): ✅ Valid, points awarded
+    Nominee 5 (John): ✅ Valid, points awarded
+  
+  Result:
+    Success: 4/5 nominations
+    Failed: 1 (Tom - not eligible)
+    Total Points: 2,000 (4 × 500)
+  
+  Validation:
+    BR-TR-REC-018: PARTIAL SUCCESS
+```
+
+**Related Requirements**:
+- FR-TR-REC-004
+
+**Related Entities**:
+- RecognitionNomination
+- BatchNomination
+
+---
+
+### BR-TR-REC-019: Nomination Notification
+
+**Priority**: MEDIUM
+
+**Description**:
+Send notifications for nomination events to relevant parties.
+
+**Conditions**:
+```
+IF nomination event occurs
+THEN notify relevant parties
+```
+
+**Rules**:
+1. Notifications sent for:
+   - Nomination submitted (to nominee if auto-approved)
+   - Approval required (to approver)
+   - Nomination approved (to nominator and nominee)
+   - Nomination denied (to nominator only)
+2. Notification channels: Email + In-app
+3. Notification includes:
+   - Event type and points
+   - Nominator name (if public)
+   - Recognition message
+   - Action links
+4. Nominee can opt-out of public notifications
+5. Digest option: daily summary instead of real-time
+
+**Exceptions**:
+- Private recognitions: nominee only, no public announcement
+
+**Error Messages**:
+- `ERR_REC_019`: "Notification delivery failed: {reason}."
+
+**Related Requirements**:
+- FR-TR-REC-004
+
+**Related Entities**:
+- RecognitionNomination
+- Notification
+
+---
+
+### BR-TR-REC-020: Approval SLA Enforcement
+
+**Priority**: MEDIUM
+
+**Description**:
+Enforce service level agreements for nomination approvals.
+
+**Conditions**:
+```
+IF nomination pending approval
+AND SLA deadline approaching/passed
+THEN escalate or auto-approve
+```
+
+**Rules**:
+1. SLA: 5 business days for approval
+2. Reminders sent:
+   - Day 3: First reminder to approver
+   - Day 4: Second reminder + notify approver's manager
+   - Day 5: Final reminder
+3. After SLA:
+   - Auto-approve nomination
+   - Log SLA breach
+   - Notify approver of auto-approval
+4. SLA excludes weekends and holidays
+5. Urgent nominations: 1 business day SLA
+
+**Exceptions**:
+- >5000 points: no auto-approval, escalate to next level
+
+**Error Messages**:
+- `WARN_REC_020`: "Nomination approval overdue: {days} days past SLA."
+
+**Examples**:
+```yaml
+Example: SLA Enforcement
+  Input:
+    nomination_id: NOM-2025-001
+    submitted: "2025-12-01"
+    approver: Tom Wilson
+    SLA: 5 business days
+    deadline: "2025-12-08"
+  
+  Timeline:
+    Dec 1: Nomination submitted
+    Dec 4: Reminder 1 sent to Tom
+    Dec 5: Reminder 2 sent to Tom + notify his manager
+    Dec 6: Final reminder sent
+    Dec 8: SLA deadline
+    Dec 9: Auto-approved (1 day past SLA)
+  
+  Actions:
+    1. Auto-approve nomination
+    2. Award points to nominee
+    3. Log SLA breach
+    4. Notify Tom of auto-approval
+    5. Report to HR for tracking
+  
+  Validation:
+    BR-TR-REC-020: SLA BREACHED, AUTO-APPROVED
+```
+
+**Related Requirements**:
+- FR-TR-REC-004
+
+**Related Entities**:
+- RecognitionApproval
+- ApprovalSLA
 
 ---
 
@@ -7258,21 +8935,591 @@ THEN validate:
 
 ---
 
-### BR-TR-REC-022 to BR-TR-REC-031: [Redemption & Reporting Rules]
+### BR-TR-REC-022: Redemption Fulfillment
 
-**Note**: Rules BR-REC-022 to BR-REC-031 cover:
-- BR-REC-022: Redemption Fulfillment
-- BR-REC-023: Points Expiration
-- BR-REC-024: Award Tax Reporting
-- BR-REC-025: Recognition Statement Generation
-- BR-REC-026: Program Participation Reporting
-- BR-REC-027: Budget Consumption Reporting
-- BR-REC-028: Award Distribution Analysis
-- BR-REC-029: Recognition Trends Reporting
-- BR-REC-030: Payroll Integration for Monetary Awards
-- BR-REC-031: Recognition Audit Trail
+**Priority**: HIGH
 
-[Each follows same detailed format]
+**Description**:
+Fulfill perk redemption requests and deliver to employees.
+
+**Conditions**:
+```
+IF redemption approved
+THEN fulfill and deliver perk
+```
+
+**Rules**:
+1. Fulfillment methods:
+   - EMAIL: Digital codes sent within 1-2 business days
+   - PHYSICAL: Items shipped within 5-7 business days
+   - ACCOUNT_CREDIT: Applied immediately (PTO, parking)
+2. Track fulfillment status:
+   - PENDING → PROCESSING → SHIPPED/SENT → DELIVERED
+3. Send tracking information to employee
+4. Confirm delivery (auto or manual)
+5. Handle fulfillment failures (refund points, retry)
+
+**Exceptions**:
+- Out of stock: refund points, offer alternatives
+
+**Error Messages**:
+- `ERR_REC_022`: "Redemption fulfillment failed: {reason}."
+
+**Examples**:
+```yaml
+Example: Gift Card Fulfillment
+  Input:
+    redemption_id: RED-2025-001
+    perk: Starbucks $50 Gift Card
+    delivery_method: EMAIL
+    employee_email: jane.smith@company.com
+  
+  Fulfillment Process:
+    1. Generate gift card code from vendor API
+    2. Send email with code
+    3. Update status: DELIVERED
+    4. Log delivery timestamp
+  
+  Email Content:
+    Subject: "Your Starbucks Gift Card is Ready!"
+    Body: "You've redeemed 1,000 points for a $50 Starbucks gift card.
+           Code: SBUX-XXXX-XXXX-XXXX
+           Expires: Dec 15, 2026
+           Enjoy your coffee!"
+  
+  Validation:
+    BR-TR-REC-022: PASS
+```
+
+**Related Requirements**:
+- FR-TR-REC-010
+
+**Related Entities**:
+- RedemptionOrder
+- RedemptionCatalog
+
+---
+
+### BR-TR-REC-023: Points Expiration (FIFO)
+
+**Priority**: HIGH
+
+**Description**:
+Expire points using FIFO (First In, First Out) method after expiration period.
+
+**Conditions**:
+```
+IF points age > expiration_period (typically 12 months)
+THEN expire oldest points first
+```
+
+**Rules**:
+1. Expiration period: 12 months from earning date (configurable)
+2. FIFO expiration: oldest points expire first
+3. Expiration warnings sent:
+   - 30 days before: First warning
+   - 14 days before: Second warning
+   - 7 days before: Final warning
+4. Expired points cannot be recovered
+5. Redemptions deduct from oldest points first (prevents expiration)
+6. Batch expiration process runs daily
+
+**Exceptions**:
+- Lifetime points: no expiration (special programs)
+
+**Error Messages**:
+- `WARN_REC_023`: "{points} points expiring in {days} days!"
+- `INFO_REC_023`: "{points} points expired on {date}."
+
+**Examples**:
+```yaml
+Example: FIFO Expiration
+  Current Date: 2025-12-15
+  
+  Point Batches:
+    Batch 1 (Dec 15, 2024): 500 points → Expires Dec 15, 2025 (today)
+    Batch 2 (Jan 15, 2025): 1,000 points → Expires Jan 15, 2026
+    Batch 3 (Mar 15, 2025): 500 points → Expires Mar 15, 2026
+  
+  Expiration Process:
+    1. Identify expired batches (Batch 1)
+    2. Deduct 500 points from balance
+    3. Log expiration transaction
+    4. Send notification to employee
+    5. Update point balance: 2,000 → 1,500
+  
+  Redemption Impact (if redeemed 500 points yesterday):
+    - Deducted from Batch 1 (oldest)
+    - Batch 1 now has 0 points
+    - No expiration today (batch already used)
+  
+  Validation:
+    BR-TR-REC-023: PASS (FIFO applied)
+```
+
+**Related Requirements**:
+- FR-TR-REC-009
+
+**Related Entities**:
+- PointBalance
+- PointTransaction
+
+---
+
+### BR-TR-REC-024: Award Tax Reporting
+
+**Priority**: MEDIUM
+
+**Description**:
+Report recognition awards for tax purposes per regulatory requirements.
+
+**Conditions**:
+```
+IF award value > tax_threshold
+THEN report as taxable income
+```
+
+**Rules**:
+1. Tax thresholds (varies by country):
+   - Vietnam: Awards > 10,000,000 VND/year taxable
+   - US: All awards taxable (de minimis exception <$100)
+   - Singapore: Awards > SGD 200/year taxable
+2. Track cumulative award value per employee per year
+3. Generate tax reports:
+   - Vietnam: Include in monthly PIT declaration
+   - US: Form W-2 (Box 1)
+   - Singapore: IR8A
+4. Provide tax statements to employees
+5. Coordinate with payroll for withholding
+
+**Exceptions**:
+- Service awards (<$400 value, <5 years): non-taxable (US)
+- Safety awards: non-taxable (US)
+
+**Error Messages**:
+- `ERR_REC_024`: "Tax reporting failed: {reason}."
+
+**Related Requirements**:
+- FR-TR-REC-010
+
+**Related Entities**:
+- RecognitionTransaction
+- TaxReport
+
+---
+
+### BR-TR-REC-025: Recognition Statement Generation
+
+**Priority**: LOW
+
+**Description**:
+Generate personalized recognition statements for employees.
+
+**Conditions**:
+```
+IF statement period ends
+THEN generate recognition statement
+```
+
+**Rules**:
+1. Statement frequency: Quarterly or annual
+2. Statement includes:
+   - Total points earned
+   - Total points redeemed
+   - Total points expired
+   - Current balance
+   - Recognition received (who, when, why)
+   - Redemptions made
+3. Delivery: Email PDF or online portal
+4. Secure and confidential
+
+**Exceptions**:
+- None
+
+**Error Messages**:
+- `ERR_REC_025`: "Statement generation failed: {reason}."
+
+**Related Requirements**:
+- FR-TR-REC-010
+
+**Related Entities**:
+- RecognitionTransaction
+- PointBalance
+
+---
+
+### BR-TR-REC-026: Program Participation Reporting
+
+**Priority**: MEDIUM
+
+**Description**:
+Generate reports on recognition program participation and engagement.
+
+**Conditions**:
+```
+IF reporting period ends
+THEN generate participation reports
+```
+
+**Rules**:
+1. Metrics tracked:
+   - Participation rate (% employees giving/receiving)
+   - Recognition frequency (events per employee)
+   - Points awarded vs redeemed
+   - Top givers and receivers
+   - Department/team participation
+2. Report frequency: Monthly, quarterly
+3. Trend analysis: vs previous periods
+4. Benchmarking: vs industry standards
+5. Distribution: HR, management
+
+**Exceptions**:
+- None
+
+**Error Messages**:
+- `ERR_REC_026`: "Participation report generation failed: {reason}."
+
+**Examples**:
+```yaml
+Example: Q4 Participation Report
+  Period: Oct-Dec 2025
+  
+  Overall Participation:
+    Total Employees: 500
+    Gave Recognition: 350 (70%)
+    Received Recognition: 425 (85%)
+    Redeemed Points: 300 (60%)
+  
+  Recognition Events:
+    Total: 850 events
+    Peer: 600 (71%)
+    Manager: 200 (23%)
+    Milestone: 50 (6%)
+  
+  Points:
+    Awarded: 125,000
+    Redeemed: 95,000 (76%)
+    Expired: 5,000 (4%)
+    Balance: 25,000
+  
+  Top Givers:
+    1. Sarah Johnson: 45 recognitions
+    2. John Doe: 38 recognitions
+    3. Mike Chen: 32 recognitions
+  
+  Trends:
+    Participation: ↑ 15% vs Q3
+    Redemption Rate: ↑ 10% vs Q3
+    Expiration Rate: ↓ 2% vs Q3
+```
+
+**Related Requirements**:
+- FR-TR-REC-010
+
+**Related Entities**:
+- RecognitionTransaction
+- ParticipationReport
+
+---
+
+### BR-TR-REC-027: Budget Consumption Reporting
+
+**Priority**: MEDIUM
+
+**Description**:
+Track and report recognition program budget consumption.
+
+**Conditions**:
+```
+IF reporting period ends
+THEN generate budget consumption report
+```
+
+**Rules**:
+1. Track costs:
+   - Points awarded (liability)
+   - Perks redeemed (actual cost)
+   - Fulfillment costs
+   - Administrative costs
+2. Budget vs actual analysis
+3. Forecast future costs based on trends
+4. Alert when budget thresholds reached (80%, 95%)
+5. Distribution: Finance, HR
+
+**Exceptions**:
+- None
+
+**Error Messages**:
+- `ERR_REC_027`: "Budget report generation failed: {reason}."
+
+**Examples**:
+```yaml
+Example: Monthly Budget Report
+  Period: December 2025
+  
+  Budget Allocation:
+    Total Budget: $50,000
+    Perk Costs: $30,000
+    Admin Costs: $5,000
+    Reserve: $15,000
+  
+  Actual Spending:
+    Perks Redeemed: $28,500 (95% of budget)
+    Fulfillment: $1,200
+    Admin: $4,800
+    Total: $34,500
+  
+  Outstanding Liability:
+    Points Balance: 25,000 points
+    Estimated Value: $7,500 (at $0.30/point)
+  
+  Forecast:
+    Q1 2026 Redemptions: $35,000 (based on trends)
+    Budget Needed: $42,000
+  
+  Alerts:
+    ⚠️ Perk budget at 95% - consider reorder
+    ✅ Admin costs within budget
+```
+
+**Related Requirements**:
+- FR-TR-REC-005
+
+**Related Entities**:
+- BudgetAllocation
+- RedemptionOrder
+
+---
+
+### BR-TR-REC-028: Award Distribution Analysis
+
+**Priority**: LOW
+
+**Description**:
+Analyze award distribution patterns to ensure fairness and identify trends.
+
+**Conditions**:
+```
+IF analysis period ends
+THEN generate distribution analysis
+```
+
+**Rules**:
+1. Analyze distribution by:
+   - Department
+   - Job level
+   - Tenure
+   - Location
+   - Demographics (gender, age)
+2. Identify disparities:
+   - Departments with low recognition
+   - Employees never recognized
+   - Potential bias patterns
+3. Recommendations for improvement
+4. Quarterly analysis
+
+**Exceptions**:
+- None
+
+**Error Messages**:
+- `ERR_REC_028`: "Distribution analysis failed: {reason}."
+
+**Related Requirements**:
+- FR-TR-REC-010
+
+**Related Entities**:
+- RecognitionTransaction
+- Employee
+
+---
+
+### BR-TR-REC-029: Recognition Trends Reporting
+
+**Priority**: LOW
+
+**Description**:
+Identify and report trends in recognition program usage.
+
+**Conditions**:
+```
+IF reporting period ends
+THEN analyze trends
+```
+
+**Rules**:
+1. Trend metrics:
+   - Participation over time
+   - Popular event types
+   - Peak recognition periods
+   - Redemption patterns
+   - Perk preferences
+2. Seasonal analysis
+3. Correlation with business metrics (engagement, retention)
+4. Predictive analytics
+5. Quarterly trend reports
+
+**Exceptions**:
+- None
+
+**Error Messages**:
+- `ERR_REC_029`: "Trend analysis failed: {reason}."
+
+**Related Requirements**:
+- FR-TR-REC-010
+
+**Related Entities**:
+- RecognitionTransaction
+- TrendReport
+
+---
+
+### BR-TR-REC-030: Payroll Integration for Monetary Awards
+
+**Priority**: HIGH
+
+**Description**:
+Integrate monetary recognition awards with payroll for tax withholding and payment.
+
+**Conditions**:
+```
+IF award is monetary (cash, gift card > threshold)
+THEN integrate with payroll
+```
+
+**Rules**:
+1. Monetary awards processed through payroll:
+   - Cash bonuses
+   - Gift cards > tax threshold
+   - Taxable perks
+2. Tax withholding applied per employee's tax profile
+3. Included in payslip
+4. Reported on tax forms (W-2, IR8A, etc.)
+5. Payroll integration file generated monthly
+
+**Exceptions**:
+- Non-monetary awards: no payroll integration
+
+**Error Messages**:
+- `ERR_REC_030`: "Payroll integration failed: {reason}."
+
+**Examples**:
+```yaml
+Example: Monetary Award Payroll Integration
+  Input:
+    employee_id: EMP_001
+    award_type: SPOT_BONUS
+    amount: 5,000,000 VND
+    award_date: "2025-12-15"
+  
+  Payroll Integration:
+    Payroll Period: December 2025
+    Gross Pay: 50,000,000 VND (salary)
+    Recognition Award: 5,000,000 VND
+    Total Gross: 55,000,000 VND
+    
+    Tax Calculation:
+      Taxable Income: 55,000,000 VND
+      PIT Withholding: 5,500,000 VND (10%)
+      Net Pay: 49,500,000 VND
+    
+    Payslip Line Item:
+      Description: "Spot Bonus - Innovation Award"
+      Amount: 5,000,000 VND
+      Tax: 500,000 VND
+  
+  Validation:
+    BR-TR-REC-030: PASS
+```
+
+**Related Requirements**:
+- FR-TR-REC-010
+
+**Related Entities**:
+- RecognitionTransaction
+- PayrollDeduction
+
+---
+
+### BR-TR-REC-031: Recognition Audit Trail
+
+**Priority**: HIGH
+
+**Description**:
+Maintain comprehensive audit trail for all recognition transactions.
+
+**Conditions**:
+```
+IF recognition transaction occurs
+THEN log to audit trail
+```
+
+**Rules**:
+1. Log all transactions:
+   - Recognition awarded
+   - Points redeemed
+   - Points expired
+   - Nominations submitted/approved/denied
+   - Program configuration changes
+2. Audit record includes:
+   - Transaction type
+   - User who initiated
+   - Timestamp
+   - Before/after values
+   - Reason/justification
+   - IP address
+3. Immutable audit records
+4. Retention: 7 years
+5. Searchable and reportable
+
+**Exceptions**:
+- None
+
+**Error Messages**:
+- `ERR_REC_031`: "Audit log write failed: {reason}."
+
+**Examples**:
+```yaml
+Example: Recognition Audit Log
+  Transaction 1:
+    Type: RECOGNITION_AWARDED
+    Nominator: Sarah Johnson (EMP_100)
+    Nominee: Mike Chen (EMP_050)
+    Event Type: INNOVATION_AWARD
+    Points: 1,500
+    Timestamp: 2025-12-15 10:30:00
+    IP: 192.168.1.100
+    Status: APPROVED
+    Approver: Tom Wilson (EMP_200)
+  
+  Transaction 2:
+    Type: POINTS_REDEEMED
+    Employee: Mike Chen (EMP_050)
+    Perk: Starbucks $50 Gift Card
+    Points: 1,000
+    Balance Before: 2,500
+    Balance After: 1,500
+    Timestamp: 2025-12-15 14:45:00
+    IP: 192.168.1.105
+    Fulfillment: RED-2025-001
+  
+  Transaction 3:
+    Type: POINTS_EXPIRED
+    Employee: Mike Chen (EMP_050)
+    Points: 500
+    Batch Date: 2024-12-15
+    Expiration Date: 2025-12-15
+    Balance Before: 1,500
+    Balance After: 1,000
+    Timestamp: 2025-12-15 23:59:59
+    Reason: FIFO_EXPIRATION
+```
+
+**Related Requirements**:
+- FR-TR-REC-010
+
+**Related Entities**:
+- AuditLog
+- RecognitionTransaction
 
 ---
 
@@ -7884,21 +10131,183 @@ THEN route based on:
 
 ---
 
-### BR-TR-OFFER-014 to BR-TR-OFFER-023: [Approval & E-signature Rules]
+### BR-TR-OFFER-014: Approval Delegation
 
-**Note**: Rules BR-OFFER-014 to BR-OFFER-023 cover:
-- BR-OFFER-014: Approval Delegation
-- BR-OFFER-015: Offer Revision After Rejection
-- BR-OFFER-016: Offer Letter Generation
-- BR-OFFER-017: E-signature Integration
-- BR-OFFER-018: Offer Delivery to Candidate
-- BR-OFFER-019: Candidate Authentication
-- BR-OFFER-020: E-signature Validation
-- BR-OFFER-021: Offer Viewing Tracking
-- BR-OFFER-022: Reminder Notifications
-- BR-OFFER-023: Offer Withdrawal Rules
+**Priority**: MEDIUM
 
-[Each follows same detailed format with Priority, Description, Conditions, Rules, Exceptions, Error Messages, Examples, Related Requirements, and Related Entities]
+**Description**: Allow approvers to delegate offer approval authority when unavailable.
+
+**Conditions**: `IF approver unavailable THEN delegate to designated backup`
+
+**Rules**: 1. Delegation period with start/end dates 2. Backup must be same or higher level 3. Delegation logged for audit 4. Original approver can revoke anytime
+
+**Exceptions**: C-level offers: cannot be delegated
+
+**Error Messages**: `ERR_OFFER_014`: "Offer approval delegation failed: {reason}."
+
+**Related Requirements**: FR-TR-OFFER-004 | **Related Entities**: OfferApproval, ApprovalDelegation
+
+---
+
+### BR-TR-OFFER-015: Offer Revision After Rejection
+
+**Priority**: HIGH
+
+**Description**: Allow offer revision and resubmission after rejection.
+
+**Conditions**: `IF offer rejected THEN allow revision with changes`
+
+**Rules**: 1. Rejection reason required 2. Revisions must address rejection reasons 3. New approval cycle starts 4. Version history maintained 5. Max 3 revisions per offer
+
+**Exceptions**: None
+
+**Error Messages**: `ERR_OFFER_015`: "Maximum revisions (3) reached for offer {id}."
+
+**Related Requirements**: FR-TR-OFFER-004 | **Related Entities**: OfferPackage, OfferApproval
+
+---
+
+### BR-TR-OFFER-016: Offer Letter Generation
+
+**Priority**: HIGH
+
+**Description**: Generate offer letter from approved offer package using template.
+
+**Conditions**: `IF offer approved THEN generate offer letter from template`
+
+**Rules**: 1. Use approved template for position/level 2. Populate all offer details 3. Include all compensation components 4. Add legal disclaimers 5. Generate PDF format 6. Include company branding
+
+**Exceptions**: Executive offers: custom templates
+
+**Error Messages**: `ERR_OFFER_016`: "Offer letter generation failed: {reason}."
+
+**Related Requirements**: FR-TR-OFFER-006 | **Related Entities**: OfferPackage, OfferLetter
+
+---
+
+### BR-TR-OFFER-017: E-signature Integration
+
+**Priority**: HIGH
+
+**Description**: Integrate with e-signature platform (DocuSign, Adobe Sign) for legally binding signatures.
+
+**Conditions**: `IF offer letter ready THEN send for e-signature`
+
+**Rules**: 1. Integration with e-signature provider 2. Candidate signs electronically 3. Signature legally binding 4. Audit trail maintained 5. Signed document stored securely 6. Notifications on signature events
+
+**Exceptions**: Paper offers: manual signature process
+
+**Error Messages**: `ERR_OFFER_017`: "E-signature integration failed: {reason}."
+
+**Related Requirements**: FR-TR-OFFER-006 | **Related Entities**: OfferLetter, OfferAcceptance
+
+---
+
+### BR-TR-OFFER-018: Offer Delivery to Candidate
+
+**Priority**: HIGH
+
+**Description**: Deliver offer letter to candidate via secure channel.
+
+**Conditions**: `IF offer letter generated THEN deliver to candidate`
+
+**Rules**: 1. Delivery methods: Email (secure link), Portal, In-person 2. Candidate authentication required 3. Delivery confirmation tracked 4. Expiration date clearly stated 5. Contact information for questions
+
+**Exceptions**: None
+
+**Error Messages**: `ERR_OFFER_018`: "Offer delivery failed: {reason}."
+
+**Related Requirements**: FR-TR-OFFER-006 | **Related Entities**: OfferLetter, OfferDelivery
+
+---
+
+### BR-TR-OFFER-019: Candidate Authentication
+
+**Priority**: MEDIUM
+
+**Description**: Authenticate candidate identity before allowing offer access.
+
+**Conditions**: `IF candidate accessing offer THEN verify identity`
+
+**Rules**: 1. Authentication methods: Email verification, SMS code, Portal login 2. Unique access link per candidate 3. Link expires after use or time limit 4. Track access attempts 5. Prevent unauthorized access
+
+**Exceptions**: In-person delivery: no authentication needed
+
+**Error Messages**: `ERR_OFFER_019`: "Candidate authentication failed."
+
+**Related Requirements**: FR-TR-OFFER-006 | **Related Entities**: OfferLetter, CandidateAuth
+
+---
+
+### BR-TR-OFFER-020: E-signature Validation
+
+**Priority**: HIGH
+
+**Description**: Validate e-signature meets legal requirements.
+
+**Conditions**: `IF candidate signs THEN validate signature`
+
+**Rules**: 1. Signature timestamp recorded 2. IP address logged 3. Device information captured 4. Consent to e-sign confirmed 5. Signature certificate generated 6. Meets ESIGN Act / eIDAS requirements
+
+**Exceptions**: None
+
+**Error Messages**: `ERR_OFFER_020`: "E-signature validation failed: {reason}."
+
+**Related Requirements**: FR-TR-OFFER-006 | **Related Entities**: OfferAcceptance, SignatureValidation
+
+---
+
+### BR-TR-OFFER-021: Offer Viewing Tracking
+
+**Priority**: LOW
+
+**Description**: Track when candidate views offer letter.
+
+**Conditions**: `IF candidate opens offer THEN log viewing event`
+
+**Rules**: 1. Track first view timestamp 2. Track total views 3. Track time spent viewing 4. Alert hiring manager on first view 5. Analytics for engagement
+
+**Exceptions**: None
+
+**Error Messages**: None
+
+**Related Requirements**: FR-TR-OFFER-006 | **Related Entities**: OfferLetter, ViewingLog
+
+---
+
+### BR-TR-OFFER-022: Reminder Notifications
+
+**Priority**: MEDIUM
+
+**Description**: Send reminders to candidate before offer expiration.
+
+**Conditions**: `IF offer not responded AND expiration approaching THEN send reminders`
+
+**Rules**: 1. Reminders at: 7 days, 3 days, 1 day before expiration 2. Email + SMS notifications 3. Include expiration date and action link 4. Escalate to hiring manager if no response 5. Stop reminders after acceptance/decline
+
+**Exceptions**: None
+
+**Error Messages**: None
+
+**Related Requirements**: FR-TR-OFFER-006 | **Related Entities**: OfferPackage, Notification
+
+---
+
+### BR-TR-OFFER-023: Offer Withdrawal Rules
+
+**Priority**: HIGH
+
+**Description**: Allow company to withdraw offer before acceptance.
+
+**Conditions**: `IF offer needs withdrawal THEN follow withdrawal process`
+
+**Rules**: 1. Withdrawal reason required 2. Approval from hiring manager + HR 3. Candidate notified immediately 4. Offer status: WITHDRAWN 5. Cannot withdraw after acceptance 6. Legal review for risk
+
+**Exceptions**: Post-acceptance withdrawal: legal process required
+
+**Error Messages**: `ERR_OFFER_023`: "Cannot withdraw accepted offer."
+
+**Related Requirements**: FR-TR-OFFER-006 | **Related Entities**: OfferPackage, OfferWithdrawal
 
 ---
 
@@ -7945,21 +10354,183 @@ THEN validate:
 
 ---
 
-### BR-TR-OFFER-025 to BR-TR-OFFER-034: [Acceptance & Reporting Rules]
+### BR-TR-OFFER-025: Offer Decline Handling
 
-**Note**: Rules BR-OFFER-025 to BR-OFFER-034 cover:
-- BR-OFFER-025: Offer Decline Handling
-- BR-OFFER-026: Decline Reason Capture
-- BR-OFFER-027: Counter-Offer Management
-- BR-OFFER-028: Onboarding Integration
-- BR-OFFER-029: Offer Analytics Reporting
-- BR-OFFER-030: Time-to-Offer Metrics
-- BR-OFFER-031: Acceptance Rate Tracking
-- BR-OFFER-032: Offer Comparison Reporting
-- BR-OFFER-033: Competitive Analysis
-- BR-OFFER-034: Offer Audit Trail
+**Priority**: HIGH
 
-[Each follows same detailed format]
+**Description**: Handle offer declines and capture feedback.
+
+**Conditions**: `IF candidate declines offer THEN process decline and capture reason`
+
+**Rules**: 1. Decline reason required (dropdown + free text) 2. Decline timestamp recorded 3. Offer status: DECLINED 4. Notify hiring manager + HR 5. Close position or restart search 6. Thank candidate for consideration
+
+**Exceptions**: None
+
+**Error Messages**: `ERR_OFFER_025`: "Decline reason required."
+
+**Related Requirements**: FR-TR-OFFER-005 | **Related Entities**: OfferPackage, DeclineReason
+
+---
+
+### BR-TR-OFFER-026: Decline Reason Capture
+
+**Priority**: MEDIUM
+
+**Description**: Capture detailed decline reasons for analysis.
+
+**Conditions**: `IF candidate declines THEN capture structured decline reason`
+
+**Rules**: 1. Decline categories: Compensation, Location, Role, Culture, Timing, Competing offer, Personal 2. Allow multiple reasons 3. Optional free-text explanation 4. Competing offer details (if applicable) 5. Aggregate for analytics
+
+**Exceptions**: None
+
+**Error Messages**: None
+
+**Related Requirements**: FR-TR-OFFER-005 | **Related Entities**: DeclineReason, OfferAnalytics
+
+---
+
+### BR-TR-OFFER-027: Counter-Offer Management
+
+**Priority**: MEDIUM
+
+**Description**: Manage counter-offer negotiations with candidates.
+
+**Conditions**: `IF candidate requests changes THEN initiate counter-offer process`
+
+**Rules**: 1. Candidate can request changes before accepting/declining 2. Changes tracked as counter-offer 3. Hiring manager reviews counter-offer 4. Approval required for changes 5. Max 2 counter-offer rounds 6. New offer version generated if approved
+
+**Exceptions**: None
+
+**Error Messages**: `ERR_OFFER_027`: "Maximum counter-offers (2) reached."
+
+**Related Requirements**: FR-TR-OFFER-005 | **Related Entities**: OfferPackage, CounterOffer
+
+---
+
+### BR-TR-OFFER-028: Onboarding Integration
+
+**Priority**: HIGH
+
+**Description**: Integrate accepted offers with onboarding system.
+
+**Conditions**: `IF offer accepted THEN trigger onboarding workflow`
+
+**Rules**: 1. Create employee record in Core module 2. Generate employee ID 3. Trigger onboarding checklist 4. Send welcome email 5. Assign onboarding buddy 6. Schedule first day activities 7. Provision IT access
+
+**Exceptions**: None
+
+**Error Messages**: `ERR_OFFER_028`: "Onboarding integration failed: {reason}."
+
+**Related Requirements**: FR-TR-OFFER-005 | **Related Entities**: OfferAcceptance, Core.Employee
+
+---
+
+### BR-TR-OFFER-029: Offer Analytics Reporting
+
+**Priority**: MEDIUM
+
+**Description**: Generate analytics reports on offer activity.
+
+**Conditions**: `IF reporting period ends THEN generate offer analytics`
+
+**Rules**: 1. Metrics: Total offers, Acceptance rate, Decline rate, Time-to-offer, Time-to-accept, Counter-offer rate 2. Breakdown by: Department, Level, Location, Source 3. Trend analysis 4. Benchmarking 5. Monthly/quarterly reports
+
+**Exceptions**: None
+
+**Error Messages**: None
+
+**Related Requirements**: FR-TR-OFFER-012 | **Related Entities**: OfferPackage, OfferAnalytics
+
+---
+
+### BR-TR-OFFER-030: Time-to-Offer Metrics
+
+**Priority**: LOW
+
+**Description**: Track time from candidate selection to offer extended.
+
+**Conditions**: `IF offer extended THEN calculate time-to-offer`
+
+**Rules**: 1. Start: Candidate selected 2. End: Offer sent 3. Track approval time 4. Track preparation time 5. Identify bottlenecks 6. Target: <5 business days
+
+**Exceptions**: None
+
+**Error Messages**: None
+
+**Related Requirements**: FR-TR-OFFER-012 | **Related Entities**: OfferPackage, OfferMetrics
+
+---
+
+### BR-TR-OFFER-031: Acceptance Rate Tracking
+
+**Priority**: MEDIUM
+
+**Description**: Track offer acceptance rates for analysis.
+
+**Conditions**: `IF offer finalized THEN update acceptance rate metrics`
+
+**Rules**: 1. Calculate: Accepted / (Accepted + Declined) 2. Track by: Department, Level, Source, Recruiter 3. Identify trends 4. Target: >80% acceptance rate 5. Alert if below threshold
+
+**Exceptions**: Withdrawn offers: excluded from rate
+
+**Error Messages**: None
+
+**Related Requirements**: FR-TR-OFFER-012 | **Related Entities**: OfferAnalytics, AcceptanceRate
+
+---
+
+### BR-TR-OFFER-032: Offer Comparison Reporting
+
+**Priority**: LOW
+
+**Description**: Compare offers across candidates, positions, and time periods.
+
+**Conditions**: `IF comparison requested THEN generate comparison report`
+
+**Rules**: 1. Compare: Base salary, Total comp, Benefits, Sign-on bonus 2. Normalize by: Level, Location, Department 3. Identify outliers 4. Ensure pay equity 5. Competitive positioning
+
+**Exceptions**: None
+
+**Error Messages**: None
+
+**Related Requirements**: FR-TR-OFFER-012 | **Related Entities**: OfferPackage, ComparisonReport
+
+---
+
+### BR-TR-OFFER-033: Competitive Analysis
+
+**Priority**: MEDIUM
+
+**Description**: Analyze competitive offers and market positioning.
+
+**Conditions**: `IF competitive data available THEN analyze market position`
+
+**Rules**: 1. Track competing offers (from declines) 2. Compare to market data 3. Identify gaps 4. Adjust offer strategy 5. Quarterly competitive review
+
+**Exceptions**: None
+
+**Error Messages**: None
+
+**Related Requirements**: FR-TR-OFFER-012 | **Related Entities**: DeclineReason, CompetitiveAnalysis
+
+---
+
+### BR-TR-OFFER-034: Offer Audit Trail
+
+**Priority**: HIGH
+
+**Description**: Maintain comprehensive audit trail for all offer activities.
+
+**Conditions**: `IF offer activity occurs THEN log to audit trail`
+
+**Rules**: 1. Log: Creation, Approvals, Revisions, Delivery, Acceptance/Decline, Withdrawal 2. Audit record: User, Timestamp, Action, Before/After values, IP address 3. Immutable records 4. Retention: 7 years 5. Searchable and reportable
+
+**Exceptions**: None
+
+**Error Messages**: `ERR_OFFER_034`: "Audit log write failed: {reason}."
+
+**Related Requirements**: FR-TR-OFFER-012 | **Related Entities**: AuditLog, OfferPackage
 
 ---
 
@@ -8125,41 +10696,645 @@ Example: TR statement components
 
 ---
 
-### BR-TR-STMT-003 to BR-TR-STMT-022: [Remaining TR Statement Rules]
+### BR-TR-STMT-003: Statement Template Selection
 
-**Note**: Rules BR-STMT-003 to BR-STMT-022 cover:
+**Priority**: MEDIUM
 
-**Statement Configuration** (5 rules):
-- BR-STMT-003: Statement Template Selection
-- BR-STMT-004: Branding and Customization
-- BR-STMT-005: Multi-Currency Support
-- BR-STMT-006: Language Localization
-- BR-STMT-007: Component Visibility Rules
+**Description**:
+Select appropriate statement template based on employee level and configuration.
 
-**Valuation & Calculation** (4 rules):
-- BR-STMT-008: Benefits Valuation Method
-- BR-STMT-009: Equity Valuation
-- BR-STMT-010: Total Compensation Calculation
-- BR-STMT-011: Year-over-Year Comparison
+**Conditions**:
+```
+IF generating statement
+THEN select template based on employee level
+```
 
-**Personalization** (3 rules):
-- BR-STMT-012: Personalized Messaging
-- BR-STMT-013: Manager Commentary
-- BR-STMT-014: Career Path Visualization
+**Rules**:
+1. Template types: Standard, Executive, Manager, Contractor
+2. Selection criteria: Job level, employment type, location
+3. Templates define layout, sections, and branding
+4. Custom templates allowed for special cases
+5. Template must be active and approved
 
-**Delivery & Access** (5 rules):
-- BR-STMT-015: Statement Delivery Method
-- BR-STMT-016: Employee Portal Access
-- BR-STMT-017: Mobile Optimization
-- BR-STMT-018: PDF Export
-- BR-STMT-019: Print-Friendly Format
+**Exceptions**:
+- HR can override template selection
 
-**Analytics & Reporting** (3 rules):
-- BR-STMT-020: Statement Viewing Analytics
-- BR-STMT-021: Employee Engagement Tracking
-- BR-STMT-022: Statement Audit Trail
+**Error Messages**:
+- `ERR_STMT_003`: "No active template found for employee level {level}."
 
-[Each follows same detailed format with Priority, Description, Conditions, Rules, Exceptions, Error Messages, Examples where applicable, Related Requirements, and Related Entities]
+**Related Requirements**: FR-TR-STMT-003
+
+**Related Entities**: StatementTemplate, TotalRewardsStatement
+
+---
+
+### BR-TR-STMT-004: Branding and Customization
+
+**Priority**: LOW
+
+**Description**:
+Apply company branding and customization to statements.
+
+**Conditions**:
+```
+WHEN generating statement
+THEN apply branding configuration
+```
+
+**Rules**:
+1. Branding elements: Logo, colors, fonts, header/footer
+2. Customizable per legal entity or business unit
+3. Branding must meet accessibility standards
+4. PDF watermark for draft statements
+5. Final statements include company seal/signature
+
+**Exceptions**:
+- None
+
+**Error Messages**:
+- `WARN_STMT_004`: "Branding assets missing for {entity}."
+
+**Related Requirements**: FR-TR-STMT-003
+
+**Related Entities**: StatementTemplate, LegalEntity
+
+---
+
+### BR-TR-STMT-005: Multi-Currency Support
+
+**Priority**: HIGH
+
+**Description**:
+Support multiple currencies for global employees.
+
+**Conditions**:
+```
+IF employee has compensation in multiple currencies
+THEN display all currencies with conversion
+```
+
+**Rules**:
+1. Display amounts in original currency
+2. Provide converted total in employee's home currency
+3. Exchange rates: as of statement generation date
+4. Clearly indicate exchange rate and date used
+5. Support major currencies: VND, USD, EUR, SGD, etc.
+
+**Exceptions**:
+- None
+
+**Error Messages**:
+- `ERR_STMT_005`: "Exchange rate not available for {currency} on {date}."
+
+**Related Requirements**: FR-TR-STMT-004
+
+**Related Entities**: TotalRewardsStatement, Currency
+
+---
+
+### BR-TR-STMT-006: Language Localization
+
+**Priority**: MEDIUM
+
+**Description**:
+Generate statements in employee's preferred language.
+
+**Conditions**:
+```
+WHEN generating statement
+THEN use employee's preferred language
+```
+
+**Rules**:
+1. Supported languages: Vietnamese, English, others per configuration
+2. Language preference from employee profile
+3. All text, labels, and descriptions localized
+4. Numbers and dates formatted per locale
+5. Fallback to English if preferred language unavailable
+
+**Exceptions**:
+- None
+
+**Error Messages**:
+- `WARN_STMT_006`: "Language {language} not available, using English."
+
+**Related Requirements**: FR-TR-STMT-004
+
+**Related Entities**: TotalRewardsStatement, Employee
+
+---
+
+### BR-TR-STMT-007: Component Visibility Rules
+
+**Priority**: MEDIUM
+
+**Description**:
+Control which components are visible in statement based on configuration.
+
+**Conditions**:
+```
+IF component configured as hidden
+THEN exclude from statement
+```
+
+**Rules**:
+1. Configurable components: Equity, Retirement, Perks, Time Off, etc.
+2. Visibility rules per employee level or location
+3. Zero-value components can be hidden or shown
+4. Sensitive components (equity) require additional permissions
+5. At least base compensation and total must be visible
+
+**Exceptions**:
+- None
+
+**Error Messages**:
+- `ERR_STMT_007`: "Statement must include at least base compensation."
+
+**Related Requirements**: FR-TR-STMT-002
+
+**Related Entities**: StatementTemplate, StatementComponent
+
+---
+
+### BR-TR-STMT-008: Benefits Valuation Method
+
+**Priority**: HIGH
+
+**Description**:
+Calculate benefits value using employer portion only.
+
+**Conditions**:
+```
+WHEN calculating benefits value
+THEN use employer portion of premium/cost
+```
+
+**Rules**:
+1. Benefits value = Employer portion only (not employee portion)
+2. Include: Health, dental, vision, life, disability insurance
+3. Retirement: Employer match amount
+4. Exclude: Employee contributions
+5. Use annual cost (monthly × 12)
+
+**Exceptions**:
+- None
+
+**Error Messages**:
+- `ERR_STMT_008`: "Benefits valuation failed: {reason}."
+
+**Related Requirements**: FR-TR-STMT-005
+
+**Related Entities**: BenefitEnrollment, BenefitPlan
+
+---
+
+### BR-TR-STMT-009: Equity Valuation
+
+**Priority**: HIGH
+
+**Description**:
+Calculate equity value based on vested shares and current FMV.
+
+**Conditions**:
+```
+equity_value = vested_shares × fair_market_value
+```
+
+**Rules**:
+1. Use vested shares as of statement date
+2. FMV: Most recent valuation or stock price
+3. Include RSUs, stock options (in-the-money value)
+4. Show gross value before taxes
+5. Indicate valuation date
+
+**Exceptions**:
+- Private companies: Use latest 409A valuation
+
+**Error Messages**:
+- `ERR_STMT_009`: "FMV not available for equity valuation."
+
+**Related Requirements**: FR-TR-STMT-005
+
+**Related Entities**: EquityGrant, EquityVestingEvent
+
+---
+
+### BR-TR-STMT-010: Total Compensation Calculation
+
+**Priority**: HIGH
+
+**Description**:
+Calculate total compensation as sum of all components.
+
+**Conditions**:
+```
+total_compensation = base + variable + benefits + perks + time_off_value
+```
+
+**Rules**:
+1. Sum all visible components
+2. Exclude one-time payments unless in statement period
+3. Annualize all amounts (monthly × 12)
+4. Round to nearest whole currency unit
+5. Validate total = sum of components
+
+**Exceptions**:
+- None
+
+**Error Messages**:
+- `ERR_STMT_010`: "Total compensation mismatch: calculated {calc} vs expected {exp}."
+
+**Related Requirements**: FR-TR-STMT-005
+
+**Related Entities**: TotalRewardsStatement
+
+---
+
+### BR-TR-STMT-011: Year-over-Year Comparison
+
+**Priority**: MEDIUM
+
+**Description**:
+Compare current year total compensation to previous year.
+
+**Conditions**:
+```
+IF previous year statement exists
+THEN calculate and display YoY change
+```
+
+**Rules**:
+1. Calculate: (Current - Previous) / Previous × 100
+2. Display as percentage and absolute amount
+3. Highlight significant changes (>10%)
+4. Explain major changes (promotion, equity vesting, etc.)
+5. Show trend indicator (↑ ↓ →)
+
+**Exceptions**:
+- New hires: No comparison available
+
+**Error Messages**:
+- None
+
+**Related Requirements**: FR-TR-STMT-006
+
+**Related Entities**: TotalRewardsStatement
+
+---
+
+### BR-TR-STMT-012: Personalized Messaging
+
+**Priority**: LOW
+
+**Description**:
+Include personalized messages in statement.
+
+**Conditions**:
+```
+WHEN generating statement
+THEN include personalized content
+```
+
+**Rules**:
+1. Greeting with employee name
+2. Highlights: Promotions, awards, milestones
+3. Thank you message from CEO or manager
+4. Upcoming benefits enrollment reminders
+5. Career development opportunities
+
+**Exceptions**:
+- None
+
+**Error Messages**:
+- None
+
+**Related Requirements**: FR-TR-STMT-007
+
+**Related Entities**: TotalRewardsStatement, Employee
+
+---
+
+### BR-TR-STMT-013: Manager Commentary
+
+**Priority**: LOW
+
+**Description**:
+Allow managers to add personalized comments to team member statements.
+
+**Conditions**:
+```
+IF manager provides commentary
+THEN include in statement
+```
+
+**Rules**:
+1. Manager can add optional comment (max 500 characters)
+2. Comment reviewed by HR before inclusion
+3. Comment must be professional and positive
+4. Manager cannot see compensation details
+5. Comment appears in personalized section
+
+**Exceptions**:
+- None
+
+**Error Messages**:
+- `WARN_STMT_013`: "Manager comment exceeds 500 characters."
+
+**Related Requirements**: FR-TR-STMT-007
+
+**Related Entities**: TotalRewardsStatement, Manager
+
+---
+
+### BR-TR-STMT-014: Career Path Visualization
+
+**Priority**: LOW
+
+**Description**:
+Show career progression and potential future compensation.
+
+**Conditions**:
+```
+IF career path defined for employee
+THEN show progression visualization
+```
+
+**Rules**:
+1. Display current level and next level
+2. Show typical compensation range for next level
+3. Indicate skills/experience needed for progression
+4. Estimated timeline to next level
+5. Optional: Show 3-5 year career trajectory
+
+**Exceptions**:
+- Executives: Career path may not be defined
+
+**Error Messages**:
+- None
+
+**Related Requirements**: FR-TR-STMT-007
+
+**Related Entities**: CareerPath, JobLevel
+
+---
+
+### BR-TR-STMT-015: Statement Distribution Methods
+
+**Priority**: HIGH
+
+**Description**:
+Define approved methods for distributing statements to employees.
+
+**Conditions**:
+```
+WHEN statement generated
+THEN distribute via approved channels
+```
+
+**Rules**:
+1. Distribution methods: Email (PDF), Portal download, Printed
+2. Email: Secure attachment, password-protected optional
+3. Portal: Accessible via employee self-service
+4. Printed: For special events or executive presentations
+5. Track distribution status (sent, viewed, downloaded)
+
+**Exceptions**:
+- None
+
+**Error Messages**:
+- `ERR_STMT_015`: "Statement distribution failed: {reason}."
+
+**Related Requirements**: FR-TR-STMT-008
+
+**Related Entities**: TotalRewardsStatement, StatementDistribution
+
+---
+
+### BR-TR-STMT-016: Employee Portal Access
+
+**Priority**: HIGH
+
+**Description**:
+Employees can access current and historical statements via portal.
+
+**Conditions**:
+```
+WHEN employee logs into portal
+THEN display available statements
+```
+
+**Rules**:
+1. Show all statements for employee (current + historical)
+2. Statements sorted by date (newest first)
+3. Download as PDF
+4. View online (web version)
+5. Print-friendly format
+6. Access requires authentication
+
+**Exceptions**:
+- None
+
+**Error Messages**:
+- `ERR_STMT_016`: "Statement access denied: {reason}."
+
+**Related Requirements**: FR-TR-STMT-009
+
+**Related Entities**: TotalRewardsStatement, Employee
+
+---
+
+### BR-TR-STMT-017: Statement Versioning
+
+**Priority**: MEDIUM
+
+**Description**:
+Track statement versions and corrections.
+
+**Conditions**:
+```
+IF statement needs correction
+THEN create new version
+```
+
+**Rules**:
+1. Each statement has version number (v1, v2, etc.)
+2. Corrections create new version, mark previous as superseded
+3. Version history maintained
+4. Employees notified of corrections
+5. Latest version always displayed
+
+**Exceptions**:
+- None
+
+**Error Messages**:
+- None
+
+**Related Requirements**: FR-TR-STMT-010
+
+**Related Entities**: TotalRewardsStatement, StatementVersion
+
+---
+
+### BR-TR-STMT-018: Batch Generation Rules
+
+**Priority**: MEDIUM
+
+**Description**:
+Rules for batch generating statements for multiple employees.
+
+**Conditions**:
+```
+WHEN batch generating statements
+THEN process in batches with validation
+```
+
+**Rules**:
+1. Batch size: Max 500 employees per batch
+2. Validate data completeness before generation
+3. Skip employees with missing data, log errors
+4. Generate in background job
+5. Notify HR when batch complete
+6. Provide error report for failed statements
+
+**Exceptions**:
+- None
+
+**Error Messages**:
+- `ERR_STMT_018`: "Batch generation failed for {count} employees."
+
+**Related Requirements**: FR-TR-STMT-011
+
+**Related Entities**: TotalRewardsStatement, BatchJob
+
+---
+
+### BR-TR-STMT-019: Data Privacy and Confidentiality
+
+**Priority**: HIGH
+
+**Description**:
+Protect confidential compensation data in statements.
+
+**Conditions**:
+```
+WHEN handling statements
+THEN enforce data privacy rules
+```
+
+**Rules**:
+1. Statements are confidential to employee only
+2. Managers cannot view team member statements
+3. HR can view for support purposes only
+4. Access logged for audit
+5. Statements encrypted at rest and in transit
+6. Auto-delete from email after 90 days (portal remains)
+
+**Exceptions**:
+- Legal/compliance: Access with documented reason
+
+**Error Messages**:
+- `ERR_STMT_019`: "Unauthorized access to statement {id}."
+
+**Related Requirements**: FR-TR-STMT-012
+
+**Related Entities**: TotalRewardsStatement, AuditLog
+
+---
+
+### BR-TR-STMT-020: Statement Retention Policy
+
+**Priority**: MEDIUM
+
+**Description**:
+Define retention period for statements.
+
+**Conditions**:
+```
+WHEN statement older than retention period
+THEN archive or delete per policy
+```
+
+**Rules**:
+1. Retention period: 7 years (default)
+2. Active employees: All statements retained
+3. Terminated employees: Retain per legal requirements
+4. Archived statements: Read-only, no modifications
+5. Deletion requires approval
+
+**Exceptions**:
+- Legal hold: Retain indefinitely
+
+**Error Messages**:
+- None
+
+**Related Requirements**: FR-TR-STMT-013
+
+**Related Entities**: TotalRewardsStatement, RetentionPolicy
+
+---
+
+### BR-TR-STMT-021: Statement Correction Process
+
+**Priority**: HIGH
+
+**Description**:
+Process for correcting errors in generated statements.
+
+**Conditions**:
+```
+IF error found in statement
+THEN follow correction process
+```
+
+**Rules**:
+1. HR identifies error and documents issue
+2. Correction approved by compensation team
+3. New version generated with corrections
+4. Employee notified of correction
+5. Original statement marked as superseded
+6. Correction reason documented
+
+**Exceptions**:
+- Minor formatting errors: No new version needed
+
+**Error Messages**:
+- None
+
+**Related Requirements**: FR-TR-STMT-014
+
+**Related Entities**: TotalRewardsStatement, StatementCorrection
+
+---
+
+### BR-TR-STMT-022: Statement Audit Trail
+
+**Priority**: HIGH
+
+**Description**:
+Maintain complete audit trail for statement lifecycle.
+
+**Conditions**:
+```
+WHEN statement activity occurs
+THEN log to audit trail
+```
+
+**Rules**:
+1. Log events: Generation, Distribution, Access, Correction, Deletion
+2. Audit record: User, Timestamp, Action, IP address
+3. Immutable audit logs
+4. Retention: Same as statement (7 years)
+5. Searchable and reportable
+
+**Exceptions**:
+- None
+
+**Error Messages**:
+- `ERR_STMT_022`: "Audit log write failed: {reason}."
+
+**Related Requirements**: FR-TR-STMT-015
+
+**Related Entities**: AuditLog, TotalRewardsStatement
 
 ---
 
