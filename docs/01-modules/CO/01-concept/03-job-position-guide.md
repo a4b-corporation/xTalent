@@ -294,6 +294,13 @@ Job: Senior Backend Engineer
 
 **Definition**: Comprehensive description of job requirements, responsibilities, and expectations.
 
+> [!IMPORTANT]
+> **Job vs JobProfile Distinction**
+> 
+> - **Job** defines WHAT work needs to be done and its **compensation level** (grade, level)
+> - **JobProfile** describes HOW to do the work (requirements, responsibilities, skills)
+> - **Grade and Level are Job attributes**, not JobProfile attributes
+
 **Components**:
 1. **Summary** - Brief overview
 2. **Responsibilities** - Key duties
@@ -303,15 +310,21 @@ Job: Senior Backend Engineer
 6. **Physical Requirements** - Physical demands
 7. **Work Environment** - Conditions, travel, etc.
 
+**What JobProfile Does NOT Include**:
+- ❌ Grade (this is on Job)
+- ❌ Level (this is on Job)
+- ❌ Compensation information (this is in TR module)
+
 ### Complete Job Profile Example
 
 ```yaml
 Job: Senior Backend Engineer
   code: JOB-BACKEND-SENIOR
-  level: Senior (Level 3)
-  grade: Grade 7
+  grade_code: "G7"  # ✅ Grade is on Job
+  level_code: "L3"  # ✅ Level is on Job
   
 JobProfile:
+  # JobProfile focuses on description, NOT compensation
   # 1. Summary
   summary: |
     Design, develop, and maintain scalable backend systems and APIs.

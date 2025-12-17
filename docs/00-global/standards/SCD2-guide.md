@@ -1,5 +1,10 @@
 # Hướng dẫn Slowly Changing Dimension Type 2 (SCD Type 2)
 
+> [!NOTE]
+> **Tài liệu liên quan**
+> - [Data Classification Standard](./DATA-CLASSIFICATION-STANDARD.md) - Phân loại dữ liệu và khi nào dùng SCD2
+> - [SCD2 Implementation Standard](./SCD2-IMPLEMENTATION-STANDARD.md) - Tiêu chuẩn kỹ thuật SCD2
+
 ## Tổng quan
 
 ### Định nghĩa
@@ -12,6 +17,15 @@
 - **Audit trail**: Hỗ trợ kiểm toán và truy vết thay đổi
 - **Point-in-time reporting**: Cho phép truy vấn dữ liệu tại một thời điểm cụ thể trong quá khứ
 - **Compliance**: Đáp ứng yêu cầu pháp lý về lưu trữ lịch sử dữ liệu
+
+### Khi nào áp dụng SCD2?
+
+**SCD2 chỉ áp dụng cho Master Data**, không áp dụng cho:
+- **Transaction Data**: Dữ liệu có effective date từ nghiệp vụ (như leave_request, compensation_adjustment)
+- **Audit/Log Data**: Dữ liệu bất biến, chỉ INSERT
+- **Reference Data**: Dữ liệu tra cứu tĩnh (có thể dùng optional)
+
+> Xem chi tiết tại [Data Classification Standard](./DATA-CLASSIFICATION-STANDARD.md)
 
 ---
 
@@ -380,80 +394,81 @@ LIMIT 1;  -- Lấy profile mới nhất
 
 ##### Quan hệ 1-N: Entity ↔ EntityLicense
 
+> [!IMPORTANT]
+> **EntityLicense KHÔNG dùng SCD2** vì đã có effective dates từ nghiệp vụ (issue_date, effective_start/end_date).
+> Xem [Data Classification Standard](./DATA-CLASSIFICATION-STANDARD.md#category-2b-linked-entities-with-business-dates)
+
 **Đặc điểm:**
-- Child (EntityLicense) có effective dates riêng (SCD2 độc lập)
+- Child (EntityLicense) có effective dates từ nghiệp vụ (ngày cấp, ngày hiệu lực)
 - Một Entity có thể có nhiều Licenses
-- License có lifecycle riêng, không phụ thuộc vào Entity version
+- License mới = record mới (KHÔNG phải version mới)
+- Lịch sử được lưu bằng các records với dates khác nhau
 
 **Cấu trúc:**
 
 ```sql
--- Child: EntityLicense (SCD2, 1-N)
+-- Child: EntityLicense (KHÔNG dùng SCD2)
 CREATE TABLE entity_license (
-    id UUID PRIMARY KEY,                    -- Row ID
-    license_code VARCHAR(50) NOT NULL,      -- Business key của license
-    entity_code VARCHAR(50) NOT NULL,       -- FK logic đến entity
+    id UUID PRIMARY KEY,
+    legal_entity_code VARCHAR(50) NOT NULL,  -- FK logic đến entity
     license_number VARCHAR(100),
-    issue_date DATE,
-    effective_start_date DATE NOT NULL,     -- Có effective dates riêng
-    effective_end_date DATE,
-    is_current_flag BOOLEAN NOT NULL DEFAULT TRUE
+    issue_date DATE,                         -- Business date
+    effective_start_date DATE NOT NULL,      -- Business date (KHÔNG phải SCD2!)
+    effective_end_date DATE,                 -- Business date (KHÔNG phải SCD2!)
+    -- KHÔNG có is_current_flag
+    created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_entity_license_entity_code ON entity_license(entity_code);
-CREATE INDEX idx_entity_license_current ON entity_license(license_code, is_current_flag) 
-WHERE is_current_flag = TRUE;
+CREATE INDEX idx_entity_license_entity_code ON entity_license(legal_entity_code);
 ```
 
 **Kịch bản 1: Entity thay đổi, License KHÔNG thay đổi**
 
 ```sql
 -- Entity tạo version mới (ENT001: uuid-v1 → uuid-v2)
--- License giữ nguyên, KHÔNG cần tạo version mới
+-- License giữ nguyên, KHÔNG cần làm gì
 
 -- Licenses vẫn tham chiếu đến entity_code='ENT001'
 -- Khi query, sẽ join với current version của entity
 ```
 
-**Kịch bản 2: License thay đổi (gia hạn, sửa đổi)**
+**Kịch bản 2: License hết hạn, cấp license mới**
 
 ```sql
-BEGIN;
-
--- Đóng version cũ của License
+-- Option A: Kết thúc license cũ, tạo license mới
 UPDATE entity_license
-SET effective_end_date = '2025-06-30', is_current_flag = FALSE
-WHERE license_code = 'LIC001' AND is_current_flag = TRUE;
+SET effective_end_date = '2025-12-31'
+WHERE license_number = 'LIC001';
 
--- Tạo version mới của License
 INSERT INTO entity_license (
-    id, license_code, entity_code, license_number, issue_date,
-    effective_start_date, is_current_flag
+    id, legal_entity_code, license_number, issue_date, effective_start_date
 ) VALUES (
-    gen_random_uuid(),
-    'LIC001',           -- Cùng license_code
-    'ENT001',           -- Cùng entity_code
-    'NEW-NUMBER-123',   -- Số mới
-    '2025-07-01',
-    '2025-07-01',
-    TRUE
+    gen_random_uuid(), 'ENT001', 'LIC002', '2025-12-15', '2026-01-01'
 );
 
-COMMIT;
+-- Option B: Gia hạn license (cùng số, nội dung mới)
+INSERT INTO entity_license (
+    id, legal_entity_code, license_number, issue_date, effective_start_date
+) VALUES (
+    gen_random_uuid(), 'ENT001', 'LIC001', '2025-12-15', '2026-01-01'
+);
 ```
 
 **Truy vấn:**
 
 ```sql
--- Lấy Entity + tất cả Licenses hiện tại
+-- Lấy Entity + tất cả Licenses đang hiệu lực
 SELECT 
     e.code AS entity_code,
     e.name_vi,
-    el.license_code,
     el.license_number,
-    el.issue_date
+    el.issue_date,
+    el.effective_start_date,
+    el.effective_end_date
 FROM entity e
-LEFT JOIN entity_license el ON e.code = el.entity_code AND el.is_current_flag = TRUE
+LEFT JOIN entity_license el ON e.code = el.legal_entity_code
+    AND el.effective_start_date <= CURRENT_DATE
+    AND (el.effective_end_date IS NULL OR el.effective_end_date >= CURRENT_DATE)
 WHERE e.code = 'ENT001' 
   AND e.is_current_flag = TRUE;
 ```
@@ -727,14 +742,16 @@ COMMIT;
 
 ### Tổng kết các Pattern
 
-| Pattern | Parent | Child | Parent thay đổi | Child thay đổi | FK Type |
-|---------|--------|-------|-----------------|----------------|---------|
-| **1-1 Dependent** | SCD2 | SCD2 | Child tạo version mới | Parent tạo version mới | Logical (code) |
-| **1-N Independent** | SCD2 | SCD2 | Child KHÔNG đổi | Parent KHÔNG đổi | Logical (code) |
-| **SCD2 → Non-SCD2** | SCD2 | Non-SCD2 | Child KHÔNG đổi | Parent KHÔNG đổi | Logical (code) |
-| **SCD2 ← Non-SCD2** | Non-SCD2 | SCD2 | N/A | N/A | Logical (code) |
-| **Parent-Child Supplementary** | SCD2 | Non-SCD2 | Child KHÔNG đổi | Parent KHÔNG đổi | Logical (code) |
-| **Parent-Child Core** | SCD2 | Non-SCD2 | Child KHÔNG đổi | **Parent TẠO version mới** | Logical (code) |
+> [!NOTE]
+> Xem thêm [Data Classification Standard](./DATA-CLASSIFICATION-STANDARD.md#relationship-patterns-summary) cho decision tree đầy đủ
+
+| Pattern | Parent | Child | Child có business dates? | Child dùng SCD2? | FK Type |
+|---------|--------|-------|-------------------------|------------------|----------|
+| **1-1 Extension** | SCD2 | Profile | ❌ Không | Theo parent | Logical (code) |
+| **1-N Business Dates** | SCD2 | License, Rep | ✅ Có | ❌ KHÔNG | Logical (code) |
+| **1-N Simple CRUD** | SCD2 | Bank Account | ❌ Không | ❌ KHÔNG | Logical (code) |
+| **Parent-Child Supplementary** | SCD2 | Skills (Non-SCD2) | ❌ Không | ❌ KHÔNG | Logical (code) |
+| **Parent-Child Core** | SCD2 | Budget (Non-SCD2) | ❌ Không | ❌ KHÔNG (trigger parent) | Logical (code) |
 
 ---
 
@@ -1205,6 +1222,8 @@ WHERE e1.effective_start_date <= COALESCE(e2.effective_end_date, '9999-12-31')
 
 ---
 
-**Phiên bản:** 1.0  
-**Ngày cập nhật:** 2025-12-02  
-**Tác giả:** xTalent Development Team
+**Phiên bản:** 1.2  
+**Ngày cập nhật:** 2025-12-17  
+**Tác giả:** xTalent Development Team  
+**Thay đổi v1.2:** Sửa ví dụ entity_license (KHÔNG dùng SCD2 vì có business dates)  
+**Thay đổi v1.1:** Thêm tham chiếu đến Data Classification Standard và SCD2 Implementation Standard

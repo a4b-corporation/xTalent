@@ -1026,6 +1026,14 @@ Table jobpos.job {
   //* ---- Phân loại nghiệp vụ ---- */
   job_type_code   varchar(50)  [null]          // code_list(JOB_TYPE)
   ranking_level_code varchar(50) [null]        // code_list(JOB_RANK)
+  //* ---- changed 17dec2025: Grade & Level (moved from job_profile) ---- */
+  level_code      varchar(50) [ref: > jobpos.job_level.level_code, null]  // changed 17dec2025: Moved from job_profile - Job level/seniority
+  grade_code      varchar(50) [null]                                      // changed 17dec2025: Moved from job_profile - References TR.GradeVersion.grade_code for compensation
+  // Rationale: Grade determines compensation (Job concern, not Profile concern)
+  // - Simpler TR integration: Job → grade_code → TR.GradeVersion → PayRange
+  // - No duplication across multiple profiles (e.g., different locales)
+  // - Aligns with ontology (Job.grade_id in core-ontology.yaml)
+  // - Position can access grade directly via job.grade_code without job_profile
   //* ---- Mô tả & meta ---- */
   description     text       [null]
   metadata        jsonb      [null]
@@ -1039,8 +1047,10 @@ Table jobpos.job {
 
   Indexes {
     (tree_id, job_code, is_current_flag)   // bảo đảm duy nhất trong tree
+    (grade_code)                            // changed 17dec2025: NEW - for TR integration lookups
+    (level_code)                            // changed 17dec2025: NEW - for level-based queries
   }
-  Note: 'Job Node đa cấp: có thể nằm trong CORP_JOB hoặc cây clone của BU. Nhánh con mới: parent_id trỏ node tập đoàn. Override: tạo node BU cùng job_code, inherit_flag=false.'
+  Note: 'changed 17dec2025: Added grade_code and level_code (moved from job_profile) for direct TR integration. Job determines compensation level, Profile describes requirements. Job Node đa cấp: có thể nằm trong CORP_JOB hoặc cây clone của BU. Nhánh con mới: parent_id trỏ node tập đoàn. Override: tạo node BU cùng job_code, inherit_flag=false.'
 }
 
 // ----------- JOB CROSS-TREE MAPPING (nhiều BU → 1 Corp) ----------
@@ -1065,8 +1075,15 @@ Table jobpos.job_profile {
   id                   uuid       [pk, default: `gen_random_uuid()`]
   job_id               uuid [ref: > jobpos.job.id]
   locale_code          varchar(10)  [default: 'en-US']
-  level_code           varchar(50) [ref: > jobpos.job_level.level_code, null]
-  grade_code           varchar(50) [ref: > jobpos.job_grade.grade_code, null]
+  
+  // *** DEPRECATED 17dec2025: Moved to job table ***
+  // level_code        varchar(50) [ref: > jobpos.job_level.level_code, null]
+  // grade_code        varchar(50) [ref: > jobpos.job_grade.grade_code, null]
+  // Rationale: Grade/Level are Job attributes (compensation-related), not Profile attributes (description-related)
+  // Migration: Use job.grade_code and job.level_code instead
+  // Timeline: These fields will be removed in v5.0 (target: Q2 2026)
+  // For backward compatibility, keep these columns but mark as deprecated
+  
   ranking_level_code   varchar(50) [null]
   job_type_code        varchar(50) [null]
   job_title            varchar(255)
@@ -1081,7 +1098,7 @@ Table jobpos.job_profile {
   created_at           timestamp [default: `now()`]
   updated_at           timestamp [null]
   Indexes { (job_id, locale_code, effective_start_date) [unique] }
-  Note: 'Profile chi tiết cho job theo ngôn ngữ, version, SCD2.'
+  Note: 'changed 17dec2025: Removed grade_code and level_code (moved to job table). Profile focuses on job description (summary, responsibilities, qualifications), not compensation attributes. Profile chi tiết cho job theo ngôn ngữ, version, SCD2.'
 }
 
 /////// Mapping JobProfile với Skill ///////
@@ -1227,7 +1244,16 @@ Table jobpos.position {                  // vị trí (Position) trong cơ cấu
   id                uuid       [pk, default: `gen_random_uuid()`]
   code              varchar(50) [unique]                         // mã vị trí
   title             varchar(255)                                 // tên vị trí (tên chức danh gắn với vị trí)
-  job_profile_id    uuid        [ref: > jobpos.job_profile.id]    // chức danh (Job) đảm nhiệm
+  
+  // *** changed 17dec2025: Added job_id for direct grade/level access ***
+  job_id            uuid        [ref: > jobpos.job.id]            // changed 17dec2025: NEW - Direct reference to job for grade/level (REQUIRED)
+  job_profile_id    uuid        [ref: > jobpos.job_profile.id, null]  // changed 17dec2025: Made OPTIONAL - Use for detailed job description only
+  // Rationale:
+  // - job_id: Required for grade/level lookup (TR integration: position → job → grade_code → TR.GradeVersion)
+  // - job_profile_id: Optional for detailed job description (locale-specific summary, responsibilities)
+  // - Position can access job.grade_code without needing job_profile
+  // - Supports both position-based and job-based staffing models
+  
   business_unit_id  uuid        [ref: > org_bu.unit.id]           // đơn vị (BU) sở hữu vị trí
   reports_to_id     uuid        [ref: > jobpos.position.id, null] // báo cáo lên vị trí
   position_class_code varchar(50)  [null]                        // phân loại vị trí (common.code_list(POS_CLASS))
@@ -1243,6 +1269,8 @@ Table jobpos.position {                  // vị trí (Position) trong cơ cấu
   effective_start_date date
   effective_end_date   date    [null]
   is_current_flag      boolean [default: true]
+  
+  Note: 'changed 17dec2025: Added job_id (required) and made job_profile_id optional. Position now has direct access to grade via job.grade_code for TR integration.'
 }
 
 Table jobpos.position_tag {             // gắn nhãn cho Position
