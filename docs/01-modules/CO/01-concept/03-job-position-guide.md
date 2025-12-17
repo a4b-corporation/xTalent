@@ -1,9 +1,11 @@
 # Job & Position Management Guide
 
-**Version**: 2.0  
-**Last Updated**: 2025-12-02  
+**Version**: 2.1  
+**Last Updated**: 2025-12-17  
 **Audience**: HR Administrators, Hiring Managers, Talent Acquisition  
 **Reading Time**: 45-60 minutes
+
+**Changelog v2.1**: Added Position Override Rules section and clarification on Position-Job relationship
 
 ---
 
@@ -679,6 +681,55 @@ Position: POS-ENG-001
   effective_end_date: 2024-12-31
   is_current: false
 ```
+
+---
+
+### Position as Job Instance: Override Rules
+
+> [!IMPORTANT]
+> **Position-Job Relationship**
+> 
+> - **Position = Instance of Job** in a specific organizational context
+> - **Compensation attributes (grade, level) CANNOT be overridden**
+> - **Organizational attributes (title, reporting) CAN be overridden**
+
+#### What Position Inherits from Job
+
+```yaml
+Job: "Senior Software Engineer"
+  grade_code: "G7"        # ✅ Position MUST inherit
+  level_code: "L3"        # ✅ Position MUST inherit
+  job_type: "TECH"        # ✅ Position MUST inherit
+  job_title: "Senior Software Engineer"
+
+Position: "Senior SW Engineer - AI Platform"
+  job_id: JOB-001
+  # Inherited (cannot override):
+  grade_code: → "G7" (from job)
+  level_code: → "L3" (from job)
+  job_type: → "TECH" (from job)
+  
+  # Can override:
+  title: "Senior Software Engineer - AI Platform Team"  # ✅ More specific
+  reports_to_id: MGR-AI-PLATFORM  # ✅ Org-specific
+  business_unit_id: BU-AI         # ✅ Org-specific
+  full_time_equiv: 1.0            # ✅ Position-specific
+```
+
+#### Override Rules Quick Reference
+
+| Attribute | Can Override? | Reason |
+|-----------|---------------|--------|
+| **grade_code** | ❌ NO | Compensation must be consistent |
+| **level_code** | ❌ NO | Seniority is job-defined |
+| **job_type** | ❌ NO | Job classification is inherent |
+| **title** | ✅ YES | Can add context (team, location) |
+| **reports_to_id** | ✅ YES | Org structure is position-specific |
+| **business_unit_id** | ✅ YES | Position is placed in specific BU |
+| **full_time_equiv** | ✅ YES | FTE can vary (0.5, 1.0, etc.) |
+
+**For detailed override rules**, see [Position Override Rules Guide](./11-position-override-rules.md).
+
 
 ---
 
@@ -1372,6 +1423,7 @@ Employee → Job → grade_code → TR.GradeVersion → PayRange
 
 ## 📚 Related Guides
 
+- [Position Override Rules](./11-position-override-rules.md) - **NEW**: Detailed rules for Position-Job relationship
 - [Employment Lifecycle Guide](./01-employment-lifecycle-guide.md) - Understanding assignments
 - [Organization Structure Guide](./02-organization-structure-guide.md) - Business units
 - [Skill Management Guide](./06-skill-management-guide.md) - Skills and competencies
