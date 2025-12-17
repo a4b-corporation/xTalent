@@ -1176,6 +1176,190 @@ Choose Staffing Model:
 
 ---
 
+## 💰 Compensation Impact
+
+### How Staffing Model Affects Compensation
+
+The staffing model you choose has **significant implications** for compensation management:
+
+| Aspect | Position-Based | Job-Based |
+|--------|----------------|-----------|
+| **Grade Assignment** | Through Position → Job → Grade | Direct Job → Grade |
+| **Pay Range Scope** | Position > BU > LE > Global | BU > LE > Global |
+| **Compensation Setup** | Position must exist first | Direct to employee |
+| **Flexibility** | Lower (position-bound) | Higher (fluid) |
+| **Budget Control** | Tighter (position-level) | Looser (headcount-level) |
+
+### Position-Based Staffing & Compensation
+
+**Grade Resolution**:
+```
+Employee → Assignment → Position → Job → grade_code → TR.GradeVersion
+```
+
+**Pay Range Resolution** (Priority Order):
+1. **Position-scoped** range (if exists)
+   ```sql
+   SELECT * FROM tr.pay_range
+   WHERE grade_v_id = {grade_id}
+     AND scope_type = 'POSITION'
+     AND scope_uuid = {position_id}
+   ```
+2. **Business Unit-scoped** range
+3. **Legal Entity-scoped** range
+4. **Global** range
+
+**Example**:
+```yaml
+Position: POS-ENG-001
+  job_id: JOB-BACKEND-SENIOR
+  business_unit_id: BU-ENGINEERING
+  
+Job: JOB-BACKEND-SENIOR
+  grade_code: "G7"
+  
+Assignment:
+  employee_id: EMP-001
+  position_id: POS-ENG-001
+  staffing_model: POSITION_BASED
+
+# Compensation uses Position's context
+PayRange Lookup:
+  1. Check: Position POS-ENG-001 + Grade G7 → Not found
+  2. Check: BU-ENGINEERING + Grade G7 → Found!
+  3. Use: min=100M, mid=130M, max=160M VND
+```
+
+**Benefits for Compensation**:
+- ✅ Can set position-specific pay ranges for critical roles
+- ✅ Tighter budget control (position-level approval)
+- ✅ Clear vacancy tracking for compensation planning
+- ✅ Easier to manage pay equity (same position = same range)
+
+**Challenges**:
+- ⚠️ Less flexibility in salary negotiations
+- ⚠️ Position must be created/approved before hiring
+- ⚠️ Reorganizations may require position changes
+
+### Job-Based Staffing & Compensation
+
+**Grade Resolution**:
+```
+Employee → Assignment → Job → grade_code → TR.GradeVersion
+```
+
+**Pay Range Resolution** (Priority Order):
+1. **Business Unit-scoped** range (from Assignment)
+2. **Legal Entity-scoped** range
+3. **Global** range
+
+*(No Position scope available)*
+
+**Example**:
+```yaml
+Job: JOB-BACKEND-SENIOR
+  grade_code: "G7"
+  
+Assignment:
+  employee_id: EMP-001
+  job_id: JOB-BACKEND-SENIOR
+  position_id: NULL
+  business_unit_id: BU-ENGINEERING
+  staffing_model: JOB_BASED
+
+# Compensation uses Assignment's BU context
+PayRange Lookup:
+  1. Check: BU-ENGINEERING + Grade G7 → Found!
+  2. Use: min=100M, mid=130M, max=160M VND
+```
+
+**Benefits for Compensation**:
+- ✅ More flexibility in salary negotiations
+- ✅ Faster hiring (no position approval needed)
+- ✅ Easy to adjust compensation during reorganizations
+- ✅ Simpler for project-based or contractor roles
+
+**Challenges**:
+- ⚠️ Less budget control (no position-level tracking)
+- ⚠️ Harder to track "open slots" for budgeting
+- ⚠️ May lead to pay inequity without careful management
+
+### Compensation Cycle Impact
+
+**Merit Review Eligibility**:
+- **Both models**: Eligibility based on employee attributes (tenure, performance)
+- **Position-based**: Can track "vacant positions" for budget planning
+- **Job-based**: Budget tracked at headcount level
+
+**Promotion Process**:
+- **Position-based**: May require creating new position with higher grade
+  ```yaml
+  Current Position: POS-ENG-MID-001 (Grade G6)
+  Promotion: Create/assign to POS-ENG-SENIOR-002 (Grade G7)
+  ```
+- **Job-based**: Simply change job assignment to higher-grade job
+  ```yaml
+  Current Job: JOB-BACKEND-MID (Grade G6)
+  Promotion: Change to JOB-BACKEND-SENIOR (Grade G7)
+  ```
+
+**New Hire Compensation Setup**:
+- **Position-based**: 5 steps (verify position → get grade → get pay range → offer → assign)
+- **Job-based**: 4 steps (select job → get grade → get pay range → offer → assign)
+
+### Pay Equity Considerations
+
+**Position-Based Advantage**:
+```yaml
+# Same position = same pay range
+Position: POS-SENIOR-ENG-001
+  All employees in this position:
+    - Use same pay range
+    - Easier to ensure equity
+    - Clear benchmark
+```
+
+**Job-Based Challenge**:
+```yaml
+# Same job, different BUs = potentially different ranges
+Job: JOB-SENIOR-BACKEND-ENG
+
+Employee A (BU-ENGINEERING):
+  Pay range: 100M - 130M - 160M VND
+
+Employee B (BU-RESEARCH):
+  Pay range: 90M - 120M - 150M VND  # Different BU range
+
+# Requires careful management to ensure equity
+```
+
+### Hybrid Model Compensation
+
+**Best Practice**: Use position-based for roles requiring tight control, job-based for flexibility:
+
+```yaml
+Position-Based (with position-specific ranges):
+  - C-Level executives
+  - VPs and Directors
+  - Critical specialized roles
+  
+Job-Based (with BU or LE ranges):
+  - Individual contributors
+  - Contractors
+  - Temporary staff
+```
+
+### Cross-References
+
+**For More Details**:
+- [CO-TR Integration Guide (Conceptual)](../../00-integration/CO-TR-integration/01-conceptual-guide.md) - Full integration explanation
+- [New Hire Compensation Setup](../../00-integration/CO-TR-integration/03-new-hire-setup.md) - Step-by-step for both models
+- [Promotion Process](../../00-integration/CO-TR-integration/04-promotion-process.md) - Promotion workflows
+- [Merit Review Process](../../00-integration/CO-TR-integration/05-merit-review-process.md) - Annual merit cycles
+- [TR Compensation Management Guide](../../TR/01-concept/03-compensation-management-guide.md) - TR module details
+
+---
+
 ## 📚 Related Guides
 
 - [Job & Position Management Guide](./03-job-position-guide.md) - Jobs and positions explained

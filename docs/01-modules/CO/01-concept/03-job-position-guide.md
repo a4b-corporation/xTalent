@@ -1217,6 +1217,146 @@ Choosing staffing model:
 
 ---
 
+## 🔗 Integration with Total Rewards Module
+
+### Overview
+
+Jobs and positions in the Core module are tightly integrated with the **Total Rewards (TR) module** for compensation management. Understanding this integration is essential for proper compensation setup and career progression.
+
+### Grade System Integration
+
+> [!IMPORTANT]
+> **Core.JobGrade is Deprecated**
+> 
+> The `Core.JobGrade` entity is deprecated in favor of `TR.GradeVersion`.
+> All grade references now use `grade_code` which maps to TR.GradeVersion.
+
+**How Jobs Reference Grades**:
+
+```yaml
+Job: Senior Backend Engineer
+  code: "SENIOR_BACKEND_ENG"
+  grade_code: "G7"  # References TR.GradeVersion
+  level_id: "L3_UUID"  # References Core.JobLevel
+```
+
+**What This Provides**:
+- ✅ **Versioned Grades**: Complete history of grade changes (SCD Type 2)
+- ✅ **Career Ladders**: Integration with career progression paths
+- ✅ **Scoped Pay Ranges**: Position, BU, LE, or Global pay ranges
+- ✅ **Single Source of Truth**: TR module owns all grade definitions
+
+### Grade and Compensation
+
+When a job has a `grade_code`, it determines:
+
+1. **Pay Range**: Salary min/mid/max for the grade
+2. **Career Ladder**: Which progression path (Technical, Management, Specialist, Executive)
+3. **Compensation Eligibility**: Merit reviews, bonuses, equity
+
+**Example**:
+```yaml
+Job: Senior Backend Engineer
+  grade_code: "G7"
+
+# TR Module provides:
+Grade G7:
+  name: "Grade 7"
+  job_level: 3
+  pay_range (Vietnam):
+    min: 100,000,000 VND
+    mid: 130,000,000 VND
+    max: 160,000,000 VND
+  ladder: Technical Ladder
+  progression: G6 → G7 → G8
+```
+
+### Career Ladders
+
+Jobs can be part of **career ladders** defined in the Total Rewards module:
+
+| Ladder Type | Purpose | Example Grades |
+|-------------|---------|----------------|
+| **Technical** | Individual contributor progression | G1 → G2 → G3 → G4 → G5 |
+| **Management** | People management track | M1 → M2 → M3 → M4 |
+| **Specialist** | Expert/specialist track | S1 → S2 → S3 → S4 |
+| **Executive** | C-level progression | E1 → E2 → E3 |
+
+**Career Progression Example**:
+```
+Technical Ladder:
+  G1: Junior Engineer
+  G2: Engineer
+  G3: Senior Engineer ← Current job
+  G4: Principal Engineer ← Next step
+  G5: Distinguished Engineer
+```
+
+### Job Hierarchy vs Career Ladder
+
+**They serve different purposes**:
+
+| Aspect | Job Hierarchy (Core) | Career Ladder (TR) |
+|--------|---------------------|-------------------|
+| **Purpose** | Organize job catalog | Define career progression |
+| **Structure** | Parent-child tree | Ordered grade sequence |
+| **Example** | Software Engineer → Backend Engineer → Senior Backend Engineer | G1 → G2 → G3 → G4 → G5 |
+| **Use Case** | Job definition management | Compensation planning, promotions |
+
+**They are complementary**:
+- **Job hierarchy** helps organize and manage job definitions
+- **Career ladder** guides compensation and career progression
+
+### Position-Based vs Job-Based Compensation
+
+The staffing model affects how compensation is determined:
+
+**Position-Based**:
+```
+Employee → Position → Job → grade_code → TR.GradeVersion → PayRange
+```
+- Pay range can be position-specific
+- Tighter budget control
+
+**Job-Based**:
+```
+Employee → Job → grade_code → TR.GradeVersion → PayRange
+```
+- Pay range typically BU or LE scoped
+- More flexible
+
+### Common Workflows
+
+**New Hire Setup**:
+1. Select Job (or Position with Job)
+2. Get grade_code from Job
+3. Retrieve applicable pay range from TR
+4. Determine offer amount
+5. Create assignment and compensation
+
+**Promotion**:
+1. Change to higher-grade job
+2. Calculate new salary (typically 10-15% increase)
+3. Ensure at least minimum of new grade
+4. Create compensation adjustment
+
+**Merit Review**:
+1. Get employee's current grade
+2. Calculate compa-ratio (salary vs grade midpoint)
+3. Apply merit matrix
+4. Propose adjustment within grade range
+
+### Cross-References
+
+**For More Details**:
+- [CO-TR Integration Guide (Conceptual)](../../00-integration/CO-TR-integration/01-conceptual-guide.md) - Business user perspective
+- [CO-TR Integration Guide (Technical)](../../00-integration/CO-TR-integration/02-technical-guide.md) - Developer perspective
+- [New Hire Compensation Setup](../../00-integration/CO-TR-integration/03-new-hire-setup.md) - Step-by-step workflow
+- [Promotion Process](../../00-integration/CO-TR-integration/04-promotion-process.md) - Promotion with grade changes
+- [TR Compensation Management Guide](../../TR/01-concept/03-compensation-management-guide.md) - TR module details
+
+---
+
 ## 📚 Related Guides
 
 - [Employment Lifecycle Guide](./01-employment-lifecycle-guide.md) - Understanding assignments

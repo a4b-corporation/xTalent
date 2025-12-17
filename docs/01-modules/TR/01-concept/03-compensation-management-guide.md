@@ -145,6 +145,226 @@ Technical Career Ladder:
 - **Maximum**: Top of range for exceptional long-tenure employees
 - **Range Spread**: (Max - Min) / Mid × 100 (typically 30-50%)
 
+---
+
+## 🔗 Integration with Core Module
+
+### Overview
+
+The Total Rewards module is tightly integrated with the **Core Module** for grade assignment and compensation management. Understanding this integration is essential for proper compensation setup.
+
+### Grade Assignment from Core
+
+> [!IMPORTANT]
+> **TR.GradeVersion is the Single Source of Truth**
+> 
+> Core.JobGrade is deprecated. All grade references from Core module use `grade_code`
+> which maps to TR.GradeVersion.
+
+**Data Flow**:
+
+```mermaid
+graph LR
+    subgraph Core
+        Job[Core.Job<br/>grade_code: G7]
+        Position[Core.Position<br/>references Job]
+        Assignment[Core.Assignment<br/>POSITION_BASED or JOB_BASED]
+    end
+    
+    subgraph TR
+        GradeVersion[TR.GradeVersion<br/>grade_code: G7]
+        PayRange[TR.PayRange<br/>min/mid/max]
+    end
+    
+    Job -->|grade_code| GradeVersion
+    Position -->|inherits from| Job
+    Assignment -->|Position or Job| Job
+    GradeVersion -->|has| PayRange
+```
+
+**Position-Based Staffing**:
+```
+Core.Assignment → Core.Position → Core.Job → grade_code → TR.GradeVersion → TR.PayRange
+```
+
+**Job-Based Staffing**:
+```
+Core.Assignment → Core.Job → grade_code → TR.GradeVersion → TR.PayRange
+```
+
+### Pay Range Scope Resolution
+
+Pay ranges can be defined at multiple scopes. The system uses the **most specific scope** available:
+
+**Position-Based Priority**:
+1. **POSITION** (specific position)
+2. **BUSINESS_UNIT** (department/division)
+3. **LEGAL_ENTITY** (company)
+4. **GLOBAL** (default)
+
+**Job-Based Priority**:
+1. **BUSINESS_UNIT** (from Assignment)
+2. **LEGAL_ENTITY** (from Assignment)
+3. **GLOBAL** (default)
+
+**Example**:
+
+```yaml
+# Global default range
+PayRange:
+  grade_code: "G7"
+  scope_type: GLOBAL
+  scope_uuid: NULL
+  min: 100M VND
+  mid: 130M VND
+  max: 160M VND
+
+# Vietnam-specific override
+PayRange:
+  grade_code: "G7"
+  scope_type: LEGAL_ENTITY
+  scope_uuid: VNG_VN_UUID
+  min: 100M VND
+  mid: 130M VND
+  max: 160M VND
+
+# Engineering BU override (higher market rate)
+PayRange:
+  grade_code: "G7"
+  scope_type: BUSINESS_UNIT
+  scope_uuid: BU_ENGINEERING_UUID
+  min: 110M VND
+  mid: 140M VND
+  max: 170M VND
+
+# Critical position override
+PayRange:
+  grade_code: "G7"
+  scope_type: POSITION
+  scope_uuid: POS_ARCHITECT_001_UUID
+  min: 140M VND
+  mid: 170M VND
+  max: 200M VND
+```
+
+**Resolution Example**:
+
+```yaml
+# Position-Based Employee
+Employee: Alice
+  Assignment → Position: POS_ARCHITECT_001
+  Position → Job: Senior Architect (Grade G7)
+
+Pay Range Resolution:
+  1. Check POSITION scope (POS_ARCHITECT_001 + G7) → Found!
+  2. Use: 140M - 170M - 200M VND
+  (Skips BU, LE, Global checks)
+
+# Job-Based Employee
+Employee: Bob
+  Assignment → Job: Senior Engineer (Grade G7)
+  Business Unit: Engineering
+
+Pay Range Resolution:
+  1. Check BU scope (BU_ENGINEERING + G7) → Found!
+  2. Use: 110M - 140M - 170M VND
+  (Skips LE, Global checks)
+```
+
+### Career Ladders and Job Hierarchy
+
+**Core.Job Hierarchy** vs **TR.GradeLadder**:
+
+| Aspect | Core.Job Hierarchy | TR.GradeLadder |
+|--------|-------------------|----------------|
+| **Purpose** | Job inheritance, attribute sharing | Career progression path |
+| **Structure** | Parent-child tree | Ordered grade sequence |
+| **Example** | Software Engineer → Backend Engineer → Senior Backend Engineer | G1 → G2 → G3 → G4 → G5 |
+| **Use Case** | Job catalog organization | Compensation planning, promotions |
+
+**They are complementary**:
+- **Job hierarchy** organizes job definitions and enables inheritance
+- **Grade ladder** defines compensation progression and career paths
+
+**Example**:
+
+```yaml
+# Core Module: Job Hierarchy
+Job: Software Engineer (Parent)
+  ├─ Backend Engineer (Child)
+  │   ├─ Junior Backend Engineer (grade_code: G1)
+  │   ├─ Mid Backend Engineer (grade_code: G2)
+  │   └─ Senior Backend Engineer (grade_code: G3)
+  └─ Frontend Engineer (Child)
+      ├─ Junior Frontend Engineer (grade_code: G1)
+      └─ Senior Frontend Engineer (grade_code: G3)
+
+# TR Module: Career Ladder
+Technical Ladder:
+  G1 (Junior) → G2 (Mid) → G3 (Senior) → G4 (Principal) → G5 (Distinguished)
+  
+# An employee can progress:
+# - Within job hierarchy: Junior Backend → Mid Backend → Senior Backend
+# - Along grade ladder: G1 → G2 → G3
+# - Or laterally: Senior Backend (G3) → Senior Frontend (G3)
+```
+
+### Staffing Model Impact on Compensation
+
+**Position-Based Model**:
+- ✅ Can use position-specific pay ranges
+- ✅ Tighter budget control (position-level)
+- ✅ Easier pay equity management (same position = same range)
+- ⚠️ Less flexibility in salary negotiations
+- ⚠️ Requires position approval before hiring
+
+**Job-Based Model**:
+- ✅ More flexibility in salary negotiations
+- ✅ Faster hiring (no position approval)
+- ✅ Easier reorganizations
+- ⚠️ Less budget control (headcount-level)
+- ⚠️ Requires careful pay equity management
+
+### Common Integration Workflows
+
+**New Hire Compensation Setup**:
+1. Core: Create Assignment (to Position or Job)
+2. Core: Get grade_code from Job
+3. TR: Get applicable PayRange (based on scope)
+4. TR: Validate offer amount within range
+5. TR: Create EmployeeCompensation record
+
+**Promotion with Grade Change**:
+1. Core: End current Assignment
+2. Core: Create new Assignment (new Job with higher grade)
+3. TR: Get new grade's PayRange
+4. TR: Calculate new salary (typically 10-15% increase)
+5. TR: Create CompensationAdjustment record
+
+**Annual Merit Review**:
+1. TR: Create CompensationCycle
+2. Core: Get eligible employees (from Assignments)
+3. TR: For each employee:
+   - Get current grade from Core.Job
+   - Get applicable PayRange
+   - Calculate compa-ratio
+   - Apply merit matrix
+   - Propose adjustment
+4. TR: Execute approved adjustments
+
+### Cross-References
+
+**For More Details**:
+- [Core Job & Position Guide](../../CO/01-concept/03-job-position-guide.md) - Job and position management
+- [Core Staffing Models Guide](../../CO/01-concept/08-staffing-models-guide.md) - Position-based vs job-based
+- [CO-TR Integration Guide (Conceptual)](../../00-integration/CO-TR-integration/01-conceptual-guide.md) - Business user perspective
+- [CO-TR Integration Guide (Technical)](../../00-integration/CO-TR-integration/02-technical-guide.md) - Developer perspective
+- [New Hire Setup Guide](../../00-integration/CO-TR-integration/03-new-hire-setup.md) - Step-by-step workflow
+- [Promotion Process Guide](../../00-integration/CO-TR-integration/04-promotion-process.md) - Promotion workflows
+- [Merit Review Process Guide](../../00-integration/CO-TR-integration/05-merit-review-process.md) - Merit review cycles
+
+---
+
 ### 1.5 Compensation Cycles
 
 **Compensation Cycles** are structured review periods for salary adjustments.
