@@ -1,7 +1,7 @@
 # xTalent Module Documentation Standards
 
-**Version**: 2.0  
-**Last Updated**: 2025-12-02  
+**Version**: 2.1  
+**Last Updated**: 2025-12-18  
 **Status**: Official Standard  
 **Applies To**: All xTalent Modules
 
@@ -24,6 +24,7 @@ xTalent/docs/01-modules/[MODULE-CODE]/
 
 ├── 00-ontology/                    # Data Model Foundation
 │   ├── [module]-ontology.yaml      # REQUIRED
+│   ├── [module]-workflows.yaml     # REQUIRED (workflow catalog)
 │   ├── glossary-[submodule].md     # REQUIRED (one per sub-module)
 │   ├── glossary-[submodule]-vi.md  # OPTIONAL (Vietnamese)
 │   ├── glossary-index.md           # REQUIRED
@@ -42,7 +43,7 @@ xTalent/docs/01-modules/[MODULE-CODE]/
 │   ├── 04-business-rules.md             # REQUIRED
 │   ├── 05-integration-spec.md           # REQUIRED
 │   ├── 06-security-spec.md              # REQUIRED
-│   ├── 03-scenarios/                    # REQUIRED
+│   ├── 03-scenarios/                    # REQUIRED (use cases per workflow)
 │   │   └── [scenario-name].md
 │   ├── INTEGRATION-GUIDE.md             # REQUIRED (PO/BA → Dev handoff)
 │   └── FEATURE-LIST.yaml                # REQUIRED
@@ -69,7 +70,8 @@ xTalent/docs/01-modules/[MODULE-CODE]/
 
 | Document | Status | Owner | Purpose |
 |----------|--------|-------|---------|
-| `[module]-ontology.yaml` | **REQUIRED** | PO/BA + Architect | Master data model |
+| `[module]-ontology.yaml` | **REQUIRED** | PO/BA + Architect | Master data model (entities) |
+| `[module]-workflows.yaml` | **REQUIRED** | PO/BA + Architect | Workflow catalog |
 | `glossary-[submodule].md` | **REQUIRED** | PO/BA | Entity definitions (English) |
 | `glossary-[submodule]-vi.md` | OPTIONAL | PO/BA | Entity definitions (Vietnamese) |
 | `glossary-index.md` | **REQUIRED** | PO/BA | Glossary navigation |
@@ -1276,6 +1278,7 @@ Phase 5: Handoff to Dev Team
 | Aspect | Core (CO) | Time & Attendance (TA) | [Your Module] |
 |--------|-----------|------------------------|---------------|
 | **Ontology** | ✅ core-ontology.yaml | ✅ time-attendance-ontology.yaml, absence-ontology.yaml | ❓ TBD |
+| **Workflows** | ⚠️ To be created | ⚠️ To be created | ❓ TBD |
 | **Glossaries** | ✅ 7 glossaries | ⚠️ In progress | ❓ TBD |
 | **Concept Overview** | ⚠️ To be created | ✅ 01-concept-overview.md | ❓ TBD |
 | **Conceptual Guide** | ⚠️ To be created | ✅ 02-conceptual-guide.md | ❓ TBD |
@@ -1284,6 +1287,7 @@ Phase 5: Handoff to Dev Team
 | **Functional Req** | ✅ Standardized | ⚠️ Different format | ❓ TBD |
 | **API Spec** | ✅ Standardized | ⚠️ Missing | ❓ TBD |
 | **Business Rules** | ✅ Standardized | ⚠️ Different format | ❓ TBD |
+| **Scenarios/Use Cases** | ⚠️ To be created | ⚠️ To be created | ❓ TBD |
 | **Integration Guide** | ✅ Present | ❌ Missing | ❓ TBD |
 | **Feature List** | ✅ Present | ❌ Missing | ❓ TBD |
 
@@ -1293,6 +1297,7 @@ Phase 5: Handoff to Dev Team
 - ✅ Has excellent concept-overview and conceptual-guide (now standardized)
 - ⚠️ Needs 5 more topic-specific guides (03-09) to complete concept documentation
 - ⚠️ Spec documents need standardization
+- ⚠️ Needs workflows.yaml and scenarios documentation
 
 **Goal**: All modules should have ✅ in all rows.
 
@@ -1384,8 +1389,9 @@ If you find inconsistencies or have suggestions:
 
 ---
 
-**Document Version**: 1.0  
+**Document Version**: 2.1  
 **Created**: 2025-12-02  
 **Maintained By**: Documentation Standards Committee  
-**Last Review**: 2025-12-02  
+**Last Review**: 2025-12-18  
+**Changelog v2.1**: Added `[module]-workflows.yaml` as required artifact, clarified `03-scenarios/` for use cases  
 **Status**: Official Standard - Mandatory for All Modules
