@@ -19,19 +19,33 @@ Execute when:
 ## Output Structure
 
 ```
-_output/01-ontology/
-├── README.md                           # Index and overview
-├── domain/                             # Entity definitions
-│   ├── [submodule-1]-entities.md
-│   ├── [submodule-2]-entities.md
-│   └── shared-entities.md
-├── workflows/                          # Workflow catalog
-│   ├── [submodule-1]-workflows.md
-│   └── [submodule-2]-workflows.md
-└── concept-guides/                     # Detailed concept guides
-    ├── [workflow-1]-guide.md
-    └── [workflow-2]-guide.md
+_output/
+├── 00-ontology/                        # Domain Foundation (SINGLE SOURCE)
+│   ├── README.md                       # Index and overview
+│   ├── domain/                         # Entity definitions
+│   │   ├── [submodule-1]-entities.md
+│   │   ├── [submodule-2]-entities.md
+│   │   └── shared-entities.md
+│   └── workflows/                      # Workflow CATALOG only
+│       ├── [submodule-1]-workflows.md
+│       └── [submodule-2]-workflows.md
+│
+└── 01-concept/                         # Behavioral Documentation
+    ├── README.md                       # Concept index
+    ├── 01-overview.md                  # Module overview
+    └── [submodule]/                    # Per submodule
+        ├── overview.md                 # Submodule overview
+        ├── [workflow-1]-guide.md       # Workflow DETAIL here
+        └── [workflow-2]-guide.md
 ```
+
+### Key Principle: Separation of Concerns
+
+| Layer | Contains | Purpose |
+|-------|----------|---------|
+| `00-ontology/domain/` | Entity definitions | "What exists" - SINGLE SOURCE |
+| `00-ontology/workflows/` | Workflow catalog | "What workflows exist" - Index only |
+| `01-concept/` | Concept guides | "How things work" - Detailed flows |
 
 ## Process
 
@@ -61,7 +75,9 @@ submodule_grouping:
     entities: [list]  # Cross-cutting entities
 ```
 
-### Step 3: Generate README.md
+### Step 3: Generate Ontology README.md
+
+Create: `_output/00-ontology/README.md`
 
 ```markdown
 # [Module] Domain Ontology
@@ -94,12 +110,8 @@ submodule_grouping:
 | [Sub-1] | [workflows/sub1-workflows.md](workflows/sub1-workflows.md) | [list] |
 | [Sub-2] | [workflows/sub2-workflows.md](workflows/sub2-workflows.md) | [list] |
 
-### Concept Guides
-
-| Workflow | Guide |
-|----------|-------|
-| [WF-001] | [concept-guides/wf-001-guide.md](concept-guides/wf-001-guide.md) |
-| [WF-002] | [concept-guides/wf-002-guide.md](concept-guides/wf-002-guide.md) |
+> **Note**: Workflow catalogs contain index and metadata only. 
+> For detailed workflow guides, see [01-concept/](../01-concept/).
 
 ## Quick Reference
 
@@ -107,18 +119,63 @@ submodule_grouping:
 
 | Entity | Type | Submodule | Definition |
 |--------|------|-----------|------------|
-| [Entity1] | CORE | [Sub] | [→ Link](#entity1) |
-| [Entity2] | TRANSACTION | [Sub] | [→ Link](#entity2) |
+| [Entity1] | CORE | [Sub] | [→ Link](domain/sub-entities.md#entity1) |
+| [Entity2] | TRANSACTION | [Sub] | [→ Link](domain/sub-entities.md#entity2) |
 
 ### Workflow Index
 
-| ID | Workflow | Type | Guide |
-|----|----------|------|-------|
-| WF-001 | [Name] | CORE | [→ Guide](concept-guides/wf-001-guide.md) |
+| ID | Workflow | Type | Catalog | Guide |
+|----|----------|------|---------|-------|
+| WF-001 | [Name] | CORE | [→ Catalog](workflows/sub-workflows.md#wf-001) | [→ Guide](../01-concept/sub/wf-001-guide.md) |
 
 ## References
 
 - Source: [DRD-[module].md](../00-drd/DRD-[module].md)
+- Concept Guides: [01-concept/](../01-concept/)
+```
+
+### Step 3b: Generate Concept README.md
+
+Create: `_output/01-concept/README.md`
+
+```markdown
+# [Module] Concept Guides
+
+**Module**: [MODULE-CODE]  
+**Version**: 1.0  
+**Generated**: [timestamp]
+
+---
+
+## Overview
+
+This section contains detailed concept guides explaining how [Module] workflows operate.
+
+## Guide Index
+
+| Submodule | Guide | Workflow | Description |
+|-----------|-------|----------|-------------|
+| [Sub-1] | [WF-001 Guide](sub1/wf-001-guide.md) | [WF-001](../00-ontology/workflows/sub1-workflows.md#wf-001) | [Brief desc] |
+| [Sub-1] | [WF-002 Guide](sub1/wf-002-guide.md) | [WF-002](../00-ontology/workflows/sub1-workflows.md#wf-002) | [Brief desc] |
+| [Sub-2] | [WF-010 Guide](sub2/wf-010-guide.md) | [WF-010](../00-ontology/workflows/sub2-workflows.md#wf-010) | [Brief desc] |
+
+## By Submodule
+
+### [Submodule 1]
+
+- [Overview](sub1/overview.md) - Submodule introduction
+- [WF-001: Workflow Name](sub1/wf-001-guide.md)
+- [WF-002: Workflow Name](sub1/wf-002-guide.md)
+
+### [Submodule 2]
+
+- [Overview](sub2/overview.md)
+- [WF-010: Workflow Name](sub2/wf-010-guide.md)
+
+## References
+
+- Entity Definitions: [00-ontology/domain/](../00-ontology/domain/)
+- Workflow Catalog: [00-ontology/workflows/](../00-ontology/workflows/)
 ```
 
 ### Step 4: Generate Entity Files
@@ -241,8 +298,8 @@ For each submodule, create `workflows/[submodule]-workflows.md`:
 
 | ID | Name | Type | Trigger | Guide |
 |----|------|------|---------|-------|
-| [WF-XXX-001] | [Name] | [CORE/SUPPORT] | [Trigger] | [→ Guide](../concept-guides/wf-xxx-001-guide.md) |
-| [WF-XXX-002] | [Name] | [Type] | [Trigger] | [→ Guide](../concept-guides/wf-xxx-002-guide.md) |
+| [WF-XXX-001] | [Name] | [CORE/SUPPORT] | [Trigger] | [→ Guide](../../01-concept/[submodule]/wf-xxx-001-guide.md) |
+| [WF-XXX-002] | [Name] | [Type] | [Trigger] | [→ Guide](../../01-concept/[submodule]/wf-xxx-002-guide.md) |
 
 ---
 
@@ -287,7 +344,7 @@ For each submodule, create `workflows/[submodule]-workflows.md`:
 
 ### Detailed Guide
 
-> **📖 Full Guide**: See [WF-XXX-001 Concept Guide](../concept-guides/wf-xxx-001-guide.md) for:
+> **📖 Full Guide**: See [WF-XXX-001 Concept Guide](../../01-concept/[submodule]/wf-xxx-001-guide.md) for:
 > - Step-by-step flow with decisions
 > - Exception handling
 > - Mermaid diagrams
@@ -314,7 +371,7 @@ For each submodule, create `workflows/[submodule]-workflows.md`:
 
 ### Step 6: Generate Concept Guides
 
-For each core workflow, create `concept-guides/[wf-id]-guide.md`:
+For each core workflow, create `_output/01-concept/[submodule]/[wf-id]-guide.md`:
 
 ```markdown
 # [Workflow Name] - Concept Guide
@@ -542,12 +599,15 @@ After Workflow (Success):
 ## Related
 
 ### Entities
-- [Entity1](../domain/sub-entities.md#entity1) - Primary entity
-- [Entity2](../domain/sub-entities.md#entity2) - Supporting entity
+- [Entity1](../../00-ontology/domain/sub-entities.md#entity1) - Primary entity
+- [Entity2](../../00-ontology/domain/sub-entities.md#entity2) - Supporting entity
 
 ### Other Workflows
 - [Preceding Workflow](./wf-xxx-000-guide.md) - Happens before
 - [Following Workflow](./wf-xxx-002-guide.md) - Happens after
+
+### Workflow Catalog
+- [WF-XXX-001 Catalog Entry](../../00-ontology/workflows/sub-workflows.md#wf-xxx-001)
 
 ### Specifications (when available)
 - FR-XXX-001: [Functional requirement]
@@ -602,17 +662,22 @@ Create: `_output/_logs/generation-report.md`
 
 ## Files Generated
 
-### Domain Entities
+### 00-ontology/
+#### Domain Entities
 - `domain/[sub1]-entities.md` - [N] entities
 - `domain/[sub2]-entities.md` - [N] entities
 
-### Workflow Catalogs
+#### Workflow Catalogs
 - `workflows/[sub1]-workflows.md` - [N] workflows
 - `workflows/[sub2]-workflows.md` - [N] workflows
 
-### Concept Guides
-- `concept-guides/[wf-001]-guide.md`
-- `concept-guides/[wf-002]-guide.md`
+### 01-concept/
+#### Concept Guides
+- `[sub1]/overview.md` - Submodule overview
+- `[sub1]/wf-001-guide.md` - Workflow detail
+- `[sub1]/wf-002-guide.md` - Workflow detail
+- `[sub2]/overview.md` - Submodule overview
+- `[sub2]/wf-010-guide.md` - Workflow detail
 
 ## Traceability
 
@@ -640,12 +705,14 @@ Create: `_output/_logs/generation-report.md`
 
 ## Output
 
-- `_output/01-ontology/` - Complete ontology structure
+- `_output/00-ontology/` - Domain ontology (entities + workflow catalog)
+- `_output/01-concept/` - Concept guides (workflow details)
 - `_output/_logs/generation-report.md` - Generation summary
 
 ## Pipeline Complete
 
 After Phase 4:
 - Ontology is ready for use
+- Concept guides provide workflow details
 - Human can review and refine
-- Ready for next phases (Concept expansion, Spec generation)
+- Ready for Specification layer (02-spec)

@@ -18,13 +18,112 @@ Execute when:
 
 ## SME Mindset
 
-You are a **Senior Business Analyst + Domain Expert** with:
-- 10+ years experience in [domain from context]
-- Deep knowledge of industry standards and best practices
-- Familiarity with major enterprise systems (SAP, Workday, Oracle, etc.)
-- Understanding of local regulations (based on region in context)
+You are a **Senior Business Analyst + Domain Expert**. Your expertise adapts to the domain specified in `project-context.md`.
 
 Your job: Transform raw, messy inputs into clean, structured domain knowledge.
+
+## Domain Expertise Activation
+
+### Step 0: Identify and Immerse in Domain
+
+1. **Read `project-context.md`** to identify:
+   - Domain type (HR, Finance, Sales, Operations, Healthcare, etc.)
+   - Industry vertical (if specified)
+   - Region (for regulatory context)
+   - Reference systems mentioned
+
+2. **Activate SME Mode** for the identified domain:
+   
+   ```
+   I am now acting as a Senior SME in [DOMAIN] with:
+   - 10+ years hands-on experience
+   - Deep knowledge of industry-leading systems
+   - Understanding of best practices and standards
+   - Familiarity with regional regulations
+   ```
+
+3. **If domain is unfamiliar or specialized**:
+   - Use web search to research current industry standards
+   - Look up major enterprise systems in that domain
+   - Research regional compliance requirements
+   - Find common entity patterns and workflows
+
+### SME Knowledge Areas (Dynamic)
+
+For ANY domain, you should be able to reason about:
+
+| Area | What to Consider |
+|------|------------------|
+| **Standard Entities** | What objects typically exist in this domain? |
+| **Common Workflows** | What are the standard business processes? |
+| **Industry Systems** | What software systems are leaders in this space? |
+| **Regulatory** | What compliance requirements apply (by region)? |
+| **Best Practices** | What patterns are considered best practice? |
+| **Anti-Patterns** | What mistakes should be avoided? |
+
+### Example Domain Activation
+
+```yaml
+# If project-context says: Domain = HR, Region = Vietnam
+
+SME Activation:
+  domain: "Human Capital Management (HCM)"
+  reference_systems: 
+    - "Workday HCM"
+    - "SAP SuccessFactors" 
+    - "Oracle HCM Cloud"
+  standards: 
+    - "SHRM guidelines"
+    - "ISO 30414 (HR metrics)"
+  regulations:
+    - "Vietnam Labor Code 2019"
+    - "Social Insurance Law"
+    - "Decree 145/2020 on labor contracts"
+  key_patterns:
+    - "Position-based vs Job-based staffing"
+    - "Accrual-based leave management"
+    - "Multi-level approval workflows"
+```
+
+```yaml
+# If project-context says: Domain = Finance, Region = Vietnam
+
+SME Activation:
+  domain: "Financial Management"
+  reference_systems:
+    - "SAP S/4HANA FI/CO"
+    - "Oracle Financials Cloud"
+    - "MISA (Vietnam local)"
+  standards:
+    - "Vietnam Accounting Standards (VAS)"
+    - "Circular 200/2014"
+    - "IFRS alignment"
+  regulations:
+    - "E-invoice (Decree 123/2020)"
+    - "VAT regulations"
+    - "Transfer pricing rules"
+  key_patterns:
+    - "Procure-to-Pay (P2P)"
+    - "Order-to-Cash (O2C)"
+    - "Month-end close process"
+```
+
+### When to Use Web Search
+
+Use web search when you need to:
+- Verify current regulations or standards
+- Research unfamiliar domain terminology
+- Find latest best practices
+- Understand specific regional requirements
+- Research competitor/reference systems
+
+**Search Strategy**:
+```
+1. "[Domain] enterprise software best practices"
+2. "[Domain] [Region] compliance requirements 2024"
+3. "[Reference System] [Entity] data model"
+4. "[Industry] standard workflows"
+```
 
 ## Process
 
@@ -144,37 +243,86 @@ Common attributes missing from entities:
 Standard business rules not mentioned:
 - [Rule description] - common in [domain]
 
-### Step 5: Fill Gaps with Market Knowledge
+### Step 5: Fill Gaps with Domain Expertise
 
-For each gap, apply SME knowledge:
+For each gap identified, apply your SME expertise:
 
 ```yaml
 gap_resolution:
   gap: [what's missing]
   resolution: [how I'm filling it]
-  source: "Market knowledge: [reference system/standard]"
+  reasoning: "As SME in [domain], this is standard because [reason]"
+  reference: "[Industry system] pattern" or "[Standard/Regulation]"
   confidence: ASSUMED
   assumption: [explicit assumption being made]
   needs_validation: [true|false]
 ```
 
-#### Market Knowledge Sources by Domain
+#### SME Gap-Filling Strategies
 
-**HR/HCM Domain:**
-- Workday patterns: Leave management, Time tracking, Compensation
-- SAP SuccessFactors: Employee lifecycle, Performance management
-- Oracle HCM: Benefits administration, Payroll integration
-- Standards: SHRM guidelines, ISO 30414
+**Strategy 1: Industry Pattern Recognition**
+```
+"In [domain], the standard approach for [problem] is [solution].
+This is how [Reference System 1] and [Reference System 2] handle it."
+```
 
-**Finance Domain:**
-- SAP FI/CO: GL, AP, AR, Cost centers
-- Oracle Financials: Procure-to-pay, Order-to-cash
-- Standards: GAAP, IFRS, SOX compliance
+**Strategy 2: Regulatory Inference**
+```
+"Based on [Region] [Regulation], this entity must include [attribute]
+to comply with [requirement]."
+```
 
-**Sales/CRM Domain:**
-- Salesforce: Lead-to-opportunity, Account management
-- SAP CRM: Pipeline management, Quotation
-- Standards: MEDDIC, BANT qualification
+**Strategy 3: Best Practice Application**
+```
+"Industry best practice for [scenario] is [pattern].
+This avoids common issues like [anti-pattern]."
+```
+
+**Strategy 4: Web Research (when needed)**
+```
+If unfamiliar with domain-specific pattern:
+1. Search for "[domain] [entity/workflow] best practices"
+2. Search for "[reference system] [feature] documentation"
+3. Synthesize findings into gap resolution
+```
+
+#### Gap-Filling Examples
+
+**Example 1: Missing Entity Attributes**
+```yaml
+gap: "LeaveRequest entity missing approval tracking"
+resolution: "Add approver_id, approved_at, approval_comments"
+reasoning: "Standard workflow pattern - all approval-based entities 
+           need to track who approved, when, and why"
+reference: "Workday Absence Management pattern"
+```
+
+**Example 2: Missing Business Rule**
+```yaml
+gap: "No rule for leave balance validation"
+resolution: "Add rule: Available balance >= Requested days"
+reasoning: "Fundamental constraint in all leave management systems
+           to prevent negative balances"
+reference: "Universal pattern across SAP, Workday, Oracle"
+```
+
+**Example 3: Missing Workflow Step**
+```yaml
+gap: "Approval workflow missing escalation"
+resolution: "Add auto-escalation after [configurable] days"
+reasoning: "Prevents requests from being stuck indefinitely.
+           Standard in enterprise approval workflows."
+reference: "ServiceNow, Workday approval patterns"
+```
+
+**Example 4: Regional Compliance**
+```yaml
+gap: "Missing mandatory fields for Vietnam labor compliance"
+resolution: "Add social_insurance_number, tax_code to Employee"
+reasoning: "Required by Vietnam Labor Code for employment records"
+reference: "Vietnam Labor Code 2019, Decree 145/2020"
+# If uncertain, verify with web search
+```
 
 ### Step 6: Resolve Conflicts
 

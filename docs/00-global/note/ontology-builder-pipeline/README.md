@@ -55,11 +55,11 @@ ontology-builder-pipeline/
 │   ├── phase-1-ingest/
 │   │   └── SKILL.md                 # Ingest and catalog inputs
 │   ├── phase-2-analyze/
-│   │   └── SKILL.md                 # SME analysis
+│   │   └── SKILL.md                 # SME analysis (dynamic domain expertise)
 │   ├── phase-3-synthesize/
 │   │   └── SKILL.md                 # DRD generation
 │   └── phase-4-generate/
-│       └── SKILL.md                 # Ontology generation
+│       └── SKILL.md                 # Ontology + Concept generation
 │
 └── templates/                       # Input templates
     ├── project-context.template.md  # Required context
@@ -182,45 +182,62 @@ Key behaviors:
 **Output**: `_output/00-drd/DRD-[module].md`  
 **Purpose**: Generate complete Domain Requirement Document
 
-### Phase 4: Generate Ontology
+### Phase 4: Generate Ontology + Concept
 
 **Input**: DRD  
-**Output**: `_output/01-ontology/`  
-**Purpose**: Generate final Ontology artifacts
+**Output**: `_output/00-ontology/` + `_output/01-concept/`  
+**Purpose**: Generate final Ontology and Concept Guide artifacts
 
 Output structure:
 ```
-01-ontology/
+00-ontology/                         # Domain Foundation
 ├── README.md
 ├── domain/
-│   ├── [submodule]-entities.md
+│   ├── [submodule]-entities.md      # Entity definitions (SINGLE SOURCE)
 │   └── shared-entities.md
-├── workflows/
-│   └── [submodule]-workflows.md
-└── concept-guides/
-    └── [workflow]-guide.md
+└── workflows/
+    └── [submodule]-workflows.md     # Workflow CATALOG only
+
+01-concept/                          # Behavioral Documentation  
+├── README.md
+└── [submodule]/
+    ├── overview.md
+    └── [workflow]-guide.md          # Workflow DETAIL here
 ```
 
 ---
 
-## 🧠 SME Knowledge Sources
+## 🧠 Dynamic SME Expertise
 
-When acting as SME, AI references:
+The AI Agent dynamically activates domain expertise based on `project-context.md`:
 
-### HR/HCM Domain
-- Workday, SAP SuccessFactors, Oracle HCM patterns
-- SHRM standards
-- Local labor laws (Vietnam, Singapore, etc.)
+### How It Works
 
-### Finance Domain
-- SAP FI/CO, Oracle Financials patterns
-- GAAP/IFRS standards
-- Local tax regulations
+1. **Domain Identification**: AI reads project context to identify domain, industry, region
+2. **SME Activation**: AI "becomes" a senior expert in that domain
+3. **Knowledge Application**: AI applies industry patterns, standards, regulations
+4. **Gap Filling**: AI uses domain expertise + web search to fill knowledge gaps
 
-### General Patterns
-- Domain-Driven Design principles
-- Enterprise Integration Patterns
-- Industry-standard workflows
+### Supported Domains (Any)
+
+The pipeline is **domain-agnostic**. AI can act as SME for:
+
+| Domain | Example Reference Systems | Example Standards |
+|--------|---------------------------|-------------------|
+| HR/HCM | Workday, SAP SF, Oracle HCM | SHRM, ISO 30414 |
+| Finance | SAP S/4HANA, Oracle, NetSuite | GAAP, IFRS, VAS |
+| Sales/CRM | Salesforce, HubSpot, SAP CRM | MEDDIC, BANT |
+| Operations | SAP MM, Oracle SCM | Six Sigma, APICS |
+| Healthcare | Epic, Cerner | HIPAA, HL7 |
+| *Any other* | *AI will research* | *AI will identify* |
+
+### Web Search Integration
+
+AI uses web search when needed to:
+- Verify current regulations
+- Research unfamiliar domains
+- Find latest best practices
+- Understand regional requirements
 
 ---
 
