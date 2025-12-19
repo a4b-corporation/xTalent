@@ -834,6 +834,8 @@ Table employment.contract {                   // hợp đồng lao động
   supplier_id        uuid       [ref: > vendor.company.id, null]   // NEW – công ty cung ứng (nếu lao động thuê ngoài)
   primary_flag       boolean    [default: false]            // NEW – đánh dấu HĐ chính
   parent_contract_id uuid       [ref: > employment.contract.id, null]  // NEW – HĐ cha (nếu là HĐ gia hạn/đi kèm)
+  parent_relationship_type varchar(50) [null]  // changed 19dec2025: ADDED - AMENDMENT, ADDENDUM, RENEWAL, SUPERSESSION
+  amendment_type_code varchar(50) [null]       // changed 19dec2025: ADDED - SIGNING_BONUS, STAFF_MOVEMENT, SALARY_CHANGE, etc.
   document_id        uuid       [ref: > person.document.id, null]      // NEW – tài liệu đính kèm (file PDF HĐ)
   is_main            boolean    [default: true]             // NEW – true nếu là HĐ chính (không có HĐ cha)
 
@@ -844,7 +846,25 @@ Table employment.contract {                   // hợp đồng lao động
   created_at         timestamp  [default: `now()`]
   updated_at         timestamp  [null]
   
-  Note: 'changed 11dec2025: Added template_id to link contracts to their templates'
+  Note: '''
+  changed 11dec2025: Added template_id to link contracts to their templates
+  changed 19dec2025: Added parent_relationship_type and amendment_type_code for appendix categorization
+  
+  parent_relationship_type values:
+  - AMENDMENT: Modifies existing terms (salary, position, etc.)
+  - ADDENDUM: Adds new terms without changing existing
+  - RENEWAL: Extends contract duration
+  - SUPERSESSION: Replaces parent contract
+  
+  amendment_type_code values (for AMENDMENT/ADDENDUM):
+  - SIGNING_BONUS: Signing bonus appendix
+  - STAFF_MOVEMENT: Position/department change
+  - SALARY_CHANGE: Salary adjustment
+  - POSITION_CHANGE: Position change only
+  - BENEFITS_CHANGE: Benefits modification
+  - WORKING_HOURS_CHANGE: Working hours adjustment
+  - OTHER: Other amendments
+  '''
 }
 
 Table employment.assignment {                // thông tin bổ nhiệm (assignment) của nhân viên vào vị trí

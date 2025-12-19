@@ -1015,6 +1015,103 @@ WHEN terminating a contract
 
 ---
 
+#### BR-CONTRACT-011: Parent Relationship Type Required
+
+**Priority**: HIGH
+
+**Description**:
+If a contract has a parent contract, the relationship type must be specified.
+
+**Conditions**:
+```
+WHEN parent_contract_id IS NOT NULL
+```
+
+**Rules**:
+1. parent_relationship_type is required
+2. parent_relationship_type must be one of: AMENDMENT, ADDENDUM, RENEWAL, SUPERSESSION
+3. parent_contract_id must reference a valid existing contract
+4. Circular references are not allowed (contract cannot be its own parent)
+
+**Exceptions**:
+- None
+
+**Error Messages**:
+- `ERR_CONTRACT_011_001`: "Parent relationship type is required when parent_contract_id is specified"
+- `ERR_CONTRACT_011_002`: "Invalid parent_relationship_type: {value}. Must be AMENDMENT, ADDENDUM, RENEWAL, or SUPERSESSION"
+- `ERR_CONTRACT_011_003`: "Parent contract {id} does not exist"
+- `ERR_CONTRACT_011_004`: "Circular reference detected: contract cannot be its own parent"
+
+**Related FRs**: FR-CONTRACT-002
+
+**Related Entities**: Contract
+
+---
+
+#### BR-CONTRACT-012: Amendment Type Required
+
+**Priority**: HIGH
+
+**Description**:
+If a contract is an amendment or addendum, the specific amendment type must be specified.
+
+**Conditions**:
+```
+WHEN parent_relationship_type IN ('AMENDMENT', 'ADDENDUM')
+```
+
+**Rules**:
+1. amendment_type_code is required
+2. amendment_type_code must be from CodeList(AMENDMENT_TYPE)
+3. Valid values: SIGNING_BONUS, STAFF_MOVEMENT, SALARY_CHANGE, POSITION_CHANGE, BENEFITS_CHANGE, WORKING_HOURS_CHANGE, OTHER
+4. If parent_relationship_type is RENEWAL or SUPERSESSION, amendment_type_code should be null
+
+**Exceptions**:
+- None
+
+**Error Messages**:
+- `ERR_CONTRACT_012_001`: "Amendment type is required for AMENDMENT or ADDENDUM relationships"
+- `ERR_CONTRACT_012_002`: "Invalid amendment_type_code: {value}"
+- `ERR_CONTRACT_012_003`: "Amendment type should not be specified for RENEWAL or SUPERSESSION relationships"
+
+**Related FRs**: FR-CONTRACT-002
+
+**Related Entities**: Contract
+
+---
+
+#### BR-CONTRACT-013: Main Contract Validation
+
+**Priority**: MEDIUM
+
+**Description**:
+Main contracts should not have parent relationship or amendment type.
+
+**Conditions**:
+```
+WHEN parent_contract_id IS NULL
+```
+
+**Rules**:
+1. parent_relationship_type must be NULL
+2. amendment_type_code must be NULL
+3. Main contracts should typically have template_id (recommended but not required)
+4. is_main flag should be true
+
+**Exceptions**:
+- template_id can be null for custom contracts
+
+**Error Messages**:
+- `ERR_CONTRACT_013_001`: "Main contracts cannot have parent_relationship_type"
+- `ERR_CONTRACT_013_002`: "Main contracts cannot have amendment_type_code"
+- `ERR_CONTRACT_013_003`: "Main contracts should have is_main = true"
+
+**Related FRs**: FR-CONTRACT-001
+
+**Related Entities**: Contract
+
+---
+
 ### Category: Contract Template Management ✨ NEW
 
 #### BR-CONTRACT-TEMPLATE-001: Template Creation Validation

@@ -261,6 +261,67 @@ entities:
         display_en: "End of Contract"
         display_local: "Hết hạn hợp đồng"
         sort_order: 40
+      # PARENT_RELATIONSHIP_TYPE code group
+      - group_code: "PARENT_RELATIONSHIP_TYPE"
+        code: "AMENDMENT"
+        display_en: "Amendment"
+        display_local: "Sửa đổi"
+        description: "Modifies existing contract terms"
+        sort_order: 10
+      - group_code: "PARENT_RELATIONSHIP_TYPE"
+        code: "ADDENDUM"
+        display_en: "Addendum"
+        display_local: "Phụ lục bổ sung"
+        description: "Adds new terms without changing existing"
+        sort_order: 20
+      - group_code: "PARENT_RELATIONSHIP_TYPE"
+        code: "RENEWAL"
+        display_en: "Renewal"
+        display_local: "Gia hạn"
+        description: "Extends contract duration"
+        sort_order: 30
+      - group_code: "PARENT_RELATIONSHIP_TYPE"
+        code: "SUPERSESSION"
+        display_en: "Supersession"
+        display_local: "Thay thế"
+        description: "Replaces parent contract"
+        sort_order: 40
+      # AMENDMENT_TYPE code group
+      - group_code: "AMENDMENT_TYPE"
+        code: "SIGNING_BONUS"
+        display_en: "Signing Bonus"
+        display_local: "Phụ lục - Signing Bonus"
+        sort_order: 10
+      - group_code: "AMENDMENT_TYPE"
+        code: "STAFF_MOVEMENT"
+        display_en: "Staff Movement"
+        display_local: "Phụ lục - Staff Movement"
+        sort_order: 20
+      - group_code: "AMENDMENT_TYPE"
+        code: "SALARY_CHANGE"
+        display_en: "Salary Change"
+        display_local: "Phụ lục - Thay đổi lương"
+        sort_order: 30
+      - group_code: "AMENDMENT_TYPE"
+        code: "POSITION_CHANGE"
+        display_en: "Position Change"
+        display_local: "Phụ lục - Thay đổi vị trí"
+        sort_order: 40
+      - group_code: "AMENDMENT_TYPE"
+        code: "BENEFITS_CHANGE"
+        display_en: "Benefits Change"
+        display_local: "Phụ lục - Thay đổi phúc lợi"
+        sort_order: 50
+      - group_code: "AMENDMENT_TYPE"
+        code: "WORKING_HOURS_CHANGE"
+        display_en: "Working Hours Change"
+        display_local: "Phụ lục - Thay đổi giờ làm"
+        sort_order: 60
+      - group_code: "AMENDMENT_TYPE"
+        code: "OTHER"
+        display_en: "Other Amendment"
+        display_local: "Phụ lục - Khác"
+        sort_order: 70
 
   Currency:
     description: |
@@ -2477,9 +2538,26 @@ entities:
         type: UUID
         description: "Parent contract for hierarchy"
       parent_relationship_type:
+        type: enum
+        values: [AMENDMENT, ADDENDUM, RENEWAL, SUPERSESSION]
+        description: |
+          Type of relationship to parent contract:
+          - AMENDMENT: Modifies existing terms (salary, position, etc.)
+          - ADDENDUM: Adds new terms without changing existing
+          - RENEWAL: Extends contract duration
+          - SUPERSESSION: Replaces parent contract entirely
+      amendment_type_code:
         type: string
         maxLength: 50
-        description: "AMENDMENT, ADDENDUM, RENEWAL, SUPERSESSION"
+        description: |
+          Specific type of amendment (only for AMENDMENT/ADDENDUM):
+          - SIGNING_BONUS: Signing bonus appendix
+          - STAFF_MOVEMENT: Position/department change
+          - SALARY_CHANGE: Salary adjustment
+          - POSITION_CHANGE: Position change only
+          - BENEFITS_CHANGE: Benefits modification
+          - WORKING_HOURS_CHANGE: Working hours adjustment
+          - OTHER: Other amendments
       document_id:
         type: UUID
         description: "Contract document file (PDF)"
@@ -2562,6 +2640,11 @@ entities:
       - "If contract_type_code = FIXED_TERM, end_date is required"
       - "If contract_type_code = PERMANENT, end_date must be null"
       - "If parent_contract_id is not null, parent_relationship_type is required"
+      - "If parent_contract_id is null, parent_relationship_type must be null"
+      - "If parent_relationship_type is AMENDMENT or ADDENDUM, amendment_type_code is required"
+      - "If parent_relationship_type is RENEWAL or SUPERSESSION, amendment_type_code should be null"
+      - "Main contracts (parent_contract_id = null) should have template_id"
+      - "Amendments (parent_contract_id != null) typically have template_id = null"
       - "If template_id is provided, inherit defaults but allow override"
       - "If duration_value is provided, end_date = start_date + duration"
       - "Only one primary_flag=true contract per employee at a time"
