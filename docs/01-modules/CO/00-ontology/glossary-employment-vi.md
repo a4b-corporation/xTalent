@@ -102,17 +102,23 @@ WorkRelationship#2:
 - ✅ Mã nhân viên phải duy nhất trong pháp nhân.
 - ✅ Ngày tuyển dụng <= ngày bắt đầu phân công công việc đầu tiên.
 - ✅ `worker_id` phải khớp với `work_relationship.worker_id`.
+- ✅ `legal_entity_code` phải khớp với `work_relationship.legal_entity_code` ✨ MỚI.
 - ⚠️ Không thể tạo `Employee` cho các quan hệ công việc không phải `EMPLOYEE`.
+
+**Thay đổi trong v2.0** ✨:
+- `legal_entity_code`: Đổi từ `string(50)` → `UUID` để đồng nhất với WorkRelationship
+- `status_code`: Đổi từ `string` → `enum [ACTIVE, TERMINATED, SUSPENDED]` để tăng type safety
+- Thêm business rule: legal_entity_code phải khớp với WorkRelationship
 
 **Ví dụ**:
 ```yaml
 Employee:
   work_relationship_id: WR-001
   employee_code: "EMP-2024-001"
-  legal_entity_code: "VNG-CORP"
+  legal_entity_code: UUID("VNG-VN")  # UUID, không phải string
   hire_date: 2024-01-15
   probation_end_date: 2024-04-15
-  status: ACTIVE
+  status_code: ACTIVE  # Enum value
 ```
 
 **Mối quan hệ với WorkRelationship**:
@@ -122,6 +128,163 @@ Worker → WorkRelationship (type=EMPLOYEE) → Employee
 ```
 
 ---
+
+### 💡 Quan Hệ Legal Entity ✨ MỚI
+
+#### Thiết Kế Denormalization
+
+Employee có `legal_entity_code` được **denormalized** từ WorkRelationship:
+
+```yaml
+WorkRelationship:
+  legal_entity_code: UUID  # Source of truth
+  
+Employee:
+  legal_entity_code: UUID  # Denormalized copy
+```
+
+**Lý do denormalize**:
+1. **Performance**: Tránh join qua WorkRelationship khi query
+2. **Uniqueness**: `employee_code` unique trong phạm vi `legal_entity_code`
+3. **Query efficiency**: Thường xuyên filter/group by legal entity
+
+**Validation Rules**:
+- Employee.legal_entity_code **PHẢI** bằng WorkRelationship.legal_entity_code
+- Employee.worker_id **PHẢI** bằng WorkRelationship.worker_id
+- Không thể thay đổi sau khi tạo
+
+#### Trường Hợp Multiple Legal Entities
+
+```yaml
+# Worker làm việc tại 2 legal entities
+Worker: WORKER-001
+
+WorkRelationship#1:
+  legal_entity_code: VNG-VN
+  relationship_type: EMPLOYEE
+  
+Employee#1:
+  legal_entity_code: VNG-VN  # Khớp với WR#1
+  employee_code: "EMP-VN-001"
+
+WorkRelationship#2:
+  legal_entity_code: VNG-SG
+  relationship_type: CONTRACTOR
+  
+# KHÔNG có Employee#2 vì type = CONTRACTOR
+```
+
+---
+
+### 🔄 Luồng Termination (Nghỉ Việc) ✨ MỚI
+
+#### Thứ Tự Termination
+
+Khi nhân viên nghỉ việc, phải cập nhật **3 cấp độ theo thứ tự**:
+
+```
+Step 1: Assignment (Level 4)
+  ├─ effective_end_date = termination_date
+  └─ is_current_flag = false
+
+Step 2: Employee (Level 3)
+  ├─ status_code = TERMINATED
+  ├─ termination_date = ngày nghỉ việc
+  └─ effective_end_date = termination_date
+
+Step 3: WorkRelationship (Level 2)
+  ├─ status_code = TERMINATED
+  ├─ end_date = termination_date
+  ├─ termination_reason_code = lý do
+  └─ termination_type_code = loại ✨ MỚI
+```
+
+#### Termination Type Codes ✨ MỚI
+
+WorkRelationship có field mới `termination_type_code`:
+
+| Code | Mô Tả | Khi Nào Dùng |
+|------|-------|--------------|
+| **VOLUNTARY** | Nghỉ việc tự nguyện | Nhân viên xin nghỉ |
+| **INVOLUNTARY** | Sa thải | Công ty chấm dứt |
+| **MUTUAL** | Thỏa thuận chung | Hai bên đồng ý |
+| **END_OF_CONTRACT** | Hết hạn hợp đồng | Hợp đồng có thời hạn hết hạn |
+
+#### Ví Dụ Termination Flow
+
+```yaml
+# TRƯỚC KHI NGHỈ VIỆC
+WorkRelationship:
+  status_code: ACTIVE
+  end_date: null
+
+Employee:
+  status_code: ACTIVE
+  termination_date: null
+
+Assignment:
+  effective_end_date: null
+  is_current_flag: true
+
+# SAU KHI NGHỈ VIỆC (2024-12-31)
+# Step 1: End Assignment
+Assignment:
+  effective_end_date: 2024-12-31
+  is_current_flag: false
+
+# Step 2: Terminate Employee
+Employee:
+  status_code: TERMINATED
+  termination_date: 2024-12-31
+  effective_end_date: 2024-12-31
+  is_current_flag: false
+
+# Step 3: Terminate WorkRelationship
+WorkRelationship:
+  status_code: TERMINATED
+  end_date: 2024-12-31
+  termination_reason_code: "RESIGNATION"
+  termination_type_code: VOLUNTARY  # MỚI
+  rehire_eligible_flag: true
+```
+
+#### Validation Rules
+
+- ✅ Phải terminate Assignments trước Employee
+- ✅ Phải terminate Employee trước WorkRelationship
+- ✅ Tất cả phải thành công hoặc rollback (atomic transaction)
+- ✅ Không thể có partial termination state
+- ⚠️ Termination date phải nhất quán giữa các cấp độ
+
+---
+
+### 📊 So Sánh Các Khái Niệm Phân Loại ✨ MỚI
+
+#### relationship_type_code vs employee_class_code vs contract_type_code
+
+| Khía Cạnh | relationship_type_code | employee_class_code | contract_type_code |
+|-----------|------------------------|---------------------|-------------------|
+| **Entity** | WorkRelationship | Employee | Contract |
+| **Cấp độ** | Level 2 | Level 3 | Level 3 |
+| **Mục đích** | Bản chất quan hệ công việc | Trạng thái/giai đoạn nhân viên | Loại hợp đồng pháp lý |
+| **Phạm vi** | Tất cả workers | Chỉ EMPLOYEE type | Tất cả contracts |
+| **Giá trị** | EMPLOYEE, CONTRACTOR, INTERN | REGULAR, PROBATION, TEMPORARY | PERMANENT, FIXED_TERM, PROBATION |
+| **Type** | enum | string (sẽ chuyển sang enum) | string |
+
+#### Ma Trận Tổ Hợp Phổ Biến
+
+| Relationship Type | Employee Class | Contract Type | Ví Dụ |
+|-------------------|----------------|---------------|-------|
+| EMPLOYEE | PROBATION | PROBATION | Nhân viên mới, đang thử việc |
+| EMPLOYEE | REGULAR | PERMANENT | Nhân viên chính thức, vô thời hạn |
+| EMPLOYEE | REGULAR | FIXED_TERM | Nhân viên chính thức, có thời hạn |
+| EMPLOYEE | PART_TIME | PERMANENT | Nhân viên bán thời gian, vô thời hạn |
+| EMPLOYEE | TEMPORARY | FIXED_TERM | Nhân viên tạm thời, ngắn hạn |
+| CONTRACTOR | N/A | N/A | Nhà thầu (không có Employee record) |
+| INTERN | TRAINEE | FIXED_TERM | Thực tập sinh có hợp đồng |
+
+---
+
 
 ### Contract
 

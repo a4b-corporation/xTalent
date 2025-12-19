@@ -209,6 +209,58 @@ entities:
         display_en: "Single"
         display_local: "Độc thân"
         sort_order: 10
+      # EMPLOYEE_CLASS code group
+      - group_code: "EMPLOYEE_CLASS"
+        code: "REGULAR"
+        display_en: "Regular Employee"
+        display_local: "Nhân viên chính thức"
+        sort_order: 10
+      - group_code: "EMPLOYEE_CLASS"
+        code: "PROBATION"
+        display_en: "Probationary Employee"
+        display_local: "Nhân viên thử việc"
+        sort_order: 20
+      - group_code: "EMPLOYEE_CLASS"
+        code: "TEMPORARY"
+        display_en: "Temporary Employee"
+        display_local: "Nhân viên tạm thời"
+        sort_order: 30
+      - group_code: "EMPLOYEE_CLASS"
+        code: "PART_TIME"
+        display_en: "Part-time Employee"
+        display_local: "Nhân viên bán thời gian"
+        sort_order: 40
+      - group_code: "EMPLOYEE_CLASS"
+        code: "SEASONAL"
+        display_en: "Seasonal Employee"
+        display_local: "Nhân viên thời vụ"
+        sort_order: 50
+      - group_code: "EMPLOYEE_CLASS"
+        code: "TRAINEE"
+        display_en: "Trainee"
+        display_local: "Nhân viên đào tạo"
+        sort_order: 60
+      # TERMINATION_TYPE code group
+      - group_code: "TERMINATION_TYPE"
+        code: "VOLUNTARY"
+        display_en: "Voluntary Termination"
+        display_local: "Nghỉ việc tự nguyện"
+        sort_order: 10
+      - group_code: "TERMINATION_TYPE"
+        code: "INVOLUNTARY"
+        display_en: "Involuntary Termination"
+        display_local: "Sa thải"
+        sort_order: 20
+      - group_code: "TERMINATION_TYPE"
+        code: "MUTUAL"
+        display_en: "Mutual Agreement"
+        display_local: "Thỏa thuận chung"
+        sort_order: 30
+      - group_code: "TERMINATION_TYPE"
+        code: "END_OF_CONTRACT"
+        display_en: "End of Contract"
+        display_local: "Hết hạn hợp đồng"
+        sort_order: 40
 
   Currency:
     description: |
@@ -2235,6 +2287,15 @@ entities:
         type: string
         maxLength: 50
         description: "Reason for termination (if applicable)"
+      termination_type_code:
+        type: enum
+        values: [VOLUNTARY, INVOLUNTARY, MUTUAL, END_OF_CONTRACT]
+        description: |\
+          Type of termination:
+          - VOLUNTARY: Employee resignation
+          - INVOLUNTARY: Employer termination
+          - MUTUAL: Mutual agreement
+          - END_OF_CONTRACT: Natural contract expiration
       rehire_eligible_flag:
         type: boolean
         default: true
@@ -2304,10 +2365,9 @@ entities:
         required: true
         description: "Denormalized from work relationship for query performance"
       legal_entity_code:
-        type: string
+        type: UUID
         required: true
-        maxLength: 50
-        description: "Legal entity employing the worker"
+        description: "Legal entity employing the worker (denormalized from WorkRelationship)"
       employee_code:
         type: string
         required: true
@@ -2326,9 +2386,10 @@ entities:
         maxLength: 50
         description: "DEPRECATED - use category and class"
       status_code:
-        type: string
-        maxLength: 50
-        description: "ACTIVE, TERMINATED, SUSPENDED"
+        type: enum
+        values: [ACTIVE, TERMINATED, SUSPENDED]
+        default: ACTIVE
+        description: "Current employment status"
       hire_date:
         type: date
         required: true
@@ -2381,6 +2442,7 @@ entities:
       - "One worker can have multiple employee records (via different work relationships)"
       - "Hire date must be <= first assignment start date"
       - "Worker_id must match work_relationship.worker_id"
+      - "Legal_entity_code must match work_relationship.legal_entity_code"
 
   Contract:
     description: |

@@ -1264,6 +1264,89 @@ WHEN terminating an employee
 
 ---
 
+#### BR-EMP-011: Employee Legal Entity Consistency ✨ NEW
+
+**Priority**: HIGH
+
+**Description**:
+Employee legal entity and worker must match parent work relationship to ensure data integrity.
+
+**Conditions**:
+```
+WHEN creating or updating employee record
+```
+
+**Rules**:
+1. Employee.legal_entity_code MUST equal WorkRelationship.legal_entity_code
+2. Employee.worker_id MUST equal WorkRelationship.worker_id
+3. Validation triggered on Employee create/update
+4. Cannot change legal_entity_code after creation
+5. Cannot change worker_id after creation
+6. Both fields must be UUID type (not string)
+
+**Exceptions**:
+- None - this is a critical data integrity rule
+
+**Error Messages**:
+- `EMP_LEGAL_ENTITY_MISMATCH`: "Employee legal entity must match work relationship legal entity"
+- `EMP_WORKER_MISMATCH`: "Employee worker must match work relationship worker"
+- `EMP_LEGAL_ENTITY_IMMUTABLE`: "Cannot change legal entity after creation"
+- `EMP_WORKER_IMMUTABLE`: "Cannot change worker after creation"
+
+**Related FRs**: FR-EMP-001
+
+**Related Entities**: Employee, WorkRelationship
+
+---
+
+### Category: Termination Flow ✨ NEW
+
+#### BR-TERM-001: Termination Sequence
+
+**Priority**: HIGH
+
+**Description**:
+Termination must follow strict sequence to maintain data integrity and prevent partial termination states.
+
+**Conditions**:
+```
+WHEN terminating an employee
+```
+
+**Rules**:
+1. **Step 1**: End all active Assignments
+   - Set effective_end_date = termination_date
+   - Set is_current_flag = false
+   - Validate: No assignments remain active
+2. **Step 2**: Terminate Employee record
+   - Set status_code = TERMINATED
+   - Set termination_date
+   - Set effective_end_date (SCD Type 2)
+   - Set is_current_flag = false
+3. **Step 3**: Terminate WorkRelationship
+   - Set status_code = TERMINATED
+   - Set end_date = termination_date
+   - Set termination_reason_code
+   - Set termination_type_code (VOLUNTARY, INVOLUNTARY, MUTUAL, END_OF_CONTRACT)
+4. All steps must complete successfully or rollback (atomic transaction)
+5. Termination dates must be consistent across all levels
+6. Cannot have partial termination state (e.g., Employee terminated but WorkRelationship active)
+
+**Exceptions**:
+- None - sequence is mandatory for data integrity
+
+**Error Messages**:
+- `TERM_SEQUENCE_VIOLATION`: "Termination sequence violated - must terminate in order: Assignment → Employee → WorkRelationship"
+- `TERM_PARTIAL_STATE`: "Cannot have partial termination state"
+- `TERM_DATE_INCONSISTENT`: "Termination dates must be consistent across all levels"
+- `TERM_ACTIVE_ASSIGNMENTS`: "Cannot terminate employee with active assignments"
+
+**Related FRs**: FR-WR-010, FR-EMP-010
+
+**Related Entities**: WorkRelationship, Employee, Assignment
+
+---
+
 #### BR-EMP-015: Rehire Validation
 
 **Priority**: MEDIUM

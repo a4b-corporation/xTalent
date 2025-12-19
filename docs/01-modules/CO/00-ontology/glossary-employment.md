@@ -102,17 +102,23 @@ WorkRelationship#2:
 - ✅ Employee code unique within legal entity
 - ✅ Hire date <= first assignment start date
 - ✅ worker_id must match work_relationship.worker_id
+- ✅ legal_entity_code must match work_relationship.legal_entity_code ✨ NEW
 - ⚠️ Cannot create Employee for non-EMPLOYEE work relationships
+
+**Changes in v2.0** ✨:
+- `legal_entity_code`: Changed from `string(50)` → `UUID` for consistency with WorkRelationship
+- `status_code`: Changed from `string` → `enum [ACTIVE, TERMINATED, SUSPENDED]` for type safety
+- Added business rule: legal_entity_code must match WorkRelationship
 
 **Example**:
 ```yaml
 Employee:
   work_relationship_id: WR-001
   employee_code: "EMP-2024-001"
-  legal_entity_code: "VNG-CORP"
+  legal_entity_code: UUID("VNG-VN")  # UUID, not string
   hire_date: 2024-01-15
   probation_end_date: 2024-04-15
-  status: ACTIVE
+  status_code: ACTIVE  # Enum value
 ```
 
 **Relationship to WorkRelationship**:
@@ -122,6 +128,163 @@ Worker → WorkRelationship (type=EMPLOYEE) → Employee
 ```
 
 ---
+
+### 💡 Legal Entity Relationships ✨ NEW
+
+#### Denormalization Design
+
+Employee has `legal_entity_code` **denormalized** from WorkRelationship:
+
+```yaml
+WorkRelationship:
+  legal_entity_code: UUID  # Source of truth
+  
+Employee:
+  legal_entity_code: UUID  # Denormalized copy
+```
+
+**Why Denormalize?**:
+1. **Performance**: Avoid join through WorkRelationship for queries
+2. **Uniqueness**: `employee_code` unique within `legal_entity_code` scope
+3. **Query Efficiency**: Frequently filter/group by legal entity
+
+**Validation Rules**:
+- Employee.legal_entity_code **MUST** equal WorkRelationship.legal_entity_code
+- Employee.worker_id **MUST** equal WorkRelationship.worker_id
+- Cannot change after creation
+
+#### Multiple Legal Entities Scenario
+
+```yaml
+# Worker working at 2 legal entities
+Worker: WORKER-001
+
+WorkRelationship#1:
+  legal_entity_code: VNG-VN
+  relationship_type: EMPLOYEE
+  
+Employee#1:
+  legal_entity_code: VNG-VN  # Matches WR#1
+  employee_code: "EMP-VN-001"
+
+WorkRelationship#2:
+  legal_entity_code: VNG-SG
+  relationship_type: CONTRACTOR
+  
+# NO Employee#2 - contractor relationship
+```
+
+---
+
+### 🔄 Termination Flow ✨ NEW
+
+#### Termination Sequence
+
+When an employee terminates, **3 levels must be updated in order**:
+
+```
+Step 1: Assignment (Level 4)
+  ├─ effective_end_date = termination_date
+  └─ is_current_flag = false
+
+Step 2: Employee (Level 3)
+  ├─ status_code = TERMINATED
+  ├─ termination_date = termination date
+  └─ effective_end_date = termination_date
+
+Step 3: WorkRelationship (Level 2)
+  ├─ status_code = TERMINATED
+  ├─ end_date = termination_date
+  ├─ termination_reason_code = reason
+  └─ termination_type_code = type ✨ NEW
+```
+
+#### Termination Type Codes ✨ NEW
+
+WorkRelationship has new field `termination_type_code`:
+
+| Code | Description | When to Use |
+|------|-------------|-------------|
+| **VOLUNTARY** | Voluntary resignation | Employee resigns |
+| **INVOLUNTARY** | Involuntary termination | Company terminates |
+| **MUTUAL** | Mutual agreement | Both parties agree |
+| **END_OF_CONTRACT** | Contract expiration | Fixed-term contract ends |
+
+#### Termination Flow Example
+
+```yaml
+# BEFORE TERMINATION
+WorkRelationship:
+  status_code: ACTIVE
+  end_date: null
+
+Employee:
+  status_code: ACTIVE
+  termination_date: null
+
+Assignment:
+  effective_end_date: null
+  is_current_flag: true
+
+# AFTER TERMINATION (2024-12-31)
+# Step 1: End Assignment
+Assignment:
+  effective_end_date: 2024-12-31
+  is_current_flag: false
+
+# Step 2: Terminate Employee
+Employee:
+  status_code: TERMINATED
+  termination_date: 2024-12-31
+  effective_end_date: 2024-12-31
+  is_current_flag: false
+
+# Step 3: Terminate WorkRelationship
+WorkRelationship:
+  status_code: TERMINATED
+  end_date: 2024-12-31
+  termination_reason_code: "RESIGNATION"
+  termination_type_code: VOLUNTARY  # NEW
+  rehire_eligible_flag: true
+```
+
+#### Validation Rules
+
+- ✅ Must terminate Assignments before Employee
+- ✅ Must terminate Employee before WorkRelationship
+- ✅ All must succeed or rollback (atomic transaction)
+- ✅ Cannot have partial termination state
+- ⚠️ Termination dates must be consistent across levels
+
+---
+
+### 📊 Concept Comparison ✨ NEW
+
+#### relationship_type_code vs employee_class_code vs contract_type_code
+
+| Aspect | relationship_type_code | employee_class_code | contract_type_code |
+|--------|------------------------|---------------------|-------------------|
+| **Entity** | WorkRelationship | Employee | Contract |
+| **Level** | Level 2 | Level 3 | Level 3 |
+| **Purpose** | Nature of work relationship | Employee status/stage | Legal contract type |
+| **Scope** | All workers | EMPLOYEE type only | All contracts |
+| **Values** | EMPLOYEE, CONTRACTOR, INTERN | REGULAR, PROBATION, TEMPORARY | PERMANENT, FIXED_TERM, PROBATION |
+| **Type** | enum | string (will change to enum) | string |
+
+#### Common Combinations Matrix
+
+| Relationship Type | Employee Class | Contract Type | Example |
+|-------------------|----------------|---------------|---------|
+| EMPLOYEE | PROBATION | PROBATION | New hire on probation |
+| EMPLOYEE | REGULAR | PERMANENT | Regular employee, indefinite term |
+| EMPLOYEE | REGULAR | FIXED_TERM | Regular employee, fixed term |
+| EMPLOYEE | PART_TIME | PERMANENT | Part-time employee, indefinite |
+| EMPLOYEE | TEMPORARY | FIXED_TERM | Temporary employee, short term |
+| CONTRACTOR | N/A | N/A | Contractor (no Employee record) |
+| INTERN | TRAINEE | FIXED_TERM | Paid intern with contract |
+
+---
+
 
 ### Contract
 
