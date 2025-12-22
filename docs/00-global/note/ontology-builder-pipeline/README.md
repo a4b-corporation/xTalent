@@ -49,23 +49,26 @@ This pipeline enables an AI Agent to automatically generate Domain Ontology docu
 ontology-builder-pipeline/
 │
 ├── PIPELINE-MASTER-PLAN.md          # Master plan (AI reads this first)
+├── VERIFICATION-GATEWAY-SYSTEM.md   # Verification system documentation
 ├── README.md                        # This file
 │
-├── skills/                          # AI Skills for each phase
+├── skills/                          # AI Skills
 │   ├── phase-1-ingest/
-│   │   └── SKILL.md                 # Ingest and catalog inputs
+│   │   └── SKILL.md                 # Ingest + Gate 1 verification
 │   ├── phase-2-analyze/
-│   │   └── SKILL.md                 # SME analysis (dynamic domain expertise)
+│   │   └── SKILL.md                 # SME analysis + Gate 2 verification
 │   ├── phase-3-synthesize/
-│   │   └── SKILL.md                 # DRD generation
-│   └── phase-4-generate/
-│       └── SKILL.md                 # Ontology + Concept generation
+│   │   └── SKILL.md                 # DRD generation + Gate 3 verification
+│   ├── phase-4-generate/
+│   │   └── SKILL.md                 # Ontology generation + Gate 4 verification
+│   └── verifier-agent/
+│       └── SKILL.md                 # Independent verification agent
 │
 └── templates/                       # Input templates
-    ├── project-context.template.md  # Required context
-    ├── domain-hints.template.md     # Optional domain hints
-    ├── user-stories.template.md     # User story format
-    └── interview.template.md        # Interview format
+    ├── project-context.template.md
+    ├── domain-hints.template.md
+    ├── user-stories.template.md
+    └── interview.template.md
 ```
 
 ---
@@ -292,6 +295,49 @@ In `project-context.md`, set:
 | Phase 1-4 (AI) | 15-30 mins | Complete ontology |
 | Human Review | 1-2 hours | Validated output |
 | **Total** | **~3-4 hours** | **vs 2-3 weeks manual** |
+
+## 🔍 Verification System
+
+The pipeline includes built-in verification gates and supports independent AI verification.
+
+### Self-Verification (Built-in)
+
+Each phase generates a verification manifest:
+
+| Gate | After Phase | Checks |
+|------|-------------|--------|
+| Gate 1 | Ingest | File coverage, summaries present |
+| Gate 2 | Analyze | Source traceability, confidence levels |
+| Gate 3 | Synthesize | Completeness, no placeholders |
+| Gate 4 | Generate | Links valid, end-to-end trace |
+
+### Independent Verification (Optional)
+
+Use a separate AI Agent to cross-validate:
+
+```
+Agent 2 (Verifier):
+"Verify ontology pipeline outputs in [project] folder.
+ Load skills/verifier-agent/SKILL.md and run full verification."
+```
+
+The Verifier Agent will:
+- Cross-reference outputs against inputs
+- Identify unsupported claims
+- Flag potential hallucinations
+- Generate verification report
+
+### Verification Outputs
+
+```
+_output/_logs/
+├── gate-1-manifest.yaml      # Post-ingest verification
+├── gate-2-manifest.yaml      # Post-analysis verification
+├── gate-3-manifest.yaml      # Post-DRD verification
+├── gate-4-manifest.yaml      # Final verification
+├── traceability-matrix.yaml  # End-to-end trace
+└── verification-report.md    # Independent verifier report
+```
 
 ---
 

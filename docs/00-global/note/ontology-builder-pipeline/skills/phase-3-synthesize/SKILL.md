@@ -382,7 +382,79 @@ Side Effects:
 ## Output
 
 - `_output/00-drd/DRD-[module].md`
+- `_output/_logs/gate-3-manifest.yaml` (verification manifest)
 - Ready for Phase 4: Generate Ontology
+
+## Gate 3: Self-Verification
+
+Before completing Phase 3, generate verification manifest:
+
+```yaml
+# _output/_logs/gate-3-manifest.yaml
+gate: 3
+name: "Post-DRD Verification"
+timestamp: "[ISO timestamp]"
+
+structural_checks:
+  - check: "DRD document exists"
+    status: PASS
+  - check: "All required sections present"
+    status: PASS | FAIL
+    sections:
+      context: true | false
+      domain_concepts: true | false
+      business_rules: true | false
+      workflows: true | false
+      examples: true | false
+      assumptions: true | false
+  - check: "No TODO/TBD placeholders"
+    status: PASS | FAIL
+    placeholders_found: []
+
+consistency_checks:
+  - check: "All analysis entities in DRD"
+    status: PASS | FAIL
+    analysis_count: [N]
+    drd_count: [N]
+    missing: []
+  - check: "All analysis workflows in DRD"
+    status: PASS | FAIL
+    missing: []
+  - check: "Business rule IDs unique"
+    status: PASS | FAIL
+    duplicates: []
+  - check: "Workflow IDs unique"
+    status: PASS | FAIL
+    duplicates: []
+
+traceability_checks:
+  - check: "Concepts trace to analysis"
+    status: PASS | FAIL
+  - check: "Confidence markers present"
+    status: PASS | FAIL
+    sections_without_confidence: []
+
+quality_checks:
+  - check: "Business rules have condition and action"
+    status: PASS | FAIL
+    vague_rules: []
+  - check: "Workflows have complete main flow"
+    status: PASS | FAIL
+    incomplete_workflows: []
+  - check: "Examples are realistic"
+    status: PASS | FAIL
+
+result:
+  status: PASS | FAIL | WARN
+  blocking_failures: []
+  warnings: []
+  proceed_to_next_phase: true | false
+```
+
+**Verification Rules**:
+- FAIL if missing required sections
+- FAIL if TODO/TBD placeholders remain
+- WARN if any analysis entity missing from DRD
 
 ## Quality Checklist
 

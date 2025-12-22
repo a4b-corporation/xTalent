@@ -708,11 +708,117 @@ Create: `_output/_logs/generation-report.md`
 - `_output/00-ontology/` - Domain ontology (entities + workflow catalog)
 - `_output/01-concept/` - Concept guides (workflow details)
 - `_output/_logs/generation-report.md` - Generation summary
+- `_output/_logs/gate-4-manifest.yaml` - Final verification manifest
+- `_output/_logs/traceability-matrix.yaml` - End-to-end trace
+
+## Gate 4: Final Verification
+
+Generate comprehensive verification manifest:
+
+```yaml
+# _output/_logs/gate-4-manifest.yaml
+gate: 4
+name: "Post-Generate Verification (Final)"
+timestamp: "[ISO timestamp]"
+
+structural_checks:
+  - check: "Ontology README exists"
+    status: PASS | FAIL
+  - check: "All entity files generated"
+    status: PASS | FAIL
+    expected: [list]
+    generated: [list]
+    missing: []
+  - check: "All workflow catalogs generated"
+    status: PASS | FAIL
+  - check: "All concept guides generated"
+    status: PASS | FAIL
+    expected: [list from core workflows]
+    generated: [list]
+    missing: []
+  - check: "No empty files"
+    status: PASS | FAIL
+    empty_files: []
+
+consistency_checks:
+  - check: "Cross-references valid"
+    status: PASS | FAIL
+    total_links: [N]
+    broken_links: []
+  - check: "Entity anchors exist"
+    status: PASS | FAIL
+    missing_anchors: []
+  - check: "Workflow-to-guide links valid"
+    status: PASS | FAIL
+    unlinked: []
+
+quality_checks:
+  - check: "Entities have all required sections"
+    status: PASS | FAIL
+    incomplete: []
+  - check: "Concept guides have diagrams"
+    status: PASS | FAIL
+    guides_without_diagrams: []
+  - check: "Business rules linked to entities"
+    status: PASS | FAIL
+    unlinked_rules: []
+
+result:
+  status: PASS | FAIL | WARN
+  blocking_failures: []
+  warnings: []
+  pipeline_complete: true | false
+  ready_for_review: true | false
+```
+
+## Traceability Matrix
+
+Generate end-to-end traceability:
+
+```yaml
+# _output/_logs/traceability-matrix.yaml
+generated: "[timestamp]"
+
+trace_chains:
+  - output: "domain/leave-entities.md#leave-request"
+    drd: "DRD-LV.md#section-2.1"
+    analysis: "analysis-report.md#entity-leave-request"
+    input: 
+      - source: "user-stories.md"
+        reference: "US-001, US-002"
+      - source: "interview-hr.md"
+        reference: "Line 45-67"
+    confidence: HIGH
+    
+  - output: "domain/leave-entities.md#leave-balance"
+    drd: "DRD-LV.md#section-2.2"
+    analysis: "analysis-report.md#entity-leave-balance"
+    input:
+      - source: "user-stories.md"
+        reference: "US-001 (mentioned)"
+    confidence: MEDIUM
+    
+  - output: "domain/leave-entities.md#approval-chain"
+    drd: "DRD-LV.md#section-2.5"
+    analysis: "analysis-report.md#entity-approval-chain"
+    input: []  # No direct input
+    confidence: ASSUMED
+    assumption: "Standard workflow pattern"
+
+coverage_summary:
+  total_output_elements: [N]
+  fully_traced: [N]
+  partially_traced: [N]
+  assumed: [N]
+  coverage_percentage: "[%]"
+```
 
 ## Pipeline Complete
 
 After Phase 4:
 - Ontology is ready for use
 - Concept guides provide workflow details
-- Human can review and refine
-- Ready for Specification layer (02-spec)
+- Verification manifests available for review
+- Traceability matrix enables audit
+- Ready for Independent Verifier (optional)
+- Ready for human review (recommended)

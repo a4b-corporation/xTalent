@@ -468,7 +468,70 @@ Analysis complete. Proceed to DRD synthesis.
 ## Output
 
 - `_output/_logs/analysis-report.md`
+- `_output/_logs/gate-2-manifest.yaml` (verification manifest)
 - Ready for Phase 3: Synthesize
+
+## Gate 2: Self-Verification
+
+Before completing Phase 2, generate verification manifest:
+
+```yaml
+# _output/_logs/gate-2-manifest.yaml
+gate: 2
+name: "Post-Analysis Verification"
+timestamp: "[ISO timestamp]"
+
+structural_checks:
+  - check: "analysis-report.md exists"
+    status: PASS
+  - check: "Entities section present"
+    status: PASS | FAIL
+    entity_count: [N]
+  - check: "Workflows section present"
+    status: PASS | FAIL
+    workflow_count: [N]
+  - check: "Business rules section present"
+    status: PASS | FAIL
+    rule_count: [N]
+
+consistency_checks:
+  - check: "All entities have classification"
+    status: PASS | FAIL
+    unclassified: []
+  - check: "All entities have confidence level"
+    status: PASS | FAIL
+  - check: "Confidence values valid"
+    status: PASS | FAIL
+    invalid_values: []
+
+traceability_checks:
+  - check: "Every entity has source reference"
+    status: PASS | FAIL
+    entities_without_source: []
+  - check: "Every workflow has source reference"
+    status: PASS | FAIL
+    workflows_without_source: []
+  - check: "Assumed items documented in assumptions section"
+    status: PASS | FAIL
+    undocumented_assumptions: []
+
+coverage_metrics:
+  input_files_processed: "[N]/[Total]"
+  entities_from_input: [N]
+  entities_assumed: [N]
+  assumption_ratio: "[%]"
+
+result:
+  status: PASS | FAIL | WARN
+  blocking_failures: []
+  warnings: []
+  proceed_to_next_phase: true | false
+```
+
+**Verification Rules**:
+- FAIL if any entity has no source AND is not marked ASSUMED
+- WARN if assumption_ratio > 30%
+- Only proceed if `status: PASS` or `status: WARN`
 
 ## Key Behaviors
 

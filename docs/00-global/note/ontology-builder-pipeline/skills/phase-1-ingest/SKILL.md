@@ -135,7 +135,50 @@ Output: `_output/_logs/ingestion-report.md`
 ## Output
 
 - `_output/_logs/ingestion-report.md`
+- `_output/_logs/gate-1-manifest.yaml` (verification manifest)
 - Ready for Phase 2: Analyze
+
+## Gate 1: Self-Verification
+
+Before completing Phase 1, generate verification manifest:
+
+```yaml
+# _output/_logs/gate-1-manifest.yaml
+gate: 1
+name: "Post-Ingest Verification"
+timestamp: "[ISO timestamp]"
+
+structural_checks:
+  - check: "ingestion-report.md exists"
+    status: PASS
+  - check: "All input files cataloged"
+    status: PASS | FAIL
+    details:
+      input_files_count: [N]
+      cataloged_count: [N]
+      missing: []
+  - check: "project-context.md processed"
+    status: PASS | FAIL
+
+consistency_checks:
+  - check: "No duplicate entries"
+    status: PASS | FAIL
+  - check: "All file paths valid"
+    status: PASS | FAIL
+
+traceability_checks:
+  - check: "Each file has summary"
+    status: PASS | FAIL
+    files_without_summary: []
+
+result:
+  status: PASS | FAIL | WARN
+  blocking_failures: []
+  warnings: []
+  proceed_to_next_phase: true | false
+```
+
+**Verification Rule**: Only proceed to Phase 2 if `status: PASS` or `status: WARN`
 
 ## Error Handling
 
