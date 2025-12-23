@@ -1,0 +1,591 @@
+# xTalent Business Event Framework
+# Global event ontology for platform-wide event tracking
+
+metadata:
+  name: "Business Event Framework"
+  version: "1.0"
+  created: "2025-12-22"
+  scope: "Platform-wide, all modules"
+  purpose: "Universal event model for audit trail, working records, and cross-module integration"
+
+# ==============================================================================
+# CORE ENTITIES
+# ==============================================================================
+
+entities:
+  
+  BusinessEvent:
+    description: |
+      Universal business event entity for all xTalent modules.
+      Immutable log of all significant business occurrences.
+      Foundation for event sourcing, audit trail, and working records.
+    
+    attributes:
+      - id: string (UUID)
+      - eventNumber: bigint (auto-increment)
+      - eventTypeCode: string (ref: EventType.code)
+      - eventCategory: enum [CORE, TALENT_ACQUISITION, TIME_ABSENCE, TOTAL_REWARDS, PERFORMANCE, LEARNING]
+      - eventReasonCode: string (ref: EventReason.code, nullable)
+      
+      # Context
+      - aggregateType: string (Employee, Candidate, TimeEntry, etc.)
+      - aggregateId: string (UUID)
+      - workerId: string (UUID, nullable, denormalized)
+      - employeeId: string (UUID, nullable, denormalized)
+      - legalEntityCode: string (nullable)
+      - businessUnitId: string (UUID, nullable)
+      
+      # Timing
+      - eventTimestamp: timestamp (UTC)
+      - effectiveDate: date
+      - effectiveEndDate: date (nullable)
+      
+      # Payload
+      - payload: jsonb (event-specific data)
+      
+      # Actor
+      - actorId: string (UUID)
+      - actorType: enum [USER, SYSTEM, INTEGRATION, SCHEDULED_JOB]
+      
+      # Metadata
+      - metadata: jsonb (approval workflows, IP, correlation IDs, etc.)
+      
+      # Event Hierarchy
+      - parentEventId: string (UUID, nullable)
+      - rootEventId: string (UUID, nullable)
+      
+      # Versioning
+      - eventVersion: integer (default: 1)
+      
+      # Soft Delete
+      - isDeleted: boolean (default: false)
+      - deletedAt: timestamp (nullable)
+      - deletedBy: string (UUID, nullable)
+      
+      # Audit
+      - createdAt: timestamp
+    
+    relationships:
+      - hasEventType: EventType
+      - hasEventReason: EventReason (optional)
+      - triggeredBy: Worker (as actor)
+      - hasParentEvent: BusinessEvent (optional)
+      - hasRootEvent: BusinessEvent (optional)
+    
+    constraints:
+      - id must be unique
+      - eventNumber must be unique and sequential
+      - eventTimestamp must be <= current timestamp
+      - effectiveDate can be future (scheduled events)
+      - effectiveEndDate must be >= effectiveDate
+    
+    businessRules:
+      - Events are IMMUTABLE - no updates to payload allowed
+      - Only soft delete permitted (never hard delete)
+      - Retain for minimum 7 years (compliance)
+      - Archive to cold storage after 3 years
+      - Events generate working record entries if eventType.isWrTrackable = true
+    
+    lifecycle:
+      - CREATED → PUBLISHED → (optional) SOFT_DELETED
+    
+    examples:
+      - eventType: "EMPLOYEE_HIRE"
+        aggregateType: "Employee"
+        effectiveDate: "2024-01-15"
+        payload:
+          jobId: "JOB-001"
+          grade: "G1"
+          baseSalary: 50000000
+      
+      - eventType: "ASSIGNMENT_PROMOTION"
+        aggregateType: "Assignment"
+        effectiveDate: "2024-07-01"
+        payload:
+          previousJob: "JOB-SENIOR-ENG"
+          newJob: "JOB-LEAD-ENG"
+          previousGrade: "G3"
+          newGrade: "G4"
+          salaryIncrease: 20000000
+  
+  # ----------------------------------------------------------------------------
+  
+  EventType:
+    description: |
+      Catalog of all business event types across xTalent platform.
+      Defines event structure, payload schema, and tracking rules.
+      Configurable by customers to enable/disable specific event tracking.
+    
+    attributes:
+      - id: string (UUID)
+      - code: string (unique, e.g., "EMPLOYEE_HIRE", "SALARY_INCREASE")
+      - name: string (display name)
+      - description: text
+      - category: enum [CORE, TALENT_ACQUISITION, TIME_ABSENCE, TOTAL_REWARDS, PERFORMANCE, LEARNING]
+      - subcategory: string (nullable, for finer categorization)
+      
+      # Configuration
+      - isActive: boolean (default: true)
+      - isWrTrackable: boolean (default: false, track in working records?)
+      - isAuditable: boolean (default: true, generate audit log?)
+      - requiresApproval: boolean (default: false)
+      
+      # Schema
+      - payloadSchema: jsonb (JSON Schema for validation)
+      
+      # Event Reasons
+      - supportsReasons: boolean (default: true)
+      
+      # Metadata
+      - severity: enum [INFO, LOW, MEDIUM, HIGH, CRITICAL]
+      - retentionYears: integer (default: 7)
+      
+      # Versioning
+      - version: integer (default: 1)
+      
+      # Audit
+      - createdAt: timestamp
+      - updatedAt: timestamp
+    
+    relationships:
+      - hasReasons: EventReason[] (event reasons for this type)
+      - generatesEvents: BusinessEvent[]
+    
+    constraints:
+      - code must be unique
+    
+    businessRules:
+      - New event types can be added by configuration
+      - Deactivating event type stops new event generation
+      - Payload schema validates event data structure
+      - Working record trackable events auto-populate working records
+    
+    examples:
+      - code: "EMPLOYEE_HIRE"
+        name: "Employee Hire"
+        category: "CORE"
+        subcategory: "EMPLOYMENT_LIFECYCLE"
+        isWrTrackable: true
+        severity: "HIGH"
+      
+      - code: "ASSIGNMENT_PROMOTION"
+        name: "Job Promotion"
+        category: "CORE"
+        subcategory: "JOB_ASSIGNMENT"
+        isWrTrackable: true
+        severity: "HIGH"
+      
+      - code: "SALARY_INCREASE"
+        name: "Salary Increase"
+        category: "TOTAL_REWARDS"
+        subcategory: "COMPENSATION"
+        isWrTrackable: true
+        severity: "MEDIUM"
+  
+  # ----------------------------------------------------------------------------
+  
+  EventReason:
+    description: |
+      Customer-defined reasons for why events occurred.
+      Provides business context to standard event types.
+      Example: TERMINATION event may have reasons like "PERFORMANCE", "RESIGNATION", "RETIREMENT"
+    
+    attributes:
+      - id: string (UUID)
+      - eventTypeId: string (UUID, ref: EventType.id)
+      - code: string (unique within event type)
+      - name: string (display name)
+      - description: text (nullable)
+      - isActive: boolean (default: true)
+      - metadata: jsonb (custom attributes)
+      
+      # Audit
+      - createdAt: timestamp
+      - updatedAt: timestamp
+    
+    relationships:
+      - belongsToEventType: EventType
+      - usedInEvents: BusinessEvent[]
+    
+    constraints:
+      - code must be unique within eventType
+    
+    businessRules:
+      - Event reasons are customer-configurable
+      - Each event type can have multiple reasons
+      - Deactivated reasons cannot be used in new events
+    
+    examples:
+      # TERMINATION event reasons
+      - eventType: "EMPLOYEE_TERMINATION"
+        reasons:
+          - code: "VOLUNTARY_RESIGNATION"
+            name: "Voluntary Resignation"
+          - code: "INVOLUNTARY_PERFORMANCE"
+            name: "Terminated - Performance Issues"
+          - code: "RETIREMENT"
+            name: "Retirement"
+          - code: "END_OF_CONTRACT"
+            name: "End of Fixed-Term Contract"
+      
+      # PROMOTION event reasons
+      - eventType: "ASSIGNMENT_PROMOTION"
+        reasons:
+          - code: "PERFORMANCE"
+            name: "Performance-Based Promotion"
+          - code: "TENURE"
+            name: "Tenure-Based Promotion"
+          - code: "SUCCESSION"
+            name: "Succession Planning"
+
+# ==============================================================================
+# EVENT TAXONOMY BY MODULE
+# ==============================================================================
+
+eventTaxonomy:
+  
+  # ----------------------------------------------------------------------------
+  CORE_MODULE:
+    description: "Employment lifecycle and organizational events"
+    
+    employmentLifecycle:
+      - EMPLOYEE_HIRE
+      - EMPLOYEE_TERMINATION
+      - EMPLOYEE_REHIRE
+      - EMPLOYEE_SUSPENSION
+      - EMPLOYEE_RETURN_FROM_SUSPENSION
+      - PROBATION_STARTED
+      - PROBATION_ENDED
+      - PROBATION_EXTENDED
+    
+    jobAssignment:
+      - ASSIGNMENT_CREATED
+      - ASSIGNMENT_PROMOTION
+      - ASSIGNMENT_DEMOTION
+      - ASSIGNMENT_TRANSFER
+      - ASSIGNMENT_LATERAL_MOVE
+      - ASSIGNMENT_POSITION_CHANGE
+      - ASSIGNMENT_REPORTING_CHANGE
+      - ASSIGNMENT_LOCATION_CHANGE
+      - ASSIGNMENT_ENDED
+    
+    contract:
+      - CONTRACT_CREATED
+      - CONTRACT_AMENDED
+      - CONTRACT_RENEWED
+      - CONTRACT_SUPERSEDED
+      - CONTRACT_TERMINATED
+    
+    organization:
+      - BU_CREATED
+      - BU_RESTRUCTURED
+      - BU_MANAGER_CHANGED
+      - BU_INACTIVATED
+      - LEGAL_ENTITY_CREATED
+      - LEGAL_ENTITY_UPDATED
+  
+  # ----------------------------------------------------------------------------
+  TALENT_ACQUISITION_MODULE:
+    description: "Recruitment and onboarding events"
+    
+    requisition:
+      - REQUISITION_CREATED
+      - REQUISITION_APPROVED
+      - REQUISITION_FILLED
+      - REQUISITION_CANCELLED
+      - REQUISITION_EXTENDED
+    
+    candidate:
+      - CANDIDATE_APPLIED
+      - CANDIDATE_SCREENED
+      - CANDIDATE_INTERVIEWED
+      - CANDIDATE_OFFERED
+      - CANDIDATE_OFFER_ACCEPTED
+      - CANDIDATE_OFFER_DECLINED
+      - CANDIDATE_REJECTED
+      - CANDIDATE_WITHDRAWN
+    
+    onboarding:
+      - ONBOARDING_STARTED
+      - ONBOARDING_TASK_COMPLETED
+      - ONBOARDING_COMPLETED
+      - ONBOARDING_DELAYED
+  
+  # ----------------------------------------------------------------------------
+  TIME_ABSENCE_MODULE:
+    description: "Time tracking and leave management events"
+    
+    timeEntry:
+      - TIME_ENTRY_SUBMITTED
+      - TIME_ENTRY_APPROVED
+      - TIME_ENTRY_REJECTED
+      - TIME_ENTRY_CORRECTED
+    
+    leave:
+      - LEAVE_REQUEST_SUBMITTED
+      - LEAVE_REQUEST_APPROVED
+      - LEAVE_REQUEST_DENIED
+      - LEAVE_STARTED
+      - LEAVE_ENDED
+      - LEAVE_CANCELLED
+      - LEAVE_EXTENDED
+    
+    attendance:
+      - ATTENDANCE_MARKED_PRESENT
+      - ATTENDANCE_MARKED_ABSENT
+      - ATTENDANCE_MARKED_LATE
+      - ATTENDANCE_OVERTIME_RECORDED
+  
+  # ----------------------------------------------------------------------------
+  TOTAL_REWARDS_MODULE:
+    description: "Compensation, benefits, and payroll events"
+    
+    compensation:
+      - SALARY_INCREASED
+      - SALARY_DECREASED
+      - BONUS_AWARDED
+      - COMMISSION_CALCULATED
+      - ALLOWANCE_ADDED
+      - ALLOWANCE_REMOVED
+      - EQUITY_GRANTED
+      - EQUITY_VESTED
+    
+    benefits:
+      - BENEFIT_ENROLLMENT_OPENED
+      - BENEFIT_ENROLLED
+      - BENEFIT_CHANGED
+      - BENEFIT_TERMINATED
+      - BENEFIT_CLAIM_SUBMITTED
+      - BENEFIT_CLAIM_APPROVED
+      - BENEFIT_CLAIM_DENIED
+      - BENEFIT_CLAIM_PAID
+    
+    payroll:
+      - PAYROLL_RUN_STARTED
+      - PAYROLL_RUN_COMPLETED
+      - PAYROLL_PAID
+      - PAYROLL_ADJUSTMENT_MADE
+  
+  # ----------------------------------------------------------------------------
+  PERFORMANCE_MODULE:
+    description: "Performance management events"
+    
+    goals:
+      - GOAL_CREATED
+      - GOAL_UPDATED
+      - GOAL_ACHIEVED
+      - GOAL_CANCELLED
+      - GOAL_REVIEW_REQUESTED
+    
+    reviews:
+      - REVIEW_CYCLE_STARTED
+      - REVIEW_SUBMITTED
+      - REVIEW_APPROVED
+      - REVIEW_COMPLETED
+      - REVIEW_RATING_ASSIGNED
+    
+    feedback:
+      - FEEDBACK_GIVEN
+      - FEEDBACK_REQUESTED
+      - FEEDBACK_ACKNOWLEDGED
+  
+  # ----------------------------------------------------------------------------
+  LEARNING_MODULE:
+    description: "Learning and development events"
+    
+    courses:
+      - COURSE_ENROLLED
+      - COURSE_STARTED
+      - COURSE_COMPLETED
+      - COURSE_FAILED
+      - COURSE_CANCELLED
+    
+    certifications:
+      - CERTIFICATION_EARNED
+      - CERTIFICATION_RENEWED
+      - CERTIFICATION_EXPIRED
+      - CERTIFICATION_REVOKED
+
+# ==============================================================================
+# ARCHITECTURE PATTERNS
+# ==============================================================================
+
+patterns:
+  
+  eventGeneration:
+    description: "How events are created when business actions occur"
+    flow:
+      - "User Action / System Trigger"
+      - "→ Command Handler validates business rules"
+      - "→ Generate BusinessEvent with payload"
+      - "→ Persist to Event Store (immutable)"
+      - "→ Publish to Event Bus"
+      - "→ Update transactional entities (Employee, Assignment, etc.)"
+    
+  eventConsumption:
+    description: "How events are processed by consumers"
+    flow:
+      - "Event Bus receives published event"
+      - "→ Filter by event subscriptions"
+      - "→ Deliver to matched consumers:"
+      - "  • Working Record Aggregator (if isWrTrackable = true)"
+      - "  • Audit Trail Logger (if isAuditable = true)"
+      - "  • Notification Engine"
+      - "  • Integration Gateway (external systems)"
+      - "  • Analytics Engine"
+    
+  workingRecordIntegration:
+    description: "How events build working records"
+    flow:
+      - "BusinessEvent stream (filtered by isWrTrackable = true)"
+      - "→ Group by employeeId"
+      - "→ Order by effectiveDate, eventTimestamp"
+      - "→ Aggregate into Working Record VIEW"
+      - "→ Cache for performance"
+    note: "Working Record is NOT a separate entity, it's a VIEW/AGGREGATE from BusinessEvent"
+
+# ==============================================================================
+# DESIGN PRINCIPLES
+# ==============================================================================
+
+designPrinciples:
+  
+  immutability:
+    description: "Events are append-only, never updated or deleted"
+    rules:
+      - "Once created, event payload cannot be modified"
+      - "Only soft delete allowed (isDeleted flag)"
+      - "Corrections require new compensating events"
+      - "Ensures audit trail integrity"
+  
+  eventSourcing:
+    description: "Events are source of truth for state changes"
+    rules:
+      - "Current state derived from event history"
+      - "State can be reconstructed by replaying events"
+      - "Enables point-in-time queries"
+      - "Complete audit trail by design"
+  
+  crossModule:
+    description: "Single event framework for all modules"
+    rules:
+      - "Universal BusinessEvent entity"
+      - "Module-specific via eventCategory"
+      - "Consistent event processing"
+      - "Cross-module event tracing"
+  
+  configurability:
+    description: "Event types and tracking are configurable"
+    rules:
+      - "Customers can enable/disable event types"
+      - "Custom event reasons per organization"
+      - "Configurable retention policies"
+      - "Flexible payload schemas"
+
+# ==============================================================================
+# INTEGRATION POINTS
+# ==============================================================================
+
+integrationPoints:
+  
+  workingRecords:
+    description: "Events feed working record timelines"
+    eventFilter: "isWrTrackable = true"
+    affectedModules: ["CORE", "TOTAL_REWARDS", "TIME_ABSENCE"]
+    aggregation: "Group by employeeId, order chronologically"
+  
+  auditTrail:
+    description: "Events provide complete audit trail"
+    eventFilter: "isAuditable = true"
+    affectedModules: ["ALL"]
+    integration: "Links to TR module AuditLog entities"
+  
+  notifications:
+    description: "Events trigger notifications"
+    eventFilter: "Based on EventType configuration"
+    affectedModules: ["ALL"]
+    integration: "Notification engine subscribes to events"
+  
+  externalSystems:
+    description: "Events enable real-time integration"
+    eventFilter: "Based on event subscriptions"
+    affectedModules: ["ALL"]
+    integration: "Webhook delivery to external systems"
+  
+  analytics:
+    description: "Events power analytics and reporting"
+    eventFilter: "ALL events"
+    affectedModules: ["ALL"]
+    integration: "Analytics engine subscribes to event stream"
+
+# ==============================================================================
+# COMPLIANCE & RETENTION
+# ==============================================================================
+
+compliance:
+  
+  retention:
+    minimumYears: 7
+    archiveAfterYears: 3
+    purgePolicy: "After retention period + GDPR right to erasure"
+    exceptions:
+      - "Legal hold prevents deletion"
+      - "Active litigation extends retention"
+  
+  privacy:
+    piiHandling: "Sensitive data masked in event payload"
+    gdprCompliance: "Soft delete supports right to erasure"
+    accessControl: "Events inherit security from aggregate entities"
+  
+  audit:
+    requirements:
+      - "Complete change history"
+      - "Actor identification"
+      - "Timestamp accuracy"
+      - "Tamper-proof (immutability)"
+    standards: ["SOX", "GDPR", "CCPA", "Local labor laws"]
+
+# ==============================================================================
+# BUSINESS RULES
+# ==============================================================================
+
+businessRules:
+  
+  eventCreation:
+    - "Every significant business action MUST generate an event"
+    - "Events created synchronously with transactional changes"
+    - "Event payload includes both previous and new state"
+    - "Event effective date can be future for scheduled changes"
+  
+  eventImmutability:
+    - "Events cannot be updated after creation"
+    - "Only soft delete allowed (compliance requirement)"
+    - "Corrections require compensating events"
+    - "Hard delete only after retention period expires"
+  
+  eventProcessing:
+    - "Events processed asynchronously by consumers"
+    - "Consumers must be idempotent (handle duplicates)"
+    - "Failed event delivery retried with exponential backoff"
+    - "Dead letter queue for permanently failed deliveries"
+  
+  workingRecordRules:
+    - "Only events with isWrTrackable = true appear in working records"
+    - "Working record is VIEW, not stored entity"
+    - "One working record line per employee code"
+    - "Worker-level aggregation across all employment relationships"
+
+# ==============================================================================
+# VERSION HISTORY
+# ==============================================================================
+
+versionHistory:
+  - version: "1.0"
+    date: "2025-12-22"
+    changes:
+      - "Initial business event framework ontology"
+      - "Defined BusinessEvent, EventType, EventReason entities"
+      - "Documented event taxonomy for all modules"
+      - "Established event sourcing patterns"
+      - "Integrated with working record processing"
+    author: "xTalent Architecture Team"

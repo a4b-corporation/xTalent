@@ -1,0 +1,544 @@
+/////////////////////////////////////////////////////////////
+//  PAYROLL  –  Gateway + Engine  (Thin persistence)
+/////////////////////////////////////////////////////////////
+
+//---------------- pay_master  ----------------
+Table pay_master.pay_frequency {
+  code        varchar(20) [pk]           // MONTHLY, BIWEEKLY…
+  name        varchar(50)
+  period_days smallint
+}
+
+// =============================================================
+// 1️⃣  BẢNG LỊCH LƯƠNG – bổ sung default_currency
+//     (Tên gốc trong thiết kế: pay_master.pay_calendar)
+// =============================================================
+Table pay_master.pay_calendar {                  // CHANGED JUL 2025
+  id                   uuid          [pk, note: 'Không đổi']
+  legal_entity_id      uuid          [ref: > org_legal.entity.id]
+  market_id            uuid          [ref: > common.talent_market.id]
+  code                 varchar(50)   [unique]
+  name                 varchar(255)
+  description          text          [null]
+  frequency_code       varchar(20)   [ref: > pay_master.pay_frequency.code]
+  calendar_json        jsonb         // pattern cut‑off / pay date
+  metadata             jsonb
+
+  // --- SCD‑2 ---
+  effective_start_date date
+  effective_end_date   date          [null]
+  is_current_flag      boolean       [default: true]
+
+  // --- NEW FIELD ---
+  default_currency     char(3)       // NEW JUL 2025 – tiền tệ gốc của lịch lương
+
+  created_at           timestamp     [default: `now()`]
+  updated_at           timestamp     [null]
+}
+
+Table pay_master.pay_group {
+  id              uuid [pk]
+  code            varchar(50) [unique]
+  name            varchar(100)
+  legal_entity_id uuid [ref: > org_legal.entity.id]
+  market_id uuid [ref: > common.talent_market.id] // CHANGED JUL 2025
+  calendar_id     uuid [ref: > pay_master.pay_calendar.id]
+  currency_code   char(3)
+  bank_account_id uuid [ref: > pay_bank.bank_account.id, null]
+  metadata        jsonb
+  effective_start_date date    // SCD2
+  effective_end_date date [null] // SCD2
+  is_current_flag boolean [default: true] // SCD2
+}
+
+Table pay_master.pay_element {
+  id              uuid [pk]
+  code            varchar(50) [unique]
+  name            varchar(100)
+  classification  varchar(35)      // EARNING | DEDUCTION | TAX
+  unit            varchar(10)      // AMOUNT | HOURS
+  description     text [null]
+  input_required  boolean [default:false]
+  formula_json    jsonb [null]
+  priority_order  smallint [null]
+  taxable_flag    boolean [default:true]
+  pre_tax_flag    boolean [default:true]
+  statutory_rule_id uuid [ref: > pay_master.statutory_rule.id, null] // CHANGED JUL 2025
+  gl_account_code varchar(50) [null] // CHANGED JUL 2025
+  metadata        jsonb
+  effective_start_date date    // SCD2 // CHANGED JUL 2025
+  effective_end_date date [null] // SCD2 // CHANGED JUL 2025
+  is_current_flag boolean [default: true] // SCD2 // CHANGED JUL 2025
+}
+
+Table pay_master.balance_def {
+  id              uuid [pk]
+  code            varchar(50) [unique]      // GROSS, NET, YTD_INC
+  name            varchar(100)
+  balance_type    varchar(20)               // RUN | QTD | YTD | LTD
+  formula_json    jsonb   [null]
+  reset_freq_code varchar(20) [ref: > pay_master.pay_frequency.code, null]
+  metadata        jsonb
+  effective_start_date date    // SCD2 // CHANGED JUL 2025
+  effective_end_date date [null] // SCD2 // CHANGED JUL 2025
+  is_current_flag boolean [default: true] // SCD2 // CHANGED JUL 2025
+}
+
+Table pay_master.costing_rule {
+  id              uuid [pk]
+  code            varchar(50) [unique]
+  name            varchar(100)
+  level_scope     varchar(20)               // LE | BU | EMP | ELEMENT
+  mapping_json    jsonb
+  metadata        jsonb
+  effective_start_date date    // SCD2 // CHANGED JUL 2025
+  effective_end_date date [null] // SCD2 // CHANGED JUL 2025
+  is_current_flag boolean [default: true] // SCD2 // CHANGED JUL 2025
+}
+
+//---------------- pay_run  (Engine) ----------------
+Table pay_run.batch {
+  id              uuid [pk]
+  //pay_group_id    uuid [ref: > pay_master.pay_group.id] // depricated
+  calendar_id     uuid [ref: > pay_master.pay_calendar.id]
+  period_start    date
+  period_end      date
+  //calendar_seq    int   // depricated
+  batch_type      varchar(20)               // REGULAR | SUPPLEMENTAL | RETRO
+  run_label       varchar(100)
+  status_code     varchar(20)               // INIT | CALC | REVIEW | CONFIRM | CLOSED
+  original_run_id         uuid        [ref: > pay_run.batch.id, null]   // dùng cho retro/reversal
+  reversed_by_run_id      uuid        [ref: > pay_run.batch.id, null]
+  executed_at             timestamp   [null]
+  finalized_at            timestamp   [null]
+  costed_flag             bool        [default: false]
+  metadata        jsonb
+  //------------------------------------
+  created_at              timestamp
+  created_by              varchar(100)
+  updated_at              timestamp
+  updated_by              varchar(100)
+
+  //UNIQUE(calendar_id, period_start, batch_type)
+}
+
+Table pay_run.employee {
+  id              uuid [pk]
+  batch_id        uuid [ref: > pay_run.batch.id]
+  employee_id     uuid [ref: > employment.employee.id]
+  status_code     varchar(20)               // SELECTED | CALC_OK | ERROR
+  gross_amount    decimal(18,2) [null]
+  net_amount      decimal(18,2) [null]
+  currency_code   char(3)
+  metadata        jsonb
+}
+
+Table pay_run.input_value {
+  id            uuid [pk]
+  emp_run_id    uuid [ref: > pay_run.employee.id]
+  element_id    uuid [ref: > pay_master.pay_element.id]
+  input_code    varchar(50)                 // RATE | HOURS | AMOUNT
+  input_value   numeric(18,2)
+  source_ref    varchar(50) [null]          // TA_123, MAN_ADJ_9
+  source_type   varchar(30) // TimeAttendance, Absence…
+  unit          varchar(10) [null]
+  metadata      jsonb
+}
+
+Table pay_run.result {
+  id            uuid [pk]
+  emp_run_id    uuid [ref: > pay_run.employee.id]
+  element_id    uuid [ref: > pay_master.pay_element.id]
+  result_amount decimal(18,2)
+  currency_code char(3)
+  classification varchar(20)
+  metadata      jsonb
+}
+
+Table pay_run.balance {
+  id            uuid [pk]
+  emp_run_id    uuid [ref: > pay_run.employee.id]
+  balance_id    uuid [ref: > pay_master.balance_def.id]
+  balance_value decimal(18,2)
+}
+
+/* ---- Δ Retro differences ---- */
+Table pay_run.retro_delta {
+  id            uuid [pk]
+  emp_run_id    uuid [ref: > pay_run.employee.id]     // run that carries the delta
+  orig_batch_id uuid [ref: > pay_run.batch.id]         // source period
+  element_id    uuid [ref: > pay_master.pay_element.id]
+  delta_amount  decimal(18,2)
+  currency_code char(3)
+  metadata      jsonb
+}
+
+/* ---- Calculation trace ---- */
+Table pay_run.calc_log {
+  id            uuid [pk]
+  emp_run_id    uuid [ref: > pay_run.employee.id]
+  step_label    varchar(50)          // PRE_BAL, OT_RULE, TAX
+  message       text
+  payload_json  jsonb [null]
+  logged_at     timestamp [default:`now()`]
+}
+
+Table pay_run.costing {
+  id            uuid [pk]
+  result_id     uuid [ref: > pay_run.result.id]
+  account_code  varchar(50)
+  dr_cr         char(1)               // D / C
+  amount        decimal(18,2)
+  currency_code char(3)
+  segment_json  jsonb
+}
+
+// =============================================================
+// 2️⃣  ĐIỀU CHỈNH THỦ CÔNG – liên kết batch/run & applied_in_run
+//     (Tên gốc: pay_run.manual_adjust) bổ sung thêm payroll_run_id & applied_in_run_id)
+// =============================================================
+Table pay_run.manual_adjust {                    // CHANGED JUL 2025
+  id                 uuid        [pk]
+  employee_id        uuid        [ref: > employment.employee.id]
+
+  // Bạn vẫn có thể giữ period_start / period_end để tham chiếu
+  period_start       date
+  period_end         date         [null]
+
+  element_id         uuid         [ref: > pay_master.pay_element.id]
+  amount             decimal(18,2)
+  reason             text
+  status_code        varchar(20)               // PENDING | APPLIED
+
+  // --- NEW RELATION ---
+  payroll_run_id     uuid         [ref: > pay_run.batch.id, null]   // NEW JUL 2025 – batch áp dụng
+  applied_in_run_id  uuid         [ref: > pay_run.batch.id, null]   // NEW JUL 2025 – batch thực thi
+
+  metadata           jsonb        [null]
+  created_by         uuid         [ref: > employment.employee.id]
+  created_at         timestamp    [default: `now()`]
+  updated_at         timestamp    [null]
+
+  Indexes {
+    (employee_id, status_code)
+  }
+}
+
+//---------------- pay_gateway  (integration) ----------------
+Table pay_gateway.iface_def {
+  id            uuid [pk]
+  code          varchar(50) [unique]
+  name          varchar(100)
+  direction     varchar(10)           // IN | OUT
+  file_type     varchar(10)           // CSV | JSON | API
+  mapping_json  jsonb
+  schedule_json jsonb [null]
+  is_active     boolean [default:true]
+}
+
+Table pay_gateway.iface_job {
+  id            uuid [pk]
+  iface_id      uuid [ref: > pay_gateway.iface_def.id]
+  run_time      timestamp [default:`now()`]
+  status_code   varchar(20)           // STARTED | DONE | ERROR
+  metadata      jsonb
+}
+
+Table pay_gateway.iface_file {
+  id            uuid [pk]
+  job_id        uuid [ref: > pay_gateway.iface_job.id]
+  file_name     varchar(255)
+  file_dt       timestamp
+  status_code   varchar(20)           // RECEIVED | PARSED | SENT | ERROR
+  processed_at  timestamp [null]
+  metadata      jsonb
+}
+
+Table pay_gateway.iface_line {
+  id            uuid [pk]
+  file_id       uuid [ref: > pay_gateway.iface_file.id]
+  line_num      int
+  payload_json  jsonb
+  status_code   varchar(20)           // OK | ERROR
+  error_msg     text [null]
+}
+
+//---------------- pay_bank  ----------------
+Table pay_bank.bank_account {
+  id              uuid [pk]
+  legal_entity_id uuid [ref: > org_legal.entity.id]
+  bank_name       varchar(100)
+  account_no      varchar(50)
+  currency_code   char(3)
+  metadata        jsonb
+}
+
+Table pay_bank.payment_batch {
+  id              uuid [pk]
+  run_batch_id    uuid [ref: > pay_run.batch.id]
+  bank_account_id uuid [ref: > pay_bank.bank_account.id]
+  file_status     varchar(20)         // PENDING | SENT | CONFIRMED
+  submitted_at    timestamp [null]
+  file_url        varchar(255) [null]
+  metadata        jsonb
+}
+
+Table pay_bank.payment_line {
+  id              uuid [pk]
+  payment_batch_id uuid [ref: > pay_bank.payment_batch.id]
+  employee_id     uuid [ref: > employment.employee.id]
+  net_amount      decimal(18,2)
+  bank_routing    varchar(20) [null]
+  account_number  varchar(30) [null]
+  status_code     varchar(20)         // READY | SENT | FAIL
+  metadata        jsonb
+}
+
+// --------------------- CHANGED JUL 2025: NEW TABLES (BỔ SUNG) ---------------------
+
+Table pay_master.statutory_rule { // CHANGED JUL 2025
+  id uuid [pk, default: `gen_random_uuid()`]
+  code varchar(50) [unique]
+  name varchar(255)
+  market_id uuid [ref: > common.talent_market.id]
+  description text [null]
+  formula_json jsonb [null]
+  valid_from date
+  valid_to date [null]
+  is_active boolean [default: true]
+  effective_start_date date    // SCD2 // CHANGED JUL 2025
+  effective_end_date date [null] // SCD2 // CHANGED JUL 2025
+  is_current_flag boolean [default: true] // SCD2 // CHANGED JUL 2025
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [null]
+  Note: 'CHANGED JUL 2025. Rule pháp lý payroll, gán vào pay_element.'
+}
+
+Table pay_master.gl_mapping { // CHANGED JUL 2025
+  id uuid [pk, default: `gen_random_uuid()`]
+  element_id uuid [ref: > pay_master.pay_element.id]
+  gl_account_code varchar(105)
+  effective_start_date date
+  effective_end_date date [null]
+  is_current_flag boolean [default: true]
+  is_active boolean [default: true]
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [null]
+  Note: 'CHANGED JUL 2025. Mapping element với tài khoản kế toán (GL).'
+}
+
+Table pay_master.validation_rule { // CHANGED JUL 2025
+  id uuid [pk, default: `gen_random_uuid()`]
+  rule_code varchar(50) [unique]
+  rule_name varchar(255)
+  target_table varchar(50)
+  field_name varchar(50)
+  rule_expression text
+  error_message varchar(255)
+  effective_start_date date    // SCD2 // CHANGED JUL 2025
+  effective_end_date date [null] // SCD2 // CHANGED JUL 2025
+  is_current_flag boolean [default: true] // SCD2 // CHANGED JUL 2025
+  is_active boolean [default: true]
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [null]
+  Note: 'CHANGED JUL 2025. Rule kiểm tra validate dữ liệu payroll.'
+}
+
+Table pay_master.payslip_template { // CHANGED JUL 2025
+  id uuid [pk, default: `gen_random_uuid()`]
+  code varchar(50) [unique]
+  name varchar(255)
+  locale_code varchar(10) [null]
+  template_json jsonb [null]
+  description text [null]
+  is_default boolean [default: false]
+  is_active boolean [default: true]
+  effective_start_date date    // SCD2 // CHANGED JUL 2025
+  effective_end_date date [null] // SCD2 // CHANGED JUL 2025
+  is_current_flag boolean [default: true] // SCD2 // CHANGED JUL 2025
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [null]
+  Note: 'CHANGED JUL 2025. Mẫu phiếu lương tuỳ chỉnh.'
+}
+
+Table pay_master.pay_formula { // CHANGED JUL 2025
+  id uuid [pk, default: `gen_random_uuid()`]
+  code varchar(50) [unique]
+  name varchar(255)
+  script text
+  description text [null]
+  version_no int [default: 1]
+  is_active boolean [default: true]
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [null]
+  Note: 'CHANGED JUL 2025. Kho công thức tính toán payroll dùng chung.'
+}
+
+
+Table pay_master.pay_profile { // CHANGED JUL 2025 - NEW, chuẩn hóa theo best practice quốc tế
+  id              uuid [pk, default: `gen_random_uuid()`]
+  code            varchar(50) [unique]
+  name            varchar(100)
+  legal_entity_id uuid [ref: > org_legal.entity.id, null]
+  market_id       uuid [ref: > common.talent_market.id, null] // optional
+  description     text [null]
+  status_code     varchar(20) [default: 'ACTIVE']
+  metadata        jsonb [null]
+  effective_start_date date
+  effective_end_date   date [null]
+  is_current_flag      boolean [default: true]
+  created_at          timestamp [default: `now()`]
+  updated_at          timestamp [null]
+  Note: 'CHANGED JUL 2025. Payroll Profile cho phép gắn các rule, element, policy thành 1 bundle/profile. Dùng cho phân quyền chính sách trả lương động.'
+}
+
+Table pay_master.pay_profile_map { // NEW, option
+  id              uuid [pk, default: `gen_random_uuid()`]
+  pay_profile_id  uuid [ref: > pay_master.pay_profile.id]
+  pay_group_id    uuid [ref: > pay_master.pay_group.id, null]
+  employee_id     uuid [ref: > employment.employee.id, null]
+  period_start    date
+  period_end      date [null]
+  effective_start_date date    // SCD2 // CHANGED JUL 2025
+  effective_end_date date [null] // SCD2 // CHANGED JUL 2025
+  is_current_flag boolean [default: true] // SCD2 // CHANGED JUL 2025
+  metadata        jsonb [null]
+  created_at      timestamp [default: `now()`]
+  updated_at      timestamp [null]
+  Note: 'Mapping profile với pay group/employee nếu cần. Optional – mở rộng future.'
+}
+
+
+// Lý do điều chỉnh lương (Adjustment Reason)
+Table pay_master.pay_adjust_reason { // CHANGED JUL 2025
+  id              uuid [pk, default: `gen_random_uuid()`]
+  code            varchar(50) [unique]
+  name            varchar(100)
+  description     text [null]
+  is_active       boolean [default: true]
+  created_at      timestamp [default: `now()`]
+  updated_at      timestamp [null]
+  Note: 'CHANGED JUL 2025. Master lý do điều chỉnh lương (adjustment reason).'
+}
+
+// Chính sách deduction (Deduction Policy)
+Table pay_master.pay_deduction_policy { // CHANGED JUL 2025
+  id              uuid [pk, default: `gen_random_uuid()`]
+  code            varchar(50) [unique]
+  name            varchar(100)
+  description     text [null]
+  deduction_json  jsonb [null] // Quy tắc deduction (làm theo country/market/policy)
+  is_active       boolean [default: true]
+  created_at      timestamp [default: `now()`]
+  updated_at      timestamp [null]
+  Note: 'CHANGED JUL 2025. Chính sách deduction, quản lý deduction logic cho payroll.'
+}
+
+// Mapping element ↔ benefit/allowance (for advanced/linked policy)
+Table pay_master.pay_benefit_link { // CHANGED JUL 2025
+  id              uuid [pk, default: `gen_random_uuid()`]
+  pay_element_id  uuid [ref: > pay_master.pay_element.id]
+  benefit_policy_code varchar(50)
+  benefit_type    varchar(50)      // ALLOWANCE | BENEFIT | BONUS
+  valid_from      date
+  valid_to        date [null]
+  metadata        jsonb [null]
+  created_at      timestamp [default: `now()`]
+  updated_at      timestamp [null]
+  Note: 'CHANGED JUL 2025. Mapping element với policy benefit/allowance, cho phép linked policy.'
+}
+
+
+
+
+
+// =============================================================
+// 3️⃣  BẢNG LOG KIỂM TOÁN – mới hoàn toàn
+//     (nếu bạn đã có bảng audit khác thì chỉ cần bổ sung field employee_id & payroll_run_id)
+// =============================================================
+Table pay_audit.audit_log {                      // NEW JUL 2025
+  id                uuid        [pk, default: `gen_random_uuid()`]
+  log_time          timestamp   [default: `now()`]          // thời điểm ghi log
+  user_name         varchar(100)                            // ai tác động
+  category          varchar(20)                             // CONFIG | PROFILE | INPUT | RUN…
+  action            varchar(30)                             // CREATE | UPDATE | DELETE | CALCULATE…
+  detail            text                                    // mô tả chi tiết
+
+  reference_id      uuid          [null]     // id đối tượng chính (có thể là batch / element / config…)
+  employee_id       uuid          [null]     // NEW JUL 2025 – log gắn nhân viên
+  payroll_run_id    uuid          [null]     // NEW JUL 2025 – log gắn batch
+
+  Indexes {
+    (category, log_time)
+    (employee_id)
+    (payroll_run_id)
+  }
+}
+// ================================================================
+//  IMPORT JOB  – theo dõi upload file CSV thủ công
+// ================================================================
+Table import_job {                     // NEW JUL 2025
+  id                      uuid        [pk]
+  file_name               varchar(255)
+  pay_group_code          varchar(50)   [null]
+  period_start            date          [null]
+  period_end              date          [null]
+  total_records           int
+  success_count           int
+  fail_count              int
+  status                  varchar(20)   // PROCESSING | COMPLETED | ERROR
+  submitted_by            varchar(100)
+  submitted_at            timestamp
+  completed_at            timestamp     [null]
+}
+
+// ================================================================
+//  GENERATED FILE  – quản lý file đầu ra (payslip, bank, tax…)
+// ================================================================
+Table generated_file {                 // NEW JUL 2025
+  id                      uuid        [pk]
+  type                    varchar(20)   // PAYMENT | TAX_REPORT | PAYSLIP
+  payroll_run_id          uuid         [ref: > pay_run.batch.id]
+  employee_id             uuid         [null]    // chỉ dùng cho PAYSLIP
+  file_name               varchar(255)
+  file_path               varchar(512)
+  generated_at            timestamp
+  expires_at              timestamp    [null]
+  status                  varchar(35)        
+}
+
+// ================================================================
+//  BANK TEMPLATE  – mẫu file ngân hàng (nếu muốn cấu hình động)
+// ================================================================
+Table bank_template {                  // NEW JUL 2025
+  code                    varchar(20)  [pk]      // VCB, VIETIN, CITI...
+  name                    varchar(100)
+  format                  varchar(10)            // CSV | TXT
+  delimiter               varchar(5)    [null]
+  columns_json            jsonb                 // mô tả cột & thứ tự
+  effective_start_date    date
+  effective_end_date      date
+  current_flag            bool
+}
+
+// ================================================================
+//  TAX REPORT TEMPLATE  – mẫu báo cáo thuế (tuỳ chọn)
+// ================================================================
+Table tax_report_template {            // NEW JUL 2025
+  code                    varchar(20)  [pk]      // 05QTT_TNCN, 02KK...
+  country_code            varchar(3)
+  format                  varchar(10)            // PDF | XML
+  template_blob           bytea
+  effective_start_date    date
+  effective_end_date      date
+  current_flag            bool
+}
+
+// ================================================================
+//  INDEX / RELATIONSHIP GHI CHÚ TỔNG QUÁT
+// ================================================================
+//  • Mọi FK đều cascade on update / restrict on delete (tùy RDBMS).
+//  • Các bảng master (calendar, element, formula, template) đều có
+//    SCD‑2 effective_start_date / effective_end_date / current_flag.
+//  • Các bảng transaction (run, result, input…) không cần SCD‑2.
+//
