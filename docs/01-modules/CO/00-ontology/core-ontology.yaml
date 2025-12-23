@@ -3037,316 +3037,664 @@ entities:
   # JOB & POSITION SCHEMA
   # ===========================================================================
 
+  # ===========================================================================
+  # ADVANCED: Multi-Tree Architecture Entities
+  # ===========================================================================
+  # The following entities support advanced multi-tree architecture.
+  # These are optional and should be implemented in Phase 2 for organizations
+  # requiring multiple independent taxonomy/job trees (e.g., conglomerates,
+  # multi-national corporations, M&A scenarios).
+  
   TaxonomyTree:
-    description: |\
-      Job taxonomy tree structure (corporate or BU-specific).
-      Supports multiple independent taxonomy trees for different organizational contexts.
+    description: |
+      [ADVANCED] Container for independent taxonomy hierarchies.
+      
+      Enables multiple job taxonomy trees to coexist (e.g., corporate tree + BU-specific trees).
+      Use this when different business units need distinct job classification systems.
+      
+      **Use Cases**:
+      - Multi-national corporations with regional variations
+      - Conglomerates with diverse business units
+      - M&A scenarios requiring integration of different job catalogs
+      - Highly decentralized organizations with BU autonomy
+    
     attributes:
       id:
         type: UUID
         required: true
+      
       code:
         type: string
         required: true
         maxLength: 50
-        description: "Taxonomy tree code (e.g., CORP_TAX, BU_ENG_TAX)"
+        description: "Taxonomy tree code (e.g., CORP_TAX, BU_GAMING_TAX, BU_FINTECH_TAX)"
+      
       name:
         type: string
         required: true
         maxLength: 150
-      owner_type:
+        description: "Taxonomy tree name"
+      
+      owner_scope:
         type: enum
-        values: [CORPORATE, BUSINESS_UNIT]
+        values: [CORP, LE, BU]
         required: true
-        description: "Corporate-wide or BU-specific taxonomy"
-      owner_id:
+        description: |
+          Ownership scope:
+          - CORP: Corporate-wide taxonomy (shared across organization)
+          - LE: Legal entity-specific taxonomy
+          - BU: Business unit-specific taxonomy
+      
+      owner_unit_id:
         type: UUID
-        description: "Business unit ID if BU-specific"
+        description: "Business unit ID (required if owner_scope=BU)"
+      
       is_active:
         type: boolean
         default: true
+      
       metadata:
         type: jsonb
-        description: "Taxonomy rules, inheritance settings"
+        description: "Taxonomy rules, inheritance settings, classification system info"
+      
       created_at:
         type: timestamp
+      
       updated_at:
         type: timestamp
+    
     constraints:
       - name: "unique_taxonomy_tree_code"
         type: unique
         fields: [code]
+    
     businessRules:
-      - "Corporate taxonomy is default for all BUs"
-      - "BU can override with own taxonomy tree"
-      - "Jobs link to taxonomy nodes for classification"
+      - "Corporate taxonomy tree is default for all BUs"
+      - "BU can create own taxonomy tree for customization"
+      - "Use TaxonomyXMap to map BU taxonomy nodes to corporate for reporting"
+      - "If owner_scope=BU, owner_unit_id is required"
+    
     indexes:
       - name: "idx_taxonomy_tree_owner"
-        columns: [owner_type, owner_id]
+        columns: [owner_scope, owner_unit_id]
+    
     examples:
-      - code: "CORP_TAX_2025"
+      - description: "Corporate Taxonomy Tree"
+        code: "CORP_TAX_2025"
         name: "Corporate Job Taxonomy 2025"
-        owner_type: "CORPORATE"
-      - code: "ENG_TAX_V1"
-        name: "Engineering Taxonomy"
-        owner_type: "BUSINESS_UNIT"
-        owner_id: "BU_ENG_UUID"
+        owner_scope: "CORP"
+        owner_unit_id: null
+      
+      - description: "BU-Specific Taxonomy Tree"
+        code: "BU_GAMING_TAX"
+        name: "Gaming Division Taxonomy"
+        owner_scope: "BU"
+        owner_unit_id: "<gaming_bu_id>"
+
 
   JobTaxonomy:
-    description: |\
-      Nodes in job taxonomy tree (job families, sub-families, functions).
-      Hierarchical classification of jobs.
+    description: |
+      Hierarchical job classification system organizing jobs into families, sub-families, and functions.
+      
+      **Primary Design**: Single corporate taxonomy tree with 3-level hierarchy.
+      **Advanced Design**: Multi-tree support for complex organizations (see TaxonomyTree entity).
+      
+      The taxonomy provides standardized job categorization for career pathing, benchmarking, and job matching.
+    
     attributes:
+      # === Core Attributes (Simplified Design) ===
       id:
         type: UUID
         required: true
-      tree_id:
-        type: UUID
-        required: true
-        description: "Parent taxonomy tree"
+      
       code:
         type: string
         required: true
         maxLength: 50
+        description: "Unique taxonomy code (e.g., ENG, SW_ENG, BACKEND)"
+      
       name:
         type: string
         required: true
         maxLength: 150
+        description: "Taxonomy name (e.g., Engineering, Software Engineering)"
+      
+      taxonomy_type:
+        type: enum
+        values: [TRACK, FAMILY, GROUP, SUBGROUP]
+        required: true
+        description: |
+          Classification level in hierarchy:
+          - TRACK: Broad occupational track (level 1)
+          - FAMILY: Job family within track (level 2)
+          - GROUP: Specific job group (level 3)
+          - SUBGROUP: Detailed sub-group (level 4)
+      
       parent_id:
         type: UUID
-        description: "Parent taxonomy node"
+        description: "Parent taxonomy node (null for top-level TRACK nodes)"
+      
       level:
         type: integer
-        description: "Hierarchy level (1=family, 2=sub-family, 3=function)"
+        description: "Hierarchy level (1=TRACK, 2=FAMILY, 3=GROUP, 4=SUBGROUP)"
+      
       path:
         type: string
         maxLength: 500
-        description: "Materialized path"
+        description: "Materialized path for efficient queries (e.g., /ENG/SW_ENG/BACKEND)"
+      
       sort_order:
         type: integer
+        description: "Display order within same parent"
+      
       is_active:
         type: boolean
         default: true
+        description: "Active status"
+      
       metadata:
         type: jsonb
+        description: "Additional attributes (e.g., O*NET codes, industry classifications)"
+      
       effective_start_date:
         type: date
         required: true
+      
       effective_end_date:
         type: date
+      
       is_current_flag:
         type: boolean
         default: true
+      
+      # === Advanced Attributes (Multi-Tree Design) ===
+      # The following attributes support multi-tree architecture for complex organizations.
+      # These are optional and used only when implementing multiple independent taxonomy trees.
+      
+      tree_id:
+        type: UUID
+        description: "[ADVANCED] Reference to taxonomy tree container (for multi-tree support)"
+      
+      owner_scope:
+        type: enum
+        values: [CORP, LE, BU]
+        description: |
+          [ADVANCED] Ownership scope:
+          - CORP: Corporate-level taxonomy (shared across organization)
+          - LE: Legal entity-specific taxonomy
+          - BU: Business unit-specific taxonomy
+      
+      owner_unit_id:
+        type: UUID
+        description: "[ADVANCED] Owning business unit ID (required if owner_scope=BU)"
+      
+      inherit_flag:
+        type: boolean
+        default: true
+        description: "[ADVANCED] Inherit from parent or override (for BU customization)"
+      
+      override_name:
+        type: string
+        maxLength: 255
+        description: "[ADVANCED] Override name for BU-specific taxonomy"
+      
+      visibility:
+        type: enum
+        values: [PUBLIC, PRIVATE, RESTRICTED]
+        description: "[ADVANCED] Visibility scope for multi-tree scenarios"
+    
     relationships:
-      tree:
-        target: TaxonomyTree
-        cardinality: "1"
       parent:
         target: JobTaxonomy
         cardinality: "0..1"
+        description: "Parent taxonomy node (for hierarchy)"
+      
+      children:
+        target: JobTaxonomy
+        cardinality: "0..*"
+        description: "Child taxonomy nodes"
+      
+      jobs:
+        target: Job
+        cardinality: "0..*"
+        description: "Jobs classified under this taxonomy"
+      
+      tree:
+        target: TaxonomyTree
+        cardinality: "0..1"
+        description: "[ADVANCED] Parent taxonomy tree (for multi-tree support)"
+    
     constraints:
-      - name: "unique_taxonomy_code_per_tree"
+      - name: "unique_taxonomy_code"
         type: unique
-        fields: [tree_id, code, effective_start_date]
+        fields: [code]
+        description: "Code must be unique (globally in simplified design, per tree in multi-tree)"
+      
+      - name: "taxonomy_type_level_consistency"
+        type: check
+        condition: "(taxonomy_type = 'FAMILY' AND level = 1) OR (taxonomy_type = 'SUBFAMILY' AND level = 2) OR (taxonomy_type = 'FUNCTION' AND level = 3)"
+        description: "Taxonomy type must match hierarchy level"
+      
+      - name: "parent_required_for_non_family"
+        type: check
+        condition: "(taxonomy_type = 'FAMILY' AND parent_id IS NULL) OR (taxonomy_type != 'FAMILY' AND parent_id IS NOT NULL)"
+        description: "Parent required for SUBFAMILY and FUNCTION levels"
+    
     businessRules:
-      - "Taxonomy typically 3 levels: Family → Sub-family → Function"
-      - "Path enables efficient subtree queries"
-      - "Jobs link to lowest applicable taxonomy node"
+      - "Taxonomy typically 3 levels: FAMILY → SUBFAMILY → FUNCTION"
+      - "taxonomy_type defines the classification level (FAMILY/SUBFAMILY/FUNCTION)"
+      - "level field (1/2/3) should match taxonomy_type"
+      - "Path enables efficient subtree queries using LIKE '/ENG/%'"
+      - "Code must be unique within organization (or within tree for multi-tree)"
+      - "Jobs should link to FUNCTION level (level 3) for most specific classification"
+      - "[ADVANCED] Multi-tree: Each tree can have independent taxonomy structure"
+      - "[ADVANCED] Multi-tree: BU can override corporate taxonomy nodes using inherit_flag=false"
+      - "[ADVANCED] Multi-tree: Use TaxonomyXMap for cross-tree reporting consolidation"
+    
     indexes:
-      - name: "idx_job_taxonomy_tree"
-        columns: [tree_id]
       - name: "idx_job_taxonomy_parent"
         columns: [parent_id]
+      
       - name: "idx_job_taxonomy_level"
         columns: [level]
+      
+      - name: "idx_job_taxonomy_path"
+        columns: [path]
+        description: "For efficient subtree queries"
+      
+      - name: "idx_job_taxonomy_type"
+        columns: [taxonomy_type]
+    
     examples:
-      - code: "ENG"
+      - description: "Level 1: Job Family"
+        code: "ENG"
         name: "Engineering"
+        taxonomy_type: "FAMILY"
+        parent_id: null
         level: 1
         path: "/ENG"
-      - code: "ENG_SW"
+        sort_order: 1
+      
+      - description: "Level 2: Job Subfamily"
+        code: "SW_ENG"
         name: "Software Engineering"
-        parent_id: "ENG_UUID"
+        taxonomy_type: "SUBFAMILY"
+        parent_id: "<ENG_UUID>"
         level: 2
-        path: "/ENG/ENG_SW"
-      - code: "ENG_SW_BACKEND"
+        path: "/ENG/SW_ENG"
+        sort_order: 1
+      
+      - description: "Level 3: Job Function"
+        code: "BACKEND"
         name: "Backend Development"
-        parent_id: "ENG_SW_UUID"
+        taxonomy_type: "FUNCTION"
+        parent_id: "<SW_ENG_UUID>"
         level: 3
-        path: "/ENG/ENG_SW/ENG_SW_BACKEND"
+        path: "/ENG/SW_ENG/BACKEND"
+        sort_order: 1
+    
+    implementationNotes:
+      simplified:
+        - "Use single taxonomy tree for entire organization"
+        - "taxonomy_type defines hierarchy level (FAMILY/SUBFAMILY/FUNCTION)"
+        - "parent_id creates parent-child hierarchy"
+        - "path field enables efficient subtree queries"
+        - "Jobs reference taxonomy via direct FK (job.taxonomy_id)"
+      
+      advanced:
+        - "Enable tree_id to support multiple independent taxonomy trees"
+        - "Use owner_scope (CORP/LE/BU) to manage tree ownership"
+        - "BU can create custom taxonomy trees or override corporate nodes"
+        - "Use TaxonomyXMap table for cross-tree mapping and reporting"
+        - "Jobs can belong to multiple taxonomy nodes via JobTaxonomyMap (many-to-many)"
+        - "See TaxonomyTree, TaxonomyXMap entities for multi-tree architecture"
+
 
   JobTree:
-    description: |\
-      Job hierarchy tree (corporate or BU-specific).
-      Supports multiple independent job trees with inheritance.
+    description: |
+      [ADVANCED] Container for independent job hierarchies.
+      
+      Similar to TaxonomyTree but for job structures. Enables multiple job catalogs
+      to coexist (e.g., corporate job catalog + BU-specific job catalogs).
+      
+      **Use Cases**:
+      - Business units with unique job structures
+      - M&A integration requiring separate job catalogs
+      - Regional variations in job definitions
+      - Decentralized job management with corporate oversight
+    
     attributes:
       id:
         type: UUID
         required: true
+      
       code:
         type: string
         required: true
         maxLength: 50
+        description: "Job tree code (e.g., CORP_JOBS, BU_GAMING_JOBS, BU_FINTECH_JOBS)"
+      
       name:
         type: string
         required: true
         maxLength: 150
-      owner_type:
+        description: "Job tree name"
+      
+      owner_scope:
         type: enum
-        values: [CORPORATE, BUSINESS_UNIT]
+        values: [CORP, LE, BU]
         required: true
-      owner_id:
+        description: |
+          Ownership scope:
+          - CORP: Corporate-wide job catalog (shared across organization)
+          - LE: Legal entity-specific job catalog
+          - BU: Business unit-specific job catalog
+      
+      owner_unit_id:
         type: UUID
-        description: "Business unit ID if BU-specific"
+        description: "Business unit ID (required if owner_scope=BU)"
+      
       parent_tree_id:
         type: UUID
-        description: "Parent tree for inheritance (BU tree inherits from corporate)"
+        description: "Parent tree for inheritance (BU tree can inherit from corporate tree)"
+      
       is_active:
         type: boolean
         default: true
+      
       metadata:
         type: jsonb
-        description: "Inheritance rules, override settings"
+        description: "Inheritance rules, override settings, job catalog configuration"
+      
       created_at:
         type: timestamp
+      
       updated_at:
         type: timestamp
+    
     constraints:
       - name: "unique_job_tree_code"
         type: unique
         fields: [code]
+    
     businessRules:
-      - "Corporate job tree is default"
-      - "BU job trees can inherit from corporate tree"
+      - "Corporate job tree is default job catalog"
+      - "BU job trees can inherit from corporate tree (parent_tree_id)"
       - "Jobs in BU tree can override corporate job attributes"
+      - "Use JobXMap to map BU jobs to corporate jobs for reporting"
+      - "If owner_scope=BU, owner_unit_id is required"
+    
     indexes:
       - name: "idx_job_tree_owner"
-        columns: [owner_type, owner_id]
+        columns: [owner_scope, owner_unit_id]
+    
     examples:
-      - code: "CORP_JOBS_2025"
+      - description: "Corporate Job Tree"
+        code: "CORP_JOBS_2025"
         name: "Corporate Job Catalog 2025"
-        owner_type: "CORPORATE"
-      - code: "RETAIL_JOBS"
-        name: "Retail Division Jobs"
-        owner_type: "BUSINESS_UNIT"
-        owner_id: "BU_RETAIL_UUID"
-        parent_tree_id: "CORP_JOBS_UUID"
+        owner_scope: "CORP"
+        owner_unit_id: null
+        parent_tree_id: null
+      
+      - description: "BU-Specific Job Tree"
+        code: "BU_GAMING_JOBS"
+        name: "Gaming Division Job Catalog"
+        owner_scope: "BU"
+        owner_unit_id: "<gaming_bu_id>"
+        parent_tree_id: "<CORP_JOBS_UUID>"
+
 
   Job:
-    description: |\
-      Job definition (role, responsibilities, requirements).
-      Can exist in corporate or BU-specific job trees with inheritance.
+    description: |
+      Job definition representing a role or position type within the organization.
+      Defines responsibilities, requirements, competencies, and compensation level.
+      
+      **Primary Design**: Jobs classified using direct taxonomy reference (FK).
+      **Advanced Design**: Multi-tree support with job hierarchies across trees.
+      
+      Jobs serve as templates for positions and define what work needs to be done,
+      independent of specific incumbents or organizational placement.
+    
     attributes:
+      # === Core Attributes (Simplified Design) ===
       id:
         type: UUID
         required: true
-      tree_id:
-        type: UUID
-        required: true
-        description: "Job tree this job belongs to"
+      
       code:
         type: string
         required: true
         maxLength: 50
+        description: "Unique job code (e.g., SR_BACKEND_ENG, SALES_MGR)"
+      
       name:
         type: string
         required: true
         maxLength: 200
-      parent_job_id:
-        type: UUID
-        description: "Parent job in hierarchy"
+        description: "Job title (e.g., Senior Backend Engineer, Sales Manager)"
+      
       taxonomy_id:
         type: UUID
-        description: "Job taxonomy classification"
-      job_family_id:
+        description: |
+          Job taxonomy classification (direct FK to JobTaxonomy).
+          Links job to taxonomy FUNCTION level for classification.
+          [ADVANCED] In multi-tree design, use JobTaxonomyMap for many-to-many.
+      
+      parent_job_id:
         type: UUID
-        description: "Shortcut to job family (denormalized from taxonomy)"
+        description: "Parent job in hierarchy (for job inheritance)"
+      
       level_id:
         type: UUID
-        description: "Job level/seniority"
+        description: "Job level/seniority (e.g., Junior, Mid, Senior, Principal)"
+      
       grade_id:
         type: UUID
-        description: "Job grade/band"
+        description: "Job grade/band for compensation (links to pay ranges)"
+      
       job_type_code:
         type: string
         maxLength: 50
-        description: "INDIVIDUAL_CONTRIBUTOR, MANAGER, EXECUTIVE"
+        description: "Job type: INDIVIDUAL_CONTRIBUTOR, MANAGER, EXECUTIVE"
+      
       flsa_status_code:
         type: string
         maxLength: 50
-        description: "EXEMPT, NON_EXEMPT (US labor law)"
-      path:
-        type: string
-        maxLength: 500
-        description: "Materialized path in job tree"
+        description: "FLSA classification: EXEMPT, NON_EXEMPT (US labor law)"
+      
+      is_manager:
+        type: boolean
+        default: false
+        description: "Manager role indicator"
+      
       sort_order:
         type: integer
+        description: "Display order"
+      
       is_active:
         type: boolean
         default: true
+        description: "Active status"
+      
+      description:
+        type: text
+        description: "Brief job description"
+      
       metadata:
         type: jsonb
-        description: "Custom attributes, override flags"
+        description: "Additional job attributes, custom fields"
+      
       effective_start_date:
         type: date
         required: true
+      
       effective_end_date:
         type: date
+      
       is_current_flag:
         type: boolean
         default: true
+      
+      # === Advanced Attributes (Multi-Tree Design) ===
+      # The following attributes support multi-tree architecture for complex organizations.
+      
+      tree_id:
+        type: UUID
+        description: "[FUTURE-READY] Job tree reference - reserved for job_tree support (Phase 2). Current: NULL (not used). Future: Will reference job_tree when multiple job catalogs needed."
+      
+      owner_scope:
+        type: enum
+        values: [CORP, LE, BU]
+        description: |
+          [ADVANCED] Ownership scope:
+          - CORP: Corporate-level job (shared across organization)
+          - LE: Legal entity-specific job
+          - BU: Business unit-specific job
+      
+      owner_unit_id:
+        type: UUID
+        description: "[ADVANCED] Owning business unit ID (required if owner_scope=BU)"
+      
+      inherit_flag:
+        type: boolean
+        default: true
+        description: "[ADVANCED] Inherit from parent or override (for BU customization)"
+      
+      override_title:
+        type: string
+        maxLength: 255
+        description: "[ADVANCED] Override title for BU-specific job"
+      
+      visibility:
+        type: enum
+        values: [PUBLIC, PRIVATE, RESTRICTED]
+        description: "[ADVANCED] Visibility scope for multi-tree scenarios"
+      
+      path:
+        type: string
+        maxLength: 500
+        description: "[ADVANCED] Materialized path in job tree (for multi-tree)"
+    
     relationships:
-      tree:
-        target: JobTree
-        cardinality: "1"
       parentJob:
         target: Job
         cardinality: "0..1"
+        description: "Parent job (for job hierarchy and inheritance)"
+      
+      childJobs:
+        target: Job
+        cardinality: "0..*"
+        description: "Child jobs"
+      
       taxonomy:
         target: JobTaxonomy
         cardinality: "0..1"
+        description: "Job taxonomy classification (direct FK in simplified design)"
+      
       level:
         target: JobLevel
         cardinality: "0..1"
+        description: "Job level/seniority"
+      
       grade:
         target: JobGrade
         cardinality: "0..1"
+        description: "Job grade/band for compensation"
+      
       profile:
         target: JobProfile
         cardinality: "0..1"
+        description: "Detailed job profile (responsibilities, requirements, skills)"
+      
+      positions:
+        target: Position
+        cardinality: "0..*"
+        description: "Position instances of this job"
+      
+      tree:
+        target: JobTree
+        cardinality: "0..1"
+        description: "[ADVANCED] Parent job tree (for multi-tree support)"
+    
     constraints:
-      - name: "unique_job_code_per_tree"
+      - name: "unique_job_code"
         type: unique
-        fields: [tree_id, code, effective_start_date]
+        fields: [code]
+        description: "Code must be unique (globally in simplified design, per tree in multi-tree)"
+      
+      - name: "taxonomy_should_be_function_level"
+        type: check
+        condition: "taxonomy_id IS NULL OR EXISTS (SELECT 1 FROM job_taxonomy WHERE id = taxonomy_id AND taxonomy_type = 'FUNCTION')"
+        description: "Jobs should link to FUNCTION level taxonomy for most specific classification"
+    
     businessRules:
-      - "Jobs form hierarchy (parent-child)"
-      - "Child jobs can inherit attributes from parent"
-      - "BU jobs can override corporate job attributes"
-      - "Job family shortcut for performance (denormalized)"
-      - "Level and grade determine compensation range"
+      - "Job code must be unique within organization (or within tree for multi-tree)"
+      - "Jobs form parent-child hierarchy for inheritance"
+      - "Child jobs inherit attributes from parent (responsibilities, requirements)"
+      - "taxonomy_id should reference FUNCTION level (level 3) for most specific classification"
+      - "level_id and grade_id determine compensation range"
+      - "Job defines WHAT work needs to be done (template)"
+      - "Position defines WHERE work is done (organizational placement)"
+      - "JobProfile provides detailed description (responsibilities, requirements, skills)"
+      - "[ADVANCED] Multi-tree: Jobs can exist in multiple trees (corporate + BU-specific)"
+      - "[ADVANCED] Multi-tree: BU can override corporate job attributes using inherit_flag=false"
+      - "[ADVANCED] Multi-tree: Use JobXMap for cross-tree reporting consolidation"
+      - "[ADVANCED] Multi-tree: Jobs can belong to multiple taxonomy nodes via JobTaxonomyMap"
+    
     indexes:
-      - name: "idx_job_tree"
-        columns: [tree_id]
       - name: "idx_job_code"
         columns: [code]
-      - name: "idx_job_family"
-        columns: [job_family_id]
+      
+      - name: "idx_job_taxonomy"
+        columns: [taxonomy_id]
+      
       - name: "idx_job_level"
         columns: [level_id]
+      
+      - name: "idx_job_grade"
+        columns: [grade_id]
+      
+      - name: "idx_job_parent"
+        columns: [parent_job_id]
+    
     examples:
-      - code: "SWE_L3"
-        name: "Senior Software Engineer"
-        job_family_id: "ENG_SW_BACKEND_UUID"
-        level_id: "L3_SENIOR_UUID"
-        grade_id: "G5_UUID"
+      - description: "Individual Contributor Job"
+        code: "SR_BACKEND_ENG"
+        name: "Senior Backend Engineer"
+        taxonomy_id: "<BACKEND_FUNCTION_UUID>"
+        parent_job_id: "<BACKEND_ENG_UUID>"
+        level_id: "<L3_SENIOR_UUID>"
+        grade_id: "<G7_UUID>"
         job_type_code: "INDIVIDUAL_CONTRIBUTOR"
         flsa_status_code: "EXEMPT"
-      - code: "SALES_MGR_L1"
+        is_manager: false
+      
+      - description: "Manager Job"
+        code: "SALES_MGR"
         name: "Sales Manager"
-        job_family_id: "SALES_CORP_UUID"
-        level_id: "M1_MANAGER_UUID"
-        grade_id: "G6_UUID"
+        taxonomy_id: "<SALES_FUNCTION_UUID>"
+        level_id: "<M1_MANAGER_UUID>"
+        grade_id: "<G8_UUID>"
         job_type_code: "MANAGER"
+        flsa_status_code: "EXEMPT"
+        is_manager: true
+    
+    implementationNotes:
+      simplified:
+        - "Use single job catalog for entire organization"
+        - "taxonomy_id provides direct FK to job taxonomy (FUNCTION level)"
+        - "parent_job_id creates job hierarchy for inheritance"
+        - "Jobs are templates; positions are instances"
+        - "One job can have multiple positions across different BUs"
+      
+      advanced:
+        - "Enable tree_id to support multiple independent job trees"
+        - "Use owner_scope (CORP/LE/BU) to manage job ownership"
+        - "BU can create custom jobs or override corporate jobs"
+        - "Use JobXMap for cross-tree mapping and reporting"
+        - "Use JobTaxonomyMap for many-to-many job-taxonomy relationship"
+        - "See JobTree, JobXMap entities for multi-tree architecture"
+
 
   JobProfile:
     description: |\
@@ -3748,6 +4096,260 @@ entities:
         current_incumbents: 3
         status_code: "ACTIVE"
         position_type_code: "TEMPORARY"
+
+  # ===========================================================================
+  # ADVANCED: Multi-Tree Cross-Mapping Entities
+  # ===========================================================================
+  # The following entities support cross-tree mapping for multi-tree architecture.
+  # These enable consolidation and reporting across independent taxonomy/job trees.
+
+  TaxonomyXMap:
+    description: |
+      [ADVANCED] Cross-tree taxonomy node mapping.
+      
+      Maps taxonomy nodes between different trees (e.g., BU taxonomy → corporate taxonomy)
+      for reporting consolidation and cross-tree analysis.
+      
+      **Use Cases**:
+      - Map BU-specific taxonomy to corporate taxonomy for consolidated reporting
+      - Align acquired company taxonomy with corporate taxonomy
+      - Support cross-BU job family analysis
+    
+    attributes:
+      id:
+        type: UUID
+        required: true
+      
+      src_node_id:
+        type: UUID
+        required: true
+        description: "Source taxonomy node (e.g., BU-specific node)"
+      
+      target_node_id:
+        type: UUID
+        required: true
+        description: "Target taxonomy node (e.g., corporate node)"
+      
+      map_type_code:
+        type: enum
+        values: [REPORT_TO, ALIGN_WITH, DUPLICATE_OF]
+        required: true
+        description: |
+          Mapping type:
+          - REPORT_TO: Source rolls up to target for reporting
+          - ALIGN_WITH: Source aligns with target (similar but not identical)
+          - DUPLICATE_OF: Source is exact duplicate of target
+      
+      comment:
+        type: text
+        description: "Mapping rationale or notes"
+      
+      effective_start_date:
+        type: date
+        required: true
+      
+      effective_end_date:
+        type: date
+      
+      is_current_flag:
+        type: boolean
+        default: true
+    
+    relationships:
+      sourceNode:
+        target: JobTaxonomy
+        cardinality: "1"
+        description: "Source taxonomy node"
+      
+      targetNode:
+        target: JobTaxonomy
+        cardinality: "1"
+        description: "Target taxonomy node"
+    
+    constraints:
+      - name: "unique_taxonomy_mapping"
+        type: unique
+        fields: [src_node_id, target_node_id, effective_start_date]
+      
+      - name: "different_trees"
+        type: check
+        condition: "src_node_id != target_node_id"
+        description: "Source and target must be different nodes"
+    
+    businessRules:
+      - "Maps taxonomy nodes across different trees"
+      - "Enables consolidated reporting across BU-specific taxonomies"
+      - "One source node can map to one target node"
+      - "SCD Type 2 for historical tracking of mapping changes"
+    
+    examples:
+      - description: "BU Gaming taxonomy maps to Corporate Product taxonomy"
+        src_node_id: "<BU_GAMING_GAME_DESIGNER_UUID>"
+        target_node_id: "<CORP_PRODUCT_DESIGNER_UUID>"
+        map_type_code: "ALIGN_WITH"
+        comment: "Game Designer aligns with Product Designer for reporting"
+
+  JobXMap:
+    description: |
+      [ADVANCED] Cross-tree job mapping.
+      
+      Maps jobs between different trees (e.g., BU job → corporate job)
+      for reporting consolidation and cross-tree analysis.
+      
+      **Use Cases**:
+      - Map BU-specific jobs to corporate jobs for headcount reporting
+      - Align acquired company jobs with corporate job catalog
+      - Support cross-BU compensation analysis
+    
+    attributes:
+      id:
+        type: UUID
+        required: true
+      
+      src_job_id:
+        type: UUID
+        required: true
+        description: "Source job (e.g., BU-specific job)"
+      
+      target_job_id:
+        type: UUID
+        required: true
+        description: "Target job (e.g., corporate job)"
+      
+      map_type_code:
+        type: enum
+        values: [ALIGN_WITH, DUPLICATE_OF]
+        required: true
+        description: |
+          Mapping type:
+          - ALIGN_WITH: Source aligns with target (similar but not identical)
+          - DUPLICATE_OF: Source is exact duplicate of target
+      
+      comment:
+        type: text
+        description: "Mapping rationale or notes"
+      
+      effective_start_date:
+        type: date
+        required: true
+      
+      effective_end_date:
+        type: date
+      
+      is_current_flag:
+        type: boolean
+        default: true
+    
+    relationships:
+      sourceJob:
+        target: Job
+        cardinality: "1"
+        description: "Source job"
+      
+      targetJob:
+        target: Job
+        cardinality: "1"
+        description: "Target job"
+    
+    constraints:
+      - name: "unique_job_mapping"
+        type: unique
+        fields: [src_job_id, target_job_id, effective_start_date]
+      
+      - name: "different_jobs"
+        type: check
+        condition: "src_job_id != target_job_id"
+        description: "Source and target must be different jobs"
+    
+    businessRules:
+      - "Maps jobs across different trees"
+      - "Enables consolidated headcount and compensation reporting"
+      - "One source job can map to one target job"
+      - "SCD Type 2 for historical tracking of mapping changes"
+    
+    examples:
+      - description: "BU Gaming Senior Engineer maps to Corporate Senior Engineer"
+        src_job_id: "<BU_GAMING_SR_ENG_UUID>"
+        target_job_id: "<CORP_SR_ENG_UUID>"
+        map_type_code: "ALIGN_WITH"
+        comment: "Gaming Senior Engineer aligns with Corporate Senior Engineer for reporting"
+
+  JobTaxonomyMap:
+    description: |
+      [ADVANCED] Many-to-many relationship between jobs and taxonomy nodes.
+      
+      Allows a job to belong to multiple taxonomy classifications simultaneously.
+      Used in multi-tree architecture when jobs need multiple taxonomy categorizations.
+      
+      **Use Cases**:
+      - Job belongs to multiple taxonomy families (e.g., Technical + Management)
+      - Cross-functional roles with multiple classifications
+      - Matrix organization job structures
+    
+    attributes:
+      job_id:
+        type: UUID
+        required: true
+        description: "Job reference"
+      
+      taxonomy_id:
+        type: UUID
+        required: true
+        description: "Taxonomy node reference"
+      
+      is_primary:
+        type: boolean
+        default: false
+        description: "Primary taxonomy classification flag"
+      
+      effective_start_date:
+        type: date
+        required: true
+      
+      effective_end_date:
+        type: date
+      
+      is_current_flag:
+        type: boolean
+        default: true
+    
+    relationships:
+      job:
+        target: Job
+        cardinality: "1"
+        description: "Job"
+      
+      taxonomy:
+        target: JobTaxonomy
+        cardinality: "1"
+        description: "Taxonomy node"
+    
+    constraints:
+      - name: "unique_job_taxonomy_mapping"
+        type: unique
+        fields: [job_id, taxonomy_id, effective_start_date]
+      
+      - name: "one_primary_per_job"
+        type: check
+        condition: "Only one is_primary=true per job_id"
+        description: "Job can have only one primary taxonomy"
+    
+    businessRules:
+      - "Enables many-to-many job-taxonomy relationship"
+      - "One job can belong to multiple taxonomy nodes"
+      - "One taxonomy node can have multiple jobs"
+      - "One primary taxonomy per job (is_primary=true)"
+      - "SCD Type 2 for historical tracking"
+    
+    examples:
+      - description: "Technical Manager belongs to both Engineering and Management taxonomies"
+        job_id: "<TECH_MGR_UUID>"
+        taxonomy_id: "<ENG_SW_FUNCTION_UUID>"
+        is_primary: true
+      
+      - job_id: "<TECH_MGR_UUID>"
+        taxonomy_id: "<MGMT_FUNCTION_UUID>"
+        is_primary: false
 
   # ===========================================================================
   # FACILITY SCHEMA

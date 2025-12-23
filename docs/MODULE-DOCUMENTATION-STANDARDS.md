@@ -1,82 +1,118 @@
 # xTalent Module Documentation Standards
 
-**Version**: 2.2  
-**Last Updated**: 2025-12-19  
+**Version**: 2.4  
+**Last Updated**: 2025-12-23  
 **Status**: Official Standard  
 **Applies To**: All xTalent Modules
 
----
-
-## 🎯 Purpose
-
-This document defines the **standard documentation structure and templates** for all xTalent modules to ensure consistency, quality, and reusability across the entire product.
-
-**Lessons Learned**: The TA (Time & Attendance) module was documented differently from the Core module, causing inconsistencies. This standard prevents that.
+> [!IMPORTANT]
+> **v2.4 Major Update - Modular Structure**: Ontology layer now uses one-file-per-entity and one-file-per-workflow-catalog patterns for better maintainability, AI agent efficiency, and scalability.
 
 ---
 
-## 📁 Standard Module Structure
+## 📑 Table of Contents
 
-### Every Module MUST Follow This Structure
+1. [Purpose & Principles](#-purpose--principles)
+2. [Directory Structure](#-directory-structure)
+3. [Required Documents](#-required-documents-by-phase)
+4. [File Naming Conventions](#-file-naming-conventions)
+5. [Templates](#-templates)
+   - [Ontology Layer](#ontology-layer-templates)
+   - [Concept Layer](#concept-layer-templates)
+   - [Specification Layer](#specification-layer-templates)
+6. [Best Practices](#-best-practices)
+7. [Version History](#-version-history)
+
+---
+
+## 🎯 Purpose & Principles
+
+### Documentation Purpose
+
+This standard defines the structure and content requirements for all xTalent module documentation. It ensures:
+- **Consistency** across all modules
+- **Completeness** of requirements and design
+- **Clarity** for stakeholders, developers, and AI agents
+- **Traceability** from business requirements to implementation
+- **Maintainability** through modular, manageable file sizes
+
+### Core Principles
+
+1. **Separation of Concerns**: Ontology (WHAT exists) → Concept (HOW it works) → Specification (EXACT requirements) → Design (TECHNICAL implementation)
+2. **One Entity = One File**: Keep entity definitions to 150-250 lines for optimal AI agent processing
+3. **One Workflow Catalog = One File**: Organize workflow catalogs by sub-module
+4. **Business-First**: Prioritize business logic and domain understanding over technical details
+5. **DRY (Don't Repeat Yourself)**: Single source of truth for each concept
+
+---
+
+## 📁 Directory Structure
 
 ```
-xTalent/docs/01-modules/[MODULE-CODE]/
-
-├── 00-ontology/                    # Data Model Foundation
-│   ├── README.md                   # REQUIRED (index + overview)
-│   │
-│   ├── domain/                     # Entity Definitions (split by submodule)
-│   │   ├── [submodule-1]-entities.md    # REQUIRED (entities for submodule 1)
-│   │   ├── [submodule-2]-entities.md    # REQUIRED (entities for submodule 2)
-│   │   └── shared-entities.md           # OPTIONAL (cross-submodule entities)
-│   │
-│   ├── workflows/                  # Workflow Catalog (metadata only)
-│   │   ├── [submodule-1]-workflows.md   # REQUIRED (workflow list + metadata)
-│   │   └── [submodule-2]-workflows.md   # REQUIRED (workflow list + metadata)
-│   │
-│   ├── glossary-[submodule].md     # REQUIRED (one per sub-module)
-│   ├── glossary-[submodule]-vi.md  # OPTIONAL (Vietnamese)
-│   ├── glossary-index.md           # REQUIRED
-│   └── ONTOLOGY-REVIEW.md          # RECOMMENDED
+[MODULE-CODE]/
+├── README.md                       # REQUIRED (module overview)
 │
-├── 01-concept/                     # Business Guides
-│   ├── README.md                   # REQUIRED (index)
+├── 00-ontology/                    # ONTOLOGY LAYER: What exists
+│   ├── README.md                   # REQUIRED (ontology navigation hub)
+│   │
+│   ├── domain/                     # Entity Definitions (one entity = one file)
+│   │   ├── 01-[submodule]/         # Sub-module 1 entities
+│   │   │   ├── README.md           # REQUIRED (entity index for sub-module)
+│   │   │   ├── 01-[entity].md      # REQUIRED (150-250 lines each)
+│   │   │   ├── 02-[entity].md
+│   │   │   └── ...
+│   │   ├── 02-[submodule]/         # Sub-module 2 entities
+│   │   │   ├── README.md
+│   │   │   └── ...
+│   │   └── 99-shared/              # OPTIONAL (cross-submodule entities)
+│   │       └── [entity].md
+│   │
+│   ├── workflows/                  # Workflow Catalogs (metadata only)
+│   │   ├── 01-[submodule]/         # Sub-module 1 workflows
+│   │   │   └── README.md           # REQUIRED (workflow catalog)
+│   │   ├── 02-[submodule]/         # Sub-module 2 workflows
+│   │   │   └── README.md
+│   │   └── ...
+│   │
+│   ├── glossary-index.md           # REQUIRED (master glossary nav)
+│   ├── glossary-[submodule].md     # REQUIRED (quick reference per submodule)
+│   └── ONTOLOGY-REVIEW.md          # RECOMMENDED (ontology review notes)
+│
+├── 01-concept/                     # CONCEPT LAYER: How it works
+│   ├── README.md                   # REQUIRED (concept guides index)
 │   ├── 01-overview.md              # REQUIRED (module overview)
-│   ├── 02-[submodule-1]/           # Concept guides per submodule
-│   │   ├── overview.md             # Submodule overview
-│   │   ├── [workflow-1]-guide.md   # Workflow detail guide
-│   │   └── [workflow-2]-guide.md   # Workflow detail guide
-│   ├── 03-[submodule-2]/           # Concept guides per submodule
-│   │   ├── overview.md             # Submodule overview
-│   │   └── [workflow-n]-guide.md   # Workflow detail guide
+│   ├── 02-[submodule]/             # Submodule 1 concepts
+│   │   ├── overview.md             # REQUIRED (submodule overview)
+│   │   ├── [workflow]-guide.md     # REQUIRED (workflow detail guides)
+│   │   └── ...
+│   ├── 03-[submodule]/             # Submodule 2 concepts
+│   │   ├── overview.md
+│   │   └── ...
 │   └── 99-shared/                  # OPTIONAL (cross-cutting concepts)
 │       └── [topic]-guide.md
 │
-├── 02-spec/                        # Module-Level Specifications
-│   ├── README.md                   # REQUIRED (index)
-│   ├── 01-functional-requirements.md    # REQUIRED
-│   ├── 02-api-specification.md          # REQUIRED
-│   ├── 03-data-specification.md         # REQUIRED
-│   ├── 04-business-rules.md             # REQUIRED
-│   ├── 05-integration-spec.md           # REQUIRED
-│   ├── 06-security-spec.md              # REQUIRED
-│   ├── 03-scenarios/                    # REQUIRED (use cases per workflow)
-│   │   └── [scenario-name].md
-│   ├── INTEGRATION-GUIDE.md             # REQUIRED (PO/BA → Dev handoff)
-│   └── FEATURE-LIST.yaml                # REQUIRED
+├── 02-spec/                        # SPECIFICATION LAYER: Exact requirements
+│   ├── README.md                   # REQUIRED
+│   ├── 01-functional-requirements.md   # REQUIRED
+│   ├── 02-api-specification.md         # REQUIRED
+│   ├── 03-data-specification.md        # REQUIRED
+│   ├── 04-business-rules.md            # REQUIRED
+│   ├── 05-integration-spec.md          # REQUIRED
+│   ├── 06-security-spec.md             # REQUIRED
+│   ├── INTEGRATION-GUIDE.md            # REQUIRED (PO/BA → Dev handoff)
+│   └── FEATURE-LIST.yaml               # REQUIRED
 │
-├── 03-design/                      # Technical Design
+├── 03-design/                      # DESIGN LAYER: Technical design
 │   ├── README.md                   # REQUIRED
 │   ├── [module].dbml               # REQUIRED (database schema)
 │   └── diagrams/                   # OPTIONAL
 │
-├── 04-implementation/              # Implementation Guides
-│   ├── README.md                   # REQUIRED
-│   └── [guides].md                 # As needed
+├── 04-implementation/              # Implementation guides
+│   └── README.md
 │
-└── 05-api/                         # API Documentation
-    ├── README.md                   # REQUIRED
-    └── openapi.yaml                # REQUIRED
+└── 05-api/                         # API documentation
+    ├── README.md
+    └── openapi.yaml
 ```
 
 ---
@@ -87,15 +123,14 @@ xTalent/docs/01-modules/[MODULE-CODE]/
 
 | Document | Status | Owner | Purpose |
 |----------|--------|-------|---------|
-| `00-ontology/README.md` | **REQUIRED** | PO/BA + Architect | Ontology index and overview |
-| `domain/[submodule]-entities.md` | **REQUIRED** | PO/BA + Architect | Entity definitions per submodule |
-| `domain/shared-entities.md` | OPTIONAL | PO/BA + Architect | Cross-submodule entities |
-| `workflows/[submodule]-workflows.md` | **REQUIRED** | PO/BA + Architect | Workflow catalog per submodule |
-| `glossary-[submodule].md` | **REQUIRED** | PO/BA | Entity definitions (English) |
-| `glossary-[submodule]-vi.md` | OPTIONAL | PO/BA | Entity definitions (Vietnamese) |
-| `glossary-index.md` | **REQUIRED** | PO/BA | Glossary navigation |
+| `00-ontology/README.md` | **REQUIRED** | Architect/BA | Navigation hub for all ontology docs |
+| `domain/[NN]-[submodule]/README.md` | **REQUIRED** | Architect | Entity index for sub-module |
+| `domain/[NN]-[submodule]/[NN]-[entity].md` | **REQUIRED** | Architect | Individual entity (150-250 lines) |
+| `workflows/[NN]-[submodule]/README.md` | **REQUIRED** | BA | Workflow catalog for sub-module |
+| `glossary-index.md` | **REQUIRED** | BA | Master glossary navigation |
+| `glossary-[submodule].md` | **REQUIRED** | BA | Quick-reference glossary per submodule |
 
-> **Key Principle**: Ontology separates **WHAT exists** (entities in `domain/`) from **WHAT workflows exist** (workflow catalog in `workflows/`). Workflow details are documented in the Concept layer.
+> **🎯 Key Principle**: One Entity = One File. Each entity is documented in a separate file within its sub-module folder for optimal AI agent efficiency and parallel work.
 
 ### Phase 1: Concept (Business Understanding)
 
@@ -103,21 +138,8 @@ xTalent/docs/01-modules/[MODULE-CODE]/
 |----------|--------|-------|---------|
 | `01-concept/README.md` | **REQUIRED** | PO/BA | Concept guides index |
 | `01-overview.md` | **REQUIRED** | PO/BA | High-level module overview |
-| `02-[submodule-1]/overview.md` | **REQUIRED** | PO/BA | Submodule overview |
-| `02-[submodule-1]/[workflow]-guide.md` | **REQUIRED** | PO/BA | Workflow detail guides (one per workflow) |
-| `03-[submodule-2]/overview.md` | **REQUIRED** | PO/BA | Submodule overview |
-| `03-[submodule-2]/[workflow]-guide.md` | **REQUIRED** | PO/BA | Workflow detail guides (one per workflow) |
-| `99-shared/[topic]-guide.md` | OPTIONAL | PO/BA | Cross-cutting concept guides |
-
-**Minimum Required Guides**: 1 module overview + 1 overview per submodule + 1 guide per core workflow
-
-**Guide Structure**:
-- **01-overview.md**: What the module is, problems it solves, scope, key concepts, business value
-- **[NN]-[submodule]/overview.md**: Submodule-specific overview and context
-- **[NN]-[submodule]/[workflow]-guide.md**: Step-by-step workflow details, decision points, exceptions
-- **99-shared/[topic]-guide.md**: Cross-cutting topics (policies, patterns, best practices)
-
-> **Key Principle**: Concept layer provides **HOW workflows work** in detail. Each workflow from the Ontology catalog gets a detailed guide here.
+| `[NN]-[submodule]/overview.md` | **REQUIRED** | PO/BA | Submodule overview |
+| `[NN]-[submodule]/[workflow]-guide.md` | **REQUIRED** | PO/BA | Detailed workflow guides |
 
 ### Phase 2: Specification (Requirements)
 
@@ -140,130 +162,134 @@ xTalent/docs/01-modules/[MODULE-CODE]/
 | `03-design/README.md` | **REQUIRED** | Architect | Design index |
 | `[module].dbml` | **REQUIRED** | Architect | Database schema |
 
-### Phase 4+: Implementation & API
+---
 
-| Document | Status | Owner | Purpose |
-|----------|--------|-------|---------|
-| `04-implementation/README.md` | **REQUIRED** | Dev Lead | Implementation index |
-| `05-api/README.md` | **REQUIRED** | Dev Lead | API documentation index |
-| `05-api/openapi.yaml` | **REQUIRED** | Dev Lead | OpenAPI specification |
+## 🏷️ File Naming Conventions
+
+### Sub-module Folders
+
+**Pattern**: `[NN]-[submodule]`
+- `NN`: 2-digit sequence number (01-99)
+- `submodule`: kebab-case name
+
+**Examples**:
+- `01-config`
+- `02-processing`
+- `03-gateway`
+
+### Entity Files
+
+**Pattern**: `[NN]-[entity-name].md`
+- `NN`: 2-digit sequence within sub-module (01-99)
+- `entity-name`: kebab-case, singular
+
+**Examples**:
+- `01-pay-frequency.md`
+- `02-pay-calendar.md`
+- `04-pay-element.md`
+
+### Workflow Files
+
+**Pattern**: `README.md` (for workflow catalog index)
+
+Workflow catalogs are maintained in README.md within each sub-module's workflow folder. Individual workflow entries are sections within this README.
+
+### Glossary Files
+
+**Pattern**: `glossary-[submodule].md`
+
+**Examples**:
+- `glossary-config.md`
+- `glossary-processing.md`
 
 ---
 
-## 📋 Document Templates
+## 📋 Templates
 
-### Template 1: Module Ontology
+### Ontology Layer Templates
 
-**File**: `00-ontology/[module]-ontology.yaml`
+#### Template O1: Ontology README (Navigation Hub)
 
-```yaml
-# [Module Name] Ontology
-# Version: 2.0
-# Last Updated: YYYY-MM-DD
+**File**: `00-ontology/README.md`
 
-metadata:
-  module:
-    code: [MODULE-CODE]
-    name: "[Module Full Name]"
-    version: "2.0"
-    description: |
-      [Module description]
-  
-  sub_modules:
-    - code: [SUBMODULE-1]
-      name: "[Sub-module Name]"
-      entities:
-        - [Entity1]
-        - [Entity2]
-    
-    - code: [SUBMODULE-2]
-      name: "[Sub-module Name]"
-      entities:
-        - [Entity3]
-        - [Entity4]
+```markdown
+# [Module Name] - Ontology
 
-# Entity Definitions
-entities:
-  [Entity1]:
-    description: |
-      [Entity description]
-    
-    attributes:
-      id:
-        type: UUID
-        required: true
-        description: "Primary key"
-      
-      [attribute_name]:
-        type: [data_type]
-        required: [true/false]
-        maxLength: [number]
-        description: "[Description]"
-    
-    relationships:
-      [relationship_name]:
-        target: [TargetEntity]
-        cardinality: "[1:1 / 1:N / N:M]"
-        description: "[Description]"
-    
-    constraints:
-      - name: "[constraint_name]"
-        type: "[CHECK / UNIQUE / FK]"
-        description: "[Description]"
-    
-    business_rules:
-      - id: "BR-[CODE]-001"
-        description: "[Rule description]"
-    
-    indexes:
-      - name: "idx_[table]_[field]"
-        columns: [[field1], [field2]]
-        unique: [true/false]
-    
-    audit:
-      scd_type: 2
-      fields:
-        - created_at
-        - created_by
-        - updated_at
-        - updated_by
-        - effective_start_date
-        - effective_end_date
-        - is_current_flag
+**Module**: [Module Name] ([MODULE-CODE])  
+**Version**: 2.0  
+**Last Updated**: YYYY-MM-DD
 
-# Design Patterns
-design_patterns:
-  scd_type_2:
-    description: "Slowly Changing Dimensions Type 2"
-    applies_to: [List of entities]
-  
-  hierarchical_data:
-    description: "Materialized Path pattern"
-    applies_to: [List of entities]
+---
 
-# Version History
-version_history:
-  - version: "2.0"
-    date: "YYYY-MM-DD"
-    changes: "[Description of changes]"
+## Overview
+
+[Brief description of the module and its ontology structure]
+
+---
+
+## Sub-modules
+
+| # | Sub-module | Entities | Workflows | Purpose |
+|---|------------|----------|-----------|---------|
+| 01 | [NAME] | [N] | [M] | [Brief purpose] |
+| 02 | [NAME] | [N] | [M] | [Brief purpose] |
+
+---
+
+## Quick Navigation
+
+### Domain Entities
+
+- [01-[submodule]](./domain/01-[submodule]/README.md) - [N entities] - [Purpose]
+- [02-[submodule]](./domain/02-[submodule]/README.md) - [N entities] - [Purpose]
+
+### Workflow Catalogs
+
+- [01-[submodule]](./workflows/01-[submodule]/README.md) - [M workflows]
+- [02-[submodule]](./workflows/02-[submodule]/README.md) - [M workflows]
+
+### Glossaries
+
+- [Master Index](./glossary-index.md)
+- [[Submodule 1]](./glossary-[submodule].md)
+- [[Submodule 2]](./glossary-[submodule].md)
+
+---
+
+## Design Principles
+
+[Key design principles for this module's ontology]
+
+---
+
+## Module Integration
+
+### Upstream Dependencies
+- [Module 1]: [Integration points]
+- [Module 2]: [Integration points]
+
+### Downstream Consumers
+- [Module 3]: [What they consume]
+
+---
+
+## References
+
+- [Module README](../README.md)
+- [Concept Layer](../01-concept/README.md)
+- [Database Design](../03-design/[module].dbml)
 ```
 
 ---
 
-> **Note**: Template 1 above shows the legacy YAML format. For new modules, use the markdown-based templates below (1A and 1B).
+#### Template O2: Sub-module Entity Index (README.md)
 
----
-
-### Template 1A: Entity Definition (Ontology Layer)
-
-**File**: `00-ontology/domain/[submodule]-entities.md`
-
-**Purpose**: Define all entities for a specific submodule with attributes, relationships, lifecycle, and business rules.
+**File**: `00-ontology/domain/[NN]-[submodule]/README.md`
 
 ```markdown
-# [Submodule Name] - Domain Entities
+# [SUBMODULE-NAME] - Domain Entities
 
-**Module**: [MODULE-CODE]  
+**Module**: [Module Name] ([MODULE-CODE])  
 **Submodule**: [SUBMODULE-CODE]  
 **Version**: 2.0  
 **Last Updated**: YYYY-MM-DD
@@ -272,123 +298,368 @@ version_history:
 
 ## Overview
 
-[Brief description of this submodule and its entities]
+[Brief description of this sub-module and its domain purpose]
+
+**Purpose**: [What business problems this sub-module solves]
+
+**Total Entities**: [N]
+
+---
+
+## Entity Index
+
+| # | Entity | File | Classification | Purpose |
+|---|--------|------|----------------|---------|
+| 01 | [EntityName] | [01-entity-name.md](./01-entity-name.md) | CORE_ENTITY | [Brief purpose] |
+| 02 | [EntityName] | [02-entity-name.md](./02-entity-name.md) | REFERENCE_DATA | [Brief purpose] |
+| 03 | [EntityName] | [03-entity-name.md](./03-entity-name.md) | TRANSACTION_DATA | [Brief purpose] |
+
+---
+
+## Entity Relationships
+
+```mermaid
+graph TD
+    Entity1 -->|relationship| Entity2
+    Entity2 -->|relationship| Entity3
+    Entity1 -->|references| ExternalEntity[External.Entity]
+```
+
+---
+
+## Design Patterns
+
+### SCD Type 2 Entities
+
+Entities using SCD Type 2 for historical tracking:
+- Entity1
+- Entity2
+
+**Standard SCD2 Fields**:
+- `effective_start_date`: When this version becomes effective
+- `effective_end_date`: When this version expires (NULL = current)
+- `is_current_flag`: `true` for current version
+
+### [Other Patterns]
+
+[Document any other design patterns used in this sub-module]
+
+---
+
+## Integration Points
+
+### [External Module 1]
+
+- **[ExternalEntity]** → `Entity1.foreign_key_field` - [Description]
+- **[ExternalEntity]** → `Entity2.foreign_key_field` - [Description]
+
+---
+
+## Related Workflows
+
+Workflow catalog: [../../workflows/[NN]-[submodule]/README.md](../../workflows/[NN]-[submodule]/README.md)
+
+**Key Workflows**:
+- WF-[CODE]-001: [Workflow Name]
+- WF-[CODE]-002: [Workflow Name]
+
+---
+
+## Quick Navigation
+
+**By Entity Type**:
+- **Master Data**: [Entity1](./01-entity.md), [Entity2](./02-entity.md)
+- **Transactions**: [Entity3](./03-entity.md)
+
+**By Function**:
+- **[Function 1]**: Entity1, Entity2
+- **[Function 2]**: Entity3, Entity4
+
+---
+
+## References
+
+- **Parent Ontology**: [../../README.md](../../README.md)
+- **Workflow Catalog**: [../../workflows/[NN]-[submodule]/README.md](../../workflows/[NN]-[submodule]/README.md)
+- **Glossary**: [../../glossary-[submodule].md](../../glossary-[submodule].md)
+- **Database Schema**: [../../../03-design/[module].dbml](../../../03-design/[module].dbml)
+```
+
+#### Template O3: Individual Entity Definition
+
+**File**: `00-ontology/domain/[NN]-[submodule]/[NN]-[entity-name].md`
+
+> **🎯 Target**: 150-250 lines for optimal AI agent processing
+> 
+> **📐 Focus**: Entity definition (WHAT it is) - attributes, constraints, lifecycle. Business context belongs in **Concept Layer**.
+
+```markdown
+# [EntityName]
+
+**Module**: [Module Name] ([MODULE-CODE])  
+**Submodule**: [SUBMODULE-CODE]  
+**Version**: 2.0  
+**Last Updated**: YYYY-MM-DD
 
 ---
 
 ## Entity: [EntityName] {#entity-name}
 
-**Classification**: CORE_ENTITY | VALUE_OBJECT | REFERENCE_DATA | TRANSACTION_DATA  
-**Description**: [One-paragraph description of what this entity represents and why it exists]
+**Classification**: CORE_ENTITY | VALUE_OBJECT | REFERENCE_DATA | TRANSACTION_DATA
+
+**Definition**: [One-paragraph clear definition of what this entity represents]
+
+**Purpose**: [Why this entity exists - business purpose]
+
+**Key Characteristics**:
+- [Characteristic 1]
+- [Characteristic 2]
+- **SCD Type 2**: Yes/No [if Yes, briefly explain why historical tracking is needed]
+- [Other important characteristics]
+
+---
 
 ### Attributes
 
 | Attribute | Type | Required | Constraints | Description |
 |-----------|------|----------|-------------|-------------|
 | `id` | UUID | ✅ | PK | Primary identifier |
-| `[attribute_name]` | [Type] | ✅/❌ | [Constraints] | [Description] |
-| `status` | Enum | ✅ | `DRAFT\|ACTIVE\|INACTIVE` | Current state |
-| `created_at` | Timestamp | ✅ | Auto-generated | Creation timestamp |
-| `created_by` | UUID | ✅ | FK → [User](#user) | Creator reference |
+| `code` | varchar(50) | ✅ | UNIQUE, NOT NULL | Business code |
+| `name` | varchar(100) | ✅ | NOT NULL | Display name |
+| `[attribute]` | [Type] | ✅/❌ | [Constraints] | [Description] |
+| `created_at` | timestamp | ✅ | Auto | Creation timestamp |
+| `updated_at` | timestamp | ❌ | Auto | Last modification |
+
+**Attribute Details** (for complex attributes only):
+
+#### `[complex_attribute]`
+
+**Type**: jsonb | complex type  
+**Purpose**: [What this attribute stores]
+
+**Structure**:
+```yaml
+attribute_name:
+  field1: "value1"
+  field2: 100
+  nested:
+    subfield: "value"
+```
+
+**Structure Diagram**:
+```mermaid
+graph TD
+    A[attribute_name] --> B[field1: string]
+    A --> C[field2: number]
+    A --> D[nested object]
+    D --> E[subfield: string]
+    
+    style A fill:#e1f5ff
+```
+
+**Validation**:
+- field1 must match pattern [pattern]
+- field2 must be > 0
+
+---
 
 ### Relationships
 
-| Relationship | Target | Cardinality | Description |
-|--------------|--------|-------------|-------------|
-| `[relationshipName]` | [TargetEntity](./[file].md#target-entity) | N:1 | [Description] |
-| `[relationshipName]` | [TargetEntity](./[file].md#target-entity) | 1:N | [Description] |
+> **📌 Note**: Structural relationships only (FKs, references). For business context (how entities interact in workflows), see [Concept Layer](../../../01-concept/[NN]-[submodule]/).
+
+#### Entity Relationship Diagram
+
+```mermaid
+erDiagram
+    ThisEntity ||--o{ ChildEntity : "has many"
+    ThisEntity }o--|| ParentEntity : "belongs to"
+    ThisEntity }o--o{ RelatedEntity : "references"
+    
+    ThisEntity {
+        uuid id PK
+        varchar code UK
+        uuid parent_id FK
+    }
+    
+    ParentEntity {
+        uuid id PK
+        varchar name
+    }
+    
+    ChildEntity {
+        uuid id PK
+        uuid this_entity_id FK
+    }
+```
+
+#### Relationship Details
+
+| Relationship | Target | Cardinality | Foreign Key | Purpose |
+|--------------|--------|-------------|-------------|---------|
+| `parent` | [ParentEntity](./[NN]-parent.md) | N:1 | `parent_id` | [Why this FK exists] |
+| `children` | [ChildEntity](./[NN]-child.md) | 1:N | (inverse) | [What children represent] |
+| `related` | ExternalModule.Entity | N:1 | `related_id` | [Integration purpose] |
+
+**Relationship Notes**:
+- Cascade behavior: [CASCADE | RESTRICT | SET NULL] on parent delete
+- Required vs Optional: [Which FKs are nullable and why]
+
+**Data Flow** (if entity participates in data transformations):
+```mermaid
+graph LR
+    subgraph Input
+        SRC[Source] -->|data| ThisEntity[EntityName]
+    end
+    
+    subgraph Process
+        ThisEntity -->|triggers| PROC[Process]
+    end
+    
+    subgraph Output
+        PROC -->|creates| OUT[Output Entity]
+    end
+    
+    style ThisEntity fill:#e1f5ff
+```
+
+---
 
 ### Lifecycle States
 
 ```mermaid
 stateDiagram-v2
     [*] --> DRAFT: Create
-    DRAFT --> PENDING: Submit
-    PENDING --> APPROVED: Approve
-    PENDING --> REJECTED: Reject
-    DRAFT --> CANCELLED: Cancel
-    APPROVED --> [*]
-    REJECTED --> [*]
-    CANCELLED --> [*]
+    DRAFT --> ACTIVE: Activate
+    ACTIVE --> INACTIVE: Deactivate
+    INACTIVE --> ACTIVE: Reactivate
+    ACTIVE --> ARCHIVED: Archive
+    ARCHIVED --> [*]
 ```
 
 **State Descriptions**:
-- **DRAFT**: Initial state, editable
-- **PENDING**: Submitted for review
-- **APPROVED**: Approved and active
-- **REJECTED**: Rejected by approver
-- **CANCELLED**: Cancelled by requester
+- **DRAFT**: [When/why entity is in draft]
+- **ACTIVE**: [Active state meaning]
+- **INACTIVE**: [Temporary disable scenarios]
+- **ARCHIVED**: [Permanent retirement]
 
-### Business Rules
+**State Transition Rules**:
+- DRAFT → ACTIVE: [Conditions required]
+- Cannot delete entity (must archive for audit trail)
 
-| Rule ID | Description |
-|---------|-------------|
-| BR-[CODE]-001 | [Rule description] |
-| BR-[CODE]-002 | [Rule description] |
+---
 
-### Constraints
+### Data Validation & Constraints
 
-| Constraint | Type | Description |
-|------------|------|-------------|
-| `[constraint_name]` | CHECK | [Description] |
-| `[constraint_name]` | UNIQUE | [Description] |
+> **Note**: Only entity-specific validation rules. Complex business rules belong in Spec layer.
 
-### Indexes
+| Field | Validation | Error Message |
+|-------|------------|---------------|
+| `code` | Unique, 3-50 chars, alphanumeric+underscore | "Code must be unique and 3-50 characters" |
+| `[field]` | [Validation logic] | "[User-facing error message]" |
 
-| Index Name | Columns | Unique | Purpose |
-|------------|---------|--------|---------|
-| `idx_[table]_[field]` | `[field1], [field2]` | ✅/❌ | [Purpose] |
+**Database Constraints**:
+- `pk_[table]`: PRIMARY KEY (`id`)
+- `uk_[table]_code`: UNIQUE (`code`)
+- `fk_[table]_parent`: FOREIGN KEY (`parent_id` → `parent.id`)
+- `ck_[table]_[field]`: CHECK ([constraint expression])
 
-### Audit Fields (if SCD2)
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `effective_start_date` | Date | SCD2: Valid from |
-| `effective_end_date` | Date | SCD2: Valid until |
-| `is_current_flag` | Boolean | SCD2: Current version |
+---
 
 ### Examples
 
+#### Example 1: [Common Scenario]
+
+**Description**: [What this example demonstrates]
+
 ```yaml
-Example 1: [Scenario Name]
-  [EntityName]:
-    id: "550e8400-e29b-41d4-a716-446655440000"
-    [attribute]: [value]
-    status: ACTIVE
-    created_at: "2025-01-15T10:30:00Z"
+[EntityName]:
+  id: "uuid-example"
+  code: "EXAMPLE_001"
+  name: "Example Entity"
+  parent_id: "parent-uuid"
+  metadata:
+    custom_field: "value"
 ```
 
-### Related Entities
+**Business Context**: [When/why this configuration is used in Vietnam/company operations]
 
-- [Entity1](./[file].md#entity1) - [Relationship description]
-- [Entity2](./[file].md#entity2) - [Relationship description]
+#### Example 2: [Edge Case or Special Configuration]
 
-### Related Workflows
+[Additional example demonstrating validation, special configurations, or Vietnam-specific scenarios]
 
-- [Workflow 1](../workflows/[submodule]-workflows.md#wf-001) - [How this entity is used]
-- [Workflow 2](../workflows/[submodule]-workflows.md#wf-002) - [How this entity is used]
+---
+
+### Best Practices
+
+✅ **DO**:
+- [Specific best practice with rationale]
+- [Naming conventions or patterns to follow]
+- [When to create new SCD2 version vs update]
+
+❌ **DON'T**:
+- [Common antipatterns to avoid]
+- [What not to do and why]
+- [Deletion policies]
+
+**Performance Tips**:
+- [Caching strategies]
+- [Query optimization hints]
+- [Application-layer considerations]
+
+**Security Considerations**:
+- [Access control requirements]
+- [Audit requirements]
+- [Data sensitivity notes]
+
+---
+
+### Migration Notes
+
+**Version History**:
+- **v2.0 (YYYY-MM-DD)**: [Major changes in this version]
+- **v1.0 (YYYY-MM-DD)**: Initial definition
+
+**Deprecated Fields**:
+- `old_field`: Replaced by `new_field` in v2.0
+
+**Breaking Changes**:
+- [List of breaking changes with migration impact]
 
 ---
 
 ## References
 
-- **Workflow Catalog**: [../workflows/[submodule]-workflows.md](../workflows/[submodule]-workflows.md)
-- **Glossary**: [../glossary-[submodule].md](../glossary-[submodule].md)
-- **Concept Guides**: [../../01-concept/[NN]-[submodule]/](../../01-concept/[NN]-[submodule]/)
+- **Sub-module Index**: [README.md](./README.md)
+- **Concept Guides**: [../../../01-concept/[NN]-[submodule]/](../../../01-concept/[NN]-[submodule]/)
+- **Workflows**: [../../workflows/[NN]-[submodule]/README.md](../../workflows/[NN]-[submodule]/README.md)
+- **Database Schema**: [../../../03-design/[schema-file].dbml](../../../03-design/[schema-file].dbml)
 ```
 
 ---
 
-### Template 1B: Workflow Catalog (Ontology Layer)
+**Key Template Changes (v2.5)**:
+1. ✅ **Added**: ER diagram in Relationships section for visualization
+2. ❌ **Removed**: Business Rules section (moved to Spec layer - FR/BR files)
+3. ❌ **Removed**: Indexes section (too technical for ontology)
+4. ❌ **Removed**: Audit Fields section (redundant)
+5. ✅ **Simplified**: SCD2 to just a note in Key Characteristics
+6. ✅ **Merged**: Related Entities into Relationships section (ER diagram + relationship details)
+7. ✅ **Simplified**: Data Validation focused on entity-specific rules only
 
-**File**: `00-ontology/workflows/[submodule]-workflows.md`
+**Focus**: Entity definition (structure, attributes, constraints). Business context, complex rules, and workflows belong in Concept/Spec layers.
 
-**Purpose**: Catalog all workflows for a submodule with metadata only. Detailed workflow guides are in the Concept layer.
+
+
+---
+
+#### Template O4: Workflow Catalog (Sub-module)
+
+**File**: `00-ontology/workflows/[NN]-[submodule]/README.md`
 
 ```markdown
-# [Submodule Name] - Workflow Catalog
+# [SUBMODULE-NAME] - Workflow Catalog
 
-**Module**: [MODULE-CODE]  
+**Module**: [Module Name] ([MODULE-CODE])  
 **Submodule**: [SUBMODULE-CODE]  
 **Version**: 2.0  
 **Last Updated**: YYYY-MM-DD
@@ -397,285 +668,828 @@ Example 1: [Scenario Name]
 
 ## Overview
 
-[Brief description of workflows in this submodule]
+This catalog lists all workflows for the [SUBMODULE-NAME] sub-module with metadata only. Detailed step-by-step guides are in the [Concept Layer](../../../01-concept/[NN]-[submodule]/).
+
+**Total Workflows**: [N]
 
 ---
 
 ## Workflow Index
 
-| ID | Name | Classification | Trigger | Concept Guide |
-|----|------|----------------|---------|---------------|
-| WF-[CODE]-001 | [Workflow Name] | CORE | User Action | [→ Guide](../../01-concept/[NN]-[submodule]/[workflow]-guide.md) |
-| WF-[CODE]-002 | [Workflow Name] | SUPPORT | Event | [→ Guide](../../01-concept/[NN]-[submodule]/[workflow]-guide.md) |
-| WF-[CODE]-003 | [Workflow Name] | INTEGRATION | API Call | [→ Guide](../../01-concept/[NN]-[submodule]/[workflow]-guide.md) |
+| ID | Workflow Name | Type | Trigger | Actors | Status |
+|----|---------------|------|---------|--------|--------|
+| WF-[CODE]-001 | [Name] | [Type] | [Trigger] | [Actors] | [Status] |
+| WF-[CODE]-002 | [Name] | [Type] | [Trigger] | [Actors] | [Status] |
 
 ---
 
-## WF-[CODE]-001: [Workflow Name] {#wf-code-001}
+## Workflows
 
-**Classification**: CORE | SUPPORT | INTEGRATION  
-**Trigger**: User Action | Scheduled | Event | API Call  
-**Description**: [Brief description of what this workflow accomplishes]
+### WF-[CODE]-001: [Workflow Name] {#wf-001}
 
-### Actors
+**Type**: TRANSACTIONAL | CONFIGURATION | INQUIRY | BATCH  
+**Category**: [Sub-module category]  
+**Priority**: HIGH | MEDIUM | LOW  
+**Frequency**: DAILY | MONTHLY | ON_DEMAND | CONTINUOUS
 
-| Actor | Type | Role |
-|-------|------|------|
-| [Actor Name] | USER | [Role description] |
-| System | SYSTEM | [Role description] |
-| [External System] | EXTERNAL | [Role description] |
+**Description**: [One-paragraph description]
 
-### Related Entities
+**Triggers**:
+- [Trigger 1]
+- [Trigger 2]
 
-- [Entity1](../domain/[submodule]-entities.md#entity1) - Created/Updated
-- [Entity2](../domain/[submodule]-entities.md#entity2) - Read
-- [Entity3](../domain/[submodule]-entities.md#entity3) - Validated
+**Actors**:
+- [Actor 1]: [Role]
+- [Actor 2]: [Role]
 
-### High-Level Steps
+**Prerequisites**:
+- [Prerequisite 1]
+- [Prerequisite 2]
 
-1. **[Step Name]** - [Actor] - [Brief action]
-2. **[Step Name]** - [Actor] - [Brief action]
-3. **[Step Name]** - [Actor] - [Brief action]
-4. **[Step Name]** - [Actor] - [Brief action]
+**Inputs**:
+- [Input 1]: [Description]
+- [Input 2]: [Description]
 
-### Outcomes
+**Outputs**:
+- [Output 1]: [Description]
+- [Output 2]: [Description]
 
-| Outcome | Description |
-|---------|-------------|
-| Success | [Description of successful outcome] |
-| Failure | [Description of failure outcome] |
-| Partial | [Description of partial outcome, if applicable] |
+**Key Entities**:
+- [Entity1](../../domain/[NN]-[submodule]/[NN]-entity.md): [How used]
+- [Entity2](../../domain/[NN]-[submodule]/[NN]-entity.md): [How used]
 
-### Business Rules Applied
+**Business Rules**:
+- BR-[CODE]-001: [Rule name]
+- BR-[CODE]-002: [Rule name]
 
-- [BR-[CODE]-001](../domain/[submodule]-entities.md) - [Rule name]
-- [BR-[CODE]-002](../domain/[submodule]-entities.md) - [Rule name]
+**Exception Scenarios**:
+- [Exception 1]: [Handling]
+- [Exception 2]: [Handling]
 
-> **📖 Detailed Guide**: See [Workflow Concept Guide](../../01-concept/[NN]-[submodule]/[workflow]-guide.md) for step-by-step flow, decision points, and exception handling.
+**Integration Points**:
+- [System 1]: [Integration]
+- [System 2]: [Integration]
+
+**Detailed Guide**: [../../../01-concept/[NN]-[submodule]/[workflow]-guide.md](../../../01-concept/[NN]-[submodule]/[workflow]-guide.md)
+
+---
+
+### WF-[CODE]-002: [Workflow Name] {#wf-002}
+
+[Same structure as above]
+
+---
+
+## Workflow Dependencies
+
+```mermaid
+graph LR
+    WF001[WF-001] -->|triggers| WF002[WF-002]
+    WF002 -->|updates| WF003[WF-003]
+```
 
 ---
 
 ## References
 
-- **Entity Definitions**: [../domain/[submodule]-entities.md](../domain/[submodule]-entities.md)
-- **Glossary**: [../glossary-[submodule].md](../glossary-[submodule].md)
-- **Concept Guides**: [../../01-concept/[NN]-[submodule]/](../../01-concept/[NN]-[submodule]/)
+- **Entity Catalog**: [../../domain/[NN]-[submodule]/README.md](../../domain/[NN]-[submodule]/README.md)
+- **Concept Guides**: [../../../01-concept/[NN]-[submodule]/](../../../01-concept/[NN]-[submodule]/)
+- **Business Rules**: [../../../02-spec/04-business-rules.md](../../../02-spec/04-business-rules.md)
 ```
 
 ---
 
-### Template 1C: Workflow Detail Guide (Concept Layer)
+#### Template O5: Glossary (Quick Reference)
+
+**File**: `00-ontology/glossary-[submodule].md`
+
+```markdown
+# [Submodule] - Quick Reference Glossary
+
+**Module**: [Module Name] ([MODULE-CODE])  
+**Submodule**: [SUBMODULE-CODE]  
+**Version**: 2.0  
+**Last Updated**: YYYY-MM-DD
+
+---
+
+## Quick Reference
+
+| Term | Type | Definition | Full Docs |
+|------|------|------------|-----------|
+| [Entity1] | Entity | [One-sentence def] | [domain/01-submodule/01-entity.md](./domain/01-submodule/01-entity.md) |
+| [Entity2] | Entity | [One-sentence def] | [domain/01-submodule/02-entity.md](./domain/01-submodule/02-entity.md) |
+| [Workflow1] | Workflow | [One-sentence def] | [workflows/01-submodule/README.md#wf-001](./workflows/01-submodule/README.md#wf-001) |
+
+---
+
+## Entities
+
+### [Entity1]
+
+**Definition**: [One-sentence definition]  
+**Purpose**: [Why exists]
+
+**Key Attributes**: `id`, `code`, `name`, `[key_attr]`
+
+**Relationships**: Links to [Entity2], [Entity3]
+
+**Full Documentation**: [domain/01-submodule/01-entity.md](./domain/01-submodule/01-entity.md)
+
+---
+
+### [Entity2]
+
+[Same structure]
+
+---
+
+## Workflows
+
+### [Workflow1]
+
+**Definition**: [One-sentence definition]  
+**Actors**: [Who performs]  
+**Frequency**: [How often]
+
+**Full Documentation**: [workflows/01-submodule/README.md#wf-001](./workflows/01-submodule/README.md#wf-001)
+
+---
+
+## Common Terms
+
+| Term | Definition |
+|------|------------|
+| [Term1] | [Definition] |
+| [Term2] | [Definition] |
+```
+
+---
+
+### Concept Layer Templates
+
+#### Template C1: Module Overview
+
+**File**: `01-concept/01-overview.md`
+
+```markdown
+# [Module Name] - Overview
+
+**Module**: [MODULE-CODE]  
+**Version**: 2.0  
+**Last Updated**: YYYY-MM-DD
+
+---
+
+## What is [Module Name]?
+
+[High-level description of what the module does]
+
+---
+
+## Problems It Solves
+
+1. **[Problem 1]**: [Explanation]
+2. **[Problem 2]**: [Explanation]
+
+---
+
+## Key Concepts
+
+### [Concept 1]
+
+[Explanation]
+
+### [Concept 2]
+
+[Explanation]
+
+---
+
+## Sub-modules
+
+| Sub-module | Purpose | Key Workflows |
+|------------|---------|---------------|
+| [NAME] | [Purpose] | [Workflows] |
+
+---
+
+## Integration Points
+
+[How this module integrates with others]
+
+---
+
+## Quick Start
+
+[How to get started understanding this module]
+```
+
+---
+
+#### Template C2: Workflow Detail Guide
 
 **File**: `01-concept/[NN]-[submodule]/[workflow]-guide.md`
 
-**Purpose**: Provide detailed, step-by-step guide for how a specific workflow operates.
+> **🎯 Purpose**: Detailed step-by-step guide showing HOW workflows execute and HOW entities interact in business context. Heavy use of mermaid diagrams for visualization.
 
 ```markdown
-# [Workflow Name] - Concept Guide
+# [Workflow Name] - Detail Guide
 
-**Workflow**: [WF-[CODE]-001](../../00-ontology/workflows/[submodule]-workflows.md#wf-code-001)  
-**Version**: 2.0  
-**Last Updated**: YYYY-MM-DD  
-**Audience**: BA, PO, End Users, Developers
+**Workflow ID**: WF-[CODE]-[NNN]  
+**Module**: [MODULE-CODE]  
+**Submodule**: [SUBMODULE-CODE]  
+**Version**: 2.0
 
 ---
 
 ## Overview
 
-[Brief description of what this workflow accomplishes and its business value]
+[Brief description of workflow purpose and business value]
 
-### What You'll Learn
-- [Learning objective 1]
-- [Learning objective 2]
-- [Learning objective 3]
+**Metadata**: See [../../00-ontology/workflows/[NN]-[submodule]/README.md#wf-[nnn]](../../00-ontology/workflows/[NN]-[submodule]/README.md#wf-[nnn])
 
-### Prerequisites
-- [Prerequisite 1]
-- [Prerequisite 2]
+**Actors**:
+- [Actor 1]: [Role and responsibility]
+- [Actor 2]: [Role and responsibility]
 
 ---
 
-## Process Flow
+## Workflow Overview Diagram
 
 ```mermaid
-flowchart TD
-    A[Actor initiates workflow] --> B{Validation check}
-    B -->|Pass| C[Process step 1]
-    B -->|Fail| D[Show error]
-    C --> E{Decision point}
-    E -->|Option A| F[Path A]
-    E -->|Option B| G[Path B]
-    F --> H[Complete]
-    G --> H
-    D --> I[End]
-    H --> I
+graph TD
+    Start([Start]) --> Input[Collect Input]
+    Input --> Validate{Validate Data}
+    Validate -->|Valid| Process[Process Request]
+    Validate -->|Invalid| Error[Return Error]
+    Process --> Update[Update Entities]
+    Update --> Notify[Send Notifications]
+    Notify --> End([Complete])
+    Error --> End
 ```
 
 ---
 
-## Step-by-Step Guide
+## Entity Interaction Context
+
+> **📌 Business Context**: How entities work together in this workflow
+
+```mermaid
+graph LR
+    subgraph Input Phase
+        User[User Input] --> Form[Form Data]
+    end
+    
+    subgraph Processing
+        Form --> Entity1[Entity1<br/>Master Data]
+        Entity1 --> Entity2[Entity2<br/>Transaction]
+        Entity2 --> Entity3[Entity3<br/>Result]
+    end
+    
+    subgraph Output
+        Entity3 --> Report[Generate Report]
+        Entity3 --> Notify[Send Notification]
+    end
+    
+    style Entity1 fill:#e1f5ff
+    style Entity2 fill:#fff4e1
+    style Entity3 fill:#e8f5e9
+```
+
+**Entity Roles in this Workflow**:
+- **Entity1**: Provides configuration/master data
+- **Entity2**: Records transaction details
+- **Entity3**: Stores calculated results
+
+---
+
+## Step-by-Step Process
 
 ### Step 1: [Step Name]
 
-**Actor**: [Actor Name]  
-**Action**: [What the actor does]
+**Actor**: [Who performs this step]  
+**Action**: [What they do in detail]  
+**System Behavior**: [What system does automatically]
 
-**System Behavior**:
-- [What the system does automatically]
-- [Validations performed]
-- [Data retrieved/stored]
+**Sequence Diagram**:
+```mermaid
+sequenceDiagram
+    actor User
+    participant UI
+    participant API
+    participant Service
+    participant DB
+    
+    User->>UI: Enter data
+    UI->>API: POST /endpoint
+    API->>Service: validate(data)
+    Service->>DB: check Entity1
+    DB-->>Service: Entity1 data
+    Service->>Service: apply business rules
+    Service->>DB: create Entity2
+    DB-->>Service: Entity2 created
+    Service-->>API: success response
+    API-->>UI: display confirmation
+    UI-->>User: show result
+```
 
 **Business Rules Applied**:
-- [BR-[CODE]-001](../../00-ontology/domain/[submodule]-entities.md) - [Rule description]
-- [BR-[CODE]-002](../../00-ontology/domain/[submodule]-entities.md) - [Rule description]
+- BR-[CODE]-001: [Rule name and outcome]
+- BR-[CODE]-002: [Rule name and outcome]
 
-**Validation**:
-
-| Field | Validation | Error Message |
-|-------|------------|---------------|
-| [Field Name] | [Validation rule] | "[Error message]" |
-| [Field Name] | [Validation rule] | "[Error message]" |
-
-**Example**:
-```yaml
-Input:
-  [field]: [value]
-  [field]: [value]
-
-System Action:
-  - Validates [field]
-  - Checks [condition]
-  - Creates [entity]
+**Decision Points**:
+```mermaid
+graph TD
+    Check{Check Condition}
+    Check -->|Condition A| PathA[Go to Step 2]
+    Check -->|Condition B| PathB[Go to Step 3]
+    Check -->|Error| Error[Show Error]
+    
+    PathA --> Validate{Validate}
+    Validate -->|Pass| Continue[Continue]
+    Validate -->|Fail| Error
 ```
 
 ---
 
 ### Step 2: [Step Name]
 
-[Same structure as Step 1]
+**Actor**: [Who]  
+**Action**: [What]  
+**System Behavior**: [How]
+
+**Entity State Changes**:
+```mermaid
+stateDiagram-v2
+    [*] --> Draft: Create
+    Draft --> PendingApproval: Submit
+    PendingApproval --> Approved: Manager Approves
+    PendingApproval --> Rejected: Manager Rejects
+    Approved --> Processed: System Processes
+    Processed --> [*]
+    
+    note right of PendingApproval
+        Notification sent to manager
+        Timeout: 48 hours
+    end note
+```
+
+**Data Transformations**:
+```mermaid
+graph LR
+    Input[Input Data] -->|transform| Entity1[Entity1 Record]
+    Entity1 -->|calculate| Entity2[Entity2 Record]
+    Entity2 -->|aggregate| Entity3[Entity3 Summary]
+    
+    Entity1 -.->|references| MasterData[Master Data]
+    Entity2 -.->|uses| Rules[Business Rules]
+```
 
 ---
 
-## Decision Points
+### Step 3: [Step Name]
 
-### Decision 1: [Decision Name]
-
-**Condition**: [What determines the decision]
-
-**Options**:
-
-| Option | Condition | Outcome |
-|--------|-----------|---------|
-| [Option A] | IF [condition] | [What happens] |
-| [Option B] | IF [condition] | [What happens] |
-| [Default] | ELSE | [What happens] |
+[Same structure as above with relevant diagrams]
 
 ---
 
 ## Exception Handling
 
-| Exception | Trigger | System Response | User Action |
-|-----------|---------|-----------------|-------------|
-| [Exception Name] | [What causes it] | [System behavior] | [What user should do] |
-| [Exception Name] | [What causes it] | [System behavior] | [What user should do] |
+### Exception 1: [Exception Name]
 
----
+**Scenario**: [When this exception occurs]
 
-## Complete Example
-
-```yaml
-Scenario: [Scenario Name]
-  Step 1:
-    Actor: [Actor]
-    Input:
-      [field]: [value]
-    Result:
-      [entity]: [state]
-  
-  Step 2:
-    Actor: [Actor]
-    Input:
-      [field]: [value]
-    Result:
-      [entity]: [state]
-  
-  Final Outcome:
-    Status: SUCCESS
-    [Entity] created with ID: [id]
+**Exception Flow**:
+```mermaid
+graph TD
+    Error[Error Detected] --> Check{Error Type}
+    Check -->|Validation| Retry[Allow Retry]
+    Check -->|System| Log[Log Error]
+    Check -->|Business| Notify[Notify User]
+    
+    Retry --> UserAction{User Action}
+    UserAction -->|Fix| Reprocess[Reprocess]
+    UserAction -->|Cancel| Rollback[Rollback]
+    
+    Log --> Alert[Alert Admin]
+    Notify --> Manual[Manual Intervention]
 ```
 
+**Handling Steps**:
+1. [Step 1 of exception handling]
+2. [Step 2 of exception handling]
+
+**Recovery Actions**:
+- [Recovery action 1]
+- [Recovery action 2]
+
 ---
 
-## Sequence Diagram
+## Complete Workflow Timeline
 
 ```mermaid
-sequenceDiagram
-    participant A as Actor1
-    participant S as System
-    participant E as Entity
-    participant A2 as Actor2
+gantt
+    title Workflow Timeline
+    dateFormat YYYY-MM-DD
+    section User Actions
+    Submit Request           :a1, 2025-01-01, 1d
+    Provide Additional Info  :a2, after a1, 1d
     
-    A->>S: Initiate workflow
-    S->>S: Validate input
-    alt Validation passes
-        S->>E: Create entity
-        E-->>S: Entity created
-        S->>A2: Send notification
-        A2->>S: Review and approve
-        S->>E: Update status
-        E-->>S: Status updated
-        S->>A: Notify success
-    else Validation fails
-        S->>A: Show error
+    section System Processing  
+    Validation              :s1, after a1, 1h
+    Business Rule Check     :s2, after s1, 2h
+    Data Processing         :s3, after s2, 4h
+    
+    section Approvals
+    Manager Review          :m1, after s3, 1d
+    Final Approval          :m2, after m1, 1d
+    
+    section Completion
+    Notification            :c1, after m2, 1h
+    Archive                 :c2, after c1, 1h
+```
+
+---
+
+## Examples
+
+### Example 1: [Typical Scenario]
+
+**Context**: [Business situation]
+
+**Step-by-Step with Data**:
+
+1. **Initial State**:
+```yaml
+Entity1:
+  code: "INITIAL_001"
+  status: DRAFT
+```
+
+2. **After Step 1**:
+```yaml
+Entity1:
+  code: "INITIAL_001"
+  status: PENDING_APPROVAL
+  submitted_by: user_123
+  submitted_at: "2025-01-01T10:00:00Z"
+```
+
+3. **Final State**:
+```yaml
+Entity1:
+  code: "INITIAL_001"
+  status: APPROVED
+Entity2:
+  code: "RESULT_001"
+  source_id: "INITIAL_001"
+  calculated_value: 1500.00
+```
+
+**Outcome**: [What was achieved]
+
+---
+
+### Example 2: [Edge Case Scenario]
+
+[Walk through a complex or edge case scenario]
+
+---
+
+## Entity Groupings in Context
+
+> **📌 Business Context**: How related entities form logical groups in this workflow
+
+```mermaid
+graph TB
+    subgraph "Request Context"
+        Request[Request Entity]
+        Requestor[User Entity]
+        Request --- Requestor
     end
+    
+    subgraph "Processing Context"
+        Config[Config Entity]
+        Element[Element Entity]
+        Rule[Rule Entity]
+        Config --- Element
+        Element --- Rule
+    end
+    
+    subgraph "Result Context"
+        Result[Result Entity]
+        History[History Entity]
+        Audit[Audit Entity]
+        Result --- History
+        Result --- Audit
+    end
+    
+    Request --> Config
+    Config --> Result
+    
+    style Request fill:#ffebee
+    style Config fill:#e3f2fd
+    style Result fill:#e8f5e9
+```
+
+**Context Explanations**:
+- **Request Context**: User initiates request with their identity
+- **Processing Context**: System applies configuration and rules
+- **Result Context**: Outcomes are recorded with full audit trail
+
+---
+
+## Integration Points
+
+### Integration 1: [External System]
+
+**Integration Flow**:
+```mermaid
+sequenceDiagram
+    participant Workflow
+    participant Queue
+    participant ExternalAPI
+    participant ExternalSystem
+    
+    Workflow->>Queue: Publish event
+    Queue->>ExternalAPI: Trigger webhook
+    ExternalAPI->>ExternalSystem: Send data
+    ExternalSystem-->>ExternalAPI: Acknowledge
+    ExternalAPI-->>Queue: Confirm
+    Queue-->>Workflow: Update status
+```
+
+**Data Mapping**: [How data is transformed for integration]
+
+---
+
+## Related Workflows
+
+### Upstream Workflows
+- [WF-XXX-001](./workflow1-guide.md): Triggers this workflow
+
+### Downstream Workflows  
+- [WF-XXX-003](./workflow3-guide.md): Triggered by this workflow
+
+**Workflow Chain**:
+```mermaid
+graph LR
+    WF001[WF-001<br/>Setup] --> WF002[WF-002<br/>THIS WORKFLOW]
+    WF002 --> WF003[WF-003<br/>Finalize]
+    WF002 --> WF004[WF-004<br/>Notify]
+    
+    WF003 --> WF005[WF-005<br/>Archive]
+    WF004 --> WF005
 ```
 
 ---
 
-## Related Information
+## Performance Considerations
 
-### Related Entities
-- [Entity1](../../00-ontology/domain/[submodule]-entities.md#entity1) - [How it's used]
-- [Entity2](../../00-ontology/domain/[submodule]-entities.md#entity2) - [How it's used]
+**Typical Processing Time**:
+- Step 1: ~2 seconds  
+- Step 2: ~5 seconds
+- Step 3: ~10 seconds
+- **Total**: ~17 seconds average
 
-### Related Workflows
-- [Workflow 2](./[workflow-2]-guide.md) - [Relationship]
-- [Workflow 3](./[workflow-3]-guide.md) - [Relationship]
-
-### Related Specifications
-- [FR-[CODE]-001](../../02-spec/01-functional-requirements.md#fr-code-001) - [Requirement]
-- [BR-[CODE]-001](../../02-spec/04-business-rules.md#br-code-001) - [Business rule]
-- [API Endpoint](../../02-spec/02-api-specification.md) - [API details]
+**Bottlenecks**:
+- [Bottleneck 1 and mitigation]
+- [Bottleneck 2 and mitigation]
 
 ---
 
-## Best Practices
+## References
 
-✅ **DO**:
-- [Best practice 1]
-- [Best practice 2]
-
-❌ **DON'T**:
-- [Anti-pattern 1]
-- [Anti-pattern 2]
-
----
-
-**Document Version**: 1.0  
-**Created**: YYYY-MM-DD  
-**Last Review**: YYYY-MM-DD
+- [Workflow Catalog](../../00-ontology/workflows/[NN]-[submodule]/README.md#wf-[nnn]) - Metadata
+- [Entity Index](../../00-ontology/domain/[NN]-[submodule]/README.md) - Entity definitions
+- [Business Rules](../../02-spec/04-business-rules.md) - Detailed rules
+- [API Spec](../../02-spec/02-api-specification.md) - Technical API details
 ```
 
 ---
 
-### Template 1D: Submodule Overview (Concept Layer)
+**🎯 Mermaid Diagram Types for Concept Layer**:
 
-**File**: `01-concept/[NN]-[submodule]/overview.md`
+1. **Overview Diagrams**: High-level workflow flow
+2. **Entity Interaction**: How entities relate in business context
+3. **Sequence Diagrams**: Actor-system interactions over time
+4. **State Diagrams**: Business state transitions
+5. **Decision Flows**: Business logic branching
+6. **Data Flow**: Entity transformations
+7. **Exception Flows**: Error handling paths
+8. **Timeline/Gantt**: Workflow duration and phases
+9. **Integration Flows**: External system interactions
+10. **Workflow Chains**: Related workflow dependencies
 
-**Purpose**: Provide submodule-specific context before diving into workflow guides.
+---
+
+---
+
+### Specification Layer Templates
+
+#### Template S1: Business Rules
+
+**File**: `02-spec/04-business-rules.md`
 
 ```markdown
-# [Submodule Name] - Overview
+# Business Rules
+
+**Module**: [MODULE-CODE]  
+**Version**: 2.0
+
+---
+
+## [Sub-module] Rules
+
+### BR-[CODE]-001: [Rule Name]
+
+**Category**: [Validation | Calculation | Authorization | Workflow]  
+**Priority**: [Critical | High | Medium | Low]  
+**Applicable To**: [Entity/Workflow]
+
+**Description**: [Detailed description]
+
+**Business Logic**:
+```
+IF [condition]
+THEN [action]
+ELSE [alternative action]
+```
+
+**Validation Trigger**: [When validated]
+
+**Error Message**: "[User-facing message]"
+
+**Examples**:
+- **Valid**: [Example]
+- **Invalid**: [Example] → Error: "[Message]"
+
+**Traceability**:
+- Requirement: FR-[CODE]-[NNN]
+- Entity: [EntityName]
+- Workflow: WF-[CODE]-[NNN]
+```
+
+---
+
+## 🎯 Best Practices
+
+### File Organization
+
+**DO**:
+- ✅ Keep entity files to 150-250 lines
+- ✅ Use numbered prefixes for clear ordering
+- ✅ Create comprehensive sub-module README files
+- ✅ Link between related documents
+
+**DON'T**:
+- ❌ Create monolithic entity files (\>1000 lines)
+- ❌ Skip sub-module README files
+- ❌ Duplicate content across files
+- ❌ Use absolute paths (use relative)
+
+### Content Organization
+
+**DO**:
+- ✅ Focus on business logic and domain understanding
+- ✅ Provide real-world examples
+- ✅ Include mermaid diagrams for relationships
+- ✅ Document business rules explicitly
+
+**DON'T**:
+- ❌ Document boilerplate technical fields (id, created_at)
+- ❌ Include implementation details in ontology
+- ❌ Mix ontology (WHAT) with concept (HOW)
+
+### AI Agent Efficiency
+
+**DO**:
+- ✅ Keep files under 300 lines
+- ✅ Use clear section headers
+- ✅ Provide structured data (tables, YAML)
+- ✅ Include validation rules inline
+
+**DON'T**:
+- ❌ Create deeply nested file structures
+- ❌ Use inconsistent naming
+- ❌ Skip file headers with metadata
+
+---
+
+## 📜 Version History
+
+### v2.4 (2025-12-23) - Modular Structure
+
+**Major Changes**:
+- Implemented one-entity-per-file pattern for domain entities
+- Organized workflows by sub-module with README.md catalogs
+- Added comprehensive templates for sub-module README files
+- Removed legacy templates to eliminate conflicts
+- Enhanced file naming conventions with numbered prefixes
+
+**Benefits**:
+- ✅ Optimal file size (150-250 lines) for AI agent processing
+- ✅ Parallel work capability across team/agents
+- ✅ Clean git history with isolated changes
+- ✅ Scalable structure for large modules
+
+**Breaking Changes**:
+- Entity files now in `domain/[NN]-[submodule]/[NN]-entity.md` instead of `domain/[submodule]-entities.md`
+- Workflow catalogs now in `workflows/[NN]-[submodule]/README.md` instead of `workflows/[submodule]-workflows.md`
+
+---
+
+### v2.3 (2025-12-22)
+
+- Enhanced ontology/glossary template separation
+- Business-centric documentation focus
+
+### v2.0 (2024-12-01)
+
+- Introduced 3-layer structure (Ontology-Concept-Spec)
+
+### v1.0 (2024-01-01)
+
+- Initial standards
+
+---
+
+**End of Document**  
+**For questions or updates**: Contact xTalent Architecture Team
+### Specification Layer Templates
+
+> **🎯 PO Priority**: Focus on FR and BR. Technical specs are OPTIONAL for PO unless special requirements (GDPR, compliance).
+
+---
+
+#### Template S1: Functional Requirements Index
+
+**File**: `02-spec/01-FR/README.md`
+
+```markdown
+# Functional Requirements - Index
+
+**Module**: [Module Name] ([MODULE-CODE])  
+**Version**: 2.0  
+**Last Updated**: YYYY-MM-DD
+
+---
+
+## Overview
+
+**Total Requirements**: [N]  
+**Total Sub-modules**: [M]
+
+---
+
+## Requirements by Sub-module
+
+| # | Sub-module | File | Requirements | Status |
+|---|------------|------|--------------|--------|
+| 01 | [Submodule 1] | [FR-01-submodule.md](./FR-01-submodule.md) | [N] | [Status] |
+| 02 | [Submodule 2] | [FR-02-submodule.md](./FR-02-submodule.md) | [N] | [Status] |
+
+---
+
+## Traceability Matrix
+
+| FR ID | Title | Entities | Workflows | Business Rules |
+|-------|-------|----------|-----------|----------------|
+| FR-[CODE]-001 | [Title] | [Entity](../../00-ontology/domain/01-submodule/01-entity.md) | [WF-001](../../00-ontology/workflows/01-submodule/README.md#wf-001) | BR-[CODE]-001 |
+
+---
+
+## Quick Navigation
+
+**By Priority**:
+- **HIGH**: FR-001, FR-005, FR-010
+- **MEDIUM**: FR-002, FR-006
+- **LOW**: FR-003
+
+**By Category**:
+- **Configuration**: FR-01-* (Sub-module 1)
+- **Processing**: FR-02-* (Sub-module 2)
+
+---
+
+## References
+
+- **Ontology**: [../../00-ontology/README.md](../../00-ontology/README.md)
+- **Concept**: [../../01-concept/README.md](../../01-concept/README.md)
+- **Business Rules**: [../04-BR/README.md](../04-BR/README.md)
+```
+
+---
+
+#### Template S2: Functional Requirements (Sub-module File)
+
+**File**: `02-spec/01-FR/FR-[NN]-[submodule].md`
+
+> **Target Size**: 300-500 lines. If >600 lines, split into batches: `FR-[NN].[XX]-[submodule]-[batch].md`
+
+```markdown
+# Functional Requirements - [Submodule Name]
 
 **Module**: [MODULE-CODE]  
 **Submodule**: [SUBMODULE-CODE]  
@@ -684,1249 +1498,342 @@ sequenceDiagram
 
 ---
 
-## Purpose
-
-[What this submodule does and why it exists]
-
----
-
-## Key Concepts
-
-### Concept 1: [Concept Name]
-[Brief explanation]
-
-### Concept 2: [Concept Name]
-[Brief explanation]
-
----
-
-## Workflows in This Submodule
-
-| Workflow | Purpose | Complexity |
-|----------|---------|------------|
-| [Workflow 1](./[workflow-1]-guide.md) | [Purpose] | Low/Medium/High |
-| [Workflow 2](./[workflow-2]-guide.md) | [Purpose] | Low/Medium/High |
-
----
-
-## Key Entities
-
-| Entity | Purpose |
-|--------|---------|
-| [Entity1](../../00-ontology/domain/[submodule]-entities.md#entity1) | [Purpose] |
-| [Entity2](../../00-ontology/domain/[submodule]-entities.md#entity2) | [Purpose] |
-
----
-
-## Integration Points
-
-**With Other Submodules**:
-- [Submodule X] - [Integration description]
-- [Submodule Y] - [Integration description]
-
-**With External Systems**:
-- [System A] - [Integration description]
-
----
-
-## References
-
-- **Entity Definitions**: [../../00-ontology/domain/[submodule]-entities.md](../../00-ontology/domain/[submodule]-entities.md)
-- **Workflow Catalog**: [../../00-ontology/workflows/[submodule]-workflows.md](../../00-ontology/workflows/[submodule]-workflows.md)
-- **Specifications**: [../../02-spec/](../../02-spec/)
-```
-
----
-
-### Template 2: Glossary
-
-**File**: `00-ontology/glossary-[submodule].md`
-
-```markdown
-# [Sub-module Name] - Glossary
-
-**Version**: 2.0  
-**Last Updated**: YYYY-MM-DD  
-**Module**: [Module Name] ([MODULE-CODE])  
-**Sub-module**: [Sub-module Name]
-
----
-
 ## Overview
 
-[Brief description of this sub-module]
+**Total Requirements**: [N]  
+**Priority Distribution**: HIGH ([X]), MEDIUM ([Y]), LOW ([Z])
 
 ---
 
-## Entities
+## Requirements
 
-### [Entity Name]
+### FR-[CODE]-001: [Requirement Title]
 
-**Definition**: [One-sentence definition]
+**Priority**: HIGH | MEDIUM | LOW  
+**Category**: [Configuration | Processing | Reporting | Integration]  
+**Status**: [Draft | Approved | Implemented]
 
-**Purpose**: [Why this entity exists]
+**Description**:
+[Detailed description of what the system must do]
 
-**Key Characteristics**:
-- [Characteristic 1]
-- [Characteristic 2]
-- [Characteristic 3]
+**Rationale**:
+[Why this requirement exists - business value]
 
-**Attributes**:
+**Acceptance Criteria**:
+1. [Criterion 1 - specific, measurable]
+2. [Criterion 2]
+3. [Criterion 3]
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `id` | UUID | Yes | Primary key |
-| `[attribute]` | [Type] | [Yes/No] | [Description] |
-
-**Relationships**:
-
-| Relationship | Target Entity | Cardinality | Description |
-|--------------|---------------|-------------|-------------|
-| `[relationship]` | [Entity] | [1:1/1:N/N:M] | [Description] |
-
-**Business Rules**:
-
-1. **BR-[CODE]-001**: [Rule description]
-2. **BR-[CODE]-002**: [Rule description]
-
-**Examples**:
-
-```yaml
-Example 1: [Scenario name]
-  [Entity]:
-    id: [ID]
-    [attribute]: [value]
-    [attribute]: [value]
-```
-
-**Best Practices**:
-- ✅ DO: [Best practice]
-- ❌ DON'T: [Anti-pattern]
-
-**Related Entities**:
-- [Entity1] - [Relationship description]
-- [Entity2] - [Relationship description]
-
----
-
-## References
-
-- Ontology: [module]-ontology.yaml
-- Concept Guide: ../01-concept/[NN]-[topic]-guide.md
-```
-
----
-
-### Template 2A: Concept Overview
-
-**File**: `01-concept/01-concept-overview.md`
-
-**Purpose**: Provides high-level understanding of what the module is, what problems it solves, its scope, key concepts, and business value. This is the entry point for all stakeholders.
-
-```markdown
-# [Module Name] - Concept Overview
-
-**Version**: 2.0  
-**Last Updated**: YYYY-MM-DD  
-**Audience**: All stakeholders (Business Users, HR Administrators, Managers, Developers)  
-**Reading Time**: 15-20 minutes
-
----
-
-## 📋 What is this module?
-
-> [One-paragraph description of the module, its purpose, and its sub-modules]
-
-The module consists of [N] integrated sub-modules:
-- **[Sub-module 1]**: [Brief description]
-- **[Sub-module 2]**: [Brief description]
-
----
-
-## 🎯 Problem Statement
-
-### What problem does this solve?
-
-**[Sub-module 1] Challenges**:
-- [Challenge 1]
-- [Challenge 2]
-- [Challenge 3]
-
-**[Sub-module 2] Challenges**:
-- [Challenge 1]
-- [Challenge 2]
-- [Challenge 3]
-
-### Who are the users?
-
-**[User Role 1]**:
-- [Action/Capability 1]
-- [Action/Capability 2]
-- [Action/Capability 3]
-
-**[User Role 2]**:
-- [Action/Capability 1]
-- [Action/Capability 2]
-- [Action/Capability 3]
-
-**[User Role 3]**:
-- [Action/Capability 1]
-- [Action/Capability 2]
-
----
-
-## 💡 High-Level Solution
-
-### How does this module solve the problem?
-
-**[Sub-module 1] Solution**:
-
-[Description of how this sub-module works, including:]
-1. [Key capability 1]
-2. [Key capability 2]
-3. [Key capability 3]
-
-**[Sub-module 2] Solution**:
-
-[Description of how this sub-module works, including:]
-1. [Key capability 1]
-2. [Key capability 2]
-3. [Key capability 3]
-
----
-
-## 📦 Scope
-
-### What's included?
-
-**[Sub-module 1]** ✅:
-- [Feature/Capability 1]
-- [Feature/Capability 2]
-- [Feature/Capability 3]
-- [Feature/Capability 4]
-
-**[Sub-module 2]** ✅:
-- [Feature/Capability 1]
-- [Feature/Capability 2]
-- [Feature/Capability 3]
-
-**Shared Components** ✅:
-- [Shared component 1]
-- [Shared component 2]
-- [Shared component 3]
-
-### What's NOT included?
-
-❌ [Out of scope item 1] (handled by [Other Module])
-❌ [Out of scope item 2]
-❌ [Out of scope item 3]
-❌ [Out of scope item 4]
-
----
-
-## 🔑 Key Concepts
-
-### [Sub-module 1] Concepts
-
-#### [Concept 1]
-[Brief explanation of the concept, 2-3 sentences]
-
-#### [Concept 2]
-[Brief explanation of the concept, 2-3 sentences]
-
-#### [Concept 3]
-[Brief explanation of the concept, 2-3 sentences]
-
-### [Sub-module 2] Concepts
-
-#### [Concept 4]
-[Brief explanation of the concept, 2-3 sentences]
-
-#### [Concept 5]
-[Brief explanation of the concept, 2-3 sentences]
-
-### Shared Concepts
-
-#### [Shared Concept 1]
-[Brief explanation of the concept, 2-3 sentences]
-
----
-
-## 💼 Business Value
-
-### Benefits
-
-**Efficiency**:
-- [Efficiency benefit 1]
-- [Efficiency benefit 2]
-- [Efficiency benefit 3]
-
-**Accuracy**:
-- [Accuracy benefit 1]
-- [Accuracy benefit 2]
-- [Accuracy benefit 3]
-
-**Compliance**:
-- [Compliance benefit 1]
-- [Compliance benefit 2]
-- [Compliance benefit 3]
-
-**Visibility**:
-- [Visibility benefit 1]
-- [Visibility benefit 2]
-
-**[Other Category]**:
-- [Benefit 1]
-- [Benefit 2]
-
-### Success Metrics
-
-**[Sub-module 1]**:
-- [Metric 1 with target]
-- [Metric 2 with target]
-- [Metric 3 with target]
-
-**[Sub-module 2]**:
-- [Metric 1 with target]
-- [Metric 2 with target]
-- [Metric 3 with target]
-
----
-
-## 🔗 Integration Points
-
-**[Module 1] ([CODE])**:
-- [Integration point 1]
-- [Integration point 2]
-
-**[Module 2] ([CODE])**:
-- [Integration point 1]
-- [Integration point 2]
-
-**[External System 1]**:
-- [Integration point 1]
-- [Integration point 2]
-
----
-
-## 📋 Assumptions & Dependencies
-
-### Assumptions
-
-**[Sub-module 1]**:
-- [Assumption 1]
-- [Assumption 2]
-
-**[Sub-module 2]**:
-- [Assumption 1]
-- [Assumption 2]
-
-### Dependencies
-
-**Required**:
-- [Required dependency 1]
-- [Required dependency 2]
-
-**Optional**:
-- [Optional dependency 1]
-- [Optional dependency 2]
-
----
-
-## 🚀 Future Enhancements
-
-**[Sub-module 1]**:
-- [Enhancement 1]
-- [Enhancement 2]
-
-**[Sub-module 2]**:
-- [Enhancement 1]
-- [Enhancement 2]
-
----
-
-## 📖 Glossary
-
-| Term | Definition |
-|------|------------|
-| **[Term 1]** | [Definition] |
-| **[Term 2]** | [Definition] |
-| **[Term 3]** | [Definition] |
-
----
-
-## 📚 Related Documents
-
-- [Conceptual Guide](./02-conceptual-guide.md) - How the system works
-- [Ontology](../00-ontology/[module]-ontology.yaml) - Data model
-- [Glossary](../00-ontology/glossary-index.md) - Complete terminology
-- [Specifications](../02-spec/) - Detailed requirements
-
----
-
-**Document Version**: 1.0  
-**Created**: YYYY-MM-DD  
-**Last Review**: YYYY-MM-DD  
-**Author**: xTalent Documentation Team
-```
-
----
-
-### Template 2B: Conceptual Guide
-
-**File**: `01-concept/02-conceptual-guide.md`
-
-**Purpose**: Explains HOW the system works at a conceptual level, covering workflows, behaviors, and entity interactions. This is the operational guide for understanding system mechanics.
-
-```markdown
-# [Module Name] - Conceptual Guide
-
-> This document explains HOW the [Module Name] system works at a conceptual level, covering workflows, behaviors, and interactions across all sub-modules.
-
----
-
-## 📋 System Overview
-
-[Brief overview of how the system operates, including:]
-- [Key architectural pattern 1]
-- [Key architectural pattern 2]
-- [Integration approach]
-
----
-
-## 🔄 Key Workflows
-
-### Workflow 1: [Workflow Name]
-
-#### Overview
-[Brief description of what this workflow accomplishes]
-
-#### Actors
-- **[Actor 1]**: [Role and responsibilities]
-- **[Actor 2]**: [Role and responsibilities]
-- **[System]**: [Automated behaviors]
-
-#### Trigger
-[What initiates this workflow]
-
-#### Steps
-
-```mermaid
-sequenceDiagram
-    participant Actor1
-    participant System
-    participant Entity1
-    participant Actor2
-    
-    Actor1->>System: [Action]
-    System->>Entity1: [Action]
-    System->>Actor2: [Notification]
-    Actor2->>System: [Response]
-```
-
-**Detailed Steps**:
-
-1. **[Step Name]**
-   - What happens: [Description]
-   - Who: [Actor]
-   - System behavior: [What the system does]
-   - Business rules applied: [Rules that govern this step]
-
-2. **[Step Name]**
-   - What happens: [Description]
-   - Who: [Actor]
-   - System behavior: [What the system does]
-   - Business rules applied: [Rules that govern this step]
-
-[Continue for all steps...]
-
-#### Decision Points
-
-| Decision | Condition | Outcome |
-|----------|-----------|---------|
-| [Decision 1] | [Condition] | [Outcome] |
-| [Decision 2] | [Condition] | [Outcome] |
-
-#### Outcomes
-
-- **Success**: [Description of successful outcome]
-- **Failure**: [Description of failure outcome]
-- **Partial**: [Description of partial outcome if applicable]
-
-#### Variations
-
-**Variation 1: [Variation Name]**
-- Condition: [When this variation applies]
-- Difference: [How it differs from main flow]
-- Flow: [Brief description of different flow]
-
----
-
-### Workflow 2: [Workflow Name]
-
-[Same structure as Workflow 1]
-
----
-
-## ⚙️ Domain Behaviors
-
-### Behavior 1: [Behavior Name]
-
-**What it does**: [Description of the behavior]
-
-**When it happens**: [Trigger conditions]
-
-**How it works**:
-1. [Step 1]
-2. [Step 2]
-3. [Step 3]
-
-**Business rules**:
-- [Rule 1]
-- [Rule 2]
-- [Rule 3]
-
-**Example**:
-> [Concrete example with sample data showing the behavior in action]
-
----
-
-### Behavior 2: [Behavior Name]
-
-[Same structure as Behavior 1]
-
----
-
-## 🔗 Entity Interactions
-
-### How [Entity A] and [Entity B] Work Together
-
-[Detailed explanation of how these entities interact, including:]
-
-**[Scenario 1]**:
-1. [Step 1]
-2. [Step 2]
-3. [Step 3]
-
-**[Scenario 2]**:
-1. [Step 1]
-2. [Step 2]
-3. [Step 3]
-
----
-
-### How [Entity C] and [Entity D] Work Together
-
-[Same structure as above]
-
----
-
-## 🎯 Design Patterns
-
-### Pattern 1: [Pattern Name]
-
-**Purpose**: [Why this pattern is used]
-
-**How it works**: [Description of the pattern]
-
-**Entities involved**:
-- [Entity 1]
-- [Entity 2]
-
-**Example**:
-```yaml
-[YAML example showing the pattern]
-```
-
----
-
-## ✅ Best Practices
-
-### 1. [Practice Area]
-
-✅ **DO**:
-- [Best practice 1]
-- [Best practice 2]
-
-❌ **DON'T**:
-- [Anti-pattern 1]
-- [Anti-pattern 2]
-
----
-
-## ⚠️ Common Pitfalls
-
-### Pitfall 1: [Pitfall Name]
-
-❌ **Wrong**:
-```yaml
-[Example of incorrect approach]
-```
-
-✅ **Correct**:
-```yaml
-[Example of correct approach]
-```
-
-**Why**: [Explanation]
-
----
-
-## 📚 Related Documents
-
-- [Concept Overview](./01-concept-overview.md) - What the module is
-- [Topic Guides](./03-*.md) - Deep dives into specific topics
-- [Ontology](../00-ontology/[module]-ontology.yaml) - Data model
-- [Specifications](../02-spec/) - Detailed requirements
-
----
-
-**Document Version**: 1.0  
-**Created**: YYYY-MM-DD  
-**Last Review**: YYYY-MM-DD  
-**Author**: xTalent Documentation Team
-```
-
----
-
-### Template 3: Topic-Specific Concept Guide
-
-**File**: `01-concept/[NN]-[topic]-guide.md`
-
-```markdown
-# [Topic] Guide
-
-**Version**: 2.0  
-**Last Updated**: YYYY-MM-DD  
-**Audience**: [Business Users / HR Administrators / Managers / All]  
-**Reading Time**: [XX-YY] minutes
-
----
-
-## 📋 Overview
-
-[Brief overview of what this guide covers]
-
-### What You'll Learn
-- [Learning objective 1]
-- [Learning objective 2]
-- [Learning objective 3]
-
-### Prerequisites
-- [Prerequisite 1]
-- [Prerequisite 2]
-
----
-
-## 🎯 [Main Section 1]
-
-### [Subsection]
-
-[Content with examples, diagrams, code blocks]
-
-```yaml
-Example:
-  [YAML example]
-```
-
----
-
-## 📊 [Main Section 2]
-
-[Content]
-
----
-
-## ✅ Best Practices
-
-### 1. [Practice Area]
-
-✅ **DO**:
-- [Best practice 1]
-- [Best practice 2]
-
-❌ **DON'T**:
-- [Anti-pattern 1]
-- [Anti-pattern 2]
-
----
-
-## ⚠️ Common Pitfalls
-
-### Pitfall 1: [Pitfall Name]
-
-❌ **Wrong**:
-```yaml
-[Wrong example]
-```
-
-✅ **Correct**:
-```yaml
-[Correct example]
-```
-
----
-
-## 🎓 Quick Reference
-
-### Checklist: [Task Name]
-
-- [ ] Step 1
-- [ ] Step 2
-- [ ] Step 3
-
----
-
-## 📚 Related Guides
-
-- [Guide 1](./[NN]-[topic]-guide.md)
-- [Guide 2](./[NN]-[topic]-guide.md)
-
----
-
-**Document Version**: 1.0  
-**Created**: YYYY-MM-DD  
-**Last Review**: YYYY-MM-DD
-```
-
----
-
-### Template 4: Functional Requirements
-
-**File**: `02-spec/01-functional-requirements.md`
-
-```markdown
-# [Module Name] - Functional Requirements
-
-**Version**: 2.0  
-**Last Updated**: YYYY-MM-DD  
-**Module**: [Module Name] ([MODULE-CODE])
-
----
-
-## Overview
-
-[Module description and scope]
-
----
-
-## Feature Areas
-
-### 1. [Feature Area Name]
-
-#### FR-[CODE]-001: [Requirement Title]
-
-**Priority**: [HIGH / MEDIUM / LOW]
-
-**User Story**:
+**User Story** (if applicable):
 ```
 As a [role]
-I want [action]
+I want to [action]
 So that [benefit]
 ```
 
-**Description**:
-[Detailed requirement description]
+**Business Rules**:
+- [BR-[CODE]-001](../04-BR/BR-[NN]-submodule.md#br-code-001): [Rule name]
+- [BR-[CODE]-002](../04-BR/BR-[NN]-submodule.md#br-code-002): [Rule name]
 
-**Acceptance Criteria**:
-- Given [context]
-- When [action]
-- Then [expected result]
-- And [additional result]
+**Entities**:
+- [Entity1](../../00-ontology/domain/[NN]-submodule/[NN]-entity1.md): [How used - CRUD operations]
+- [Entity2](../../00-ontology/domain/[NN]-submodule/[NN]-entity2.md): [How used]
+
+**Workflows**:
+- [WF-[CODE]-001](../../00-ontology/workflows/[NN]-submodule/README.md#wf-001): [Workflow name]
+- Detailed guide: [../../01-concept/[NN]-submodule/workflow-guide.md](../../01-concept/[NN]-submodule/workflow-guide.md)
 
 **Dependencies**:
-- [Dependency 1]
-- [Dependency 2]
+- FR-[CODE]-XXX: [Dependent requirement]
+- External: [System/Module dependency]
 
-**Business Rules**:
-- BR-[CODE]-001: [Rule reference]
-- BR-[CODE]-002: [Rule reference]
+**Assumptions**:
+- [Assumption 1]
+- [Assumption 2]
 
-**Related Entities**:
-- [Entity1]
-- [Entity2]
+**Constraints**:
+- [Technical constraint]
+- [Business constraint]
 
-**API Endpoints**:
-- `POST /api/v1/[resource]`
-- `GET /api/v1/[resource]/{id}`
+**Examples**:
+```yaml
+Example 1: [Scenario name]
+  Input:
+    [field]: [value]
+  
+  Process:
+    [step 1]
+    [step 2]
+  
+  Output:
+    [expected result]
+```
 
 ---
 
-#### FR-[CODE]-002: [Next Requirement]
+### FR-[CODE]-002: [Requirement Title]
 
 [Same structure as above]
 
 ---
 
-## Requirements Summary
+## Traceability
 
-| ID | Title | Priority | Status |
-|----|-------|----------|--------|
-| FR-[CODE]-001 | [Title] | HIGH | ✅ Defined |
-| FR-[CODE]-002 | [Title] | MEDIUM | ✅ Defined |
+| FR ID | Entities | Workflows | Business Rules | Status |
+|-------|----------|-----------|----------------|--------|
+| FR-[CODE]-001 | Entity1, Entity2 | WF-001 | BR-001, BR-002 | Approved |
+| FR-[CODE]-002 | Entity3 | WF-002 | BR-003 | Draft |
 
 ---
 
-**Total Requirements**: [Number]  
-**High Priority**: [Number]  
-**Medium Priority**: [Number]  
-**Low Priority**: [Number]
+## References
+
+- **Sub-module Index**: [../README.md](../README.md)
+- **Ontology Entities**: [../../00-ontology/domain/[NN]-submodule/README.md](../../00-ontology/domain/[NN]-submodule/README.md)
+- **Workflows**: [../../00-ontology/workflows/[NN]-submodule/README.md](../../00-ontology/workflows/[NN]-submodule/README.md)
+- **Concept Guides**: [../../01-concept/[NN]-submodule/](../../01-concept/[NN]-submodule/)
+- **Business Rules**: [../04-BR/BR-[NN]-submodule.md](../04-BR/BR-[NN]-submodule.md)
 ```
 
 ---
 
-### Template 5: Business Rules
+#### Template S3: Business Rules Index
 
-**File**: `02-spec/04-business-rules.md`
+**File**: `02-spec/04-BR/README.md`
 
 ```markdown
-# [Module Name] - Business Rules
+# Business Rules - Index
 
+**Module**: [Module Name] ([MODULE-CODE])  
 **Version**: 2.0  
-**Last Updated**: YYYY-MM-DD  
-**Module**: [Module Name] ([MODULE-CODE])
+**Last Updated**: YYYY-MM-DD
 
 ---
 
 ## Overview
 
-[Description of business rules in this module]
+**Total Rules**: [N]  
+**Priority Distribution**: CRITICAL ([X]), HIGH ([Y]), MEDIUM ([Z]), LOW ([W])
 
 ---
 
-## Business Rules Catalog
+## Rules by Sub-module
 
-### Category: [Category Name]
+| # | Sub-module | File | Rules | Status |
+|---|------------|------|-------|--------|
+| 01 | [Submodule 1] | [BR-01-submodule.md](./BR-01-submodule.md) | [N] | [Status] |
+| 02 | [Submodule 2] | [BR-02-submodule.md](./BR-02-submodule.md) | [N] | [Status] |
 
-#### BR-[CODE]-001: [Rule Title]
+---
 
-**Priority**: [HIGH / MEDIUM / LOW]
+## Rules by Category
+
+### Validation Rules
+- BR-[CODE]-001 to BR-[CODE]-020
+
+### Calculation Rules
+- BR-[CODE]-021 to BR-[CODE]-040
+
+### Authorization Rules
+- BR-[CODE]-041 to BR-[CODE]-050
+
+### Workflow Rules
+- BR-[CODE]-051 to BR-[CODE]-060
+
+---
+
+## Traceability Matrix
+
+| BR ID | Title | FR | Entities | Workflows | Priority |
+|-------|-------|---- |----------|-----------|----------|
+| BR-[CODE]-001 | [Title] | FR-[CODE]-001 | [Entity](../../00-ontology/domain/01-submodule/01-entity.md) | [WF-001](../../00-ontology/workflows/01-submodule/README.md#wf-001) | HIGH |
+
+---
+
+## References
+
+- **Functional Requirements**: [../01-FR/README.md](../01-FR/README.md)
+- **Ontology**: [../../00-ontology/README.md](../../00-ontology/README.md)
+- **Concept**: [../../01-concept/README.md](../../01-concept/README.md)
+```
+
+---
+
+#### Template S4: Business Rules (Sub-module File)
+
+**File**: `02-spec/04-BR/BR-[NN]-[submodule].md`
+
+> **Target Size**: 400-600 lines (~40-60 rules). If >600 lines, split into batches: `BR-[NN].[XX]-[submodule]-[batch].md`
+>
+> **Example batches**: `BR-02.01-processing-validation.md`, `BR-02.02-processing-calculation.md`
+
+```markdown
+# Business Rules - [Submodule Name]
+
+**Module**: [MODULE-CODE]  
+**Submodule**: [SUBMODULE-CODE]  
+**Version**: 2.0  
+**Last Updated**: YYYY-MM-DD
+
+---
+
+## Overview
+
+**Total Rules**: [N]  
+**Priority Distribution**: CRITICAL ([X]), HIGH ([Y]), MEDIUM ([Z])
+
+---
+
+## Category: [Category Name]
+
+### BR-[CODE]-001: [Rule Name]
+
+**Priority**: CRITICAL | HIGH | MEDIUM | LOW  
+**Category**: Validation | Calculation | Authorization | Workflow  
+**Applicable To**: [Entity/Workflow name]
 
 **Description**:
-[Detailed rule description]
+[Clear, concise description of what this rule enforces]
 
-**Conditions**:
+**Business Logic**:
 ```
 IF [condition 1]
-AND [condition 2]
-THEN [action]
+  AND [condition 2]
+THEN [action/result]
+ELSE IF [condition 3]
+THEN [alternative action]
+ELSE [default action]
 ```
 
-**Rules**:
-1. [Rule detail 1]
-2. [Rule detail 2]
+**Conditions**:
+1. [Precondition 1]
+2. [Precondition 2]
 
-**Exceptions**:
-- [Exception 1]
-- [Exception 2]
+**Validation Trigger**: [When rule is checked - On Create | On Update | On Delete | On Status Change]
 
-**Error Messages**:
-- `[ERROR_CODE]`: "[Error message]"
+**Error Handling**:
+- **Error Code**: `ERR_[CODE]_001`
+- **Error Message**: "[User-facing error message]"
+- **Severity**: Error | Warning | Info
+- **Recovery Action**: [What user should do]
 
 **Examples**:
 
+**Example 1: Valid Scenario**
 ```yaml
-Example 1: [Scenario]
-  Input:
-    [field]: [value]
-  
-  Validation:
-    BR-[CODE]-001: PASS/FAIL
-  
-  Output:
-    [result]
+Given:
+  Entity:
+    field1: "value1"
+    field2: 100
+    status: ACTIVE
+
+When:
+  Action: Update field2 to 150
+
+Then:
+  BR-[CODE]-001: PASS
+  Result: Update successful
 ```
 
-**Related Requirements**:
-- FR-[CODE]-001
-- FR-[CODE]-002
-
-**Related Entities**:
-- [Entity1]
-- [Entity2]
-
----
-
-## Business Rules Summary
-
-| ID | Title | Category | Priority | Status |
-|----|-------|----------|----------|--------|
-| BR-[CODE]-001 | [Title] | [Category] | HIGH | ✅ Defined |
-
----
-
-**Total Rules**: [Number]  
-**High Priority**: [Number]  
-**Medium Priority**: [Number]  
-**Low Priority**: [Number]
-```
-
----
-
-### Template 6: Feature List
-
-**File**: `02-spec/FEATURE-LIST.yaml`
-
+**Example 2: Invalid Scenario**
 ```yaml
-# [Module Name] - Feature List
-# Version: 2.0
-# Last Updated: YYYY-MM-DD
+Given:
+  Entity:
+    field1: "value1"
+    field2: 100
+    status: INACTIVE
 
-module:
-  code: [MODULE-CODE]
-  name: "[Module Name]"
+When:
+  Action: Update field2 to 150
 
-features:
-  # Feature 1
-  - id: "001"
-    name: "[feature-name]"
-    title: "[Feature Title]"
-    priority: HIGH
-    epic: "[Epic Name]"
-    
-    sources:
-      concept_guides:
-        - "01-concept/[NN]-[topic]-guide.md"
-      
-      functional_requirements:
-        - "FR-[CODE]-001 to FR-[CODE]-020"
-      
-      business_rules:
-        - "BR-[CODE]-001 to BR-[CODE]-010"
-      
-      entities:
-        - "[Entity1]"
-        - "[Entity2]"
-      
-      apis:
-        - "POST /api/v1/[resource]"
-        - "GET /api/v1/[resource]/{id}"
-    
-    spec_kit_outputs:
-      - "spec.md"
-      - "data-model.md"
-      - "contracts/api-spec.yaml"
-    
-    status: "PLANNED"
-    estimated_effort: "[Story points / Days]"
-  
-  # Feature 2
-  - id: "002"
-    name: "[feature-name]"
-    # ... same structure
+Then:
+  BR-[CODE]-001: FAIL
+  Error: ERR_[CODE]_001
+  Message: "Cannot update field2 when status is INACTIVE"
+```
 
-# Feature Summary
-summary:
-  total_features: [Number]
-  by_priority:
-    HIGH: [Number]
-    MEDIUM: [Number]
-    LOW: [Number]
-  by_status:
-    PLANNED: [Number]
-    IN_PROGRESS: [Number]
-    COMPLETED: [Number]
+**Traceability**:
+- **Functional Requirement**: [FR-[CODE]-001](../01-FR/FR-[NN]-submodule.md#fr-code-001)
+- **Entities**: 
+  - [Entity1](../../00-ontology/domain/[NN]-submodule/[NN]-entity1.md): [How rule affects this entity]
+  - [Entity2](../../00-ontology/domain/[NN]-submodule/[NN]-entity2.md): [How rule affects this entity]
+- **Workflows**:
+  - [WF-[CODE]-001](../../00-ontology/workflows/[NN]-submodule/README.md#wf-001): [Where rule applies]
+  - Concept Guide: [../../01-concept/[NN]-submodule/workflow-guide.md](../../01-concept/[NN]-submodule/workflow-guide.md)
+
+**Exceptions**:
+- [Exception scenario 1] - Requires [approval level]
+- [Exception scenario 2] - System override allowed
+
+**Related Rules**:
+- BR-[CODE]-XXX: [Related rule]
+- BR-[CODE]-YYY: [Dependent rule]
+
+**Implementation Notes**:
+- [Database constraint needed]
+- [API validation point]
+- [UI validation feedback]
+
+---
+
+### BR-[CODE]-002: [Rule Name]
+
+[Same structure as above]
+
+---
+
+## Rule Dependencies
+
+```mermaid
+graph TD
+    BR001[BR-001] -->|requires| BR002[BR-002]
+    BR002 -->|triggers| BR003[BR-003]
+    BR001 -->|validates before| BR004[BR-004]
 ```
 
 ---
 
-## 📏 Quality Standards
+## Traceability Matrix
 
-### Documentation Quality Checklist
-
-Every document MUST meet these criteria:
-
-#### Content Quality
-- [ ] Clear, unambiguous language
-- [ ] Consistent terminology (use glossary)
-- [ ] Complete examples provided
-- [ ] Real-world scenarios included
-- [ ] Best practices documented
-- [ ] Common pitfalls identified
-
-#### Structure Quality
-- [ ] Follows standard template
-- [ ] Proper heading hierarchy (H1 → H2 → H3)
-- [ ] Table of contents (for long docs)
-- [ ] Cross-references to related docs
-- [ ] Version information included
-- [ ] Last updated date included
-
-#### Technical Quality
-- [ ] YAML/code blocks properly formatted
-- [ ] Tables properly structured
-- [ ] Links working (no broken links)
-- [ ] Diagrams clear and readable
-- [ ] Examples validated
-
-#### Completeness
-- [ ] All required sections present
-- [ ] No "TODO" or "TBD" in final version
-- [ ] Reviewed by stakeholders
-- [ ] Approved by module owner
+| BR ID | FR | Entities | Workflows | Priority | Status |
+|-------|-----|----------|------------|-------|--------|
+| BR-[CODE]-001 | FR-[CODE]-001 | Entity1, Entity2 | WF-001 | HIGH | Approved |
+| BR-[CODE]-002 | FR-[CODE]-002 | Entity3 | WF-002 | MEDIUM | Draft |
 
 ---
 
-## 🎨 Formatting Standards
+## References
 
-### Headings
-
-```markdown
-# H1: Document Title (One per document)
-
-## H2: Major Section
-
-### H3: Subsection
-
-#### H4: Sub-subsection (use sparingly)
-```
-
-### Code Blocks
-
-```markdown
-Use YAML for data examples:
-```yaml
-Entity:
-  attribute: value
-```
-
-Use bash for commands:
-```bash
-command --option value
-```
-
-Use markdown for API examples:
-```http
-POST /api/v1/resource HTTP/1.1
-Content-Type: application/json
-
-{
-  "field": "value"
-}
-```
-```
-
-### Tables
-
-```markdown
-| Column 1 | Column 2 | Column 3 |
-|----------|----------|----------|
-| Value 1  | Value 2  | Value 3  |
-```
-
-### Emojis (Consistent Usage)
-
-```markdown
-📋 Overview
-🎯 Purpose/Goal
-📊 Data/Statistics
-✅ Success/Correct
-❌ Error/Wrong
-⚠️ Warning/Caution
-🔍 Detail/Analysis
-🔗 Reference/Link
-📚 Documentation
-🛠️ Tools/Technical
-🎓 Learning/Education
-💡 Tip/Insight
+- **Sub-module Index**: [README.md](./README.md)
+- **Functional Requirements**: [../01-FR/FR-[NN]-submodule.md](../01-FR/FR-[NN]-submodule.md)
+- **Ontology Entities**: [../../00-ontology/domain/[NN]-submodule/README.md](../../00-ontology/domain/[NN]-submodule/README.md)
+- **Workflows**: [../../00-ontology/workflows/[NN]-submodule/README.md](../../00-ontology/workflows/[NN]-submodule/README.md)
+- **Concept Guides**: [../../01-concept/[NN]-submodule/](../../01-concept/[NN]-submodule/)
 ```
 
 ---
 
-## 🔄 Module Development Workflow
+**🎯 Batching Guidelines**:
 
-### Standard Process for All Modules
+1. **When to Batch**:
+   - File >600 lines
+   - >60 rules in single file
+   - Logically separable groups
 
-```yaml
-Phase 0: Planning (Week 1)
-  - Define module scope
-  - Identify sub-modules
-  - List entities
-  - Create directory structure
+2. **Batch Naming**:
+   - Pattern: `[TYPE]-[NN].[XX]-[submodule]-[batch].md`
+   - Example: `BR-02.01-processing-validation.md`
+   - Example: `BR-02.02-processing-calculation.md`
 
-Phase 1: Ontology (Week 2-3)
-  - Write [module]-ontology.yaml
-  - Write glossaries (one per sub-module)
-  - Review with stakeholders
-  - Approve ontology
+3. **Batch Organization**:
+   - Group by rule category (validation, calculation)
+   - Group by entity scope
+   - Group by workflow phase
 
-Phase 2: Concept Guides (Week 4-6)
-  - Write 5-7 concept guides
-  - Cover all core concepts
-  - Include examples and scenarios
-  - Review with business users
-  - Approve guides
-
-Phase 3: Specifications (Week 7-10)
-  - Write functional requirements
-  - Write API specification
-  - Write data specification
-  - Write business rules
-  - Write integration spec
-  - Write security spec
-  - Create scenarios
-  - Write integration guide
-  - Create feature list
-  - Review with all stakeholders
-  - Approve specs
-
-Phase 4: Design (Week 11-12)
-  - Create DBML schema
-  - Create diagrams
-  - Review with architects
-  - Approve design
-
-Phase 5: Handoff to Dev Team
-  - Generate Spec-Kit specs (automated)
-  - Dev team creates technical plans
-  - Dev team creates task breakdowns
-  - Implementation begins
-```
+4. **Cross-batch References**:
+   - Always use relative paths
+   - Include batch name in anchor links
+   - Maintain master index in README.md
 
 ---
-
-## 📊 Module Comparison Matrix
-
-### Use This to Ensure Consistency
-
-| Aspect | Core (CO) | Time & Attendance (TA) | [Your Module] |
-|--------|-----------|------------------------|---------------|
-| **Ontology** | ✅ core-ontology.yaml | ✅ time-attendance-ontology.yaml, absence-ontology.yaml | ❓ TBD |
-| **Workflows** | ⚠️ To be created | ⚠️ To be created | ❓ TBD |
-| **Glossaries** | ✅ 7 glossaries | ⚠️ In progress | ❓ TBD |
-| **Concept Overview** | ⚠️ To be created | ✅ 01-concept-overview.md | ❓ TBD |
-| **Conceptual Guide** | ⚠️ To be created | ✅ 02-conceptual-guide.md | ❓ TBD |
-| **Topic Guides** | ✅ 5+ guides | ⚠️ 0 guides (7 planned) | ❓ TBD |
-| **Total Concept Guides** | ✅ 7 guides | ⚠️ 2/7 guides (in progress) | ❓ TBD |
-| **Functional Req** | ✅ Standardized | ⚠️ Different format | ❓ TBD |
-| **API Spec** | ✅ Standardized | ⚠️ Missing | ❓ TBD |
-| **Business Rules** | ✅ Standardized | ⚠️ Different format | ❓ TBD |
-| **Scenarios/Use Cases** | ⚠️ To be created | ⚠️ To be created | ❓ TBD |
-| **Integration Guide** | ✅ Present | ❌ Missing | ❓ TBD |
-| **Feature List** | ✅ Present | ❌ Missing | ❓ TBD |
-
-**Goal**: All modules should have ✅ in all rows.
-
-**TA Module Progress**: 
-- ✅ Has excellent concept-overview and conceptual-guide (now standardized)
-- ⚠️ Needs 5 more topic-specific guides (03-09) to complete concept documentation
-- ⚠️ Spec documents need standardization
-- ⚠️ Needs workflows.yaml and scenarios documentation
-
-**Goal**: All modules should have ✅ in all rows.
-
 ---
-
-## 🎯 Module Checklist
-
-### Before Declaring Module "Complete"
-
-#### Phase 0: Ontology ✅
-- [ ] `00-ontology/README.md` created
-- [ ] Entity definitions created (one per submodule in `domain/`)
-- [ ] All entities have complete attribute tables
-- [ ] All relationships defined with cardinality
-- [ ] All constraints and business rules documented
-- [ ] Lifecycle states defined (where applicable)
-- [ ] Workflow catalogs created (one per submodule in `workflows/`)
-- [ ] All workflows have actors, triggers, and outcomes
-- [ ] Workflow catalogs link to concept guides
-- [ ] Glossaries created (one per sub-module)
-- [ ] Glossary index created
-- [ ] Ontology reviewed and approved
-
-#### Phase 1: Concept ✅
-- [ ] `01-concept/README.md` created
-- [ ] Module overview (`01-overview.md`) created
-- [ ] Submodule folders created (one per submodule)
-- [ ] Submodule overviews created (one per submodule)
-- [ ] Workflow detail guides created (one per core workflow)
-- [ ] All guides have Mermaid diagrams
-- [ ] All guides have step-by-step details
-- [ ] All guides have decision points documented
-- [ ] All guides have exception handling
-- [ ] All guides have concrete examples
-- [ ] All guides link to ontology (entities + workflows)
-- [ ] Cross-cutting concept guides created (if needed in `99-shared/`)
-- [ ] Guides reviewed and approved
-
-#### Phase 2: Specification ✅
-- [ ] `02-spec/README.md` created
-- [ ] Functional requirements complete
-- [ ] API specification complete
-- [ ] Data specification complete
-- [ ] Business rules complete
-- [ ] Integration spec complete
-- [ ] Security spec complete
-- [ ] Scenarios created
-- [ ] Integration guide created
-- [ ] Feature list created
-- [ ] Specs reviewed and approved
-
-#### Phase 3: Design ✅
-- [ ] `03-design/README.md` created
-- [ ] DBML schema created
-- [ ] Design reviewed and approved
-
-#### Phase 4: Handoff ✅
-- [ ] Spec-Kit specs generated
-- [ ] Dev team onboarded
-- [ ] Handoff complete
-
----
-
-## 📞 Getting Help
-
-### Questions About Standards?
-
-- **Ontology questions**: Contact Data Architect
-- **Concept guide questions**: Contact PO/BA Lead
-- **Spec questions**: Contact PO/BA Lead
-- **Design questions**: Contact Technical Architect
-- **Process questions**: Contact Project Manager
-
-### Reporting Issues
-
-If you find inconsistencies or have suggestions:
-1. Document the issue
-2. Propose a solution
-3. Submit for review
-4. Update standards if approved
-
----
-
-## 🔗 References
-
-### Example Modules
-
-- **Core Module (CO)**: Reference implementation
-  - Location: `docs/01-modules/CO/`
-  - Status: ✅ Complete (follows all standards)
-
-- **Time & Attendance (TA)**: Legacy module
-  - Location: `docs/01-modules/TA/`
-  - Status: ⚠️ Needs migration to new standards
-
-### Related Documents
-
-- [Spec-Kit Integration Guide](../CO/02-spec/INTEGRATION-GUIDE.md)
-- [Spec-Kit Analysis](../CO/02-spec/SPEC-KIT-ANALYSIS.md)
-- [Core Module Concept Overview](../CO/01-concept/CORE-MODULE-CONCEPT-OVERVIEW.md)
-
----
-
-**Document Version**: 2.2  
-**Created**: 2025-12-02  
-**Maintained By**: Documentation Standards Committee  
-**Last Review**: 2025-12-19  
-**Changelog v2.2**: 
-- Restructured Ontology layer: Split into `domain/` (entity definitions) and `workflows/` (workflow catalogs)
-- Organized Ontology by submodule for better scalability
-- Restructured Concept layer: Organized by submodule with dedicated workflow detail guides
-- Added 4 new templates: Entity Definition (1A), Workflow Catalog (1B), Workflow Detail Guide (1C), Submodule Overview (1D)
-- Clarified separation: Ontology = WHAT exists/WHAT workflows exist, Concept = HOW workflows work
-- Updated Phase 0 and Phase 1 checklists to reflect new structure
-- Markdown-based entity definitions replace YAML ontology for better readability
-
-**Changelog v2.1**: Added `[module]-workflows.yaml` as required artifact, clarified `03-scenarios/` for use cases  
-**Status**: Official Standard - Mandatory for All Modules

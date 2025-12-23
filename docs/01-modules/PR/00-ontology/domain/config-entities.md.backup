@@ -1,0 +1,2229 @@
+# Payroll Configuration - Domain Entities
+
+**Module**: Payroll (PR)  
+**Submodule**: CONFIG  
+**Version**: 2.0  
+**Last Updated**: 2025-12-23
+
+---
+
+## Overview
+
+The Payroll Configuration sub-module defines all master data required for payroll processing. This includes payroll calendars, processing groups, pay elements (earnings/deductions/taxes), calculation formulas, validation rules, and templates.
+
+**Purpose**: Provide flexible, configurable foundation for multi-country payroll processing with:
+- Configurable payroll calendars and frequencies
+- Flexible pay element definitions with formulas
+- Statutory rule management for compliance
+- GL costing and distribution rules
+- Payslip template customization
+- Reusable calculation formulas
+
+**Total Entities**: 13
+
+---
+
+## Entity: PayFrequency {#pay-frequency}
+
+**Classification**: REFERENCE_DATA  
+
+**Definition**: Defines standard payroll frequency patterns (monthly, bi-weekly, weekly, etc.)
+
+**Purpose**: Provides standardized frequency codes used by pay calendars to determine payroll cycles
+
+**Key Characteristics**:
+- Simple reference table with predefined frequency codes
+- Includes period length in days for calculation purposes
+- Used by `PayCalendar` and `BalanceDefinition` for reset frequencies
+- Immutable reference data (rarely changes)
+
+---
+
+### Attributes
+
+| Attribute | Type | Required | Constraints | Description |
+|-----------|------|----------|-------------|-------------|
+| `code` | varchar(20) | ✅ | PK, UNIQUE | Frequency code (MONTHLY, BIWEEKLY, WEEKLY, SEMIMONTHLY) |
+| `name` | varchar(50) | ✅ | NOT NULL | Display name of frequency |
+| `period_days` | smallint | ✅ | > 0 | Number of days in standard period |
+
+### Relationships
+
+| Relationship | Target | Cardinality | Foreign Key | Description |
+|--------------|--------|-------------|-------------|-------------|
+| `calendars` | [PayCalendar](#pay-calendar) | 1:N | (inverse) | Calendars using this frequency |
+| `balance_resets` | [BalanceDefinition](#balance-definition) | 1:N | (inverse) | Balances that reset at this frequency |
+
+---
+
+### Examples
+
+#### Example 1: Monthly Frequency
+
+```yaml
+PayFrequency:
+  code: "MONTHLY"
+  name: "Monthly"
+  period_days: 30
+```
+
+#### Example 2: Bi-Weekly Frequency
+
+```yaml
+PayFrequency:
+  code: "BIWEEKLY"
+  name: "Bi-Weekly"
+  period_days: 14
+```
+
+#### Example 3: Semi-Monthly Frequency
+
+```yaml
+PayFrequency:
+  code: "SEMIMONTHLY"
+  name: "Semi-Monthly"
+  period_days: 15
+```
+
+**Business Context**: Semi-monthly typically pays on 15th and last day of month, common in US.
+
+---
+
+### Best Practices
+
+✅ **DO**:
+- Use standard industry codes (MONTHLY, BIWEEKLY, WEEKLY)
+- Keep period_days as approximate average for calculations
+- Document any country-specific frequency variations
+
+❌ **DON'T**:
+- Don't create custom frequency codes without business justification
+- Don't modify period_days after calendars are using the frequency
+- Don't delete frequencies that are referenced by active calendars
+
+---
+
+### Related Entities
+
+**Children/Downstream**:
+- [PayCalendar](#pay-calendar) - Uses frequency to define payroll cycles
+- [BalanceDefinition](#balance-definition) - Uses frequency for balance reset rules
+
+### Related Workflows
+
+- [WF-PR-CONFIG-001](../workflows/config-workflows.md#wf-pr-config-001) - Pay Calendar Setup (selects frequency)
+
+---
+
+## Entity: PayCalendar {#pay-calendar}
+
+**Classification**: CORE_ENTITY  
+
+**Definition**: Defines payroll calendar with cut-off dates, pay dates, and processing schedule for a legal entity
+
+**Purpose**: Establishes the payroll processing schedule including when time is cut off, when payroll is calculated, and when employees are paid
+
+**Key Characteristics**:
+- One calendar per legal entity and market combination
+- Supports multiple frequencies (monthly, bi-weekly, etc.)
+- Contains calendar pattern in JSON for flexible scheduling
+- SCD Type 2 for historical tracking of calendar changes
+- Multi-currency support with default currency
+- Links to talent market for localization
+
+---
+
+### Attributes
+
+| Attribute | Type | Required | Constraints | Description |
+|-----------|------|----------|-------------|-------------|
+| `id` | UUID | ✅ | PK | Primary identifier |
+| `code` | varchar(50) | ✅ | UNIQUE, NOT NULL | Unique calendar code (e.g., VN_MONTHLY_2025) |
+| `name` | varchar(255) | ✅ | NOT NULL | Calendar display name |
+| `description` | text | ❌ | NULL | Detailed description of calendar purpose |
+| `legal_entity_id` | UUID | ✅ | FK → Core.LegalEntity | Owning legal entity |
+| `market_id` | UUID | ✅ | FK → Core.TalentMarket | Talent market for localization |
+| `frequency_code` | varchar(20) | ✅ | FK → [PayFrequency](#pay-frequency) | Payroll frequency |
+| `calendar_json` | jsonb | ✅ | NOT NULL | Calendar pattern with cut-off and pay dates |
+| `default_currency` | char(3) | ✅ | ISO 4217 | Default currency for this calendar |
+| `metadata` | jsonb | ❌ | NULL | Additional flexible data |
+| `created_at` | timestamp | ✅ | Auto-generated | Creation timestamp |
+| `updated_at` | timestamp | ❌ | Auto-updated | Last modification timestamp |
+
+**Attribute Details**:
+
+#### `calendar_json`
+
+**Type**: jsonb  
+**Purpose**: Stores the calendar pattern defining cut-off dates, pay dates, and processing windows
+
+**Structure**:
+```yaml
+calendar_json:
+  pattern_type: "MONTHLY" | "BIWEEKLY" | "CUSTOM"
+  cut_off_day: 25              # Day of month for time cut-off
+  pay_day: 5                   # Day of next month for payment
+  processing_days: 7           # Days between cut-off and pay
+  exceptions:                  # Holiday/weekend adjustments
+    - date: "2025-01-01"
+      adjusted_to: "2024-12-29"
+      reason: "New Year Holiday"
+```
+
+**Validation**:
+- `cut_off_day` must be between 1-31
+- `pay_day` must be between 1-31
+- `processing_days` must be > 0
+- For BIWEEKLY: must specify start_date and day_of_week
+
+**Example**:
+```json
+{
+  "pattern_type": "MONTHLY",
+  "cut_off_day": 25,
+  "pay_day": 5,
+  "processing_days": 7,
+  "exceptions": [
+    {
+      "date": "2025-12-25",
+      "adjusted_to": "2025-12-24",
+      "reason": "Christmas"
+    }
+  ]
+}
+```
+
+---
+
+### Relationships
+
+| Relationship | Target | Cardinality | Foreign Key | Description |
+|--------------|--------|-------------|-------------|-------------|
+| `legal_entity` | Core.LegalEntity | N:1 | `legal_entity_id` | Owning legal entity |
+| `market` | Core.TalentMarket | N:1 | `market_id` | Talent market for localization |
+| `frequency` | [PayFrequency](#pay-frequency) | N:1 | `frequency_code` | Payroll frequency pattern |
+| `pay_groups` | [PayGroup](#pay-group) | 1:N | (inverse) | Pay groups using this calendar |
+| `payroll_batches` | PayrollBatch | 1:N | (inverse) | Payroll runs for this calendar |
+
+**Relationship Notes**:
+- CASCADE on legal_entity delete (calendar belongs to entity)
+- RESTRICT on frequency delete (must not delete referenced frequencies)
+- One calendar can serve multiple pay groups
+
+---
+
+### Lifecycle States
+
+```mermaid
+stateDiagram-v2
+    [*] --> DRAFT: Create
+    DRAFT --> ACTIVE: Activate
+    ACTIVE --> INACTIVE: Deactivate
+    INACTIVE --> ACTIVE: Reactivate
+    ACTIVE --> ARCHIVED: Archive
+    ARCHIVED --> [*]
+```
+
+**State Descriptions**:
+- **DRAFT**: Calendar being configured, not yet used for payroll
+- **ACTIVE**: Currently in use for payroll processing
+- **INACTIVE**: Temporarily disabled (e.g., during transition)
+- **ARCHIVED**: Permanently retired, kept for historical records
+
+**State Transition Rules**:
+- Cannot activate calendar without valid calendar_json
+- Cannot deactivate calendar with active payroll runs
+- Cannot delete calendar (must archive instead for audit trail)
+
+---
+
+### Business Rules
+
+| Rule ID | Rule Name | Description | Validation Trigger |
+|---------|-----------|-------------|----------------------|
+| BR-PR-CAL-001 | Unique Calendar per Entity-Market | Only one active calendar per legal_entity_id + market_id + frequency_code combination | On Create/Update |
+| BR-PR-CAL-002 | Valid Calendar Pattern | calendar_json must contain valid cut_off_day, pay_day, and processing_days | On Create/Update |
+| BR-PR-CAL-003 | Currency Match | default_currency must match legal entity's operating currency or be explicitly approved | On Create |
+| BR-PR-CAL-004 | SCD2 Versioning | When updating active calendar, create new version with new effective_start_date | On Update |
+
+**Rule Details**:
+
+#### BR-PR-CAL-001: Unique Calendar per Entity-Market
+
+**Condition**: When creating or activating a calendar  
+**Logic**: System checks if another ACTIVE calendar exists with same legal_entity_id, market_id, and frequency_code  
+**Error Message**: "An active {frequency} calendar already exists for this legal entity and market. Please deactivate the existing calendar first."  
+**Example**:
+```yaml
+Scenario: Attempt to create duplicate monthly calendar
+  Given: Active calendar VN_MONTHLY_2025 exists for VNG Corp + Vietnam + MONTHLY
+  When: User creates new calendar VN_MONTHLY_2025_V2 with same entity/market/frequency
+  Then: System rejects with error
+  Error: "An active MONTHLY calendar already exists for VNG Corp - Vietnam"
+```
+
+---
+
+### Data Validation Rules
+
+| Field | Validation | Error Message |
+|-------|------------|---------------|
+| `code` | Unique, 3-50 chars, alphanumeric+underscore+hyphen | "Calendar code must be unique and 3-50 characters" |
+| `default_currency` | Must be valid ISO 4217 currency code | "Invalid currency code. Must be 3-letter ISO 4217 code" |
+| `calendar_json.cut_off_day` | Integer 1-31 | "Cut-off day must be between 1 and 31" |
+| `calendar_json.pay_day` | Integer 1-31 | "Pay day must be between 1 and 31" |
+| `calendar_json.processing_days` | Integer > 0 | "Processing days must be greater than 0" |
+
+---
+
+### Constraints
+
+| Constraint Name | Type | Columns | Description |
+|-----------------|------|---------|-------------|
+| `pk_pay_calendar` | PRIMARY KEY | `id` | Primary key constraint |
+| `uk_pay_calendar_code` | UNIQUE | `code` | Business code must be unique |
+| `fk_pay_calendar_legal_entity` | FOREIGN KEY | `legal_entity_id` → `legal_entity.id` | Reference to legal entity |
+| `fk_pay_calendar_market` | FOREIGN KEY | `market_id` → `talent_market.id` | Reference to talent market |
+| `fk_pay_calendar_frequency` | FOREIGN KEY | `frequency_code` → `pay_frequency.code` | Reference to frequency |
+| `ck_pay_calendar_currency` | CHECK | `LENGTH(default_currency) = 3` | Currency must be 3 characters |
+
+---
+
+### Indexes
+
+| Index Name | Columns | Unique | Type | Purpose |
+|------------|---------|--------|------|---------|
+| `idx_pay_calendar_code` | `code` | ✅ | B-tree | Fast lookup by business code |
+| `idx_pay_calendar_entity_market` | `legal_entity_id, market_id, frequency_code` | ❌ | B-tree | Find calendars by entity/market |
+| `idx_pay_calendar_dates` | `effective_start_date, effective_end_date` | ❌ | B-tree | SCD2 temporal queries |
+| `idx_pay_calendar_current` | `is_current_flag` WHERE `is_current_flag = true` | ❌ | Partial | Fast current version lookup |
+
+---
+
+### Audit Fields
+
+**Standard Audit** (all entities):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `created_at` | timestamp | When record was created |
+| `updated_at` | timestamp | Last modification time |
+
+**SCD Type 2** (applicable):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `effective_start_date` | date | When this version becomes effective |
+| `effective_end_date` | date | When this version expires (NULL = current) |
+| `is_current_flag` | boolean | `true` for current version, `false` for historical |
+
+**SCD2 Notes**:
+- Only one record has `is_current_flag = true` per business key (`code`)
+- Temporal queries use `effective_start_date` and `effective_end_date`
+- Updates create new version, old version's `is_current_flag` set to `false`
+- Never physically delete SCD2 records
+
+---
+
+### Examples
+
+#### Example 1: Vietnam Monthly Calendar
+
+**Description**: Standard monthly payroll calendar for Vietnam operations
+
+```yaml
+PayCalendar:
+  id: "550e8400-e29b-41d4-a716-446655440000"
+  code: "VN_MONTHLY_2025"
+  name: "Vietnam Monthly Payroll 2025"
+  description: "Monthly payroll for VNG Corp Vietnam employees"
+  legal_entity_id: "vng-corp-uuid"
+  market_id: "vietnam-market-uuid"
+  frequency_code: "MONTHLY"
+  default_currency: "VND"
+  calendar_json:
+    pattern_type: "MONTHLY"
+    cut_off_day: 25
+    pay_day: 5
+    processing_days: 7
+    exceptions:
+      - date: "2025-01-01"
+        adjusted_to: "2024-12-30"
+        reason: "New Year Holiday"
+      - date: "2025-04-30"
+        adjusted_to: "2025-04-29"
+        reason: "Reunification Day"
+  effective_start_date: "2025-01-01"
+  effective_end_date: null
+  is_current_flag: true
+  created_at: "2024-12-01T10:00:00Z"
+```
+
+**Business Context**: Cut-off on 25th of month, payment on 5th of next month, giving 7 business days for processing
+
+#### Example 2: Singapore Bi-Weekly Calendar
+
+**Description**: Bi-weekly payroll calendar for Singapore operations
+
+```yaml
+PayCalendar:
+  code: "SG_BIWEEKLY_2025"
+  name: "Singapore Bi-Weekly Payroll 2025"
+  legal_entity_id: "vng-singapore-uuid"
+  market_id: "singapore-market-uuid"
+  frequency_code: "BIWEEKLY"
+  default_currency: "SGD"
+  calendar_json:
+    pattern_type: "BIWEEKLY"
+    start_date: "2025-01-06"
+    day_of_week: "FRIDAY"
+    cut_off_day_offset: -3
+    pay_day_offset: 4
+    processing_days: 5
+  effective_start_date: "2025-01-01"
+  is_current_flag: true
+```
+
+**Business Context**: Bi-weekly cycle starting Monday, cut-off Friday, payment following Tuesday
+
+---
+
+### Best Practices
+
+✅ **DO**:
+- Use descriptive calendar codes including country, frequency, and year
+- Document all holiday exceptions in calendar_json
+- Test calendar pattern before activating for production
+- Create new SCD2 version when changing calendar pattern mid-year
+- Align default_currency with legal entity's primary currency
+
+❌ **DON'T**:
+- Don't change calendar pattern during active payroll period
+- Don't delete calendars (archive instead for audit trail)
+- Don't reuse calendar codes across different legal entities
+- Don't set processing_days < 3 (insufficient time for review)
+- Don't forget to account for weekends and holidays in exceptions
+
+**Performance Tips**:
+- Use indexed fields (code, legal_entity_id) in WHERE clauses
+- Cache active calendar configurations in application layer
+- Pre-calculate payroll periods for current year
+
+**Security Considerations**:
+- Restrict calendar modification to Payroll Administrators
+- Audit all calendar changes (SCD2 provides automatic history)
+- Require approval workflow for calendar pattern changes
+
+---
+
+### Related Entities
+
+**Parent/Upstream**:
+- Core.LegalEntity - Owns the calendar
+- Core.TalentMarket - Provides localization context
+- [PayFrequency](#pay-frequency) - Defines frequency pattern
+
+**Children/Downstream**:
+- [PayGroup](#pay-group) - Uses calendar for payroll processing
+- PayrollBatch - Payroll runs scheduled by calendar
+
+**Integration Points**:
+- Time & Attendance (TA) - Cut-off dates determine time entry deadlines
+- Core Module (CO) - Legal entity and market references
+
+---
+
+### Related Workflows
+
+- [WF-PR-CONFIG-001](../workflows/config-workflows.md#wf-pr-config-001) - Pay Calendar Setup (CREATE calendar)
+- [WF-PR-PROC-001](../workflows/processing-workflows.md#wf-pr-proc-001) - Standard Payroll Run (USES calendar for scheduling)
+
+**Workflow Context**: PayCalendar is created during initial payroll setup and referenced by every payroll run to determine cut-off and pay dates.
+
+---
+
+### Migration Notes
+
+**Version History**:
+- **v2.0 (2025-07-01)**: Added `default_currency` field for multi-currency support
+- **v2.0 (2025-07-01)**: Added `market_id` for talent market localization
+- **v1.0 (2024-01-01)**: Initial calendar definition
+
+**Deprecated Fields**:
+- None
+
+**Breaking Changes**:
+- v2.0: `default_currency` is now required (previously optional)
+- v2.0: `market_id` is now required (previously not present)
+
+---
+
+## Entity: PayGroup {#pay-group}
+
+**Classification**: CORE_ENTITY  
+
+**Definition**: Defines a group of employees processed together in the same payroll run with shared calendar and currency
+
+**Purpose**: Organizes employees into logical payroll processing groups for efficient batch processing and reporting
+
+**Key Characteristics**:
+- Links employees to specific payroll calendar
+- Defines currency for the group
+- Optional bank account for payment processing
+- SCD Type 2 for historical tracking
+- Can be organized by department, location, or business unit
+- Supports payroll profile assignment for policy management
+
+---
+
+### Attributes
+
+| Attribute | Type | Required | Constraints | Description |
+|-----------|------|----------|-------------|-------------|
+| `id` | UUID | ✅ | PK | Primary identifier |
+| `code` | varchar(50) | ✅ | UNIQUE, NOT NULL | Unique pay group code |
+| `name` | varchar(100) | ✅ | NOT NULL | Pay group display name |
+| `legal_entity_id` | UUID | ✅ | FK → Core.LegalEntity | Owning legal entity |
+| `market_id` | UUID | ✅ | FK → Core.TalentMarket | Talent market |
+| `calendar_id` | UUID | ✅ | FK → [PayCalendar](#pay-calendar) | Payroll calendar |
+| `currency_code` | char(3) | ✅ | ISO 4217 | Payment currency |
+| `bank_account_id` | UUID | ❌ | FK → BankAccount | Default bank account for payments |
+| `metadata` | jsonb | ❌ | NULL | Additional flexible data |
+| `created_at` | timestamp | ✅ | Auto-generated | Creation timestamp |
+| `updated_at` | timestamp | ❌ | Auto-updated | Last modification timestamp |
+
+---
+
+### Relationships
+
+| Relationship | Target | Cardinality | Foreign Key | Description |
+|--------------|--------|-------------|-------------|-------------|
+| `legal_entity` | Core.LegalEntity | N:1 | `legal_entity_id` | Owning legal entity |
+| `market` | Core.TalentMarket | N:1 | `market_id` | Talent market |
+| `calendar` | [PayCalendar](#pay-calendar) | N:1 | `calendar_id` | Payroll calendar |
+| `bank_account` | BankAccount | N:1 | `bank_account_id` | Default bank account |
+| `employees` | Core.Employee | 1:N | (inverse via assignment) | Employees in this group |
+| `payroll_batches` | PayrollBatch | 1:N | (inverse) | Payroll runs for this group |
+
+**Relationship Notes**:
+- Multiple pay groups can share the same calendar
+- currency_code should match calendar's default_currency (can differ for special cases)
+- bank_account_id is optional (can be specified at payment batch level)
+
+---
+
+### Business Rules
+
+| Rule ID | Rule Name | Description | Validation Trigger |
+|---------|-----------|-------------|----------------------|
+| BR-PR-GRP-001 | Currency Consistency | Pay group currency should match calendar's default currency unless explicitly approved | On Create/Update |
+| BR-PR-GRP-002 | Entity-Calendar Match | Pay group's legal_entity_id must match calendar's legal_entity_id | On Create/Update |
+| BR-PR-GRP-003 | Active Calendar Required | Cannot assign inactive calendar to pay group | On Create/Update |
+
+---
+
+### Examples
+
+#### Example 1: Vietnam Office Workers
+
+```yaml
+PayGroup:
+  code: "VN_OFFICE_MONTHLY"
+  name: "Vietnam Office Workers - Monthly"
+  legal_entity_id: "vng-corp-uuid"
+  market_id: "vietnam-market-uuid"
+  calendar_id: "vn-monthly-calendar-uuid"
+  currency_code: "VND"
+  bank_account_id: "vng-vietcombank-uuid"
+  effective_start_date: "2025-01-01"
+  is_current_flag: true
+```
+
+---
+
+### Best Practices
+
+✅ **DO**:
+- Group employees by similar pay characteristics (frequency, currency)
+- Use descriptive group codes indicating location and frequency
+- Align currency with calendar default currency
+
+❌ **DON'T**:
+- Don't create too many small groups (impacts processing efficiency)
+- Don't mix different currencies in same group
+- Don't change calendar mid-period
+
+---
+
+### Related Entities
+
+**Parent/Upstream**:
+- Core.LegalEntity - Owns the pay group
+- [PayCalendar](#pay-calendar) - Defines processing schedule
+- BankAccount - Default payment account
+
+**Children/Downstream**:
+- Core.Employee - Assigned to pay group
+- PayrollBatch - Payroll runs for group
+
+---
+
+### Related Workflows
+
+- [WF-PR-CONFIG-002](../workflows/config-workflows.md#wf-pr-config-002) - Pay Group Configuration
+- [WF-PR-PROC-001](../workflows/processing-workflows.md#wf-pr-proc-001) - Standard Payroll Run
+
+---
+
+## References
+
+- **Workflow Catalog**: [../workflows/config-workflows.md](../workflows/config-workflows.md)
+- **Glossary**: [../glossary-config.md](../glossary-config.md) (quick reference)
+- **Concept Guides**: [../../01-concept/02-config/](../../01-concept/02-config/)
+- **Database Schema**: [../../03-design/5.Payroll.V3.dbml](../../03-design/5.Payroll.V3.dbml)
+- **API Specification**: [../../02-spec/02-api-specification.md](../../02-spec/02-api-specification.md)
+
+---
+
+**Document Version**: 1.0 (Part 1 of 5)  
+**Last Review**: 2025-12-23  
+**Reviewed By**: xTalent Documentation Team
+
+> [!NOTE]
+> This document contains 3 of 13 CONFIG entities. Remaining entities (PayElement, BalanceDefinition, CostingRule, StatutoryRule, GLMapping, ValidationRule, PayslipTemplate, PayFormula, PayProfile, PayProfileMap) will be documented in subsequent parts.
+## Entity: PayElement {#pay-element}
+
+**Classification**: CORE_ENTITY  
+
+**Definition**: Defines payroll elements including earnings, deductions, and taxes that can be calculated and applied during payroll processing
+
+**Purpose**: Provides flexible configuration for all types of payroll compensation components with calculation formulas and tax treatment
+
+**Key Characteristics**:
+- Supports three classifications: EARNING, DEDUCTION, TAX
+- Can have embedded calculation formulas or reference external formulas
+- Links to statutory rules for compliance
+- SCD Type 2 for historical tracking of element changes
+- Supports both amount-based and hours-based elements
+- Priority ordering for calculation sequence
+- Tax treatment flags (taxable, pre-tax)
+
+---
+
+### Attributes
+
+| Attribute | Type | Required | Constraints | Description |
+|-----------|------|----------|-------------|-------------|
+| `id` | UUID | ✅ | PK | Primary identifier |
+| `code` | varchar(50) | ✅ | UNIQUE, NOT NULL | Unique element code (e.g., BASIC_SAL, OT_1_5, TAX_PIT) |
+| `name` | varchar(100) | ✅ | NOT NULL | Element display name |
+| `classification` | varchar(35) | ✅ | EARNING \| DEDUCTION \| TAX | Element type classification |
+| `unit` | varchar(10) | ✅ | AMOUNT \| HOURS | Unit of measurement |
+| `description` | text | ❌ | NULL | Detailed description of element purpose |
+| `input_required` | boolean | ✅ | Default: false | Whether input value is required for calculation |
+| `formula_json` | jsonb | ❌ | NULL | Embedded calculation formula |
+| `priority_order` | smallint | ❌ | NULL | Calculation sequence priority (lower = earlier) |
+| `taxable_flag` | boolean | ✅ | Default: true | Whether element is subject to tax |
+| `pre_tax_flag` | boolean | ✅ | Default: true | Whether element is calculated before tax |
+| `statutory_rule_id` | UUID | ❌ | FK → [StatutoryRule](#statutory-rule) | Linked statutory rule |
+| `gl_account_code` | varchar(50) | ❌ | NULL | Default GL account code |
+| `metadata` | jsonb | ❌ | NULL | Additional flexible data |
+| `created_at` | timestamp | ✅ | Auto-generated | Creation timestamp |
+| `updated_at` | timestamp | ❌ | Auto-updated | Last modification timestamp |
+
+**Attribute Details**:
+
+#### `formula_json`
+
+**Type**: jsonb  
+**Purpose**: Stores calculation formula for the element
+
+**Structure**:
+```yaml
+formula_json:
+  formula_type: "FIXED" | "RATE" | "FORMULA" | "SCRIPT"
+  formula_expression: "[calculation logic]"
+  inputs:
+    - input_code: "RATE"
+      input_type: "NUMERIC"
+      default_value: 0
+    - input_code: "HOURS"
+      input_type: "NUMERIC"
+      default_value: 0
+  conditions:
+    - condition: "[when to apply]"
+      result: "[calculation if true]"
+```
+
+**Validation**:
+- formula_type must be one of: FIXED, RATE, FORMULA, SCRIPT
+- For FORMULA type: formula_expression is required
+- inputs array must define all required inputs
+
+**Example - Overtime 1.5x**:
+```json
+{
+  "formula_type": "RATE",
+  "formula_expression": "BASIC_HOURLY_RATE * 1.5 * OT_HOURS",
+  "inputs": [
+    {
+      "input_code": "BASIC_HOURLY_RATE",
+      "input_type": "NUMERIC",
+      "source": "EMPLOYEE_MASTER"
+    },
+    {
+      "input_code": "OT_HOURS",
+      "input_type": "NUMERIC",
+      "source": "TIME_ATTENDANCE"
+    }
+  ]
+}
+```
+
+---
+
+### Relationships
+
+| Relationship | Target | Cardinality | Foreign Key | Description |
+|--------------|--------|-------------|-------------|-------------|
+| `statutory_rule` | [StatutoryRule](#statutory-rule) | N:1 | `statutory_rule_id` | Linked statutory compliance rule |
+| `gl_mappings` | [GLMapping](#gl-mapping) | 1:N | (inverse) | GL account mappings for this element |
+| `benefit_links` | [PayBenefitLink](#pay-benefit-link) | 1:N | (inverse) | Links to benefit policies |
+| `input_values` | InputValue | 1:N | (inverse) | Input values for payroll runs |
+| `results` | PayrollResult | 1:N | (inverse) | Calculated results in payroll runs |
+
+**Relationship Notes**:
+- statutory_rule_id is optional (only for elements requiring statutory compliance)
+- gl_account_code provides default, can be overridden by GLMapping
+- Elements can be referenced by multiple formulas
+
+---
+
+### Lifecycle States
+
+```mermaid
+stateDiagram-v2
+    [*] --> DRAFT: Create
+    DRAFT --> ACTIVE: Activate
+    ACTIVE --> INACTIVE: Deactivate
+    INACTIVE --> ACTIVE: Reactivate
+    ACTIVE --> ARCHIVED: Archive
+    ARCHIVED --> [*]
+```
+
+**State Descriptions**:
+- **DRAFT**: Element being configured, not yet available for payroll
+- **ACTIVE**: Currently available for use in payroll processing
+- **INACTIVE**: Temporarily disabled (e.g., seasonal element)
+- **ARCHIVED**: Permanently retired, kept for historical records
+
+**State Transition Rules**:
+- Cannot activate element without valid formula (if formula_json is used)
+- Cannot deactivate element if referenced by active payroll runs
+- Cannot delete element (must archive instead for audit trail)
+
+---
+
+### Business Rules
+
+| Rule ID | Rule Name | Description | Validation Trigger |
+|---------|-----------|-------------|----------------------|
+| BR-PR-ELEM-001 | Unique Element Code | Element code must be unique across all elements | On Create/Update |
+| BR-PR-ELEM-002 | Valid Formula | If formula_json is provided, it must be valid and parseable | On Create/Update |
+| BR-PR-ELEM-003 | Tax Element Rules | Elements with classification=TAX must have pre_tax_flag=false | On Create/Update |
+| BR-PR-ELEM-004 | Priority Ordering | Elements with priority_order must be unique within same classification | On Create/Update |
+| BR-PR-ELEM-005 | Statutory Rule Match | If statutory_rule_id is set, rule must be active and match element's market | On Create/Update |
+
+**Rule Details**:
+
+#### BR-PR-ELEM-001: Unique Element Code
+
+**Condition**: When creating or updating an element  
+**Logic**: System checks if another element exists with the same code  
+**Error Message**: "Element code '{code}' already exists. Please use a unique code."  
+**Example**:
+```yaml
+Scenario: Attempt to create duplicate element
+  Given: Element BASIC_SAL exists
+  When: User creates new element with code BASIC_SAL
+  Then: System rejects with error
+  Error: "Element code 'BASIC_SAL' already exists. Please use a unique code."
+```
+
+#### BR-PR-ELEM-003: Tax Element Rules
+
+**Condition**: When classification is set to TAX  
+**Logic**: System validates that pre_tax_flag is false and taxable_flag is false  
+**Error Message**: "Tax elements must have pre_tax_flag=false and taxable_flag=false"  
+**Example**:
+```yaml
+Scenario: Create tax element with correct flags
+  Given: User creates element with classification=TAX
+  When: pre_tax_flag=true
+  Then: System rejects with error
+  Error: "Tax elements must have pre_tax_flag=false and taxable_flag=false"
+```
+
+---
+
+### Data Validation Rules
+
+| Field | Validation | Error Message |
+|-------|------------|---------------|
+| `code` | Unique, 3-50 chars, alphanumeric+underscore | "Element code must be unique and 3-50 characters" |
+| `classification` | Must be EARNING, DEDUCTION, or TAX | "Invalid classification. Must be EARNING, DEDUCTION, or TAX" |
+| `unit` | Must be AMOUNT or HOURS | "Invalid unit. Must be AMOUNT or HOURS" |
+| `priority_order` | Integer 1-999 | "Priority order must be between 1 and 999" |
+| `formula_json` | Valid JSON structure | "Invalid formula JSON structure" |
+
+---
+
+### Constraints
+
+| Constraint Name | Type | Columns | Description |
+|-----------------|------|---------|-------------|
+| `pk_pay_element` | PRIMARY KEY | `id` | Primary key constraint |
+| `uk_pay_element_code` | UNIQUE | `code` | Business code must be unique |
+| `fk_pay_element_statutory_rule` | FOREIGN KEY | `statutory_rule_id` → `statutory_rule.id` | Reference to statutory rule |
+| `ck_pay_element_classification` | CHECK | `classification IN ('EARNING','DEDUCTION','TAX')` | Valid classification |
+| `ck_pay_element_unit` | CHECK | `unit IN ('AMOUNT','HOURS')` | Valid unit |
+
+---
+
+### Indexes
+
+| Index Name | Columns | Unique | Type | Purpose |
+|------------|---------|--------|------|---------|
+| `idx_pay_element_code` | `code` | ✅ | B-tree | Fast lookup by business code |
+| `idx_pay_element_classification` | `classification` | ❌ | B-tree | Filter by element type |
+| `idx_pay_element_priority` | `priority_order` | ❌ | B-tree | Calculation sequence ordering |
+| `idx_pay_element_dates` | `effective_start_date, effective_end_date` | ❌ | B-tree | SCD2 temporal queries |
+| `idx_pay_element_current` | `is_current_flag` WHERE `is_current_flag = true` | ❌ | Partial | Fast current version lookup |
+
+---
+
+### Audit Fields
+
+**Standard Audit** (all entities):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `created_at` | timestamp | When record was created |
+| `updated_at` | timestamp | Last modification time |
+
+**SCD Type 2** (applicable):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `effective_start_date` | date | When this version becomes effective |
+| `effective_end_date` | date | When this version expires (NULL = current) |
+| `is_current_flag` | boolean | `true` for current version, `false` for historical |
+
+**SCD2 Notes**:
+- Only one record has `is_current_flag = true` per business key (`code`)
+- Temporal queries use `effective_start_date` and `effective_end_date`
+- Updates create new version, old version's `is_current_flag` set to `false`
+- Never physically delete SCD2 records
+
+---
+
+### Examples
+
+#### Example 1: Basic Salary (Fixed Amount)
+
+**Description**: Monthly basic salary element
+
+```yaml
+PayElement:
+  id: "elem-basic-sal-uuid"
+  code: "BASIC_SAL"
+  name: "Basic Salary"
+  classification: "EARNING"
+  unit: "AMOUNT"
+  description: "Monthly basic salary"
+  input_required: false
+  formula_json:
+    formula_type: "FIXED"
+    formula_expression: "EMPLOYEE.BASIC_SALARY"
+  priority_order: 10
+  taxable_flag: true
+  pre_tax_flag: true
+  statutory_rule_id: null
+  gl_account_code: "5100"
+  effective_start_date: "2025-01-01"
+  is_current_flag: true
+```
+
+**Business Context**: Basic salary is typically the first element calculated, pulled from employee master data
+
+#### Example 2: Overtime 1.5x (Calculated)
+
+**Description**: Overtime at 1.5x rate
+
+```yaml
+PayElement:
+  code: "OT_1_5"
+  name: "Overtime 1.5x"
+  classification: "EARNING"
+  unit: "HOURS"
+  description: "Overtime hours at 1.5x hourly rate"
+  input_required: true
+  formula_json:
+    formula_type: "RATE"
+    formula_expression: "BASIC_HOURLY_RATE * 1.5 * OT_HOURS"
+    inputs:
+      - input_code: "OT_HOURS"
+        input_type: "NUMERIC"
+        source: "TIME_ATTENDANCE"
+        required: true
+  priority_order: 20
+  taxable_flag: true
+  pre_tax_flag: true
+  gl_account_code: "5110"
+  effective_start_date: "2025-01-01"
+  is_current_flag: true
+```
+
+**Business Context**: Requires OT hours input from Time & Attendance, calculated at 1.5x base hourly rate
+
+#### Example 3: Personal Income Tax (Statutory)
+
+**Description**: Vietnam Personal Income Tax
+
+```yaml
+PayElement:
+  code: "TAX_PIT_VN"
+  name: "Personal Income Tax (VN)"
+  classification: "TAX"
+  unit: "AMOUNT"
+  description: "Vietnam Personal Income Tax calculated per progressive tax brackets"
+  input_required: false
+  formula_json:
+    formula_type: "SCRIPT"
+    formula_expression: "CALL_STATUTORY_RULE('VN_PIT_2025')"
+  priority_order: 900
+  taxable_flag: false
+  pre_tax_flag: false
+  statutory_rule_id: "vn-pit-rule-uuid"
+  gl_account_code: "2200"
+  effective_start_date: "2025-01-01"
+  is_current_flag: true
+```
+
+**Business Context**: Tax elements calculated after all earnings and pre-tax deductions, using statutory rules
+
+#### Example 4: Social Insurance Deduction
+
+**Description**: Vietnam Social Insurance employee contribution
+
+```yaml
+PayElement:
+  code: "DEDUCT_SI_VN"
+  name: "Social Insurance (Employee)"
+  classification: "DEDUCTION"
+  unit: "AMOUNT"
+  description: "Employee contribution to Vietnam Social Insurance (8% of gross)"
+  input_required: false
+  formula_json:
+    formula_type: "FORMULA"
+    formula_expression: "GROSS_SALARY * 0.08"
+    conditions:
+      - condition: "GROSS_SALARY <= 29800000"
+        result: "GROSS_SALARY * 0.08"
+      - condition: "GROSS_SALARY > 29800000"
+        result: "29800000 * 0.08"
+  priority_order: 800
+  taxable_flag: false
+  pre_tax_flag: true
+  statutory_rule_id: "vn-si-rule-uuid"
+  gl_account_code: "2100"
+  effective_start_date: "2025-01-01"
+  is_current_flag: true
+```
+
+**Business Context**: Pre-tax deduction with statutory cap, calculated before PIT
+
+---
+
+### Best Practices
+
+✅ **DO**:
+- Use clear, descriptive element codes (BASIC_SAL, OT_1_5, not E001, E002)
+- Set appropriate priority_order to ensure correct calculation sequence
+- Document formula logic in description field
+- Use statutory_rule_id for compliance-driven elements
+- Test formulas thoroughly before activating
+- Create new SCD2 version when changing formula mid-year
+
+❌ **DON'T**:
+- Don't create duplicate elements for same purpose
+- Don't hardcode values that should be configurable
+- Don't skip priority_order for elements with dependencies
+- Don't change formula during active payroll period (create new version)
+- Don't delete elements referenced by historical payroll runs
+- Don't mix currency-specific logic in formulas (use market-specific rules)
+
+**Performance Tips**:
+- Use indexed fields (code, classification) in WHERE clauses
+- Cache active elements in application layer
+- Minimize complex formula_json (use external formulas for complex logic)
+- Batch element lookups when processing payroll
+
+**Security Considerations**:
+- Restrict element modification to Payroll Administrators
+- Audit all formula changes (SCD2 provides automatic history)
+- Validate formula_json to prevent injection attacks
+- Encrypt sensitive element configurations
+
+---
+
+### Related Entities
+
+**Parent/Upstream**:
+- [StatutoryRule](#statutory-rule) - Provides compliance rules
+- [PayFormula](#pay-formula) - Reusable calculation formulas
+
+**Children/Downstream**:
+- [GLMapping](#gl-mapping) - GL account mappings
+- [PayBenefitLink](#pay-benefit-link) - Benefit policy links
+- InputValue - Input values for payroll runs
+- PayrollResult - Calculated results
+
+**Peers/Related**:
+- [BalanceDefinition](#balance-definition) - Balances that accumulate element results
+
+**Integration Points**:
+- Time & Attendance (TA) - Provides hours input for time-based elements
+- Total Rewards (TR) - Compensation and benefits configuration
+- Accounting/GL - GL account mapping for costing
+
+---
+
+### Related Workflows
+
+- [WF-PR-CONFIG-003](../workflows/config-workflows.md#wf-pr-config-003) - Pay Element Management (CREATE/UPDATE element)
+- [WF-PR-CONFIG-004](../workflows/config-workflows.md#wf-pr-config-004) - Formula & Rule Configuration (CONFIGURE formula)
+- [WF-PR-PROC-001](../workflows/processing-workflows.md#wf-pr-proc-001) - Standard Payroll Run (USES elements for calculation)
+
+**Workflow Context**: PayElement is configured during payroll setup and referenced during every payroll calculation. Elements are processed in priority_order sequence.
+
+---
+
+### Migration Notes
+
+**Version History**:
+- **v2.0 (2025-07-01)**: Added `statutory_rule_id` for compliance linkage
+- **v2.0 (2025-07-01)**: Added `gl_account_code` for default GL mapping
+- **v2.0 (2025-07-01)**: Implemented SCD Type 2 for historical tracking
+- **v1.0 (2024-01-01)**: Initial element definition
+
+**Deprecated Fields**:
+- None
+
+**Breaking Changes**:
+- v2.0: SCD2 fields now required (effective_start_date, effective_end_date, is_current_flag)
+
+---
+## Entity: BalanceDefinition {#balance-definition}
+
+**Classification**: CORE_ENTITY  
+
+**Definition**: Defines payroll balance accumulators (gross, net, YTD, QTD) that track cumulative values across payroll periods
+
+**Purpose**: Provides configurable balance definitions for tracking cumulative payroll amounts over different time periods
+
+**Key Characteristics**:
+- Supports multiple balance types: RUN (single run), QTD (quarter-to-date), YTD (year-to-date), LTD (life-to-date)
+- Can have calculation formulas to derive balance values
+- Links to reset frequency for periodic balances
+- SCD Type 2 for historical tracking
+- Used for reporting and compliance (e.g., YTD income for tax)
+
+---
+
+### Attributes
+
+| Attribute | Type | Required | Constraints | Description |
+|-----------|------|----------|-------------|-------------|
+| `id` | UUID | ✅ | PK | Primary identifier |
+| `code` | varchar(50) | ✅ | UNIQUE, NOT NULL | Unique balance code (e.g., GROSS, NET, YTD_INC) |
+| `name` | varchar(100) | ✅ | NOT NULL | Balance display name |
+| `balance_type` | varchar(20) | ✅ | RUN \| QTD \| YTD \| LTD | Balance accumulation type |
+| `formula_json` | jsonb | ❌ | NULL | Formula to calculate balance |
+| `reset_freq_code` | varchar(20) | ❌ | FK → [PayFrequency](#pay-frequency) | Reset frequency for periodic balances |
+| `metadata` | jsonb | ❌ | NULL | Additional flexible data |
+| `created_at` | timestamp | ✅ | Auto-generated | Creation timestamp |
+| `updated_at` | timestamp | ❌ | Auto-updated | Last modification timestamp |
+
+**Attribute Details**:
+
+#### `formula_json`
+
+**Type**: jsonb  
+**Purpose**: Defines how the balance is calculated from element results
+
+**Structure**:
+```yaml
+formula_json:
+  calculation_type: "SUM" | "FORMULA"
+  elements:
+    - element_code: "BASIC_SAL"
+      operation: "ADD"
+    - element_code: "OT_1_5"
+      operation: "ADD"
+  formula_expression: "[custom formula]"
+```
+
+**Example - Gross Balance**:
+```json
+{
+  "calculation_type": "SUM",
+  "elements": [
+    {"element_code": "BASIC_SAL", "operation": "ADD"},
+    {"element_code": "OT_1_5", "operation": "ADD"},
+    {"element_code": "ALLOWANCE_*", "operation": "ADD", "pattern": true}
+  ],
+  "description": "Sum of all earning elements"
+}
+```
+
+---
+
+### Relationships
+
+| Relationship | Target | Cardinality | Foreign Key | Description |
+|--------------|--------|-------------|-------------|-------------|
+| `reset_frequency` | [PayFrequency](#pay-frequency) | N:1 | `reset_freq_code` | Frequency for balance reset |
+| `balance_values` | PayrollBalance | 1:N | (inverse) | Balance values in payroll runs |
+
+---
+
+### Business Rules
+
+| Rule ID | Rule Name | Description | Validation Trigger |
+|---------|-----------|-------------|----------------------|
+| BR-PR-BAL-001 | Unique Balance Code | Balance code must be unique | On Create/Update |
+| BR-PR-BAL-002 | Reset Frequency for Periodic | QTD/YTD balances must have reset_freq_code | On Create/Update |
+| BR-PR-BAL-003 | Valid Formula | If formula_json provided, must be valid | On Create/Update |
+
+---
+
+### Examples
+
+#### Example 1: Gross Pay (Run Balance)
+
+```yaml
+BalanceDefinition:
+  code: "GROSS"
+  name: "Gross Pay"
+  balance_type: "RUN"
+  formula_json:
+    calculation_type: "SUM"
+    elements:
+      - element_code: "BASIC_SAL"
+        operation: "ADD"
+      - element_code: "OT_*"
+        operation: "ADD"
+        pattern: true
+      - element_code: "ALLOWANCE_*"
+        operation: "ADD"
+        pattern: true
+  reset_freq_code: null
+  effective_start_date: "2025-01-01"
+  is_current_flag: true
+```
+
+**Business Context**: Gross pay is calculated each run, sum of all earnings
+
+#### Example 2: Year-to-Date Income
+
+```yaml
+BalanceDefinition:
+  code: "YTD_INC"
+  name: "Year-to-Date Income"
+  balance_type: "YTD"
+  formula_json:
+    calculation_type: "SUM"
+    elements:
+      - element_code: "GROSS"
+        operation: "ADD"
+  reset_freq_code: "MONTHLY"
+  effective_start_date: "2025-01-01"
+  is_current_flag: true
+```
+
+**Business Context**: YTD income resets annually, used for tax calculations
+
+---
+
+### Best Practices
+
+✅ **DO**:
+- Use standard balance codes (GROSS, NET, YTD_INC)
+- Set reset_freq_code for periodic balances
+- Test balance formulas with sample data
+
+❌ **DON'T**:
+- Don't create duplicate balances for same purpose
+- Don't change formula during active period
+- Don't delete balances referenced by reports
+
+---
+
+### Related Entities
+
+**Parent/Upstream**:
+- [PayFrequency](#pay-frequency) - Reset frequency
+- [PayElement](#pay-element) - Elements included in balance
+
+**Children/Downstream**:
+- PayrollBalance - Balance values
+
+---
+
+### Related Workflows
+
+- [WF-PR-CONFIG-004](../workflows/config-workflows.md#wf-pr-config-004) - Formula & Rule Configuration
+- [WF-PR-PROC-001](../workflows/processing-workflows.md#wf-pr-proc-001) - Standard Payroll Run
+
+---
+
+## Entity: CostingRule {#costing-rule}
+
+**Classification**: CORE_ENTITY  
+
+**Definition**: Defines rules for distributing payroll costs to GL accounts based on organizational hierarchy or employee attributes
+
+**Purpose**: Enables flexible GL costing distribution for payroll expenses across cost centers, departments, or projects
+
+**Key Characteristics**:
+- Supports multiple costing levels: Legal Entity, Business Unit, Employee, Element
+- Contains mapping logic in JSON for flexible distribution
+- SCD Type 2 for historical tracking
+- Can split costs by percentage or fixed amounts
+
+---
+
+### Attributes
+
+| Attribute | Type | Required | Constraints | Description |
+|-----------|------|----------|-------------|-------------|
+| `id` | UUID | ✅ | PK | Primary identifier |
+| `code` | varchar(50) | ✅ | UNIQUE, NOT NULL | Unique costing rule code |
+| `name` | varchar(100) | ✅ | NOT NULL | Costing rule display name |
+| `level_scope` | varchar(20) | ✅ | LE \| BU \| EMP \| ELEMENT | Costing level |
+| `mapping_json` | jsonb | ✅ | NOT NULL | Costing distribution logic |
+| `metadata` | jsonb | ❌ | NULL | Additional flexible data |
+| `created_at` | timestamp | ✅ | Auto-generated | Creation timestamp |
+| `updated_at` | timestamp | ❌ | Auto-updated | Last modification timestamp |
+
+**Attribute Details**:
+
+#### `mapping_json`
+
+**Type**: jsonb  
+**Purpose**: Defines how costs are distributed to GL accounts
+
+**Structure**:
+```yaml
+mapping_json:
+  distribution_type: "PERCENTAGE" | "FIXED" | "CONDITIONAL"
+  rules:
+    - condition: "[when to apply]"
+      gl_account: "[account code]"
+      percentage: 100
+      segment_mapping:
+        cost_center: "[source field]"
+        department: "[source field]"
+```
+
+**Example - Department-based Costing**:
+```json
+{
+  "distribution_type": "PERCENTAGE",
+  "rules": [
+    {
+      "condition": "EMPLOYEE.DEPARTMENT = 'IT'",
+      "gl_account": "6100-IT",
+      "percentage": 100,
+      "segment_mapping": {
+        "cost_center": "EMPLOYEE.COST_CENTER",
+        "department": "IT"
+      }
+    },
+    {
+      "condition": "EMPLOYEE.DEPARTMENT = 'SALES'",
+      "gl_account": "6100-SALES",
+      "percentage": 100,
+      "segment_mapping": {
+        "cost_center": "EMPLOYEE.COST_CENTER",
+        "department": "SALES"
+      }
+    }
+  ]
+}
+```
+
+---
+
+### Relationships
+
+| Relationship | Target | Cardinality | Foreign Key | Description |
+|--------------|--------|-------------|-------------|-------------|
+| `costing_entries` | Costing | 1:N | (inverse) | Costing entries generated |
+
+---
+
+### Business Rules
+
+| Rule ID | Rule Name | Description | Validation Trigger |
+|---------|-----------|-------------|----------------------|
+| BR-PR-COST-001 | Unique Costing Code | Costing rule code must be unique | On Create/Update |
+| BR-PR-COST-002 | Valid Mapping | mapping_json must be valid and parseable | On Create/Update |
+| BR-PR-COST-003 | Percentage Total | For PERCENTAGE type, total must equal 100% | On Create/Update |
+
+---
+
+### Examples
+
+#### Example 1: Simple Department Costing
+
+```yaml
+CostingRule:
+  code: "DEPT_COSTING"
+  name: "Department-based Costing"
+  level_scope: "EMP"
+  mapping_json:
+    distribution_type: "PERCENTAGE"
+    rules:
+      - condition: "DEFAULT"
+        gl_account: "6100-{DEPARTMENT}"
+        percentage: 100
+        segment_mapping:
+          cost_center: "EMPLOYEE.COST_CENTER"
+          department: "EMPLOYEE.DEPARTMENT"
+  effective_start_date: "2025-01-01"
+  is_current_flag: true
+```
+
+#### Example 2: Split Costing (Multiple Projects)
+
+```yaml
+CostingRule:
+  code: "PROJECT_SPLIT"
+  name: "Project Split Costing"
+  level_scope: "EMP"
+  mapping_json:
+    distribution_type: "PERCENTAGE"
+    rules:
+      - condition: "EMPLOYEE.PROJECT_A_ALLOCATION > 0"
+        gl_account: "6100-PROJ-A"
+        percentage: "EMPLOYEE.PROJECT_A_ALLOCATION"
+        segment_mapping:
+          project: "PROJECT_A"
+      - condition: "EMPLOYEE.PROJECT_B_ALLOCATION > 0"
+        gl_account: "6100-PROJ-B"
+        percentage: "EMPLOYEE.PROJECT_B_ALLOCATION"
+        segment_mapping:
+          project: "PROJECT_B"
+  effective_start_date: "2025-01-01"
+  is_current_flag: true
+```
+
+---
+
+### Best Practices
+
+✅ **DO**:
+- Validate percentage totals equal 100%
+- Use descriptive costing rule codes
+- Test costing logic before activating
+
+❌ **DON'T**:
+- Don't create overlapping costing rules
+- Don't hardcode GL accounts (use templates)
+- Don't change costing mid-period
+
+---
+
+### Related Entities
+
+**Children/Downstream**:
+- Costing - Generated costing entries
+
+---
+
+### Related Workflows
+
+- [WF-PR-CONFIG-004](../workflows/config-workflows.md#wf-pr-config-004) - Formula & Rule Configuration
+- [WF-PR-PROC-001](../workflows/processing-workflows.md#wf-pr-proc-001) - Standard Payroll Run
+
+---
+
+## Entity: StatutoryRule {#statutory-rule}
+
+**Classification**: CORE_ENTITY  
+
+**Definition**: Defines country/market-specific statutory compliance rules for payroll calculations (tax, social insurance, etc.)
+
+**Purpose**: Encapsulates statutory compliance logic that varies by country and changes over time
+
+**Key Characteristics**:
+- Market-specific rules (linked to TalentMarket)
+- Contains calculation formulas for statutory requirements
+- SCD Type 2 for historical tracking of rule changes
+- Valid from/to dates for rule applicability
+- Can be referenced by PayElements for automatic compliance
+
+---
+
+### Attributes
+
+| Attribute | Type | Required | Constraints | Description |
+|-----------|------|----------|-------------|-------------|
+| `id` | UUID | ✅ | PK | Primary identifier |
+| `code` | varchar(50) | ✅ | UNIQUE, NOT NULL | Unique rule code (e.g., VN_PIT_2025, VN_SI_2025) |
+| `name` | varchar(255) | ✅ | NOT NULL | Rule display name |
+| `market_id` | UUID | ✅ | FK → Core.TalentMarket | Applicable market |
+| `description` | text | ❌ | NULL | Detailed rule description |
+| `formula_json` | jsonb | ❌ | NULL | Calculation formula |
+| `valid_from` | date | ✅ | NOT NULL | Rule effective start date |
+| `valid_to` | date | ❌ | NULL | Rule expiration date |
+| `is_active` | boolean | ✅ | Default: true | Whether rule is active |
+| `metadata` | jsonb | ❌ | NULL | Additional flexible data |
+| `created_at` | timestamp | ✅ | Auto-generated | Creation timestamp |
+| `updated_at` | timestamp | ❌ | Auto-updated | Last modification timestamp |
+
+**Attribute Details**:
+
+#### `formula_json`
+
+**Type**: jsonb  
+**Purpose**: Stores statutory calculation logic (tax brackets, insurance rates, etc.)
+
+**Structure**:
+```yaml
+formula_json:
+  rule_type: "PROGRESSIVE_TAX" | "FLAT_RATE" | "TIERED"
+  brackets:
+    - min_amount: 0
+      max_amount: 5000000
+      rate: 0.05
+      deduction: 0
+    - min_amount: 5000001
+      max_amount: 10000000
+      rate: 0.10
+      deduction: 250000
+  parameters:
+    personal_deduction: 11000000
+    dependent_deduction: 4400000
+```
+
+**Example - Vietnam PIT 2025**:
+```json
+{
+  "rule_type": "PROGRESSIVE_TAX",
+  "brackets": [
+    {"min_amount": 0, "max_amount": 5000000, "rate": 0.05, "deduction": 0},
+    {"min_amount": 5000001, "max_amount": 10000000, "rate": 0.10, "deduction": 250000},
+    {"min_amount": 10000001, "max_amount": 18000000, "rate": 0.15, "deduction": 750000},
+    {"min_amount": 18000001, "max_amount": 32000000, "rate": 0.20, "deduction": 1650000},
+    {"min_amount": 32000001, "max_amount": 52000000, "rate": 0.25, "deduction": 3250000},
+    {"min_amount": 52000001, "max_amount": 80000000, "rate": 0.30, "deduction": 5850000},
+    {"min_amount": 80000001, "max_amount": null, "rate": 0.35, "deduction": 9850000}
+  ],
+  "parameters": {
+    "personal_deduction": 11000000,
+    "dependent_deduction": 4400000,
+    "insurance_deductible": true
+  }
+}
+```
+
+---
+
+### Relationships
+
+| Relationship | Target | Cardinality | Foreign Key | Description |
+|--------------|--------|-------------|-------------|-------------|
+| `market` | Core.TalentMarket | N:1 | `market_id` | Applicable market |
+| `elements` | [PayElement](#pay-element) | 1:N | (inverse) | Elements using this rule |
+
+---
+
+### Business Rules
+
+| Rule ID | Rule Name | Description | Validation Trigger |
+|---------|-----------|-------------|----------------------|
+| BR-PR-STAT-001 | Unique Rule per Market-Period | Only one active rule per market + code + valid period | On Create/Update |
+| BR-PR-STAT-002 | Valid Date Range | valid_to must be after valid_from | On Create/Update |
+| BR-PR-STAT-003 | Valid Formula | formula_json must be valid and parseable | On Create/Update |
+
+---
+
+### Examples
+
+#### Example 1: Vietnam Personal Income Tax 2025
+
+```yaml
+StatutoryRule:
+  code: "VN_PIT_2025"
+  name: "Vietnam Personal Income Tax 2025"
+  market_id: "vietnam-market-uuid"
+  description: "Progressive tax brackets for Vietnam PIT effective 2025"
+  formula_json:
+    rule_type: "PROGRESSIVE_TAX"
+    brackets:
+      - min_amount: 0
+        max_amount: 5000000
+        rate: 0.05
+      - min_amount: 5000001
+        max_amount: 10000000
+        rate: 0.10
+        deduction: 250000
+    parameters:
+      personal_deduction: 11000000
+      dependent_deduction: 4400000
+  valid_from: "2025-01-01"
+  valid_to: null
+  is_active: true
+  effective_start_date: "2025-01-01"
+  is_current_flag: true
+```
+
+#### Example 2: Vietnam Social Insurance 2025
+
+```yaml
+StatutoryRule:
+  code: "VN_SI_2025"
+  name: "Vietnam Social Insurance 2025"
+  market_id: "vietnam-market-uuid"
+  description: "Social insurance contribution rates and caps"
+  formula_json:
+    rule_type: "FLAT_RATE"
+    employee_rate: 0.08
+    employer_rate: 0.175
+    salary_cap: 29800000
+    minimum_salary: 4680000
+  valid_from: "2025-01-01"
+  valid_to: null
+  is_active: true
+  effective_start_date: "2025-01-01"
+  is_current_flag: true
+```
+
+---
+
+### Best Practices
+
+✅ **DO**:
+- Update rules annually based on statutory changes
+- Use clear rule codes with year (VN_PIT_2025)
+- Document all parameters in description
+- Test rules with sample calculations before activating
+
+❌ **DON'T**:
+- Don't delete historical rules (use SCD2 versioning)
+- Don't mix rules from different markets
+- Don't hardcode values that change annually
+- Don't activate rules before valid_from date
+
+---
+
+### Related Entities
+
+**Parent/Upstream**:
+- Core.TalentMarket - Applicable market
+
+**Children/Downstream**:
+- [PayElement](#pay-element) - Elements using this rule
+
+---
+
+### Related Workflows
+
+- [WF-PR-CONFIG-004](../workflows/config-workflows.md#wf-pr-config-004) - Formula & Rule Configuration
+- [WF-PR-PROC-001](../workflows/processing-workflows.md#wf-pr-proc-001) - Standard Payroll Run
+
+---
+
+### Migration Notes
+
+**Version History**:
+- **v2.0 (2025-07-01)**: Added `market_id` for market-specific rules
+- **v2.0 (2025-07-01)**: Implemented SCD Type 2 for historical tracking
+- **v1.0 (2024-01-01)**: Initial statutory rule definition
+
+---
+## Entity: GLMapping {#gl-mapping}
+
+**Classification**: CORE_ENTITY  
+
+**Definition**: Maps payroll elements to specific GL (General Ledger) accounts for accounting integration
+
+**Purpose**: Provides flexible GL account mapping that can override element-level defaults based on organizational structure or time periods
+
+**Key Characteristics**:
+- Links PayElement to specific GL account codes
+- SCD Type 2 for historical tracking of account changes
+- Can have different mappings for different time periods
+- Supports complex GL account structures with segments
+
+---
+
+### Attributes
+
+| Attribute | Type | Required | Constraints | Description |
+|-----------|------|----------|-------------|-------------|
+| `id` | UUID | ✅ | PK | Primary identifier |
+| `element_id` | UUID | ✅ | FK → [PayElement](#pay-element) | Payroll element |
+| `gl_account_code` | varchar(105) | ✅ | NOT NULL | GL account code |
+| `effective_start_date` | date | ✅ | NOT NULL | Mapping effective start |
+| `effective_end_date` | date | ❌ | NULL | Mapping expiration |
+| `is_current_flag` | boolean | ✅ | Default: true | Current version flag |
+| `is_active` | boolean | ✅ | Default: true | Whether mapping is active |
+| `created_at` | timestamp | ✅ | Auto-generated | Creation timestamp |
+| `updated_at` | timestamp | ❌ | Auto-updated | Last modification timestamp |
+
+---
+
+### Relationships
+
+| Relationship | Target | Cardinality | Foreign Key | Description |
+|--------------|--------|-------------|-------------|-------------|
+| `element` | [PayElement](#pay-element) | N:1 | `element_id` | Mapped payroll element |
+
+---
+
+### Business Rules
+
+| Rule ID | Rule Name | Description | Validation Trigger |
+|---------|-----------|-------------|----------------------|
+| BR-PR-GL-001 | Valid GL Account | gl_account_code must match chart of accounts | On Create/Update |
+| BR-PR-GL-002 | No Overlapping Periods | Cannot have overlapping effective periods for same element | On Create/Update |
+| BR-PR-GL-003 | Active Element Required | Cannot map to inactive element | On Create |
+
+---
+
+### Examples
+
+#### Example 1: Basic Salary GL Mapping
+
+```yaml
+GLMapping:
+  element_id: "basic-sal-element-uuid"
+  gl_account_code: "5100-PAYROLL-SALARY"
+  effective_start_date: "2025-01-01"
+  effective_end_date: null
+  is_current_flag: true
+  is_active: true
+```
+
+**Business Context**: Maps basic salary element to payroll salary GL account
+
+#### Example 2: Department-Specific Mapping
+
+```yaml
+GLMapping:
+  element_id: "basic-sal-element-uuid"
+  gl_account_code: "5100-IT-SALARY"
+  effective_start_date: "2025-01-01"
+  effective_end_date: null
+  is_current_flag: true
+  is_active: true
+```
+
+**Business Context**: Different GL account for IT department salaries
+
+---
+
+### Best Practices
+
+✅ **DO**:
+- Validate GL account codes against chart of accounts
+- Use SCD2 for account changes
+- Document mapping rationale in metadata
+
+❌ **DON'T**:
+- Don't create overlapping mappings
+- Don't delete mappings (inactivate instead)
+- Don't change GL accounts mid-period
+
+---
+
+### Related Entities
+
+**Parent/Upstream**:
+- [PayElement](#pay-element) - Mapped element
+
+**Integration Points**:
+- Accounting/GL System - GL account validation
+
+---
+
+### Related Workflows
+
+- [WF-PR-CONFIG-004](../workflows/config-workflows.md#wf-pr-config-004) - Formula & Rule Configuration
+- [WF-PR-PROC-006](../workflows/processing-workflows.md#wf-pr-proc-006) - Payroll Finalization (generates GL entries)
+
+---
+
+## Entity: ValidationRule {#validation-rule}
+
+**Classification**: CORE_ENTITY  
+
+**Definition**: Defines data validation rules for payroll processing to ensure data quality and compliance
+
+**Purpose**: Provides configurable validation logic that can be applied to payroll data before processing
+
+**Key Characteristics**:
+- Can target specific tables and fields
+- Contains rule expression for validation logic
+- SCD Type 2 for historical tracking
+- Returns custom error messages for violations
+- Can be activated/deactivated independently
+
+---
+
+### Attributes
+
+| Attribute | Type | Required | Constraints | Description |
+|-----------|------|----------|-------------|-------------|
+| `id` | UUID | ✅ | PK | Primary identifier |
+| `rule_code` | varchar(50) | ✅ | UNIQUE, NOT NULL | Unique validation rule code |
+| `rule_name` | varchar(255) | ✅ | NOT NULL | Rule display name |
+| `target_table` | varchar(50) | ✅ | NOT NULL | Target table for validation |
+| `field_name` | varchar(50) | ✅ | NOT NULL | Target field name |
+| `rule_expression` | text | ✅ | NOT NULL | Validation logic expression |
+| `error_message` | varchar(255) | ✅ | NOT NULL | Error message when rule violated |
+| `effective_start_date` | date | ✅ | NOT NULL | Rule effective start |
+| `effective_end_date` | date | ❌ | NULL | Rule expiration |
+| `is_current_flag` | boolean | ✅ | Default: true | Current version flag |
+| `is_active` | boolean | ✅ | Default: true | Whether rule is active |
+| `metadata` | jsonb | ❌ | NULL | Additional flexible data |
+| `created_at` | timestamp | ✅ | Auto-generated | Creation timestamp |
+| `updated_at` | timestamp | ❌ | Auto-updated | Last modification timestamp |
+
+---
+
+### Business Rules
+
+| Rule ID | Rule Name | Description | Validation Trigger |
+|---------|-----------|-------------|----------------------|
+| BR-PR-VAL-001 | Unique Rule Code | Validation rule code must be unique | On Create/Update |
+| BR-PR-VAL-002 | Valid Expression | rule_expression must be valid and parseable | On Create/Update |
+| BR-PR-VAL-003 | Valid Target | target_table and field_name must exist in schema | On Create/Update |
+
+---
+
+### Examples
+
+#### Example 1: Salary Range Validation
+
+```yaml
+ValidationRule:
+  rule_code: "VAL_SALARY_RANGE"
+  rule_name: "Salary Must Be Positive"
+  target_table: "pay_run.input_value"
+  field_name: "input_value"
+  rule_expression: "input_value > 0 AND input_value < 1000000000"
+  error_message: "Salary must be positive and less than 1 billion"
+  effective_start_date: "2025-01-01"
+  is_current_flag: true
+  is_active: true
+```
+
+#### Example 2: Date Range Validation
+
+```yaml
+ValidationRule:
+  rule_code: "VAL_PERIOD_DATES"
+  rule_name: "Period End After Start"
+  target_table: "pay_run.batch"
+  field_name: "period_end"
+  rule_expression: "period_end > period_start"
+  error_message: "Period end date must be after period start date"
+  effective_start_date: "2025-01-01"
+  is_current_flag: true
+  is_active: true
+```
+
+---
+
+### Best Practices
+
+✅ **DO**:
+- Write clear, specific error messages
+- Test validation rules before activating
+- Document rule purpose in metadata
+
+❌ **DON'T**:
+- Don't create overly complex expressions
+- Don't duplicate built-in database constraints
+- Don't activate rules without testing
+
+---
+
+### Related Workflows
+
+- [WF-PR-CONFIG-004](../workflows/config-workflows.md#wf-pr-config-004) - Formula & Rule Configuration
+- [WF-PR-PROC-005](../workflows/processing-workflows.md#wf-pr-proc-005) - Payroll Validation & Review
+
+---
+
+## Entity: PayslipTemplate {#payslip-template}
+
+**Classification**: CORE_ENTITY  
+
+**Definition**: Defines payslip template layouts and formatting for employee payslip generation
+
+**Purpose**: Provides customizable payslip templates that can be localized and branded per organization
+
+**Key Characteristics**:
+- Contains template layout in JSON format
+- Supports localization with locale_code
+- Can mark as default template
+- SCD Type 2 for historical tracking
+- Supports multiple output formats (PDF, HTML, etc.)
+
+---
+
+### Attributes
+
+| Attribute | Type | Required | Constraints | Description |
+|-----------|------|----------|-------------|-------------|
+| `id` | UUID | ✅ | PK | Primary identifier |
+| `code` | varchar(50) | ✅ | UNIQUE, NOT NULL | Unique template code |
+| `name` | varchar(255) | ✅ | NOT NULL | Template display name |
+| `locale_code` | varchar(10) | ❌ | NULL | Locale for localization (en-US, vi-VN) |
+| `template_json` | jsonb | ❌ | NULL | Template layout and formatting |
+| `description` | text | ❌ | NULL | Template description |
+| `is_default` | boolean | ✅ | Default: false | Whether this is default template |
+| `is_active` | boolean | ✅ | Default: true | Whether template is active |
+| `effective_start_date` | date | ✅ | NOT NULL | Template effective start |
+| `effective_end_date` | date | ❌ | NULL | Template expiration |
+| `is_current_flag` | boolean | ✅ | Default: true | Current version flag |
+| `metadata` | jsonb | ❌ | NULL | Additional flexible data |
+| `created_at` | timestamp | ✅ | Auto-generated | Creation timestamp |
+| `updated_at` | timestamp | ❌ | Auto-updated | Last modification timestamp |
+
+**Attribute Details**:
+
+#### `template_json`
+
+**Type**: jsonb  
+**Purpose**: Defines payslip layout, sections, and formatting
+
+**Structure**:
+```yaml
+template_json:
+  format: "PDF" | "HTML"
+  layout:
+    header:
+      company_logo: true
+      company_name: true
+      payslip_title: "PAYSLIP"
+    sections:
+      - section_name: "Employee Information"
+        fields:
+          - field: "employee_name"
+            label: "Employee Name"
+          - field: "employee_id"
+            label: "Employee ID"
+      - section_name: "Earnings"
+        fields:
+          - field: "element_results"
+            filter: "classification = 'EARNING'"
+      - section_name: "Deductions"
+        fields:
+          - field: "element_results"
+            filter: "classification = 'DEDUCTION'"
+    footer:
+      signature_line: true
+      generated_date: true
+```
+
+---
+
+### Examples
+
+#### Example 1: Vietnam Standard Payslip
+
+```yaml
+PayslipTemplate:
+  code: "VN_STANDARD_2025"
+  name: "Vietnam Standard Payslip 2025"
+  locale_code: "vi-VN"
+  template_json:
+    format: "PDF"
+    layout:
+      header:
+        company_logo: true
+        company_name: true
+        payslip_title: "PHIẾU LƯƠNG"
+      sections:
+        - section_name: "Thông tin nhân viên"
+          fields:
+            - field: "employee_name"
+              label: "Họ và tên"
+            - field: "employee_id"
+              label: "Mã nhân viên"
+        - section_name: "Thu nhập"
+          fields:
+            - field: "element_results"
+              filter: "classification = 'EARNING'"
+        - section_name: "Khấu trừ"
+          fields:
+            - field: "element_results"
+              filter: "classification = 'DEDUCTION'"
+  is_default: true
+  is_active: true
+  effective_start_date: "2025-01-01"
+  is_current_flag: true
+```
+
+---
+
+### Best Practices
+
+✅ **DO**:
+- Localize templates for each market
+- Test template rendering before activating
+- Include all required legal information
+
+❌ **DON'T**:
+- Don't hardcode values in templates
+- Don't create too many similar templates
+- Don't change default template mid-period
+
+---
+
+### Related Workflows
+
+- [WF-PR-CONFIG-005](../workflows/config-workflows.md#wf-pr-config-005) - Payslip Template Design
+- [WF-PR-PROC-006](../workflows/processing-workflows.md#wf-pr-proc-006) - Payroll Finalization (generates payslips)
+
+---
+
+## Entity: PayFormula {#pay-formula}
+
+**Classification**: CORE_ENTITY  
+
+**Definition**: Defines reusable calculation formulas that can be referenced by multiple pay elements
+
+**Purpose**: Provides centralized formula library for complex calculations, promoting reusability and maintainability
+
+**Key Characteristics**:
+- Contains formula script/logic
+- Versioned for change tracking
+- Can be activated/deactivated independently
+- Referenced by PayElement for calculations
+
+---
+
+### Attributes
+
+| Attribute | Type | Required | Constraints | Description |
+|-----------|------|----------|-------------|-------------|
+| `id` | UUID | ✅ | PK | Primary identifier |
+| `code` | varchar(50) | ✅ | UNIQUE, NOT NULL | Unique formula code |
+| `name` | varchar(255) | ✅ | NOT NULL | Formula display name |
+| `script` | text | ✅ | NOT NULL | Formula calculation script |
+| `description` | text | ❌ | NULL | Formula description and usage |
+| `version_no` | int | ✅ | Default: 1 | Formula version number |
+| `is_active` | boolean | ✅ | Default: true | Whether formula is active |
+| `metadata` | jsonb | ❌ | NULL | Additional flexible data |
+| `created_at` | timestamp | ✅ | Auto-generated | Creation timestamp |
+| `updated_at` | timestamp | ❌ | Auto-updated | Last modification timestamp |
+
+---
+
+### Examples
+
+#### Example 1: Overtime Calculation Formula
+
+```yaml
+PayFormula:
+  code: "CALC_OT_1_5"
+  name: "Overtime 1.5x Calculation"
+  script: |
+    // Calculate overtime at 1.5x rate
+    const hourlyRate = getEmployeeBasicHourlyRate(employee_id);
+    const otHours = getInputValue('OT_HOURS');
+    return hourlyRate * 1.5 * otHours;
+  description: "Calculates overtime pay at 1.5x hourly rate"
+  version_no: 1
+  is_active: true
+```
+
+#### Example 2: Prorated Salary Formula
+
+```yaml
+PayFormula:
+  code: "CALC_PRORATED_SAL"
+  name: "Prorated Salary Calculation"
+  script: |
+    // Calculate prorated salary based on working days
+    const monthlySalary = getEmployeeBasicSalary(employee_id);
+    const workingDays = getInputValue('WORKING_DAYS');
+    const totalDays = getCalendarWorkingDays(period_start, period_end);
+    return (monthlySalary / totalDays) * workingDays;
+  description: "Calculates prorated salary for partial month"
+  version_no: 1
+  is_active: true
+```
+
+---
+
+### Best Practices
+
+✅ **DO**:
+- Document formula logic clearly
+- Test formulas with sample data
+- Version formulas when making changes
+- Use descriptive formula codes
+
+❌ **DON'T**:
+- Don't create overly complex formulas
+- Don't duplicate existing formulas
+- Don't change active formulas (create new version)
+
+---
+
+### Related Entities
+
+**Children/Downstream**:
+- [PayElement](#pay-element) - Elements using this formula
+
+---
+
+### Related Workflows
+
+- [WF-PR-CONFIG-004](../workflows/config-workflows.md#wf-pr-config-004) - Formula & Rule Configuration
+
+---
+
+## Entity: PayProfile {#pay-profile}
+
+**Classification**: CORE_ENTITY  
+
+**Definition**: Defines payroll policy profiles that bundle elements, rules, and configurations for specific employee groups
+
+**Purpose**: Enables flexible payroll policy management by grouping related configurations into reusable profiles
+
+**Key Characteristics**:
+- Can be scoped to legal entity or market
+- SCD Type 2 for historical tracking
+- Contains metadata for profile configuration
+- Can be assigned to pay groups or individual employees
+
+---
+
+### Attributes
+
+| Attribute | Type | Required | Constraints | Description |
+|-----------|------|----------|-------------|-------------|
+| `id` | UUID | ✅ | PK | Primary identifier |
+| `code` | varchar(50) | ✅ | UNIQUE, NOT NULL | Unique profile code |
+| `name` | varchar(100) | ✅ | NOT NULL | Profile display name |
+| `legal_entity_id` | UUID | ❌ | FK → Core.LegalEntity | Owning legal entity |
+| `market_id` | UUID | ❌ | FK → Core.TalentMarket | Applicable market |
+| `description` | text | ❌ | NULL | Profile description |
+| `status_code` | varchar(20) | ✅ | Default: 'ACTIVE' | Profile status |
+| `metadata` | jsonb | ❌ | NULL | Profile configuration |
+| `effective_start_date` | date | ✅ | NOT NULL | Profile effective start |
+| `effective_end_date` | date | ❌ | NULL | Profile expiration |
+| `is_current_flag` | boolean | ✅ | Default: true | Current version flag |
+| `created_at` | timestamp | ✅ | Auto-generated | Creation timestamp |
+| `updated_at` | timestamp | ❌ | Auto-updated | Last modification timestamp |
+
+---
+
+### Examples
+
+#### Example 1: Standard Office Worker Profile
+
+```yaml
+PayProfile:
+  code: "PROFILE_OFFICE_VN"
+  name: "Vietnam Office Worker Profile"
+  legal_entity_id: "vng-corp-uuid"
+  market_id: "vietnam-market-uuid"
+  description: "Standard payroll profile for Vietnam office workers"
+  status_code: "ACTIVE"
+  metadata:
+    included_elements:
+      - "BASIC_SAL"
+      - "OT_1_5"
+      - "ALLOWANCE_MEAL"
+    included_rules:
+      - "VN_PIT_2025"
+      - "VN_SI_2025"
+  effective_start_date: "2025-01-01"
+  is_current_flag: true
+```
+
+---
+
+### Best Practices
+
+✅ **DO**:
+- Group related policies into profiles
+- Use descriptive profile names
+- Document profile purpose
+
+❌ **DON'T**:
+- Don't create too many overlapping profiles
+- Don't change profiles mid-period
+- Don't delete profiles (inactivate instead)
+
+---
+
+### Related Entities
+
+**Parent/Upstream**:
+- Core.LegalEntity - Owning entity
+- Core.TalentMarket - Applicable market
+
+**Children/Downstream**:
+- [PayProfileMap](#pay-profile-map) - Profile assignments
+
+---
+
+### Related Workflows
+
+- [WF-PR-CONFIG-002](../workflows/config-workflows.md#wf-pr-config-002) - Pay Group Configuration
+
+---
+
+## Entity: PayProfileMap {#pay-profile-map}
+
+**Classification**: CORE_ENTITY  
+
+**Definition**: Maps payroll profiles to pay groups or individual employees for policy application
+
+**Purpose**: Provides flexible assignment of payroll profiles to organizational units or employees
+
+**Key Characteristics**:
+- Can map to pay group OR employee (not both)
+- SCD Type 2 for historical tracking
+- Supports period-based assignments
+- Enables dynamic policy application
+
+---
+
+### Attributes
+
+| Attribute | Type | Required | Constraints | Description |
+|-----------|------|----------|-------------|-------------|
+| `id` | UUID | ✅ | PK | Primary identifier |
+| `pay_profile_id` | UUID | ✅ | FK → [PayProfile](#pay-profile) | Assigned profile |
+| `pay_group_id` | UUID | ❌ | FK → [PayGroup](#pay-group) | Target pay group |
+| `employee_id` | UUID | ❌ | FK → Core.Employee | Target employee |
+| `period_start` | date | ✅ | NOT NULL | Assignment start date |
+| `period_end` | date | ❌ | NULL | Assignment end date |
+| `effective_start_date` | date | ✅ | NOT NULL | Mapping effective start |
+| `effective_end_date` | date | ❌ | NULL | Mapping expiration |
+| `is_current_flag` | boolean | ✅ | Default: true | Current version flag |
+| `metadata` | jsonb | ❌ | NULL | Additional flexible data |
+| `created_at` | timestamp | ✅ | Auto-generated | Creation timestamp |
+| `updated_at` | timestamp | ❌ | Auto-updated | Last modification timestamp |
+
+---
+
+### Business Rules
+
+| Rule ID | Rule Name | Description | Validation Trigger |
+|---------|-----------|-------------|----------------------|
+| BR-PR-PROFMAP-001 | Group OR Employee | Must specify either pay_group_id OR employee_id, not both | On Create/Update |
+| BR-PR-PROFMAP-002 | No Overlapping Assignments | Cannot have overlapping period assignments for same target | On Create/Update |
+
+---
+
+### Examples
+
+#### Example 1: Profile Assignment to Pay Group
+
+```yaml
+PayProfileMap:
+  pay_profile_id: "profile-office-vn-uuid"
+  pay_group_id: "vn-office-monthly-uuid"
+  employee_id: null
+  period_start: "2025-01-01"
+  period_end: null
+  effective_start_date: "2025-01-01"
+  is_current_flag: true
+```
+
+#### Example 2: Profile Assignment to Individual Employee
+
+```yaml
+PayProfileMap:
+  pay_profile_id: "profile-executive-vn-uuid"
+  pay_group_id: null
+  employee_id: "employee-ceo-uuid"
+  period_start: "2025-01-01"
+  period_end: null
+  effective_start_date: "2025-01-01"
+  is_current_flag: true
+```
+
+---
+
+### Best Practices
+
+✅ **DO**:
+- Assign profiles at pay group level when possible
+- Use employee-level assignments for exceptions
+- Document assignment rationale in metadata
+
+❌ **DON'T**:
+- Don't create overlapping assignments
+- Don't assign both group and employee
+- Don't change assignments mid-period
+
+---
+
+### Related Entities
+
+**Parent/Upstream**:
+- [PayProfile](#pay-profile) - Assigned profile
+- [PayGroup](#pay-group) - Target pay group
+- Core.Employee - Target employee
+
+---
+
+### Related Workflows
+
+- [WF-PR-CONFIG-002](../workflows/config-workflows.md#wf-pr-config-002) - Pay Group Configuration
+
+---
+
+## References
+
+- **Workflow Catalog**: [../workflows/config-workflows.md](../workflows/config-workflows.md)
+- **Glossary**: [../glossary-config.md](../glossary-config.md) (quick reference)
+- **Concept Guides**: [../../01-concept/02-config/](../../01-concept/02-config/)
+- **Database Schema**: [../../03-design/5.Payroll.V3.dbml](../../03-design/5.Payroll.V3.dbml)
+- **API Specification**: [../../02-spec/02-api-specification.md](../../02-spec/02-api-specification.md)
+
+---
+
+**Document Version**: 1.0 (Complete)  
+**Last Review**: 2025-12-23  
+**Reviewed By**: xTalent Documentation Team
+
+**Total CONFIG Entities**: 13
+- ✅ PayFrequency
+- ✅ PayCalendar
+- ✅ PayGroup
+- ✅ PayElement
+- ✅ BalanceDefinition
+- ✅ CostingRule
+- ✅ StatutoryRule
+- ✅ GLMapping
+- ✅ ValidationRule
+- ✅ PayslipTemplate
+- ✅ PayFormula
+- ✅ PayProfile
+- ✅ PayProfileMap

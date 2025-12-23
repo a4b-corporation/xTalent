@@ -13,12 +13,19 @@
 
 This guide explains how jobs and positions are structured in xTalent Core Module, covering job taxonomy, job profiles, position management, and the critical distinction between position-based and job-based staffing models.
 
+**Implementation Approaches**:
+- **Simplified Design (Recommended)**: 3-entity structure suitable for most organizations
+- **Advanced Design (Optional)**: Multi-tree architecture for complex organizations (see [Advanced Features](#advanced-multi-tree-architecture))
+
+This guide primarily describes the simplified design. Advanced features are marked with **[ADVANCED]**.
+
 ### What You'll Learn
 - The difference between Job and Position
-- How to build job taxonomies and hierarchies
+- How to build job taxonomies (3-level hierarchy)
 - Creating comprehensive job profiles
 - Position-based vs job-based staffing models
 - Job levels and grades for compensation
+- [ADVANCED] Multi-tree architecture for complex organizations
 
 ### Prerequisites
 - Understanding of organizational structure
@@ -142,63 +149,38 @@ Technology (Family)
 ### Complete Taxonomy Example
 
 ```yaml
-# Level 1: Job Families
-Families:
-  - Technology
+# Level 1: Tracks
+Tracks:
+  - Engineering
   - Sales & Marketing
   - Operations
   - Finance & Accounting
   - Human Resources
-  - Legal & Compliance
 
-# Level 2: Technology Sub-families
-Technology:
+# Level 2: Engineering Families
+Engineering:
   - Software Engineering
   - Data & Analytics
   - DevOps & Infrastructure
   - Quality Assurance
-  - Product Management
-  - UX/UI Design
 
-# Level 3: Software Engineering Functions
+# Level 3: Software Engineering Groups
 Software Engineering:
   - Backend Development
   - Frontend Development
   - Mobile Development
-  - Full-stack Development
-  - Embedded Systems
-  - Game Development
+
+# Level 4: Backend Development Sub-groups
+Backend Development:
+  - Microservices Backend
+  - API Development
+  - Database Administration
 ```
 
-### Multi-Tree Architecture
-
-**Key Feature**: Support both corporate-wide and BU-specific taxonomies.
-
-```yaml
-# Corporate Taxonomy (default for all BUs)
-TaxonomyTree:
-  code: CORP_TAX
-  name: "Corporate Job Taxonomy"
-  owner_type: CORPORATE
-  
-  # Used by all business units by default
-
-# BU-Specific Taxonomy (overrides corporate)
-TaxonomyTree:
-  code: BU_ENG_TAX
-  name: "Engineering Division Taxonomy"
-  owner_type: BUSINESS_UNIT
-  owner_id: BU-ENGINEERING
-  
-  # Engineering can have custom taxonomy
-  # E.g., more granular engineering roles
-```
-
-**When to Use BU-Specific Taxonomy**:
-- ✅ BU has unique job structures
-- ✅ Industry-specific roles (e.g., Financial Services)
-- ✅ Geographic variations (e.g., different countries)
-- ✅ Acquired companies with different job frameworks
+> [!NOTE]
+> **Advanced Feature: Multi-Tree Taxonomy**
+> 
+> For complex organizations requiring multiple independent taxonomy trees (e.g., conglomerates with diverse business units), see the [Advanced Multi-Tree Architecture](#advanced-multi-tree-architecture) section at the end of this guide.
 
 ---
 
@@ -213,6 +195,16 @@ TaxonomyTree:
 - ✅ Maintain consistency
 - ✅ Support career progression
 - ✅ Simplify job management
+
+**Taxonomy Classification**:
+
+Jobs are classified using the `taxonomy_type` field:
+- **TRACK** (Level 1): Broad occupational track (e.g., Engineering, Sales, Operations)
+- **FAMILY** (Level 2): Job family within track (e.g., Software Engineering, Enterprise Sales)
+- **GROUP** (Level 3): Specific job group (e.g., Backend Development, Account Management)
+- **SUBGROUP** (Level 4): Detailed sub-group (e.g., Microservices Backend)
+
+Jobs should typically link to **GROUP** or **SUBGROUP** level for most specific classification.
 
 ### Example: Engineering Job Hierarchy
 
@@ -1409,6 +1401,35 @@ Employee → Job → grade_code → TR.GradeVersion → PayRange
 2. Calculate compa-ratio (salary vs grade midpoint)
 3. Apply merit matrix
 4. Propose adjustment within grade range
+
+---
+
+## 🏗️ Advanced Multi-Tree Architecture
+
+> [!NOTE]
+> **Phase 2 Feature** - For complex organizations only. Most should use simplified design.
+
+### When to Use
+
+✅ Multi-national corps, Conglomerates (VNG: Gaming/FinTech/Cloud), M&A scenarios  
+❌ SMEs, Centralized HR, Simple structures
+
+### Concepts
+
+- **Independent Trees**: Multiple taxonomy/job catalogs (corporate + BU)
+- **Cross-Tree Mapping**: TaxonomyXMap, JobXMap, JobTaxonomyMap
+- **Migration**: Start simplified → Add trees when needed
+
+### Example
+```yaml
+# Corporate: Engineering → Software → Backend
+# Gaming BU: Engineering → Game Engineering → Game Designer
+# Mapping: Game Designer → Product Designer (for reporting)
+```
+
+See [Glossary - Advanced Features](../00-ontology/glossary-job-position.md#advanced-features) for details.
+
+---
 
 ### Cross-References
 
