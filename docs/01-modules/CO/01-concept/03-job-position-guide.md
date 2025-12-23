@@ -103,7 +103,7 @@ pos2.status = "FILLED";
 
 ### What is Job Taxonomy?
 
-**Definition**: A hierarchical classification system for organizing jobs by family, sub-family, and function.
+**Definition**: A hierarchical classification system for organizing jobs by track, family, group, and subgroup.
 
 **Purpose**:
 - ✅ Standardize job classifications
@@ -112,38 +112,36 @@ pos2.status = "FILLED";
 - ✅ Facilitate benchmarking
 - ✅ Organize job catalog
 
-### 3-Level Taxonomy Structure
+### 4-Level Taxonomy Hierarchy
 
 ```
-Level 1: JOB FAMILY
-  └─ Level 2: JOB SUB-FAMILY
-      └─ Level 3: JOB FUNCTION
+Level 1: TRACK
+  └─ Level 2: FAMILY
+      └─ Level 3: GROUP
+          └─ Level 4: SUBGROUP
 ```
 
 ### Example: Technology Job Taxonomy
 
 ```
-Technology (Family)
-  ├─ Software Engineering (Sub-family)
-  │   ├─ Backend Development (Function)
-  │   ├─ Frontend Development (Function)
-  │   ├─ Mobile Development (Function)
-  │   └─ Full-stack Development (Function)
+Technology (Track)
+  ├─ Software Engineering (Family)
+  │   ├─ Backend Development (Group)
+  │   │   ├─ Microservices Backend (Subgroup)
+  │   │   ├─ API Development (Subgroup)
+  │   │   └─ Database Administration (Subgroup)
+  │   │
+  │   ├─ Frontend Development (Group)
+  │   └─ Mobile Development (Group)
   │
-  ├─ Data & Analytics (Sub-family)
-  │   ├─ Data Engineering (Function)
-  │   ├─ Data Science (Function)
-  │   └─ Business Intelligence (Function)
+  ├─ Data & Analytics (Family)
+  │   └─ Data Engineering (Group)
   │
-  ├─ DevOps & Infrastructure (Sub-family)
-  │   ├─ DevOps Engineering (Function)
-  │   ├─ Site Reliability (Function)
-  │   └─ Cloud Architecture (Function)
+  ├─ DevOps & Infrastructure (Family)
+  │   └─ DevOps Engineering (Group)
   │
-  └─ Quality Assurance (Sub-family)
-      ├─ QA Engineering (Function)
-      ├─ Test Automation (Function)
-      └─ Performance Testing (Function)
+  └─ Quality Assurance (Family)
+      └─ QA Engineering (Group)
 ```
 
 ### Complete Taxonomy Example
@@ -233,7 +231,7 @@ Software Engineer (Parent)
 ```yaml
 # Parent Job
 Job: Software Engineer
-  taxonomy: Software Engineering (Function)
+  taxonomy: Software Engineering (Family)
   job_type: INDIVIDUAL_CONTRIBUTOR
   flsa_status: EXEMPT
   base_responsibilities:
@@ -1207,7 +1205,7 @@ Job: Backend Engineer
 Job: Backend Engineer
   taxonomy_id: TAX-BACKEND-DEV
   # Family: Technology
-  # Sub-family: Software Engineering
+  # Family: Software Engineering
   # Function: Backend Development
 ```
 
