@@ -46,18 +46,32 @@ Hierarchical classification system organizing jobs into:
 
 | Attribute | Type | Required | Description |
 |-----------|------|----------|-------------|
+| **Core Identification** | | | |
 | `id` | UUID | Yes | Unique identifier |
-| `code` | string(50) | Yes | Taxonomy code (unique) |
+| `code` | string(50) | Yes | Taxonomy code (unique within tree) |
 | `name` | string(150) | Yes | Taxonomy name |
-| `taxonomy_type` | enum | Yes | FAMILY, SUBFAMILY, FUNCTION |
-| `parent_id` | UUID | No | Parent taxonomy node (null for FAMILY) |
-| `level` | integer | No | Hierarchy level (1, 2, 3) |
-| `path` | string(255) | No | Materialized path |
+| `taxonomy_type` | enum | Yes | TRACK | FAMILY | GROUP | SUBGROUP |
+| `parent_id` | UUID | No | Parent taxonomy node (null for TRACK) |
+| **Tree & Ownership** | | | |
+| `tree_id` | UUID | Yes | Taxonomy tree reference (FK to TaxonomyTree) |
+| `owner_scope` | enum | Yes | CORP | LE | BU (ownership scope) |
+| `owner_unit_id` | UUID | No | Owning business unit (required if owner_scope=BU) |
+| `inherit_flag` | boolean | Yes | Inheritance control (default: true) |
+| `override_name` | string(255) | No | BU-specific name override |
+| `visibility` | enum | No | PUBLIC | PRIVATE | RESTRICTED |
+| **Hierarchy** | | | |
+| `level` | integer | No | Hierarchy level (1=TRACK, 2=FAMILY, 3=GROUP, 4=SUBGROUP) |
+| `path` | string(500) | No | Materialized path (ltree format) |
+| `sort_order` | integer | No | Display order within same parent |
+| **Status & Metadata** | | | |
+| `is_active` | boolean | Yes | Active status (default: true) |
 | `description` | text | No | Taxonomy description |
 | `metadata` | jsonb | No | Additional classification data |
+| **SCD Type-2** | | | |
 | `effective_start_date` | date | Yes | Effective start date |
 | `effective_end_date` | date | No | Effective end date |
 | `is_current_flag` | boolean | Yes | Current record indicator |
+
 
 **Taxonomy Levels:**
 
@@ -80,18 +94,22 @@ Hierarchical classification system organizing jobs into:
 ```
 
 **Relationships:**
+- **Belongs to** `TaxonomyTree` (tree container)
 - **Belongs to** `JobTaxonomy` (parent) - for hierarchy
 - **Has many** `JobTaxonomy` (children)
-- **Has many** `Job` (jobs classified under this taxonomy)
+- **Links to** `Job` via `JobTaxonomyMap` (many-to-many)
 
 **Business Rules:**
-- Code must be unique
+- Code must be unique within tree
 - `taxonomy_type` must match `level` (TRACK=1, FAMILY=2, GROUP=3, SUBGROUP=4)
 - Parent required for FAMILY, GROUP, and SUBGROUP levels (TRACK has no parent)
-- Path must reflect actual hierarchy
+- `tree_id` references taxonomy_tree container
+- `owner_scope` determines ownership level
+- If `owner_scope=BU`, `owner_unit_id` is required
+- Path must reflect actual hierarchy (ltree format)
 - Maximum 4 levels recommended
 - SCD Type 2 for historical tracking
-- Jobs should link to GROUP or SUBGROUP level for most specific classification
+- Jobs should link to GROUP or SUBGROUP level via JobTaxonomyMap
 
 **Example:**
 
@@ -102,6 +120,10 @@ code: ENG
 name: Engineering
 taxonomy_type: TRACK
 parent_id: null
+tree_id: tree_corp_taxonomy
+owner_scope: CORP
+inherit_flag: true
+is_active: true
 level: 1
 path: /ENG
 sort_order: 1
@@ -112,6 +134,10 @@ code: SW_ENG
 name: Software Engineering
 taxonomy_type: FAMILY
 parent_id: tax_eng_001
+tree_id: tree_corp_taxonomy
+owner_scope: CORP
+inherit_flag: true
+is_active: true
 level: 2
 path: /ENG/SW_ENG
 sort_order: 1
@@ -122,6 +148,10 @@ code: BACKEND
 name: Backend Development
 taxonomy_type: GROUP
 parent_id: tax_sw_eng_001
+tree_id: tree_corp_taxonomy
+owner_scope: CORP
+inherit_flag: true
+is_active: true
 level: 3
 path: /ENG/SW_ENG/BACKEND
 sort_order: 1
@@ -132,22 +162,14 @@ code: MICROSERVICES
 name: Microservices Backend
 taxonomy_type: SUBGROUP
 parent_id: tax_backend_001
+tree_id: tree_corp_taxonomy
+owner_scope: CORP
+inherit_flag: true
+is_active: true
 level: 4
 path: /ENG/SW_ENG/BACKEND/MICROSERVICES
 sort_order: 1
 ```
-
-**[ADVANCED] Multi-Tree Support:**
-
-For complex organizations requiring multiple independent taxonomy trees, additional attributes are available:
-- `tree_id`: Reference to taxonomy tree container
-- `owner_scope`: CORP | LE | BU (ownership scope)
-- `owner_unit_id`: Owning business unit ID
-- `inherit_flag`: Inheritance control
-- `override_name`: BU-specific name override
-- `visibility`: PUBLIC | PRIVATE | RESTRICTED
-
-See [Advanced Features](#advanced-features) section for details.
 
 ---
 

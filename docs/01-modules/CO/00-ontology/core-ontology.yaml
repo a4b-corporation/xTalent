@@ -3207,41 +3207,39 @@ entities:
         type: boolean
         default: true
       
-      # === Advanced Attributes (Multi-Tree Design) ===
-      # The following attributes support multi-tree architecture for complex organizations.
-      # These are optional and used only when implementing multiple independent taxonomy trees.
-      
       tree_id:
         type: UUID
-        description: "[ADVANCED] Reference to taxonomy tree container (for multi-tree support)"
+        required: true
+        description: "Reference to taxonomy tree container"
       
       owner_scope:
         type: enum
         values: [CORP, LE, BU]
+        required: true
         description: |
-          [ADVANCED] Ownership scope:
+          Ownership scope:
           - CORP: Corporate-level taxonomy (shared across organization)
           - LE: Legal entity-specific taxonomy
           - BU: Business unit-specific taxonomy
       
       owner_unit_id:
         type: UUID
-        description: "[ADVANCED] Owning business unit ID (required if owner_scope=BU)"
+        description: "Owning business unit ID (required if owner_scope=BU)"
       
       inherit_flag:
         type: boolean
         default: true
-        description: "[ADVANCED] Inherit from parent or override (for BU customization)"
+        description: "Inherit from parent or override (for BU customization)"
       
       override_name:
         type: string
         maxLength: 255
-        description: "[ADVANCED] Override name for BU-specific taxonomy"
+        description: "Override name for BU-specific taxonomy"
       
       visibility:
         type: enum
         values: [PUBLIC, PRIVATE, RESTRICTED]
-        description: "[ADVANCED] Visibility scope for multi-tree scenarios"
+        description: "Visibility scope (PUBLIC, PRIVATE, RESTRICTED)"
     
     relationships:
       parent:

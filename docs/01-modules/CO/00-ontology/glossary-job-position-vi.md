@@ -45,15 +45,28 @@ Hệ thống phân loại phân cấp tổ chức công việc thành:
 
 | Thuộc tính | Kiểu dữ liệu | Bắt buộc | Mô tả |
 |------------|--------------|----------|-------|
+| **Định danh cốt lõi** | | | |
 | `id` | UUID | Có | Định danh duy nhất |
-| `code` | string(50) | Có | Mã phân loại (duy nhất) |
+| `code` | string(50) | Có | Mã phân loại (duy nhất trong cây) |
 | `name` | string(150) | Có | Tên phân loại |
-| `taxonomy_type` | enum | Có | TRACK, FAMILY, GROUP, SUBGROUP |
+| `taxonomy_type` | enum | Có | TRACK | FAMILY | GROUP | SUBGROUP |
 | `parent_id` | UUID | Không | Nút cha (null đối với TRACK) |
-| `level` | integer | Không | Cấp độ phân cấp (1, 2, 3, 4) |
-| `path` | string(255) | Không | Đường dẫn materialized |
+| **Cây & Quyền sở hữu** | | | |
+| `tree_id` | UUID | Có | Tham chiếu cây phân loại (FK tới TaxonomyTree) |
+| `owner_scope` | enum | Có | CORP | LE | BU (phạm vi sở hữu) |
+| `owner_unit_id` | UUID | Không | Đơn vị kinh doanh sở hữu (bắt buộc nếu owner_scope=BU) |
+| `inherit_flag` | boolean | Có | Kiểm soát kế thừa (mặc định: true) |
+| `override_name` | string(255) | Không | Ghi đè tên cho BU cụ thể |
+| `visibility` | enum | Không | PUBLIC | PRIVATE | RESTRICTED |
+| **Phân cấp** | | | |
+| `level` | integer | Không | Cấp độ phân cấp (1=TRACK, 2=FAMILY, 3=GROUP, 4=SUBGROUP) |
+| `path` | string(500) | Không | Đường dẫn vật chất hóa (định dạng ltree) |
+| `sort_order` | integer | Không | Thứ tự hiển thị trong cùng cha |
+| **Trạng thái & Metadata** | | | |
+| `is_active` | boolean | Có | Trạng thái hoạt động (mặc định: true) |
 | `description` | text | Không | Mô tả phân loại |
 | `metadata` | jsonb | Không | Dữ liệu phân loại bổ sung |
+| **SCD Type-2** | | | |
 | `effective_start_date` | date | Có | Ngày bắt đầu hiệu lực |
 | `effective_end_date` | date | Không | Ngày kết thúc hiệu lực |
 | `is_current_flag` | boolean | Có | Cờ chỉ định bản ghi hiện tại |
@@ -79,18 +92,22 @@ Hệ thống phân loại phân cấp tổ chức công việc thành:
 ```
 
 **Mối quan hệ:**
+- **Thuộc về** `TaxonomyTree` (cây chứa)
 - **Thuộc về** `JobTaxonomy` (cha) - để phân cấp.
 - **Có nhiều** `JobTaxonomy` (con).
-- **Có nhiều** `Job` (các công việc được phân loại theo taxonomy này).
+- **Liên kết tới** `Job` qua `JobTaxonomyMap` (nhiều-nhiều)
 
 **Quy tắc nghiệp vụ:**
-- Mã (Code) phải là duy nhất.
+- Mã (Code) phải duy nhất trong cây.
 - `taxonomy_type` phải khớp với `level` (TRACK=1, FAMILY=2, GROUP=3, SUBGROUP=4).
 - Yêu cầu nút cha (Parent) cho các cấp FAMILY, GROUP và SUBGROUP (TRACK không có cha).
-- Đường dẫn (Path) phải phản ánh đúng phân cấp thực tế.
+- `tree_id` tham chiếu tới container taxonomy_tree.
+- `owner_scope` xác định cấp độ sở hữu.
+- Nếu `owner_scope=BU`, `owner_unit_id` là bắt buộc.
+- Đường dẫn (Path) phải phản ánh đúng phân cấp thực tế (định dạng ltree).
 - Khuyến nghị tối đa 4 cấp độ.
 - Sử dụng SCD Type 2 để theo dõi lịch sử.
-- Công việc nên được liên kết với cấp GROUP hoặc SUBGROUP để phân loại cụ thể nhất.
+- Công việc nên được liên kết với cấp GROUP hoặc SUBGROUP qua JobTaxonomyMap.
 
 **Ví dụ:**
 
@@ -101,6 +118,10 @@ code: ENG
 name: Engineering
 taxonomy_type: TRACK
 parent_id: null
+tree_id: tree_corp_taxonomy
+owner_scope: CORP
+inherit_flag: true
+is_active: true
 level: 1
 path: /ENG
 sort_order: 1
@@ -111,6 +132,10 @@ code: SW_ENG
 name: Software Engineering
 taxonomy_type: FAMILY
 parent_id: tax_eng_001
+tree_id: tree_corp_taxonomy
+owner_scope: CORP
+inherit_flag: true
+is_active: true
 level: 2
 path: /ENG/SW_ENG
 sort_order: 1
@@ -121,6 +146,10 @@ code: BACKEND
 name: Backend Development
 taxonomy_type: GROUP
 parent_id: tax_sw_eng_001
+tree_id: tree_corp_taxonomy
+owner_scope: CORP
+inherit_flag: true
+is_active: true
 level: 3
 path: /ENG/SW_ENG/BACKEND
 sort_order: 1
@@ -131,6 +160,10 @@ code: MICROSERVICES
 name: Microservices Backend
 taxonomy_type: SUBGROUP
 parent_id: tax_backend_001
+tree_id: tree_corp_taxonomy
+owner_scope: CORP
+inherit_flag: true
+is_active: true
 level: 4
 path: /ENG/SW_ENG/BACKEND/MICROSERVICES
 sort_order: 1
