@@ -164,20 +164,34 @@ Xem phần [Tính năng Nâng cao](#tính-năng-nâng-cao) để biết thêm ch
 
 | Thuộc tính | Kiểu dữ liệu | Bắt buộc | Mô tả |
 |------------|--------------|----------|-------|
+| **Định danh cốt lõi** | | | |
 | `id` | UUID | Có | Định danh duy nhất |
-| `tree_id` | UUID | Có | Tham chiếu cây công việc (Dành cho tương lai) |
+| `code` | string(50) | Có | Mã công việc (duy nhất trong cây) |
+| `title` | string(150) | Có | Chức danh công việc |
 | `parent_id` | UUID | Không | Công việc cha (để phân cấp) |
-| `taxonomy_id` | UUID | Không | Phân loại công việc |
-| `code` | string(50) | Có | Mã công việc |
-| `title` | string(150) | Không | Chức danh công việc |
-| `level_id` | UUID | Không | Tham chiếu cấp bậc công việc |
-| `grade_id` | UUID | Không | Tham chiếu ngạch lương công việc |
-| `job_family_code` | string(50) | Không | Mã nhóm công việc |
-| `job_function_code` | string(50) | Không | Mã chức năng công việc |
-| `flsa_status` | enum | Không | EXEMPT, NON_EXEMPT (Phân loại tại Mỹ) |
+| **Cây & Quyền sở hữu** | | | |
+| `tree_id` | UUID | Không | Tham chiếu cây công việc (tùy chọn) |
+| `owner_scope` | enum | Có | CORP | LE | BU (phạm vi sở hữu) |
+| `owner_unit_id` | UUID | Không | Đơn vị kinh doanh sở hữu (bắt buộc nếu owner_scope=BU) |
+| `inherit_flag` | boolean | Có | Kiểm soát kế thừa (mặc định: true) |
+| `override_title` | string(255) | Không | Ghi đè chức danh cho BU cụ thể |
+| `visibility` | enum | Không | PUBLIC | PRIVATE | RESTRICTED |
+| **Phân loại** | | | |
+| `job_type_code` | string(50) | Không | code_list(JOB_TYPE) - ví dụ: INDIVIDUAL_CONTRIBUTOR, MANAGER |
+| `ranking_level_code` | string(50) | Không | code_list(JOB_RANK) - ví dụ: ENTRY, JUNIOR, MID, SENIOR, PRINCIPAL |
+| **Ngạch & Cấp bậc** | | | |
+| `level_id` | UUID | Không | Tham chiếu cấp bậc công việc (FK tới JobLevel) |
+| `grade_id` | UUID | Không | Tham chiếu ngạch lương công việc (FK tới JobGrade) |
+| **Phân loại Lao động Mỹ** | | | |
+| `flsa_status` | enum | Không | EXEMPT | NON_EXEMPT |
 | `is_manager` | boolean | Không | Chỉ báo vai trò quản lý |
+| **Phân cấp & Đường dẫn** | | | |
+| `path` | string(500) | Không | Đường dẫn vật chất hóa (định dạng ltree) |
+| `sort_order` | integer | Không | Thứ tự hiển thị |
+| **Mô tả & Metadata** | | | |
 | `description` | text | Không | Mô tả công việc |
 | `metadata` | jsonb | Không | Các thuộc tính công việc bổ sung |
+| **SCD Type-2** | | | |
 | `effective_start_date` | date | Có | Ngày bắt đầu hiệu lực |
 | `effective_end_date` | date | Không | Ngày kết thúc hiệu lực |
 | `is_current_flag` | boolean | Có | Cờ chỉ định bản ghi hiện tại |
@@ -209,17 +223,21 @@ Xem phần [Tính năng Nâng cao](#tính-năng-nâng-cao) để biết thêm ch
 
 **Mối quan hệ:**
 - **Thuộc về** `Job` (công việc cha) - để phân cấp.
-- **Thuộc về** `JobTaxonomy` (phân loại).
+- **Liên kết tới** `JobTaxonomy` qua `JobTaxonomyMap` (phân loại nhiều-nhiều).
 - **Thuộc về** `JobLevel` (cấp bậc).
 - **Thuộc về** `JobGrade` (lương thưởng).
+- **Thuộc về** `JobTree` (cây chứa tùy chọn).
 - **Có một** `JobProfile` (hồ sơ chi tiết).
 - **Có nhiều** `Position` (các vị trí nhân sự).
 - **Có nhiều** `Assignment` (gán trực tiếp trong mô hình JOB_BASED).
 
 **Quy tắc nghiệp vụ:**
-- Mã công việc phải là duy nhất.
+- Mã công việc phải duy nhất trong cây.
 - Có thể kế thừa từ công việc cha (trách nhiệm, yêu cầu).
-- `taxonomy_id` nên tham chiếu đến cấp GROUP hoặc SUBGROUP để phân loại chi tiết nhất.
+- Công việc liên kết với phân loại qua JobTaxonomyMap (nhiều-nhiều).
+- Một liên kết phân loại phải được đánh dấu là chính (is_primary=true).
+- Phân loại chính nên ở cấp GROUP hoặc SUBGROUP.
+- Trường path hỗ trợ ltree để truy vấn phân cấp hiệu quả.
 - Sử dụng SCD Type 2 để theo dõi lịch sử.
 - Công việc định nghĩa CÁI GÌ cần làm (bản mẫu).
 - Vị trí định nghĩa Ở ĐÂU công việc được thực hiện (vị trí trong tổ chức).
@@ -231,37 +249,37 @@ Xem phần [Tính năng Nâng cao](#tính-năng-nâng-cao) để biết thêm ch
 id: job_senior_backend_001
 code: SR_BACKEND_ENG
 title: Kỹ sư Backend Cấp cao
-taxonomy_id: tax_backend_001
 parent_id: job_backend_eng_001
+tree_id: tree_corp_jobs  # Tùy chọn
+owner_scope: CORP
+inherit_flag: true
 level_id: level_senior
 grade_id: grade_p3
 job_type_code: INDIVIDUAL_CONTRIBUTOR
+ranking_level_code: SENIOR
 flsa_status: EXEMPT
 is_manager: false
+path: /ENG/SW_ENG/BACKEND/SR_BACKEND
 description: "Thiết kế và phát triển các dịch vụ backend có khả năng mở rộng..."
+
+# Liên kết phân loại (qua JobTaxonomyMap):
+# - taxonomy_id: tax_backend_dev (is_primary: true, level: GROUP)
+# - taxonomy_id: tax_cloud_services (is_primary: false, level: GROUP)
 ```
 
-**Các thuộc tính Sẵn sàng cho Tương lai (Future-Ready Attributes):**
+**Phân loại Taxonomy:**
 
-Các thuộc tính sau được bao gồm trong schema để hỗ trợ các tính năng nâng cao trong tương lai nhưng **không bắt buộc** đối với triển khai cơ bản hiện tại:
+Công việc được phân loại sử dụng mối quan hệ nhiều-nhiều với JobTaxonomy qua entity `JobTaxonomyMap`.
 
-- **`tree_id`** - Dành riêng cho container `job_tree` (Giai đoạn 2):
-  - **Hiện tại**: Có thể để NULL (chưa sử dụng).
-  - **Triển khai cơ bản**: Sử dụng một danh mục công việc ngầm định duy nhất mà không cần container cây.
-  - **Tương lai**: Sẽ tham chiếu đến `job_tree` khi cần nhiều danh mục công việc độc lập.
-  - **Trường hợp sử dụng**: Danh mục công việc riêng cho từng BU trong khi vẫn duy trì danh mục của tập đoàn.
+**Điểm chính:**
+- Một công việc có thể thuộc về nhiều node phân loại
+- Một liên kết phân loại phải được đánh dấu là chính (`is_primary = true`)
+- Phân loại chính nên ở cấp GROUP hoặc SUBGROUP
+- Phân loại phụ có thể được sử dụng cho các vai trò đa chức năng
 
-**[NÂNG CAO] Hỗ trợ Đa cây (Multi-Tree Support):**
-
-Đối với các tổ chức phức tạp yêu cầu nhiều cây công việc độc lập, các thuộc tính bổ sung sau có sẵn:
-- `tree_id`: Tham chiếu đến container cây công việc.
-- `owner_scope`: CORP | LE | BU (Phạm vi sở hữu).
-- `owner_unit_id`: ID đơn vị kinh doanh sở hữu.
-- `inherit_flag`: Kiểm soát kế thừa.
-- `override_title`: Ghi đè chức danh theo BU.
-- `visibility`: PUBLIC | PRIVATE | RESTRICTED.
-
-Trong thiết kế đa cây, các công việc có thể thuộc về nhiều nút phân loại thông qua `JobTaxonomyMap` (quan hệ nhiều-nhiều).
+**Ví dụ**: Một "Kỹ sư DevOps" có thể có:
+- Chính: Công nghệ > Kỹ thuật Phần mềm > DevOps (GROUP)
+- Phụ: Công nghệ > Hạ tầng > Dịch vụ Đám mây (GROUP)
 
 Xem phần [Tính năng Nâng cao](#tính-năng-nâng-cao) để biết thêm chi tiết.
 

@@ -874,11 +874,16 @@ Taxonomy:
 Job:
   code: JOB-BACKEND-SENIOR
   name: "Senior Backend Engineer"
-  taxonomy_id: TAX-BACKEND-DEV
+  owner_scope: CORP
   level_id: L3  # Senior
   grade_id: G7
-  job_type: INDIVIDUAL_CONTRIBUTOR
+  job_type_code: INDIVIDUAL_CONTRIBUTOR
+  ranking_level_code: SENIOR
   flsa_status: EXEMPT
+  path: /TECH/SW_ENG/BACKEND/SENIOR
+  
+  # Taxonomy links (via JobTaxonomyMap):
+  # - TAX-BACKEND-DEV (is_primary: true)
 
 # Step 3: Create Job Profile
 JobProfile:
@@ -1190,12 +1195,13 @@ Job: Junior Engineer
 
 ---
 
+```
 ### Pitfall 4: Not Using Taxonomy
 
 ❌ **Wrong**:
 ```yaml
 Job: Backend Engineer
-  taxonomy_id: null  # No taxonomy!
+  # No taxonomy links!
   
 # Hard to search, classify, benchmark
 ```
@@ -1203,10 +1209,12 @@ Job: Backend Engineer
 ✅ **Correct**:
 ```yaml
 Job: Backend Engineer
-  taxonomy_id: TAX-BACKEND-DEV
-  # Family: Technology
-  # Family: Software Engineering
-  # Function: Backend Development
+  owner_scope: CORP
+  path: /TECH/SW_ENG/BACKEND
+  
+# Taxonomy links (via JobTaxonomyMap):
+# - TAX-BACKEND-DEV (is_primary: true, level: GROUP)
+#   Track: Technology > Family: Software Engineering > Group: Backend Development
 ```
 
 ---

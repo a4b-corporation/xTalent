@@ -3473,13 +3473,6 @@ entities:
         maxLength: 200
         description: "Job title (e.g., Senior Backend Engineer, Sales Manager)"
       
-      taxonomy_id:
-        type: UUID
-        description: |
-          Job taxonomy classification (direct FK to JobTaxonomy).
-          Links job to taxonomy FUNCTION level for classification.
-          [ADVANCED] In multi-tree design, use JobTaxonomyMap for many-to-many.
-      
       parent_job_id:
         type: UUID
         description: "Parent job in hierarchy (for job inheritance)"
@@ -3496,6 +3489,11 @@ entities:
         type: string
         maxLength: 50
         description: "Job type: INDIVIDUAL_CONTRIBUTOR, MANAGER, EXECUTIVE"
+      
+      ranking_level_code:
+        type: string
+        maxLength: 50
+        description: "Job ranking level (code_list: JOB_RANK) - e.g., ENTRY, JUNIOR, MID, SENIOR, PRINCIPAL, EXECUTIVE"
       
       flsa_status_code:
         type: string
@@ -3540,40 +3538,42 @@ entities:
       
       tree_id:
         type: UUID
-        description: "[FUTURE-READY] Job tree reference - reserved for job_tree support (Phase 2). Current: NULL (not used). Future: Will reference job_tree when multiple job catalogs needed."
+        required: false
+        description: "Job tree reference (optional) - references job_tree when multiple job catalogs needed"
       
       owner_scope:
         type: enum
         values: [CORP, LE, BU]
+        required: true
         description: |
-          [ADVANCED] Ownership scope:
+          Ownership scope:
           - CORP: Corporate-level job (shared across organization)
           - LE: Legal entity-specific job
           - BU: Business unit-specific job
       
       owner_unit_id:
         type: UUID
-        description: "[ADVANCED] Owning business unit ID (required if owner_scope=BU)"
+        description: "Owning business unit ID (required if owner_scope=BU)"
       
       inherit_flag:
         type: boolean
         default: true
-        description: "[ADVANCED] Inherit from parent or override (for BU customization)"
+        description: "Inherit from parent or override (for BU customization)"
       
       override_title:
         type: string
         maxLength: 255
-        description: "[ADVANCED] Override title for BU-specific job"
+        description: "Override title for BU-specific job"
       
       visibility:
         type: enum
         values: [PUBLIC, PRIVATE, RESTRICTED]
-        description: "[ADVANCED] Visibility scope for multi-tree scenarios"
+        description: "Visibility scope (PUBLIC, PRIVATE, RESTRICTED)"
       
       path:
         type: string
         maxLength: 500
-        description: "[ADVANCED] Materialized path in job tree (for multi-tree)"
+        description: "Materialized path in job hierarchy (ltree format for efficient queries)"
     
     relationships:
       parentJob:
@@ -3586,10 +3586,11 @@ entities:
         cardinality: "0..*"
         description: "Child jobs"
       
-      taxonomy:
+      taxonomies:
         target: JobTaxonomy
-        cardinality: "0..1"
-        description: "Job taxonomy classification (direct FK in simplified design)"
+        cardinality: "0..*"
+        through: JobTaxonomyMap
+        description: "Job taxonomy classifications (many-to-many via JobTaxonomyMap)"
       
       level:
         target: JobLevel

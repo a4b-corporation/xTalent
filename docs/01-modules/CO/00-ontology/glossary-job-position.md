@@ -166,20 +166,34 @@ See [Advanced Features](#advanced-features) section for details.
 
 | Attribute | Type | Required | Description |
 |-----------|------|----------|-------------|
+| **Core Identification** | | | |
 | `id` | UUID | Yes | Unique identifier |
-| `tree_id` | UUID | Yes | Job tree reference |
+| `code` | string(50) | Yes | Job code (unique within tree) |
+| `title` | string(150) | Yes | Job title |
 | `parent_id` | UUID | No | Parent job (for hierarchy) |
-| `taxonomy_id` | UUID | No | Job taxonomy classification |
-| `code` | string(50) | Yes | Job code |
-| `title` | string(150) | No | Job title |
-| `level_id` | UUID | No | Job level reference |
-| `grade_id` | UUID | No | Job grade reference |
-| `job_family_code` | string(50) | No | Job family code |
-| `job_function_code` | string(50) | No | Job function code |
-| `flsa_status` | enum | No | EXEMPT, NON_EXEMPT (US classification) |
+| **Tree & Ownership** | | | |
+| `tree_id` | UUID | No | Job tree reference (optional) |
+| `owner_scope` | enum | Yes | CORP | LE | BU (ownership scope) |
+| `owner_unit_id` | UUID | No | Owning business unit (required if owner_scope=BU) |
+| `inherit_flag` | boolean | Yes | Inheritance control (default: true) |
+| `override_title` | string(255) | No | BU-specific title override |
+| `visibility` | enum | No | PUBLIC | PRIVATE | RESTRICTED |
+| **Classification** | | | |
+| `job_type_code` | string(50) | No | code_list(JOB_TYPE) - e.g., INDIVIDUAL_CONTRIBUTOR, MANAGER |
+| `ranking_level_code` | string(50) | No | code_list(JOB_RANK) - e.g., ENTRY, JUNIOR, MID, SENIOR, PRINCIPAL |
+| **Grade & Level** | | | |
+| `level_id` | UUID | No | Job level reference (FK to JobLevel) |
+| `grade_id` | UUID | No | Job grade reference (FK to JobGrade) |
+| **US Labor Classification** | | | |
+| `flsa_status` | enum | No | EXEMPT | NON_EXEMPT |
 | `is_manager` | boolean | No | Manager role indicator |
+| **Hierarchy & Path** | | | |
+| `path` | string(500) | No | Materialized path (ltree format) |
+| `sort_order` | integer | No | Display order |
+| **Description & Metadata** | | | |
 | `description` | text | No | Job description |
 | `metadata` | jsonb | No | Additional job attributes |
+| **SCD Type-2** | | | |
 | `effective_start_date` | date | Yes | Effective start date |
 | `effective_end_date` | date | No | Effective end date |
 | `is_current_flag` | boolean | Yes | Current record indicator |
@@ -206,22 +220,27 @@ See [Advanced Features](#advanced-features) section for details.
     "benchmark_job": "Software Engineer III",
     "market_percentile": 50
   }
+```
 }
 ```
 
 **Relationships:**
 - **Belongs to** `Job` (parent job) - for hierarchy
-- **Belongs to** `JobTaxonomy` (classification)
+- **Links to** `JobTaxonomy` via `JobTaxonomyMap` (many-to-many classification)
 - **Belongs to** `JobLevel` (seniority)
 - **Belongs to** `JobGrade` (compensation)
+- **Belongs to** `JobTree` (optional tree container)
 - **Has one** `JobProfile` (detailed profile)
 - **Has many** `Position` (position instances)
 - **Has many** `Assignment` (direct job assignments in JOB_BASED model)
 
 **Business Rules:**
-- Job code must be unique
+- Job code must be unique within tree
 - Can inherit from parent job (responsibilities, requirements)
-- taxonomy_id should reference FUNCTION level for most specific classification
+- Jobs link to taxonomy via JobTaxonomyMap (many-to-many)
+- One taxonomy link must be marked as primary (is_primary=true)
+- Primary taxonomy should be at GROUP or SUBGROUP level
+- Path field supports ltree for efficient hierarchy queries
 - SCD Type 2 for historical tracking
 - Job defines WHAT work needs to be done (template)
 - Position defines WHERE work is done (organizational placement)
@@ -233,29 +252,38 @@ See [Advanced Features](#advanced-features) section for details.
 id: job_senior_backend_001
 code: SR_BACKEND_ENG
 title: Senior Backend Engineer
-taxonomy_id: tax_backend_001
 parent_id: job_backend_eng_001
+tree_id: tree_corp_jobs  # Optional
+owner_scope: CORP
+inherit_flag: true
 level_id: level_senior
 grade_id: grade_p3
 job_type_code: INDIVIDUAL_CONTRIBUTOR
+ranking_level_code: SENIOR
 flsa_status: EXEMPT
 is_manager: false
+path: /ENG/SW_ENG/BACKEND/SR_BACKEND
 description: "Designs and develops scalable backend services..."
+
+# Taxonomy links (via JobTaxonomyMap):
+# - taxonomy_id: tax_backend_dev (is_primary: true, level: GROUP)
+# - taxonomy_id: tax_cloud_services (is_primary: false, level: GROUP)
 ```
 
-**[ADVANCED] Multi-Tree Support:**
+**Taxonomy Classification:**
 
-For complex organizations requiring multiple independent job trees, additional attributes are available:
-- `tree_id`: Reference to job tree container
-- `owner_scope`: CORP | LE | BU (ownership scope)
-- `owner_unit_id`: Owning business unit ID
-- `inherit_flag`: Inheritance control
-- `override_title`: BU-specific title override
-- `visibility`: PUBLIC | PRIVATE | RESTRICTED
+Jobs are classified using a many-to-many relationship with JobTaxonomy via the `JobTaxonomyMap` entity.
 
-In multi-tree design, jobs can belong to multiple taxonomy nodes via `JobTaxonomyMap` (many-to-many relationship).
+**Key Points:**
+- A job can belong to multiple taxonomy nodes
+- One taxonomy link must be marked as primary (`is_primary = true`)
+- Primary taxonomy should be at GROUP or SUBGROUP level
+- Secondary taxonomies can be used for cross-functional roles
 
-See [Advanced Features](#advanced-features) section for details.
+**Example**: A "DevOps Engineer" might have:
+- Primary: Technology > Software Engineering > DevOps (GROUP)
+- Secondary: Technology > Infrastructure > Cloud Services (GROUP)
+
 
 ---
 
