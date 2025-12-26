@@ -1,0 +1,137 @@
+$schema: "https://xtalent.io/schemas/glossary/v3"
+$id: "xtalent:core:master-data:glossary"
+
+glossary:
+  module: CO
+  submodule: master-data
+  version: "1.0"
+  description: "Master data and reference data terminology"
+
+terms:
+  # Core Entities
+  - term: CodeList
+    definition: "Multi-purpose reference data catalog providing standardized code lists"
+    category: entity
+    related: [ReferenceData, Lookup]
+    
+  - term: Currency
+    definition: "ISO-4217 currency master data"
+    category: entity
+    related: [ISO4217, MonetaryValue]
+    
+  - term: SkillMaster
+    definition: "Skill catalog for competency management"
+    category: entity
+    related: [Competency, Proficiency]
+    
+  - term: CompetencyMaster
+    definition: "Competency framework catalog"
+    category: entity
+    related: [Skill, Behavior]
+    
+  - term: Country
+    definition: "ISO-3166 country master data"
+    category: entity
+    related: [Geography, ISO3166]
+    
+  - term: TimeZone
+    definition: "IANA timezone master data"
+    category: entity
+    related: [IANA, UTC]
+    
+  - term: Industry
+    definition: "ISIC/NAICS industry classification"
+    category: entity
+    related: [ISIC, NAICS, Sector]
+    
+  # Concepts
+  - term: ReferenceData
+    definition: "Standardized lookup data used across the system"
+    category: concept
+    synonyms: [MasterData, Lookup, CodeTable]
+    
+  - term: EffectiveDating
+    definition: "Temporal validity using effective_start_date and effective_end_date"
+    category: concept
+    related: [SCD2, TemporalData]
+    
+  - term: MultiLocale
+    definition: "Support for multiple languages/locales"
+    category: concept
+    related: [i18n, Localization]
+    
+  - term: HierarchicalData
+    definition: "Data with parent-child relationships"
+    category: concept
+    related: [Tree, Hierarchy]
+    
+  # Attributes
+  - term: group_code
+    definition: "Code group identifier (e.g., GENDER, MARITAL_STATUS)"
+    category: attribute
+    entity: CodeList
+    
+  - term: code
+    definition: "Code value within a group (e.g., M, F)"
+    category: attribute
+    entity: CodeList
+    
+  - term: display_en
+    definition: "English display text"
+    category: attribute
+    related: [i18n, Localization]
+    
+  - term: display_local
+    definition: "Local language display text"
+    category: attribute
+    related: [i18n, Localization]
+    
+  - term: sort_order
+    definition: "Sort order for UI presentation"
+    category: attribute
+    
+  - term: is_current_flag
+    definition: "Flag indicating current/active version"
+    category: attribute
+    related: [SCD2, EffectiveDating]
+    
+  # Standards
+  - term: ISO4217
+    definition: "International standard for currency codes"
+    category: standard
+    url: "https://www.iso.org/iso-4217-currency-codes.html"
+    
+  - term: ISO3166
+    definition: "International standard for country codes"
+    category: standard
+    url: "https://www.iso.org/iso-3166-country-codes.html"
+    
+  - term: IANA
+    definition: "Internet Assigned Numbers Authority (timezone database)"
+    category: standard
+    url: "https://www.iana.org/time-zones"
+    
+  - term: ISIC
+    definition: "International Standard Industrial Classification"
+    category: standard
+    
+  - term: NAICS
+    definition: "North American Industry Classification System"
+    category: standard
+    
+  # Patterns
+  - term: CodeListPattern
+    definition: "Group-based reference data organization pattern"
+    category: pattern
+    description: "Organize codes by group_code for flexible categorization"
+    
+  - term: CategoryHierarchy
+    definition: "Hierarchical categorization pattern"
+    category: pattern
+    description: "Use parent_id for multi-level categories"
+    examples: [SkillCategory, CompetencyCategory, Industry]
+
+metadata:
+  created_at: "2025-12-25"
+  created_by: "AI Agent"
+  total_terms: 30

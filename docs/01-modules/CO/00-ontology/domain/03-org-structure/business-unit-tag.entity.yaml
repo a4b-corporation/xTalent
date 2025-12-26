@@ -1,0 +1,85 @@
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:core:org-structure:business-unit-tag"
+
+entity: BusinessUnitTag
+classification: ENTITY
+module: CO
+submodule: org-structure
+version: "1.0"
+
+definition: |
+  Flexible tags for business unit categorization (region, cost center, etc.)
+
+description: |
+  Provides flexible tagging mechanism for business units beyond the rigid hierarchy.
+  Tags can represent regions, cost centers, budget codes, or any custom categorization.
+
+purpose: "Flexible business unit categorization and filtering"
+
+parent_aggregate: BusinessUnit
+
+mixins:
+  - Auditable
+
+# ----------------------------------------------------------------------------
+# ATTRIBUTES
+# ----------------------------------------------------------------------------
+attributes:
+  bu_id:
+    type: uuid
+    required: true
+    primary_key: true
+    foreign_key: business_unit.id
+    description: "Business unit ID"
+    
+  tag_code:
+    type: string
+    required: true
+    primary_key: true
+    max_length: 50
+    description: "Tag code (from code_list BU_TAG)"
+    examples:
+      - "REGION_NORTH"
+      - "COST_CENTER_123"
+      - "BUDGET_2025"
+    
+  assigned_at:
+    type: date
+    required: true
+    default: "current_date"
+    description: "Date tag was assigned"
+
+# ----------------------------------------------------------------------------
+# RELATIONSHIPS
+# ----------------------------------------------------------------------------
+relationships:
+  business_unit:
+    target: BusinessUnit
+    cardinality: N:1
+    required: true
+    on_delete: CASCADE
+
+# ----------------------------------------------------------------------------
+# VALIDATION RULES
+# ----------------------------------------------------------------------------
+validation_rules:
+  - rule: "unique_tag_per_unit"
+    expression: "UNIQUE(bu_id, tag_code)"
+    message: "Tag already assigned to this business unit"
+    severity: ERROR
+
+# ----------------------------------------------------------------------------
+# INDEXES
+# ----------------------------------------------------------------------------
+indexes:
+  - name: idx_bu_tag_unique
+    columns: [bu_id, tag_code]
+    unique: true
+
+references:
+  parent_entity: "business-unit.aggregate.yaml"
+  database_design: "../../../03-design/1.core.v4.dbml#org_bu.tag"
+
+metadata:
+  created_at: "2025-12-25"
+  dbml_source: "org_bu.tag (lines 487-493)"

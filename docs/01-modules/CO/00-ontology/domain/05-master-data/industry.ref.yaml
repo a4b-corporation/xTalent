@@ -1,0 +1,92 @@
+---
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:co:master-data:industry"
+
+module: CO
+submodule: master-data
+version: "1.0.0"
+
+entity: Industry
+classification: REFERENCE_DATA
+
+definition: |
+  Hierarchical industry classification based on ISIC/NAICS standards.
+
+purpose: |
+  Classify legal entities and business units by industry sector for
+  reporting, benchmarking, and compliance.
+
+attributes:
+  id:
+    type: uuid
+    required: true
+    primary_key: true
+    
+  code:
+    type: string
+    required: true
+    max_length: 50
+    unique: true
+    description: "Industry code (ISIC/NAICS)"
+    
+  name:
+    type: string
+    required: true
+    max_length: 255
+    
+  parent_id:
+    type: uuid
+    required: false
+    foreign_key: common.industry.id
+    description: "Parent industry for hierarchical classification"
+    
+  metadata:
+    type: jsonb
+    required: false
+    description: "Extended attributes (sector_code, level, etc.)"
+    
+  effective_start_date:
+    type: date
+    required: true
+    
+  effective_end_date:
+    type: date
+    required: false
+    
+  is_current_flag:
+    type: boolean
+    required: true
+    default: true
+
+mixins:
+  - EffectiveDated
+
+relationships:
+  parent:
+    target: Industry
+    target_ref: "xtalent:co:master-data:industry"
+    cardinality: N:1
+    required: false
+    description: "Parent industry"
+
+indexes:
+  - name: idx_industry_code
+    columns: [code]
+    unique: true
+  - name: idx_industry_parent
+    columns: [parent_id]
+
+security:
+  data_classification: PUBLIC
+  access_control:
+    read: [ALL_USERS]
+    write: [SYSTEM_ADMIN]
+
+references:
+  dbml_table: "../../03-design/1.core.v4.dbml#common.industry"
+  
+metadata:
+  tags: [master-data, industry, isic, naics]
+  owner: "Platform Team"
+  last_updated: "2025-12-25"
+  status: complete

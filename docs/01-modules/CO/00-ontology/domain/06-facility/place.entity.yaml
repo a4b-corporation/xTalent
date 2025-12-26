@@ -1,0 +1,70 @@
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:core:facility:place"
+
+entity: Place
+classification: ENTITY
+module: CO
+submodule: facility
+version: "1.0"
+
+definition: "Geographic place or administrative area (country, city, district)"
+
+description: |
+  Place represents geographic locations with hierarchical structure:
+  - Country, state/province, city, district
+  - Hierarchical relationships (parent-child)
+  - Link to administrative areas
+  - Foundation for Location and WorkLocation
+
+purpose: |
+  - Define geographic places
+  - Support location hierarchy
+  - Enable address management
+  - Facilitate reporting by geography
+
+attributes:
+  id: {type: uuid, required: true, primary_key: true}
+  code: {type: string, required: true, unique: true, max_length: 50}
+  name: {type: string, required: true, max_length: 255}
+  place_type_code: {type: string, required: true, max_length: 50, description: "COUNTRY, STATE, CITY, DISTRICT"}
+  parent_id: {type: uuid, required: false, foreign_key: place.id}
+  admin_area_id: {type: uuid, required: false, description: "Link to geo.admin_area"}
+  metadata: {type: jsonb, required: false, description: "Address, timezone, etc."}
+  is_active: {type: boolean, required: true, default: true}
+
+relationships:
+  parent:
+    target: Place
+    cardinality: N:1
+    required: false
+  children:
+    target: Place
+    cardinality: 1:N
+    inverse: parent
+
+validation_rules:
+  - rule: "unique_code"
+    expression: "UNIQUE(code)"
+    severity: ERROR
+
+indexes:
+  - name: idx_place_code
+    columns: [code]
+    unique: true
+  - name: idx_place_admin_area
+    columns: [admin_area_id]
+
+examples:
+  - name: "City"
+    data:
+      code: "VN_HCM"
+      name: "Ho Chi Minh City"
+      place_type_code: "CITY"
+      parent_id: "place-vietnam"
+
+references:
+  database_design: "../../../03-design/1.core.v4.dbml#facility.place"
+
+metadata:
+  created_at: "2025-12-25"
+  dbml_source: "facility.place (lines 1370-1381)"

@@ -1,0 +1,355 @@
+---
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:co:person:contact"
+
+module: CO
+submodule: person
+version: "1.0.0"
+
+entity: Contact
+classification: ENTITY
+parent_aggregate: Worker
+
+definition: |
+  Contact information for a worker, including phone numbers, email addresses,
+  instant messaging handles, and other communication channels. Supports multiple
+  contact methods with primary designation and effective dating.
+
+purpose: |
+  Enable communication with workers through various channels while maintaining
+  historical records of contact information changes. Supports self-service updates
+  by workers and HR admin management. Critical for emergency notifications,
+  payroll communications, and general HR correspondence.
+
+ai_instructions:
+  priority: MEDIUM
+  code_generation: true
+  test_generation: true
+  notes: |
+    - Contact belongs to Worker aggregate (cascade delete)
+    - Workers can have multiple contacts of same type (mobile, work email, personal email)
+    - Only one contact per type can be marked as primary
+    - Effective dating tracks contact history
+    - Self-service allowed for workers to update own contacts
+    - Email validation required for email contact types
+    - Phone number format validation based on country code
+
+mixins:
+  - Auditable
+  - EffectiveDated
+
+# ═══════════════════════════════════════════════════════════════════
+# ATTRIBUTES
+# ═══════════════════════════════════════════════════════════════════
+attributes:
+  id:
+    type: uuid
+    required: true
+    primary_key: true
+    description: "Unique identifier for contact record"
+    example: "650e8400-e29b-41d4-a716-446655440000"
+    
+  worker_id:
+    type: uuid
+    required: true
+    foreign_key: person.worker.id
+    description: "Reference to worker who owns this contact"
+    example: "550e8400-e29b-41d4-a716-446655440000"
+    
+  contact_type_code:
+    type: string
+    required: true
+    max_length: 50
+    description: "Type of contact (MOBILE, WORK_EMAIL, PERSONAL_EMAIL, etc.)"
+    example: "MOBILE"
+    reference:
+      entity: "xtalent:co:master-data:contact-type"
+      attribute: "code"
+    allowed_values:
+      - MOBILE
+      - HOME_PHONE
+      - WORK_PHONE
+      - WORK_EMAIL
+      - PERSONAL_EMAIL
+      - INSTANT_MESSAGING
+      - SOCIAL_MEDIA
+      - FAX
+    
+  contact_value:
+    type: string
+    required: true
+    max_length: 255
+    description: "Actual contact value (phone number, email address, IM handle)"
+    examples:
+      - "+84 90 123 4567"  # Mobile
+      - "john.doe@company.com"  # Work email
+      - "@johndoe"  # Social media handle
+    validation_rules:
+      - "Format depends on contact_type_code"
+      - "Email types must be valid email format"
+      - "Phone types should follow E.164 format"
+    
+  is_primary:
+    type: boolean
+    required: true
+    default: false
+    description: "Whether this is the primary contact of this type"
+    example: true
+    validation_rules:
+      - "Only one contact per worker per type can be primary"
+    
+  metadata:
+    type: jsonb
+    required: false
+    description: "Extended attributes (country_code for phone, verified status, etc.)"
+    example:
+      country_code: "VN"
+      verified: true
+      verified_date: "2025-01-15"
+      preferred_contact_time: "9am-5pm"
+    schema:
+      type: object
+      properties:
+        country_code:
+          type: string
+          description: "Country code for phone numbers"
+        verified:
+          type: boolean
+          description: "Whether contact has been verified"
+        verified_date:
+          type: string
+          format: date
+        preferred_contact_time:
+          type: string
+    
+  effective_start_date:
+    type: date
+    required: true
+    description: "Date when this contact becomes effective"
+    example: "2025-01-01"
+    
+  effective_end_date:
+    type: date
+    required: false
+    description: "Date when this contact expires (null = current)"
+    example: "2025-12-31"
+    
+  is_current_flag:
+    type: boolean
+    required: true
+    default: true
+    description: "Whether this is the current contact record"
+    
+  created_at:
+    type: timestamp
+    required: true
+    default: "now()"
+    immutable: true
+    description: "Timestamp when contact was created"
+    
+  updated_at:
+    type: timestamp
+    required: false
+    description: "Timestamp when contact was last updated"
+
+# ═══════════════════════════════════════════════════════════════════
+# RELATIONSHIPS
+# ═══════════════════════════════════════════════════════════════════
+relationships:
+  worker:
+    target: Worker
+    target_ref: "xtalent:co:person:worker"
+    cardinality: N:1
+    required: true
+    inverse: contacts
+    description: "Worker who owns this contact"
+    on_delete: CASCADE
+    
+  contact_type:
+    target: ContactType
+    target_ref: "xtalent:co:master-data:contact-type"
+    cardinality: N:1
+    required: true
+    description: "Type of contact"
+
+# ═══════════════════════════════════════════════════════════════════
+# VALIDATION RULES
+# ═══════════════════════════════════════════════════════════════════
+validation_rules:
+  - rule: valid_email_format
+    expression: "contact_type_code NOT LIKE '%EMAIL%' OR contact_value ~ '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}$'"
+    message: "Email contact must have valid email format"
+    severity: ERROR
+    error_code: "ERR_CONTACT_INVALID_EMAIL"
+    
+  - rule: valid_phone_format
+    expression: "contact_type_code NOT LIKE '%PHONE%' AND contact_type_code != 'MOBILE' OR contact_value ~ '^\\+?[1-9]\\d{1,14}$'"
+    message: "Phone contact should follow E.164 format (+country_code + number)"
+    severity: WARNING
+    error_code: "WARN_CONTACT_PHONE_FORMAT"
+    
+  - rule: unique_primary_per_type
+    expression: |
+      NOT EXISTS (
+        SELECT 1 FROM person.contact c2
+        WHERE c2.worker_id = this.worker_id
+        AND c2.contact_type_code = this.contact_type_code
+        AND c2.is_primary = true
+        AND c2.is_current_flag = true
+        AND c2.id != this.id
+      ) OR this.is_primary = false
+    message: "Only one primary contact allowed per type per worker"
+    severity: ERROR
+    error_code: "ERR_CONTACT_MULTIPLE_PRIMARY"
+    
+  - rule: valid_effective_dates
+    expression: "effective_end_date IS NULL OR effective_end_date >= effective_start_date"
+    message: "Effective end date must be after start date"
+    severity: ERROR
+    error_code: "ERR_CONTACT_INVALID_DATES"
+    
+  - rule: current_flag_consistency
+    expression: "(is_current_flag = true AND effective_end_date IS NULL) OR (is_current_flag = false AND effective_end_date IS NOT NULL)"
+    message: "Current flag must be consistent with effective end date"
+    severity: ERROR
+    error_code: "ERR_CONTACT_CURRENT_FLAG_MISMATCH"
+
+# ═══════════════════════════════════════════════════════════════════
+# INDEXES
+# ═══════════════════════════════════════════════════════════════════
+indexes:
+  - name: idx_contact_worker
+    columns: [worker_id, is_current_flag]
+    type: btree
+    description: "Index for finding worker's current contacts"
+    
+  - name: idx_contact_type
+    columns: [contact_type_code, is_primary]
+    type: btree
+    description: "Index for finding primary contacts by type"
+    
+  - name: idx_contact_effective
+    columns: [effective_start_date, effective_end_date]
+    type: btree
+    description: "Index for effective date queries"
+    
+  - name: idx_contact_unique
+    columns: [worker_id, contact_type_code, effective_start_date]
+    type: btree
+    unique: true
+    description: "Unique constraint per worker, type, and effective date"
+
+# ═══════════════════════════════════════════════════════════════════
+# SECURITY
+# ═══════════════════════════════════════════════════════════════════
+security:
+  data_classification: PII_SENSITIVE
+  gdpr_applicable: true
+  encryption_required: true
+  audit_required: true
+  
+  access_control:
+    read:
+      - role: HR_ADMIN
+      - role: HR_MANAGER
+      - role: SELF
+        condition: "user.worker_id = this.worker_id"
+    
+    write:
+      - role: HR_ADMIN
+      - role: SELF
+        condition: "user.worker_id = this.worker_id"
+        note: "Workers can update own contacts (self-service)"
+    
+    delete:
+      - role: HR_ADMIN
+  
+  pii_fields:
+    - contact_value
+    - metadata
+
+# ═══════════════════════════════════════════════════════════════════
+# BUSINESS RULES
+# ═══════════════════════════════════════════════════════════════════
+business_rules:
+  - rule: BR_CONTACT_001
+    name: "Email Verification Required"
+    description: "Work email must be verified before use for critical communications"
+    condition: "contact_type_code = 'WORK_EMAIL'"
+    action: "Require email verification via confirmation link"
+    
+  - rule: BR_CONTACT_002
+    name: "Emergency Contact Recommendation"
+    description: "Workers should have at least one mobile contact for emergencies"
+    condition: "Always"
+    action: "Warn if worker has no mobile contact"
+    severity: WARNING
+    
+  - rule: BR_CONTACT_003
+    name: "Primary Contact Auto-designation"
+    description: "First contact of each type is automatically marked as primary"
+    condition: "No existing primary contact of this type"
+    action: "Set is_primary = true"
+
+# ═══════════════════════════════════════════════════════════════════
+# EXAMPLES
+# ═══════════════════════════════════════════════════════════════════
+examples:
+  - name: "Mobile Contact"
+    description: "Primary mobile phone number"
+    data:
+      id: "650e8400-e29b-41d4-a716-446655440000"
+      worker_id: "550e8400-e29b-41d4-a716-446655440000"
+      contact_type_code: "MOBILE"
+      contact_value: "+84 90 123 4567"
+      is_primary: true
+      metadata:
+        country_code: "VN"
+        verified: true
+      effective_start_date: "2025-01-01"
+      effective_end_date: null
+      is_current_flag: true
+      
+  - name: "Work Email"
+    description: "Primary work email address"
+    data:
+      id: "660e8400-e29b-41d4-a716-446655440001"
+      worker_id: "550e8400-e29b-41d4-a716-446655440000"
+      contact_type_code: "WORK_EMAIL"
+      contact_value: "john.doe@company.com"
+      is_primary: true
+      metadata:
+        verified: true
+        verified_date: "2025-01-15"
+      effective_start_date: "2025-01-01"
+      effective_end_date: null
+      is_current_flag: true
+      
+  - name: "Historical Contact"
+    description: "Previous mobile number (no longer current)"
+    data:
+      id: "670e8400-e29b-41d4-a716-446655440002"
+      worker_id: "550e8400-e29b-41d4-a716-446655440000"
+      contact_type_code: "MOBILE"
+      contact_value: "+84 90 999 8888"
+      is_primary: false
+      effective_start_date: "2024-01-01"
+      effective_end_date: "2024-12-31"
+      is_current_flag: false
+
+# ═══════════════════════════════════════════════════════════════════
+# REFERENCES
+# ═══════════════════════════════════════════════════════════════════
+references:
+  parent_entity: "worker.entity.yaml"
+  glossary: "../glossary/person.glossary.yaml#contact"
+  dbml_table: "../../03-design/1.core.v4.dbml#person.contact"
+  
+metadata:
+  tags: [person, contact, communication, pii, self-service]
+  owner: "HR Platform Team"
+  last_updated: "2025-12-25"
+  status: complete
+  industry_references:
+    - "Workday: Employee self-service for contact updates"
+    - "SAP SuccessFactors: People Profile contact information"

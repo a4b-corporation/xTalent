@@ -1,0 +1,273 @@
+---
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:co:person:worker-skill"
+
+module: CO
+submodule: person
+version: "1.0.0"
+
+entity: WorkerSkill
+classification: ENTITY
+parent_aggregate: Worker
+
+definition: |
+  Technical and functional skills possessed by a worker, with proficiency levels
+  and years of experience. Supports skill verification from multiple sources
+  (self-reported, manager-assessed, certification-based).
+
+purpose: |
+  Enable skills-based talent matching, career development planning, and internal
+  mobility. Critical for talent marketplace, job recommendations, and succession
+  planning. Supports AI-driven skills intelligence and personalized development.
+
+ai_instructions:
+  priority: HIGH
+  code_generation: true
+  test_generation: true
+  notes: |
+    - WorkerSkill belongs to Worker aggregate
+    - Links to SkillMaster for standardized skill taxonomy
+    - Proficiency levels (1-5 scale or custom)
+    - Multiple sources: SELF, MANAGER, CERT, ASSESS
+    - Verification flag for validated skills
+    - Effective dating tracks skill progression
+    - Used for talent marketplace matching (Workday/SAP pattern)
+
+mixins:
+  - Auditable
+  - EffectiveDated
+
+attributes:
+  id:
+    type: uuid
+    required: true
+    primary_key: true
+    
+  worker_id:
+    type: uuid
+    required: true
+    foreign_key: person.worker.id
+    
+  skill_id:
+    type: uuid
+    required: true
+    foreign_key: common.skill_master.id
+    description: "Reference to standardized skill from skill master"
+    
+  proficiency_level:
+    type: integer
+    required: false
+    min: 1
+    max: 5
+    description: "Proficiency level (1=Beginner, 2=Intermediate, 3=Advanced, 4=Expert, 5=Master)"
+    example: 4
+    
+  years_experience:
+    type: decimal
+    required: false
+    precision: 4
+    scale: 1
+    description: "Years of experience with this skill"
+    example: 5.5
+    
+  last_used_date:
+    type: date
+    required: false
+    description: "Date when skill was last used"
+    example: "2025-01-15"
+    
+  source_code:
+    type: string
+    required: false
+    max_length: 50
+    description: "Source of skill data"
+    allowed_values:
+      - SELF  # Self-reported
+      - MANAGER  # Manager assessment
+      - CERT  # Certification-based
+      - ASSESS  # Assessment/test
+      - AI  # AI-inferred from work history
+    
+  verified_flag:
+    type: boolean
+    required: true
+    default: false
+    description: "Whether skill has been verified"
+    note: "Verified skills have higher weight in matching algorithms"
+    
+  metadata:
+    type: jsonb
+    required: false
+    description: "Extended attributes"
+    example:
+      certification_id: "cert-123"
+      assessment_score: 85
+      verified_by: "manager-456"
+      verified_date: "2025-01-15"
+      endorsements: 5
+    
+  effective_start_date:
+    type: date
+    required: true
+    
+  effective_end_date:
+    type: date
+    required: false
+    
+  is_current_flag:
+    type: boolean
+    required: true
+    default: true
+    
+  created_at:
+    type: timestamp
+    required: true
+    default: "now()"
+    immutable: true
+    
+  updated_at:
+    type: timestamp
+    required: false
+
+derived_attributes:
+  skill_name:
+    type: string
+    formula: "(SELECT name FROM common.skill_master WHERE id = this.skill_id)"
+    description: "Name of the skill"
+    
+  skill_category:
+    type: string
+    formula: "(SELECT category_name FROM common.skill_master sm JOIN common.skill_category sc ON sm.category_id = sc.id WHERE sm.id = this.skill_id)"
+    description: "Category of the skill"
+    
+  proficiency_label:
+    type: string
+    formula: |
+      CASE proficiency_level
+        WHEN 1 THEN 'Beginner'
+        WHEN 2 THEN 'Intermediate'
+        WHEN 3 THEN 'Advanced'
+        WHEN 4 THEN 'Expert'
+        WHEN 5 THEN 'Master'
+        ELSE 'Unknown'
+      END
+    description: "Human-readable proficiency level"
+
+relationships:
+  worker:
+    target: Worker
+    target_ref: "xtalent:co:person:worker"
+    cardinality: N:1
+    required: true
+    inverse: skills
+    on_delete: CASCADE
+    
+  skill_master:
+    target: SkillMaster
+    target_ref: "xtalent:co:master-data:skill-master"
+    cardinality: N:1
+    required: true
+    description: "Standardized skill definition"
+
+validation_rules:
+  - rule: unique_skill_per_period
+    expression: |
+      NOT EXISTS (
+        SELECT 1 FROM person.worker_skill ws2
+        WHERE ws2.worker_id = this.worker_id
+        AND ws2.skill_id = this.skill_id
+        AND ws2.effective_start_date = this.effective_start_date
+        AND ws2.id != this.id
+      )
+    message: "Worker can have only one skill record per skill per effective date"
+    severity: ERROR
+    error_code: "ERR_SKILL_DUPLICATE"
+    
+  - rule: valid_proficiency
+    expression: "proficiency_level IS NULL OR (proficiency_level >= 1 AND proficiency_level <= 5)"
+    message: "Proficiency level must be between 1 and 5"
+    severity: ERROR
+    error_code: "ERR_SKILL_INVALID_PROFICIENCY"
+
+indexes:
+  - name: idx_worker_skill_worker
+    columns: [worker_id, is_current_flag]
+    type: btree
+    
+  - name: idx_worker_skill_skill
+    columns: [skill_id, proficiency_level]
+    type: btree
+    description: "Index for skill-based searches"
+    
+  - name: idx_worker_skill_unique
+    columns: [worker_id, skill_id, effective_start_date]
+    type: btree
+    unique: true
+
+security:
+  data_classification: PII_STANDARD
+  gdpr_applicable: false
+  encryption_required: false
+  audit_required: true
+  
+  access_control:
+    read:
+      - role: HR_ADMIN
+      - role: HR_MANAGER
+      - role: TALENT_MARKETPLACE_USER
+      - role: SELF
+        condition: "user.worker_id = this.worker_id"
+    write:
+      - role: HR_ADMIN
+      - role: SELF
+        condition: "user.worker_id = this.worker_id"
+        note: "Workers can self-report skills"
+    delete:
+      - role: HR_ADMIN
+
+business_rules:
+  - rule: BR_SKILL_001
+    name: "Skill Verification Requirement"
+    description: "High-proficiency skills should be verified"
+    condition: "proficiency_level >= 4"
+    action: "Recommend verification through certification or assessment"
+    severity: INFO
+    
+  - rule: BR_SKILL_002
+    name: "Skill Freshness"
+    description: "Skills not used recently may need refresh"
+    condition: "last_used_date IS NOT NULL AND last_used_date < CURRENT_DATE - INTERVAL '2 years'"
+    action: "Suggest skill refresh training"
+    severity: INFO
+
+examples:
+  - name: "Python Programming (Expert)"
+    data:
+      id: "d50e8400-e29b-41d4-a716-446655440000"
+      worker_id: "550e8400-e29b-41d4-a716-446655440000"
+      skill_id: "skill-python-123"
+      proficiency_level: 4
+      years_experience: 5.0
+      last_used_date: "2025-01-15"
+      source_code: "SELF"
+      verified_flag: true
+      metadata:
+        verified_by: "manager-456"
+        verified_date: "2025-01-10"
+        endorsements: 3
+      effective_start_date: "2020-01-01"
+      is_current_flag: true
+
+references:
+  parent_entity: "worker.entity.yaml"
+  glossary: "../glossary/person.glossary.yaml#worker-skill"
+  dbml_table: "../../03-design/1.core.v4.dbml#person.worker_skill"
+  
+metadata:
+  tags: [person, skill, talent-marketplace, ai-matching]
+  owner: "HR Platform Team"
+  last_updated: "2025-12-25"
+  status: complete
+  industry_references:
+    - "Workday: Skills Cloud for talent intelligence"
+    - "SAP SuccessFactors: Talent Intelligence Hub skills management"

@@ -1,0 +1,66 @@
+$schema: "https://xtalent.io/schemas/action/v3"
+$id: "xtalent:core:org-structure:delete-legal-entity"
+
+action: DeleteLegalEntity
+module: CO
+submodule: org-structure
+version: "1.0"
+
+description: "Soft delete legal entity (deactivate)"
+
+inputs:
+  legal_entity_id: {type: uuid, required: true}
+  reason: {type: string, required: true}
+  effective_date: {type: date, required: true}
+
+outputs:
+  success: {type: boolean}
+
+preconditions:
+  - condition: "entity exists and active"
+    check: "EXISTS(SELECT 1 FROM legal_entity WHERE id = :legal_entity_id AND is_current_flag = true)"
+  - condition: "no active children"
+    check: "NOT EXISTS(SELECT 1 FROM legal_entity WHERE parent_id = :legal_entity_id AND is_current_flag = true)"
+  - condition: "no active business units"
+    check: "NOT EXISTS(SELECT 1 FROM business_unit WHERE legal_entity_id = :legal_entity_id AND is_current_flag = true)"
+  - condition: "no active employees"
+    check: "NOT EXISTS(SELECT 1 FROM employee WHERE legal_entity_id = :legal_entity_id AND status_code = 'ACTIVE')"
+
+effects:
+  database:
+    - operation: UPDATE
+      table: org_legal.entity
+      where: "id = :legal_entity_id AND is_current_flag = true"
+      data:
+        effective_end_date: ":effective_date"
+        is_current_flag: false
+        updated_at: "now()"
+        updated_by: ":current_user_id"
+  
+  events:
+    - event: LegalEntityDeleted
+      payload:
+        legal_entity_id: ":legal_entity_id"
+        reason: ":reason"
+  
+  audit:
+    - action: DELETE
+      entity_type: LegalEntity
+      entity_id: ":legal_entity_id"
+      details:
+        reason: ":reason"
+
+authorization:
+  required_roles: [LEGAL_ADMIN]
+  required_permissions: [legal_entity.delete]
+
+api:
+  rest:
+    method: DELETE
+    path: "/api/v1/legal-entities/{legal_entity_id}"
+    status_code: 204
+
+metadata:
+  created_at: "2025-12-25"
+  transaction: true
+  note: "Soft delete only - records are never physically deleted"

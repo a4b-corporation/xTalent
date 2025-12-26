@@ -1,0 +1,37 @@
+$schema: "https://xtalent.io/schemas/action/v3"
+$id: "xtalent:core:employment:terminate-employee"
+
+action: TerminateEmployee
+module: CO
+submodule: employment
+version: "1.0"
+
+inputs:
+  employee_id: {type: uuid, required: true}
+  termination_date: {type: date, required: true}
+  termination_reason: {type: string, required: true}
+
+preconditions:
+  - condition: "employee is active"
+    check: "status_code IN ('ACTIVE', 'SUSPENDED', 'ON_LEAVE')"
+
+effects:
+  database:
+    - operation: UPDATE
+      table: employment.employee
+      data:
+        status_code: "TERMINATED"
+        termination_date: ":termination_date"
+  events:
+    - event: EmployeeTerminated
+
+authorization:
+  required_roles: [HR_ADMIN]
+
+api:
+  rest:
+    method: POST
+    path: "/api/v1/employees/{employee_id}/terminate"
+
+metadata:
+  created_at: "2025-12-25"

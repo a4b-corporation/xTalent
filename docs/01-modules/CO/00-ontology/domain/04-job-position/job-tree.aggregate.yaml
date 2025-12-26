@@ -1,0 +1,71 @@
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:core:job-position:job-tree"
+
+entity: JobTree
+classification: AGGREGATE_ROOT
+module: CO
+submodule: job-position
+version: "1.0"
+
+definition: |
+  Job tree registry defining independent job hierarchies (corporate job tree,
+  BU-specific job trees for customization)
+
+description: |
+  JobTree provides multi-tree job architecture:
+  - Corporate job tree (CORP_JOB): Standard jobs
+  - BU job trees: Business unit customizations
+  - Tree-level ownership and governance
+  - Enables job inheritance and override patterns
+
+purpose: |
+  - Define job tree structures
+  - Support corporate and BU job catalogs
+  - Enable job customization
+  - Facilitate job management
+
+mixins:
+  - Auditable
+
+attributes:
+  id: {type: uuid, required: true, primary_key: true}
+  tree_code: {type: string, required: true, unique: true, max_length: 50}
+  tree_name: {type: string, required: true, max_length: 255}
+  owner_scope: {type: string, required: true, max_length: 10, enum: [CORP, LE, BU]}
+  owner_unit_id: {type: uuid, required: false, foreign_key: business_unit.id}
+  description: {type: text, required: false}
+
+relationships:
+  owner_unit:
+    target: BusinessUnit
+    cardinality: N:1
+    required: false
+  jobs:
+    target: Job
+    cardinality: 1:N
+
+validation_rules:
+  - rule: "unique_tree_code"
+    expression: "UNIQUE(tree_code)"
+    severity: ERROR
+
+examples:
+  - name: "Corporate Job Tree"
+    data:
+      tree_code: "CORP_JOB"
+      tree_name: "Corporate Job Catalog"
+      owner_scope: "CORP"
+      owner_unit_id: null
+  - name: "BU Job Tree"
+    data:
+      tree_code: "BU_GAME_JOB"
+      tree_name: "Game Division Job Catalog"
+      owner_scope: "BU"
+      owner_unit_id: "bu-game-001"
+
+references:
+  database_design: "../../../03-design/1.core.v4.dbml#jobpos.job_tree"
+
+metadata:
+  created_at: "2025-12-25"
+  dbml_source: "jobpos.job_tree (lines 1020-1030)"

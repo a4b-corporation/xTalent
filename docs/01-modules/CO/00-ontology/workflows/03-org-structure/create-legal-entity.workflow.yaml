@@ -1,0 +1,309 @@
+$schema: "https://xtalent.io/schemas/workflow/v3"
+$id: "xtalent:core:org-structure:create-legal-entity"
+
+# ============================================================================
+# CREATE LEGAL ENTITY WORKFLOW
+# ============================================================================
+# Purpose: Create a new legal entity with validation and hierarchy management
+# Trigger: HR Admin, Legal Admin
+# Pattern: SAP SuccessFactors Legal Entity Creation
+
+workflow: CreateLegalEntity
+module: CO
+submodule: org-structure
+version: "1.0"
+
+description: |
+  Creates a new legal entity in the system with proper validation,
+  hierarchy setup, and initial profile creation.
+
+# ----------------------------------------------------------------------------
+# INPUTS
+# ----------------------------------------------------------------------------
+inputs:
+  code:
+    type: string
+    required: true
+    description: "Unique legal entity code"
+    validation:
+      - pattern: "^[A-Z0-9_-]+$"
+      - min_length: 2
+      - max_length: 50
+    
+  name_vi:
+    type: string
+    required: true
+    description: "Legal entity name in Vietnamese"
+    validation:
+      - min_length: 1
+      - max_length: 150
+    
+  name_en:
+    type: string
+    required: false
+    description: "Legal entity name in English"
+    
+  type_id:
+    type: uuid
+    required: true
+    description: "Legal entity type ID"
+    
+  parent_id:
+    type: uuid
+    required: false
+    description: "Parent legal entity ID (null for root)"
+    
+  effective_start_date:
+    type: date
+    required: true
+    description: "Effective start date"
+    default: "today()"
+    
+  # Profile data (optional at creation)
+  profile_data:
+    type: object
+    required: false
+    description: "Initial profile information"
+    properties:
+      legal_name_local: string
+      legal_name_en: string
+      address1_country_code: string
+      address1_street: string
+      tax_id: string
+      registration_number: string
+
+# ----------------------------------------------------------------------------
+# OUTPUTS
+# ----------------------------------------------------------------------------
+outputs:
+  legal_entity_id:
+    type: uuid
+    description: "Created legal entity ID"
+    
+  legal_entity:
+    type: object
+    description: "Created legal entity object"
+
+# ----------------------------------------------------------------------------
+# STEPS
+# ----------------------------------------------------------------------------
+steps:
+  # Step 1: Validate inputs
+  - name: validate_inputs
+    type: validation
+    description: "Validate all input parameters"
+    
+    validations:
+      - check: "code is unique"
+        query: "SELECT COUNT(*) FROM legal_entity WHERE code = :code AND is_current_flag = true"
+        condition: "count = 0"
+        error: "Legal entity code already exists"
+        
+      - check: "type exists"
+        query: "SELECT COUNT(*) FROM entity_type WHERE id = :type_id AND is_current_flag = true"
+        condition: "count = 1"
+        error: "Invalid entity type ID"
+        
+      - check: "parent exists if provided"
+        query: "SELECT COUNT(*) FROM legal_entity WHERE id = :parent_id AND is_current_flag = true"
+        condition: "parent_id IS NULL OR count = 1"
+        error: "Invalid parent legal entity ID"
+        
+      - check: "effective_start_date not in future"
+        condition: "effective_start_date <= today()"
+        error: "Effective start date cannot be in the future"
+    
+    on_error:
+      action: abort
+      message: "Validation failed"
+
+  # Step 2: Calculate hierarchy path
+  - name: calculate_path
+    type: computation
+    description: "Calculate hierarchical path"
+    
+    logic: |
+      IF parent_id IS NULL THEN
+        path = "/"
+      ELSE
+        parent_path = SELECT path FROM legal_entity WHERE id = parent_id
+        path = parent_path + code + "/"
+      END IF
+    
+    outputs:
+      - path: string
+
+  # Step 3: Check hierarchy depth
+  - name: check_hierarchy_depth
+    type: validation
+    description: "Ensure hierarchy doesn't exceed max depth"
+    
+    validations:
+      - check: "max depth not exceeded"
+        condition: "count(path, '/') - 1 <= 10"
+        error: "Maximum hierarchy depth (10) exceeded"
+        severity: ERROR
+
+  # Step 4: Create legal entity
+  - name: create_legal_entity
+    type: database_operation
+    description: "Insert legal entity record"
+    
+    operation: INSERT
+    table: org_legal.entity
+    
+    data:
+      id: "gen_random_uuid()"
+      code: ":code"
+      name_vi: ":name_vi"
+      name_en: ":name_en"
+      type_id: ":type_id"
+      parent_id: ":parent_id"
+      path: ":path"
+      effective_start_date: ":effective_start_date"
+      effective_end_date: null
+      is_current_flag: true
+      created_at: "now()"
+      created_by: ":current_user_id"
+    
+    outputs:
+      - legal_entity_id: uuid
+    
+    on_error:
+      action: abort
+      rollback: true
+
+  # Step 5: Update closure table (if enabled)
+  - name: update_closure_table
+    type: database_operation
+    description: "Update hierarchy closure table"
+    condition: "closure_table_enabled = true"
+    
+    operation: EXECUTE
+    sql: |
+      -- Insert self-reference
+      INSERT INTO org_legal.entity_hierarchy (ancestor_id, descendant_id, depth, path_string)
+      VALUES (:legal_entity_id, :legal_entity_id, 0, :code);
+      
+      -- Insert ancestor relationships
+      INSERT INTO org_legal.entity_hierarchy (ancestor_id, descendant_id, depth, path_string)
+      SELECT ancestor_id, :legal_entity_id, depth + 1, path_string || '/' || :code
+      FROM org_legal.entity_hierarchy
+      WHERE descendant_id = :parent_id;
+    
+    on_error:
+      action: abort
+      rollback: true
+
+  # Step 6: Create default profile (if data provided)
+  - name: create_profile
+    type: action_call
+    description: "Create entity profile if data provided"
+    condition: "profile_data IS NOT NULL"
+    
+    action: "xtalent:core:org-structure:create-entity-profile"
+    inputs:
+      legal_entity_id: ":legal_entity_id"
+      profile_data: ":profile_data"
+    
+    on_error:
+      action: log_warning
+      continue: true
+
+  # Step 7: Emit event
+  - name: emit_event
+    type: event
+    description: "Emit LegalEntityCreated event"
+    
+    event: LegalEntityCreated
+    payload:
+      legal_entity_id: ":legal_entity_id"
+      code: ":code"
+      name_vi: ":name_vi"
+      parent_id: ":parent_id"
+      created_by: ":current_user_id"
+      created_at: ":timestamp"
+
+  # Step 8: Audit log
+  - name: audit_log
+    type: audit
+    description: "Log creation in audit trail"
+    
+    log:
+      action: CREATE_LEGAL_ENTITY
+      entity_type: LegalEntity
+      entity_id: ":legal_entity_id"
+      user_id: ":current_user_id"
+      details:
+        code: ":code"
+        name_vi: ":name_vi"
+        parent_id: ":parent_id"
+
+# ----------------------------------------------------------------------------
+# ERROR HANDLING
+# ----------------------------------------------------------------------------
+error_handling:
+  on_validation_error:
+    action: abort
+    rollback: true
+    notify: user
+    
+  on_database_error:
+    action: abort
+    rollback: true
+    notify: admin
+    
+  on_system_error:
+    action: abort
+    rollback: true
+    notify: admin
+    log_level: ERROR
+
+# ----------------------------------------------------------------------------
+# AUTHORIZATION
+# ----------------------------------------------------------------------------
+authorization:
+  required_roles:
+    - LEGAL_ADMIN
+    - HR_ADMIN
+  
+  required_permissions:
+    - legal_entity.create
+  
+  context_checks:
+    - check: "can create in parent entity"
+      condition: "parent_id IS NULL OR user.can_manage_legal_entity(parent_id)"
+      error: "Insufficient permissions to create legal entity under this parent"
+
+# ----------------------------------------------------------------------------
+# BUSINESS RULES
+# ----------------------------------------------------------------------------
+business_rules:
+  - rule: BR-ORG-001
+    description: "Legal entity code must follow naming convention"
+    
+  - rule: BR-ORG-002
+    description: "Parent entity must be active"
+    
+  - rule: BR-ORG-003
+    description: "Hierarchy depth must not exceed 10 levels"
+
+# ----------------------------------------------------------------------------
+# REFERENCES
+# ----------------------------------------------------------------------------
+references:
+  entity: "../../domain/03-org-structure/legal-entity.aggregate.yaml"
+  actions:
+    - "create-legal-entity.action.yaml"
+  business_rules: "../../../02-spec/04-BR/BR-03-org-structure.md"
+
+# ----------------------------------------------------------------------------
+# METADATA
+# ----------------------------------------------------------------------------
+metadata:
+  created_at: "2025-12-25"
+  created_by: "AI Agent"
+  estimated_duration: "2-5 seconds"
+  complexity: MEDIUM
+  transaction: true
+  idempotent: false

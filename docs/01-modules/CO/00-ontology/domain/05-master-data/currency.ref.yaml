@@ -1,0 +1,89 @@
+---
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:co:master-data:currency"
+
+module: CO
+submodule: master-data
+version: "1.0.0"
+
+entity: Currency
+classification: REFERENCE_DATA
+
+definition: |
+  ISO 4217 currency codes with metadata for multi-currency support.
+
+purpose: |
+  Enable multi-currency payroll, compensation, and financial transactions.
+  Supports currency conversion and localization.
+
+attributes:
+  id:
+    type: uuid
+    required: true
+    primary_key: true
+    
+  code:
+    type: string
+    required: true
+    length: 3
+    unique: true
+    description: "ISO 4217 currency code"
+    examples: [USD, VND, EUR, JPY]
+    
+  name:
+    type: string
+    required: true
+    max_length: 100
+    examples: ["US Dollar", "Vietnamese Dong"]
+    
+  symbol:
+    type: string
+    required: false
+    max_length: 10
+    examples: ["$", "₫", "€"]
+    
+  decimal_digits:
+    type: integer
+    required: true
+    description: "Number of decimal places"
+    examples: [2, 0]  # USD=2, JPY=0
+    
+  metadata:
+    type: jsonb
+    required: false
+    
+  effective_start_date:
+    type: date
+    required: true
+    
+  effective_end_date:
+    type: date
+    required: false
+    
+  is_current_flag:
+    type: boolean
+    required: true
+    default: true
+
+mixins:
+  - EffectiveDated
+
+indexes:
+  - name: idx_currency_code
+    columns: [code]
+    unique: true
+
+security:
+  data_classification: PUBLIC
+  access_control:
+    read: [ALL_USERS]
+    write: [SYSTEM_ADMIN]
+
+references:
+  dbml_table: "../../03-design/1.core.v4.dbml#common.currency"
+  
+metadata:
+  tags: [master-data, currency, iso-4217]
+  owner: "Platform Team"
+  last_updated: "2025-12-25"
+  status: complete

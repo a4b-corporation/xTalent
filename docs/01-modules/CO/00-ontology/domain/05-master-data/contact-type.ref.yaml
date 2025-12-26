@@ -1,0 +1,107 @@
+---
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:co:master-data:contact-type"
+
+module: CO
+submodule: master-data
+version: "1.0.0"
+
+entity: ContactType
+classification: REFERENCE_DATA
+
+definition: |
+  Defines types of contact methods with validation rules and UI metadata.
+
+purpose: |
+  Standardize contact types across the system with channel-specific
+  validation and formatting rules.
+
+attributes:
+  id:
+    type: uuid
+    required: true
+    primary_key: true
+    
+  code:
+    type: string
+    required: true
+    max_length: 50
+    unique: true
+    examples: [MOBILE, WORK_EMAIL, PERSONAL_EMAIL, INSTANT_MESSAGING]
+    
+  name:
+    type: string
+    required: true
+    max_length: 100
+    
+  channel_category:
+    type: string
+    required: true
+    max_length: 20
+    description: "Communication channel category"
+    allowed_values: [PHONE, EMAIL, IM, SOCIAL]
+    
+  validation_regex:
+    type: string
+    required: false
+    max_length: 255
+    description: "Regex pattern for validation"
+    
+  input_mask:
+    type: string
+    required: false
+    max_length: 50
+    description: "Input mask for UI"
+    
+  icon:
+    type: string
+    required: false
+    max_length: 50
+    description: "Icon identifier for UI"
+    
+  sort_order:
+    type: integer
+    required: true
+    default: 0
+    
+  metadata:
+    type: jsonb
+    required: false
+    
+  effective_start_date:
+    type: date
+    required: true
+    
+  effective_end_date:
+    type: date
+    required: false
+    
+  is_current_flag:
+    type: boolean
+    required: true
+    default: true
+
+mixins:
+  - EffectiveDated
+
+indexes:
+  - name: idx_contact_type_code
+    columns: [code]
+    unique: true
+  - name: idx_contact_type_category
+    columns: [channel_category, sort_order]
+
+security:
+  data_classification: PUBLIC
+  access_control:
+    read: [ALL_USERS]
+    write: [HR_ADMIN, SYSTEM_ADMIN]
+
+references:
+  dbml_table: "../../03-design/1.core.v4.dbml#common.contact_type"
+  
+metadata:
+  tags: [master-data, contact-type, validation]
+  owner: "Platform Team"
+  last_updated: "2025-12-25"
+  status: complete

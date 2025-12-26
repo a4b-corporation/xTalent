@@ -1,0 +1,252 @@
+---
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:co:person:worker-competency"
+
+module: CO
+submodule: person
+version: "1.0.0"
+
+entity: WorkerCompetency
+classification: ENTITY
+parent_aggregate: Worker
+
+definition: |
+  Behavioral and leadership competencies assessed for a worker, typically through
+  performance reviews, 360-degree assessments, or competency evaluations. Measures
+  soft skills like communication, leadership, teamwork, and problem-solving.
+
+purpose: |
+  Support performance management, succession planning, and leadership development.
+  Competencies complement technical skills by measuring behavioral attributes
+  critical for job success. Used for talent reviews and high-potential identification.
+
+ai_instructions:
+  priority: MEDIUM
+  code_generation: true
+  test_generation: true
+  notes: |
+    - WorkerCompetency belongs to Worker aggregate
+    - Links to CompetencyMaster for standardized competency framework
+    - Rating values with configurable scales
+    - Multiple assessment sources (self, manager, 360, survey)
+    - Tracks who assessed and when
+    - Effective dating for competency progression
+    - Used for succession planning and leadership development
+
+mixins:
+  - Auditable
+  - EffectiveDated
+
+attributes:
+  id:
+    type: uuid
+    required: true
+    primary_key: true
+    
+  worker_id:
+    type: uuid
+    required: true
+    foreign_key: person.worker.id
+    
+  competency_id:
+    type: uuid
+    required: true
+    foreign_key: common.competency_master.id
+    description: "Reference to standardized competency"
+    
+  rating_value:
+    type: decimal
+    required: false
+    precision: 5
+    scale: 2
+    description: "Numeric rating value"
+    example: 4.25
+    
+  rating_scale_code:
+    type: string
+    required: false
+    max_length: 50
+    description: "Rating scale used (e.g., '1-5', 'A-E')"
+    example: "1-5"
+    
+  assessed_date:
+    type: date
+    required: false
+    description: "Date when competency was assessed"
+    
+  assessed_by_worker_id:
+    type: uuid
+    required: false
+    foreign_key: person.worker.id
+    description: "Worker who performed the assessment (manager, peer)"
+    
+  source_code:
+    type: string
+    required: false
+    max_length: 50
+    description: "Source of assessment"
+    allowed_values:
+      - SELF  # Self-assessment
+      - MGR  # Manager assessment
+      - 360  # 360-degree feedback
+      - SURVEY  # Survey/questionnaire
+      - REVIEW  # Performance review
+    
+  metadata:
+    type: jsonb
+    required: false
+    description: "Extended attributes"
+    example:
+      review_cycle: "2025-Q1"
+      assessment_type: "Annual Performance Review"
+      comments: "Strong leadership skills demonstrated"
+    
+  effective_start_date:
+    type: date
+    required: true
+    
+  effective_end_date:
+    type: date
+    required: false
+    
+  is_current_flag:
+    type: boolean
+    required: true
+    default: true
+    
+  created_at:
+    type: timestamp
+    required: true
+    default: "now()"
+    immutable: true
+    
+  updated_at:
+    type: timestamp
+    required: false
+
+derived_attributes:
+  competency_name:
+    type: string
+    formula: "(SELECT name FROM common.competency_master WHERE id = this.competency_id)"
+    
+  assessed_by_name:
+    type: string
+    formula: "(SELECT display_name FROM person.worker WHERE id = this.assessed_by_worker_id)"
+    
+  rating_label:
+    type: string
+    formula: |
+      CASE
+        WHEN rating_value >= 4.5 THEN 'Exceptional'
+        WHEN rating_value >= 3.5 THEN 'Exceeds Expectations'
+        WHEN rating_value >= 2.5 THEN 'Meets Expectations'
+        WHEN rating_value >= 1.5 THEN 'Needs Improvement'
+        ELSE 'Unsatisfactory'
+      END
+    description: "Human-readable rating label (5-point scale)"
+
+relationships:
+  worker:
+    target: Worker
+    target_ref: "xtalent:co:person:worker"
+    cardinality: N:1
+    required: true
+    inverse: competencies
+    on_delete: CASCADE
+    
+  competency_master:
+    target: CompetencyMaster
+    target_ref: "xtalent:co:master-data:competency-master"
+    cardinality: N:1
+    required: true
+    
+  assessed_by:
+    target: Worker
+    target_ref: "xtalent:co:person:worker"
+    cardinality: N:1
+    required: false
+    description: "Worker who performed assessment"
+
+validation_rules:
+  - rule: unique_competency_per_period
+    expression: |
+      NOT EXISTS (
+        SELECT 1 FROM person.worker_competency wc2
+        WHERE wc2.worker_id = this.worker_id
+        AND wc2.competency_id = this.competency_id
+        AND wc2.effective_start_date = this.effective_start_date
+        AND wc2.id != this.id
+      )
+    message: "Worker can have only one competency record per competency per effective date"
+    severity: ERROR
+    error_code: "ERR_COMPETENCY_DUPLICATE"
+
+indexes:
+  - name: idx_worker_competency_worker
+    columns: [worker_id, is_current_flag]
+    type: btree
+    
+  - name: idx_worker_competency_comp
+    columns: [competency_id, rating_value]
+    type: btree
+    
+  - name: idx_worker_competency_unique
+    columns: [worker_id, competency_id, effective_start_date]
+    type: btree
+    unique: true
+
+security:
+  data_classification: PII_STANDARD
+  gdpr_applicable: false
+  encryption_required: false
+  audit_required: true
+  
+  access_control:
+    read:
+      - role: HR_ADMIN
+      - role: HR_MANAGER
+      - role: TALENT_REVIEW_PARTICIPANT
+      - role: SELF
+        condition: "user.worker_id = this.worker_id"
+    write:
+      - role: HR_ADMIN
+      - role: MANAGER
+        condition: "user.worker_id = this.assessed_by_worker_id"
+    delete:
+      - role: HR_ADMIN
+
+business_rules:
+  - rule: BR_COMPETENCY_001
+    name: "Development Plan for Low Ratings"
+    description: "Low competency ratings trigger development planning"
+    condition: "rating_value < 2.5"
+    action: "Create development plan for improvement"
+    severity: INFO
+
+examples:
+  - name: "Leadership Competency"
+    data:
+      id: "e50e8400-e29b-41d4-a716-446655440000"
+      worker_id: "550e8400-e29b-41d4-a716-446655440000"
+      competency_id: "comp-leadership-123"
+      rating_value: 4.2
+      rating_scale_code: "1-5"
+      assessed_date: "2025-01-15"
+      assessed_by_worker_id: "manager-456"
+      source_code: "MGR"
+      metadata:
+        review_cycle: "2025-Q1"
+        comments: "Strong leadership demonstrated"
+      effective_start_date: "2025-01-15"
+      is_current_flag: true
+
+references:
+  parent_entity: "worker.entity.yaml"
+  glossary: "../glossary/person.glossary.yaml#worker-competency"
+  dbml_table: "../../03-design/1.core.v4.dbml#person.worker_competency"
+  
+metadata:
+  tags: [person, competency, performance, succession-planning]
+  owner: "HR Platform Team"
+  last_updated: "2025-12-25"
+  status: complete

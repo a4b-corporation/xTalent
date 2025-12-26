@@ -1,0 +1,68 @@
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:core:facility:work-location"
+
+entity: WorkLocation
+classification: ENTITY
+module: CO
+submodule: facility
+version: "1.0"
+
+definition: "Work location where employees work (office, site, remote)"
+
+description: |
+  WorkLocation represents where employees work:
+  - Offices, sites, remote locations
+  - Link to Location for physical address
+  - Link to LegalEntity for ownership
+  - Capacity management
+  - Used in assignments and positions
+
+purpose: |
+  - Define work locations
+  - Support assignment management
+  - Enable capacity planning
+  - Facilitate location-based reporting
+
+attributes:
+  id: {type: uuid, required: true, primary_key: true}
+  code: {type: string, required: true, unique: true, max_length: 50}
+  name: {type: string, required: true, max_length: 255}
+  location_id: {type: uuid, required: true, foreign_key: location.id}
+  work_loc_type_code: {type: string, required: true, max_length: 50, description: "OFFICE, SITE, REMOTE, HOME"}
+  legal_entity_id: {type: uuid, required: false, description: "Owning legal entity"}
+  capacity: {type: integer, required: false, description: "Employee capacity"}
+  metadata: {type: jsonb, required: false, description: "Equipment, features, etc."}
+  is_active: {type: boolean, required: true, default: true}
+
+relationships:
+  location:
+    target: Location
+    cardinality: N:1
+    required: true
+
+validation_rules:
+  - rule: "unique_code"
+    expression: "UNIQUE(code)"
+    severity: ERROR
+
+indexes:
+  - name: idx_work_location_code
+    columns: [code]
+    unique: true
+
+examples:
+  - name: "Office"
+    data:
+      code: "VNG_HQ"
+      name: "VNG Headquarters"
+      location_id: "location-vng-campus"
+      work_loc_type_code: "OFFICE"
+      legal_entity_id: "le-vng"
+      capacity: 500
+
+references:
+  database_design: "../../../03-design/1.core.v4.dbml#facility.work_location"
+
+metadata:
+  created_at: "2025-12-25"
+  dbml_source: "facility.work_location (lines 1396-1406)"

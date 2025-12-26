@@ -1,0 +1,46 @@
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:core:employment:employee-identifier"
+
+entity: EmployeeIdentifier
+classification: ENTITY
+module: CO
+submodule: employment
+version: "1.0"
+
+definition: "External system identifiers for employee integration"
+
+parent_aggregate: Employee
+
+mixins:
+  - HasEffectiveDates
+
+attributes:
+  id: {type: uuid, required: true, primary_key: true}
+  employee_id: {type: uuid, required: true, foreign_key: employee.id}
+  id_type_code: {type: string, required: true, max_length: 50, description: "PAYROLL_ID, BADGE, LEGACY, etc."}
+  id_value: {type: string, required: true, max_length: 100}
+  is_primary: {type: boolean, required: true, default: false}
+
+relationships:
+  employee:
+    target: Employee
+    cardinality: N:1
+    required: true
+    on_delete: CASCADE
+
+validation_rules:
+  - rule: "unique_identifier"
+    expression: "UNIQUE(employee_id, id_type_code, id_value)"
+    severity: ERROR
+
+indexes:
+  - name: idx_employee_identifier_unique
+    columns: [employee_id, id_type_code, id_value]
+    unique: true
+
+references:
+  database_design: "../../../03-design/1.core.v4.dbml#employment.employee_identifier"
+
+metadata:
+  created_at: "2025-12-25"
+  dbml_source: "employment.employee_identifier (lines 888-899)"

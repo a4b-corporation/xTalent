@@ -1,0 +1,77 @@
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:core:facility:location"
+
+entity: Location
+classification: ENTITY
+module: CO
+submodule: facility
+version: "1.0"
+
+definition: "Physical location with geographic coordinates (building, campus, site)"
+
+description: |
+  Location represents physical locations:
+  - Buildings, campuses, sites
+  - Geographic coordinates (lat/long)
+  - Link to Place for geographic context
+  - Hierarchical structure
+  - Foundation for WorkLocation
+
+purpose: |
+  - Define physical locations
+  - Support location-based services
+  - Enable mapping and navigation
+  - Facilitate location reporting
+
+attributes:
+  id: {type: uuid, required: true, primary_key: true}
+  code: {type: string, required: true, unique: true, max_length: 50}
+  name: {type: string, required: true, max_length: 255}
+  place_id: {type: uuid, required: true, foreign_key: place.id}
+  location_type_code: {type: string, required: true, max_length: 50, description: "BUILDING, CAMPUS, SITE"}
+  parent_id: {type: uuid, required: false, foreign_key: location.id}
+  latitude: {type: decimal, required: false, precision: 9, scale: 6}
+  longitude: {type: decimal, required: false, precision: 9, scale: 6}
+  metadata: {type: jsonb, required: false, description: "Address, facilities, etc."}
+  is_active: {type: boolean, required: true, default: true}
+
+relationships:
+  place:
+    target: Place
+    cardinality: N:1
+    required: true
+  parent:
+    target: Location
+    cardinality: N:1
+    required: false
+  children:
+    target: Location
+    cardinality: 1:N
+    inverse: parent
+
+validation_rules:
+  - rule: "unique_code"
+    expression: "UNIQUE(code)"
+    severity: ERROR
+
+indexes:
+  - name: idx_location_code
+    columns: [code]
+    unique: true
+
+examples:
+  - name: "Office Building"
+    data:
+      code: "VNG_CAMPUS"
+      name: "VNG Campus"
+      place_id: "place-hcm"
+      location_type_code: "CAMPUS"
+      latitude: 10.7769
+      longitude: 106.7009
+
+references:
+  database_design: "../../../03-design/1.core.v4.dbml#facility.location"
+
+metadata:
+  created_at: "2025-12-25"
+  dbml_source: "facility.location (lines 1383-1394)"

@@ -1,0 +1,37 @@
+$schema: "https://xtalent.io/schemas/action/v3"
+$id: "xtalent:core:employment:create-employee"
+
+action: CreateEmployee
+module: CO
+submodule: employment
+version: "1.0"
+
+inputs:
+  worker_id: {type: uuid, required: true}
+  legal_entity_code: {type: string, required: true}
+  employee_code: {type: string, required: true}
+  worker_category_code: {type: string, required: true}
+  employee_class_code: {type: string, required: true}
+  hire_date: {type: date, required: true}
+
+outputs:
+  employee_id: {type: uuid}
+
+effects:
+  database:
+    - operation: INSERT
+      table: employment.employee
+  events:
+    - event: EmployeeCreated
+
+authorization:
+  required_roles: [HR_ADMIN]
+
+api:
+  rest:
+    method: POST
+    path: "/api/v1/employees"
+    status_code: 201
+
+metadata:
+  created_at: "2025-12-25"

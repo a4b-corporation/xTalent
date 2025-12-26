@@ -1,0 +1,57 @@
+$schema: "https://xtalent.io/schemas/workflow/v3"
+$id: "xtalent:core:job-position:update-job"
+
+workflow: UpdateJob
+module: CO
+submodule: job-position
+version: "1.0"
+
+description: "Updates job with SCD2 support for job evolution tracking"
+
+inputs:
+  job_id: {type: uuid, required: true}
+  updates: {type: object, required: true}
+  effective_date: {type: date, required: false, default: "today()"}
+  reason: {type: string, required: true}
+
+steps:
+  - name: check_scd2_fields
+    type: computation
+    logic: |
+      scd2_fields = ['job_title', 'override_title', 'level_code', 'grade_code', 'job_type_code', 'ranking_level_code']
+      needs_scd2 = any(field in updates for field in scd2_fields)
+
+  - name: close_current_record
+    type: database_operation
+    condition: "needs_scd2 = true"
+    operation: UPDATE
+    table: jobpos.job
+    where: "id = :job_id AND is_current_flag = true"
+    data:
+      effective_end_date: ":effective_date - 1 day"
+      is_current_flag: false
+
+  - name: create_new_version
+    type: database_operation
+    condition: "needs_scd2 = true"
+    operation: INSERT
+    table: jobpos.job
+    data:
+      id: ":job_id"
+      effective_start_date: ":effective_date"
+      is_current_flag: true
+
+  - name: emit_event
+    type: event
+    event: JobUpdated
+    payload:
+      job_id: ":job_id"
+      changes: ":updates"
+      reason: ":reason"
+
+authorization:
+  required_roles: [JOB_ADMIN]
+
+metadata:
+  created_at: "2025-12-25"
+  transaction: true

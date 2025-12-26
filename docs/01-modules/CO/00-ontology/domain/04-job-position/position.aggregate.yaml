@@ -1,0 +1,550 @@
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:core:job-position:position"
+
+# ============================================================================
+# POSITION - AGGREGATE_ROOT
+# ============================================================================
+# Purpose: Specific job instance in organizational structure
+# Pattern: Workday Position, SAP SuccessFactors Position
+# DBML Source: jobpos.position
+
+module: CO
+submodule: job-position
+version: "1.0"
+
+# ----------------------------------------------------------------------------
+# ENTITY DEFINITION
+# ----------------------------------------------------------------------------
+entity: Position
+classification: AGGREGATE_ROOT
+
+definition: |
+  A position represents a specific job instance in the organizational structure.
+  It is a "seat" or "slot" that can be filled by an employee through assignment.
+
+description: |
+  Position is the concrete manifestation of a Job in the organization, representing:
+  - Specific job instance (e.g., "Software Engineer - Backend Team - Req #12345")
+  - Organizational placement (business unit, reporting line)
+  - Headcount planning (planned vs actual)
+  - Vacancy management (open, filled, frozen)
+  - Employee assignment target
+  
+  Position vs Job:
+  - **Job**: Template/catalog (e.g., "Software Engineer")
+  - **Position**: Specific instance (e.g., "Software Engineer - Backend - Req #12345")
+  - **Relationship**: Position references Job (N:1)
+  
+  17dec2025 changes:
+  - job_id: REQUIRED for direct grade/level access
+  - job_profile_id: OPTIONAL for detailed descriptions
+  - Direct TR integration: position → job → grade_code → PayRange
+
+purpose: |
+  - Headcount planning and management
+  - Organizational structure definition
+  - Vacancy and requisition management
+  - Employee assignment
+  - Reporting hierarchy
+  - Budget and cost allocation
+
+# ----------------------------------------------------------------------------
+# AI AGENT INSTRUCTIONS
+# ----------------------------------------------------------------------------
+ai_instructions:
+  priority: CRITICAL
+  code_generation: true
+  test_generation: true
+  documentation_generation: true
+  
+  notes: |
+    - Position is specific job instance
+    - job_id REQUIRED (17dec2025) for grade/level
+    - job_profile_id OPTIONAL for descriptions
+    - Supports headcount planning (planned vs actual)
+    - Vacancy management (max_incumbents, allow_overlap)
+    - Reporting hierarchy via reports_to_id
+  
+  related_context:
+    - "job.aggregate.yaml"
+    - "../../02-employment/assignment.entity.yaml"
+    - "../glossary/job-position.glossary.yaml"
+
+# ----------------------------------------------------------------------------
+# MIXINS
+# ----------------------------------------------------------------------------
+mixins:
+  - Auditable
+  - HasEffectiveDates
+
+# ----------------------------------------------------------------------------
+# ATTRIBUTES
+# ----------------------------------------------------------------------------
+attributes:
+  # Primary key
+  id:
+    type: uuid
+    required: true
+    primary_key: true
+    description: "Unique identifier for the position"
+    
+  # Business key
+  code:
+    type: string
+    required: true
+    unique: true
+    max_length: 50
+    description: "Position code (unique)"
+    examples:
+      - "POS-ENG-001"
+      - "REQ-2025-12345"
+    
+  # Title
+  title:
+    type: string
+    required: true
+    max_length: 255
+    description: "Position title"
+    examples:
+      - "Software Engineer - Backend Team"
+      - "Sales Manager - Ho Chi Minh"
+    
+  # Job reference (REQUIRED - 17dec2025)
+  job_id:
+    type: uuid
+    required: true
+    foreign_key: job.id
+    description: "Job ID (REQUIRED for grade/level access)"
+    note: |
+      17dec2025 change: Made REQUIRED
+      - Direct access to job.grade_code for TR integration
+      - Position → Job → grade_code → TR.GradeVersion → PayRange
+      - No need for job_profile for compensation
+    
+  # Job profile reference (OPTIONAL - 17dec2025)
+  job_profile_id:
+    type: uuid
+    required: false
+    foreign_key: job_profile.id
+    description: "Job profile ID (OPTIONAL for detailed descriptions)"
+    note: |
+      17dec2025 change: Made OPTIONAL
+      - Use only for detailed job description (locale-specific)
+      - Not required for compensation/grade access
+      - Position can function with job_id alone
+    
+  # Organization
+  business_unit_id:
+    type: uuid
+    required: true
+    foreign_key: business_unit.id
+    description: "Owning business unit ID"
+    
+  # Reporting
+  reports_to_id:
+    type: uuid
+    required: false
+    foreign_key: position.id
+    description: "Reports to position ID (reporting hierarchy)"
+    
+  # Classification
+  position_class_code:
+    type: string
+    required: false
+    max_length: 50
+    description: "Position classification"
+    examples:
+      - "REGULAR"
+      - "TEMPORARY"
+      - "CONTRACT"
+    note: "From code_list(POS_CLASS)"
+    
+  position_type_code:
+    type: string
+    required: true
+    max_length: 50
+    description: "Position type"
+    examples:
+      - "STANDARD"
+      - "SHARED"
+      - "POOLED"
+    note: "From code_list(POSITION_TYPE)"
+    
+  # FTE
+  full_time_equiv:
+    type: decimal
+    required: false
+    precision: 4
+    scale: 2
+    description: "Full-time equivalent (FTE)"
+    examples:
+      - 1.00  # Full-time
+      - 0.50  # Half-time
+      - 0.75  # 3/4 time
+    
+  # Headcount
+  max_incumbents:
+    type: integer
+    required: true
+    default: 1
+    description: "Maximum number of incumbents (slots)"
+    note: "Typically 1, but can be >1 for shared positions"
+    
+  allow_overlap_days:
+    type: integer
+    required: true
+    default: 0
+    description: "Allowed overlap days for handover"
+    note: "Enables transition period between incumbents"
+    
+  planned_headcount:
+    type: integer
+    required: true
+    default: 1
+    description: "Planned headcount for this position"
+    
+  actual_headcount:
+    type: integer
+    required: true
+    default: 0
+    description: "Actual headcount (current assignments)"
+    
+  # Status
+  status_code:
+    type: string
+    required: true
+    max_length: 50
+    description: "Position status"
+    enum:
+      - PLANNED      # Planned, not yet approved
+      - APPROVED     # Approved, not yet open
+      - OPEN         # Open for recruitment
+      - FILLED       # All slots filled
+      - FROZEN       # Frozen (no hiring)
+      - ELIMINATED   # Position eliminated
+    default: PLANNED
+    note: "From code_list(POS_STATUS)"
+    
+  # Metadata
+  metadata:
+    type: jsonb
+    required: false
+    description: "Extended metadata"
+    schema:
+      type: object
+      properties:
+        requisition_id: string
+        cost_center: string
+        budget_code: string
+
+# ----------------------------------------------------------------------------
+# DERIVED ATTRIBUTES
+# ----------------------------------------------------------------------------
+derived_attributes:
+  is_vacant:
+    type: boolean
+    formula: "actual_headcount < max_incumbents"
+    description: "True if position has vacant slots"
+    dependencies:
+      - actual_headcount
+      - max_incumbents
+      
+  vacancy_count:
+    type: integer
+    formula: "max_incumbents - actual_headcount"
+    description: "Number of vacant slots"
+    dependencies:
+      - max_incumbents
+      - actual_headcount
+      
+  is_open:
+    type: boolean
+    formula: "status_code = 'OPEN'"
+    description: "True if position is open for recruitment"
+    dependencies:
+      - status_code
+      
+  effective_grade_code:
+    type: string
+    formula: "job.grade_code"
+    description: "Effective grade code from job"
+    dependencies:
+      - job_id
+    note: "17dec2025: Direct access via job_id"
+
+# ----------------------------------------------------------------------------
+# RELATIONSHIPS
+# ----------------------------------------------------------------------------
+relationships:
+  # Job (REQUIRED)
+  job:
+    target: Job
+    target_ref: "xtalent:core:job-position:job"
+    cardinality: N:1
+    required: true
+    foreign_key: job_id
+    description: "Job template for this position"
+    on_delete: RESTRICT
+    note: "17dec2025: Required for grade/level access"
+    
+  # Job Profile (OPTIONAL)
+  job_profile:
+    target: JobProfile
+    target_ref: "xtalent:core:job-position:job-profile"
+    cardinality: N:1
+    required: false
+    foreign_key: job_profile_id
+    description: "Job profile for detailed description"
+    note: "17dec2025: Optional, use only for descriptions"
+    
+  # Business Unit
+  business_unit:
+    target: BusinessUnit
+    target_ref: "xtalent:core:org-structure:business-unit"
+    cardinality: N:1
+    required: true
+    foreign_key: business_unit_id
+    description: "Owning business unit"
+    on_delete: RESTRICT
+    
+  # Reporting hierarchy
+  reports_to:
+    target: Position
+    target_ref: "xtalent:core:job-position:position"
+    cardinality: N:1
+    required: false
+    foreign_key: reports_to_id
+    description: "Reports to position (manager)"
+    on_delete: SET_NULL
+    
+  direct_reports:
+    target: Position
+    target_ref: "xtalent:core:job-position:position"
+    cardinality: 1:N
+    inverse: reports_to
+    description: "Direct report positions"
+    
+  # Assignments (1:N)
+  assignments:
+    target: Assignment
+    target_ref: "xtalent:core:employment:assignment"
+    cardinality: 1:N
+    description: "Employee assignments to this position"
+    
+  # Tags (1:N)
+  tags:
+    target: PositionTag
+    target_ref: "xtalent:core:job-position:position-tag"
+    cardinality: 1:N
+    description: "Position tags"
+    
+  # Locations (1:N)
+  locations:
+    target: PositionLocation
+    target_ref: "xtalent:core:job-position:position-location"
+    cardinality: 1:N
+    description: "Position work locations"
+
+# ----------------------------------------------------------------------------
+# LIFECYCLE
+# ----------------------------------------------------------------------------
+lifecycle:
+  state_attribute: status_code
+  
+  states:
+    PLANNED:
+      description: "Position planned, not yet approved"
+      initial: true
+      
+    APPROVED:
+      description: "Position approved, not yet open"
+      
+    OPEN:
+      description: "Position open for recruitment"
+      
+    FILLED:
+      description: "All position slots filled"
+      
+    FROZEN:
+      description: "Position frozen (no hiring)"
+      
+    ELIMINATED:
+      description: "Position eliminated from org structure"
+      terminal: true
+      
+  transitions:
+    - name: approve
+      from: PLANNED
+      to: APPROVED
+      action_ref: "xtalent:core:job-position:approve-position"
+      requires:
+        - "budget approval"
+        - "job_id assigned"
+        
+    - name: open
+      from: APPROVED
+      to: OPEN
+      action_ref: "xtalent:core:job-position:open-position"
+      requires:
+        - "requisition created"
+        
+    - name: fill
+      from: OPEN
+      to: FILLED
+      action_ref: "xtalent:core:job-position:fill-position"
+      requires:
+        - "actual_headcount = max_incumbents"
+        
+    - name: reopen
+      from: FILLED
+      to: OPEN
+      action_ref: "xtalent:core:job-position:reopen-position"
+      requires:
+        - "vacancy exists"
+        
+    - name: freeze
+      from: [APPROVED, OPEN]
+      to: FROZEN
+      action_ref: "xtalent:core:job-position:freeze-position"
+      requires:
+        - "freeze reason"
+        
+    - name: eliminate
+      from: [PLANNED, APPROVED, FROZEN]
+      to: ELIMINATED
+      action_ref: "xtalent:core:job-position:eliminate-position"
+      requires:
+        - "no active assignments"
+
+# ----------------------------------------------------------------------------
+# VALIDATION RULES
+# ----------------------------------------------------------------------------
+validation_rules:
+  - rule: "unique_position_code"
+    expression: "UNIQUE(code)"
+    message: "Position code must be unique"
+    severity: ERROR
+    
+  - rule: "job_required"
+    expression: "job_id IS NOT NULL"
+    message: "Job ID is required (17dec2025)"
+    severity: ERROR
+    
+  - rule: "actual_not_exceed_max"
+    expression: "actual_headcount <= max_incumbents"
+    message: "Actual headcount cannot exceed max incumbents"
+    severity: ERROR
+    
+  - rule: "reports_to_not_self"
+    expression: "reports_to_id IS NULL OR reports_to_id != id"
+    message: "Position cannot report to itself"
+    severity: ERROR
+    
+  - rule: "effective_dates_valid"
+    expression: "effective_end_date IS NULL OR effective_end_date >= effective_start_date"
+    message: "Effective end date must be after start date"
+    severity: ERROR
+
+# ----------------------------------------------------------------------------
+# INDEXES
+# ----------------------------------------------------------------------------
+indexes:
+  - name: idx_position_code
+    columns: [code]
+    unique: true
+    
+  - name: idx_position_job
+    columns: [job_id]
+    note: "For job-based queries"
+    
+  - name: idx_position_bu
+    columns: [business_unit_id]
+    note: "For BU-based queries"
+    
+  - name: idx_position_status
+    columns: [status_code, is_current_flag]
+    note: "For vacancy queries"
+
+# ----------------------------------------------------------------------------
+# SECURITY
+# ----------------------------------------------------------------------------
+security:
+  classification: INTERNAL
+  
+  row_level_security:
+    enabled: true
+    policy: |
+      user.has_role('HR_ADMIN') OR
+      user.has_role('HIRING_MANAGER') OR
+      user.business_unit_id IN (
+        SELECT descendant_id FROM unit_hierarchy 
+        WHERE ancestor_id = position.business_unit_id
+      )
+    note: "Users can access positions in their BU hierarchy"
+
+# ----------------------------------------------------------------------------
+# EXAMPLES
+# ----------------------------------------------------------------------------
+examples:
+  - name: "Standard Position"
+    description: "Regular full-time position"
+    data:
+      id: "550e8400-e29b-41d4-a716-446655440000"
+      code: "POS-ENG-001"
+      title: "Software Engineer - Backend Team"
+      job_id: "job-software-eng"
+      job_profile_id: "profile-software-eng-en"
+      business_unit_id: "bu-backend"
+      reports_to_id: "pos-eng-manager"
+      position_type_code: "STANDARD"
+      full_time_equiv: 1.00
+      max_incumbents: 1
+      planned_headcount: 1
+      actual_headcount: 1
+      status_code: "FILLED"
+      effective_start_date: "2025-01-01"
+      is_current_flag: true
+      
+  - name: "Vacant Position"
+    description: "Open position for recruitment"
+    data:
+      id: "550e8400-e29b-41d4-a716-446655440001"
+      code: "REQ-2025-12345"
+      title: "Senior Software Engineer - Backend"
+      job_id: "job-senior-software-eng"
+      business_unit_id: "bu-backend"
+      position_type_code: "STANDARD"
+      max_incumbents: 1
+      planned_headcount: 1
+      actual_headcount: 0
+      status_code: "OPEN"
+
+# ----------------------------------------------------------------------------
+# REFERENCES
+# ----------------------------------------------------------------------------
+references:
+  glossary: "../glossary/job-position.glossary.yaml#position"
+  concept_guide: "../../01-concept/04-job-position/position-guide.md"
+  business_rules: "../../02-spec/04-BR/BR-04-job-position.md"
+  bdd_scenarios: "../../02-spec/05-BDD/04-job-position/position.feature"
+  database_design: "../../03-design/1.core.v4.dbml#jobpos.position"
+
+# ----------------------------------------------------------------------------
+# METADATA
+# ----------------------------------------------------------------------------
+metadata:
+  created_at: "2025-12-25"
+  created_by: "AI Agent"
+  updated_at: "2025-12-25"
+  updated_by: "AI Agent"
+  review_status: DRAFT
+  dbml_source: "jobpos.position (lines 1263-1294)"
+  industry_references:
+    - "Workday Position"
+    - "SAP SuccessFactors Position"
+    - "Oracle HCM Cloud Position"
+  notes: |
+    - Position is specific job instance
+    - 17dec2025: job_id REQUIRED, job_profile_id OPTIONAL
+    - Direct TR integration via job.grade_code
+    - Supports headcount planning and vacancy management

@@ -1,0 +1,29 @@
+$schema: "https://xtalent.io/schemas/action/v3"
+$id: "xtalent:core:employment:update-employee"
+
+action: UpdateEmployee
+module: CO
+submodule: employment
+version: "1.0"
+
+inputs:
+  employee_id: {type: uuid, required: true}
+  updates: {type: object, required: true}
+
+effects:
+  database:
+    - operation: UPDATE
+      table: employment.employee
+  events:
+    - event: EmployeeUpdated
+
+authorization:
+  required_roles: [HR_ADMIN]
+
+api:
+  rest:
+    method: PUT
+    path: "/api/v1/employees/{employee_id}"
+
+metadata:
+  created_at: "2025-12-25"

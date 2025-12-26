@@ -1,0 +1,42 @@
+$schema: "https://xtalent.io/schemas/action/v3"
+$id: "xtalent:core:org-structure:delete-business-unit"
+
+action: DeleteBusinessUnit
+module: CO
+submodule: org-structure
+version: "1.0"
+
+inputs:
+  business_unit_id: {type: uuid, required: true}
+  reason: {type: string, required: true}
+  effective_date: {type: date, required: true}
+
+preconditions:
+  - condition: "no active children"
+    check: "NOT EXISTS(SELECT 1 FROM business_unit WHERE parent_id = :business_unit_id AND is_current_flag = true AND status_code = 'ACTIVE')"
+  - condition: "no active employees"
+    check: "NOT EXISTS(SELECT 1 FROM employee WHERE business_unit_id = :business_unit_id AND status_code = 'ACTIVE')"
+
+effects:
+  database:
+    - operation: UPDATE
+      table: org_bu.unit
+      data:
+        effective_end_date: ":effective_date"
+        is_current_flag: false
+        status_code: "DISSOLVED"
+  events:
+    - event: BusinessUnitDeleted
+
+authorization:
+  required_roles: [HR_ADMIN, ORG_ADMIN]
+
+api:
+  rest:
+    method: DELETE
+    path: "/api/v1/business-units/{business_unit_id}"
+    status_code: 204
+
+metadata:
+  created_at: "2025-12-25"
+  note: "Soft delete only"

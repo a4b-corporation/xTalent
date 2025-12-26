@@ -1,0 +1,73 @@
+$schema: "https://xtalent.io/schemas/workflow/v3"
+$id: "xtalent:core:job-position:create-job"
+
+workflow: CreateJob
+module: CO
+submodule: job-position
+version: "1.0"
+
+description: "Creates a new job in the job catalog with validation and tree management"
+
+inputs:
+  tree_id: {type: uuid, required: true}
+  job_code: {type: string, required: true}
+  job_title: {type: string, required: true}
+  parent_id: {type: uuid, required: false}
+  owner_scope: {type: string, required: true, enum: [CORP, LE, BU]}
+  owner_unit_id: {type: uuid, required: false}
+  inherit_flag: {type: boolean, required: true, default: true}
+  level_code: {type: string, required: false}
+  grade_code: {type: string, required: false}
+  effective_start_date: {type: date, required: true, default: "today()"}
+
+steps:
+  - name: validate_inputs
+    type: validation
+    validations:
+      - check: "tree exists"
+        query: "SELECT COUNT(*) FROM job_tree WHERE id = :tree_id"
+        condition: "count = 1"
+      - check: "job_code unique in tree"
+        query: "SELECT COUNT(*) FROM job WHERE tree_id = :tree_id AND job_code = :job_code AND is_current_flag = true"
+        condition: "count = 0"
+      - check: "parent in same tree if provided"
+        query: "SELECT tree_id FROM job WHERE id = :parent_id"
+        condition: "parent_id IS NULL OR tree_id = :tree_id"
+      - check: "owner_unit required for BU scope"
+        condition: "owner_scope != 'BU' OR owner_unit_id IS NOT NULL"
+
+  - name: create_job
+    type: database_operation
+    operation: INSERT
+    table: jobpos.job
+    data:
+      id: "gen_random_uuid()"
+      tree_id: ":tree_id"
+      job_code: ":job_code"
+      job_title: ":job_title"
+      parent_id: ":parent_id"
+      owner_scope: ":owner_scope"
+      owner_unit_id: ":owner_unit_id"
+      inherit_flag: ":inherit_flag"
+      level_code: ":level_code"
+      grade_code: ":grade_code"
+      effective_start_date: ":effective_start_date"
+      is_current_flag: true
+    outputs:
+      - job_id: uuid
+
+  - name: emit_event
+    type: event
+    event: JobCreated
+    payload:
+      job_id: ":job_id"
+      job_code: ":job_code"
+      tree_id: ":tree_id"
+
+authorization:
+  required_roles: [JOB_ADMIN, HR_ADMIN]
+  required_permissions: [job.create]
+
+metadata:
+  created_at: "2025-12-25"
+  transaction: true

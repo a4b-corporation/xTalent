@@ -1,0 +1,120 @@
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:core:job-position:job-level-policy"
+
+entity: JobLevelPolicy
+classification: ENTITY
+module: CO
+submodule: job-position
+version: "1.0"
+
+definition: |
+  Policies and rules applied to specific job levels (e.g., approval requirements,
+  span of control, eligibility criteria).
+
+description: |
+  JobLevelPolicy defines level-specific policies including:
+  - Approval requirements (who can approve hires/promotions)
+  - Span of control limits (max direct reports)
+  - Eligibility criteria (minimum experience, education)
+  - Benefits eligibility
+  - Authority limits
+  
+  Used for:
+  - Hiring approval workflows
+  - Promotion eligibility checks
+  - Organization design constraints
+  - Compliance enforcement
+
+purpose: |
+  - Define level-specific policies
+  - Enforce organizational rules
+  - Support approval workflows
+  - Guide talent decisions
+
+mixins:
+  - HasEffectiveDates
+  - Auditable
+
+attributes:
+  id:
+    type: uuid
+    required: true
+    primary_key: true
+    description: "Unique identifier for policy"
+    
+  job_level_id:
+    type: uuid
+    required: true
+    foreign_key: job_level.id
+    description: "Job level ID"
+    
+  policy_type_code:
+    type: string
+    required: true
+    max_length: 50
+    description: "Policy type"
+    examples:
+      - "APPROVAL_REQUIRED"
+      - "SPAN_OF_CONTROL"
+      - "MIN_EXPERIENCE"
+      - "MIN_EDUCATION"
+    
+  policy_value:
+    type: string
+    required: true
+    max_length: 255
+    description: "Policy value"
+    examples:
+      - "VP_APPROVAL"
+      - "MAX_10_REPORTS"
+      - "5_YEARS"
+      - "BACHELORS_DEGREE"
+    
+  description:
+    type: text
+    required: false
+    description: "Policy description"
+    
+  metadata:
+    type: jsonb
+    required: false
+    description: "Extended policy configuration"
+
+relationships:
+  job_level:
+    target: JobLevel
+    cardinality: N:1
+    required: true
+    on_delete: CASCADE
+
+validation_rules:
+  - rule: "unique_policy_per_level_type"
+    expression: "UNIQUE(job_level_id, policy_type_code, effective_start_date)"
+    severity: ERROR
+
+indexes:
+  - name: idx_job_level_policy_unique
+    columns: [job_level_id, policy_type_code, effective_start_date]
+    unique: true
+
+examples:
+  - name: "VP Approval Required"
+    data:
+      job_level_id: "level-senior"
+      policy_type_code: "APPROVAL_REQUIRED"
+      policy_value: "VP_APPROVAL"
+      description: "Senior level hires require VP approval"
+      
+  - name: "Span of Control"
+    data:
+      job_level_id: "level-manager"
+      policy_type_code: "SPAN_OF_CONTROL"
+      policy_value: "MAX_10_REPORTS"
+      description: "Managers can have max 10 direct reports"
+
+references:
+  database_design: "../../../03-design/1.core.v4.dbml#jobpos.job_level_policy"
+
+metadata:
+  created_at: "2025-12-25"
+  dbml_source: "jobpos.job_level_policy (lines 1248-1250+)"

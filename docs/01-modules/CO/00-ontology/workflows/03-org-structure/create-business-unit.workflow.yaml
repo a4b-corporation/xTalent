@@ -1,0 +1,123 @@
+$schema: "https://xtalent.io/schemas/workflow/v3"
+$id: "xtalent:core:org-structure:create-business-unit"
+
+workflow: CreateBusinessUnit
+module: CO
+submodule: org-structure
+version: "1.0"
+
+description: |
+  Creates a new business unit with validation, hierarchy management,
+  and closure table updates.
+
+# ----------------------------------------------------------------------------
+# INPUTS
+# ----------------------------------------------------------------------------
+inputs:
+  code: {type: string, required: true}
+  name: {type: string, required: true}
+  type_id: {type: uuid, required: true}
+  parent_id: {type: uuid, required: false}
+  legal_entity_code: {type: string, required: false}
+  manager_employee_id: {type: uuid, required: false}
+  effective_start_date: {type: date, required: true, default: "today()"}
+  metadata: {type: object, required: false}
+
+# ----------------------------------------------------------------------------
+# STEPS
+# ----------------------------------------------------------------------------
+steps:
+  - name: validate_inputs
+    type: validation
+    validations:
+      - check: "code is unique"
+        query: "SELECT COUNT(*) FROM business_unit WHERE code = :code AND is_current_flag = true"
+        condition: "count = 0"
+        error: "Business unit code already exists"
+        
+      - check: "type exists"
+        query: "SELECT COUNT(*) FROM business_unit_type WHERE id = :type_id AND is_current_flag = true"
+        condition: "count = 1"
+        error: "Invalid business unit type ID"
+        
+      - check: "parent exists if provided"
+        query: "SELECT COUNT(*) FROM business_unit WHERE id = :parent_id AND is_current_flag = true"
+        condition: "parent_id IS NULL OR count = 1"
+        error: "Invalid parent business unit ID"
+        
+      - check: "manager is active employee if provided"
+        query: "SELECT COUNT(*) FROM employee WHERE id = :manager_employee_id AND status_code = 'ACTIVE'"
+        condition: "manager_employee_id IS NULL OR count = 1"
+        error: "Manager must be an active employee"
+
+  - name: calculate_path
+    type: computation
+    logic: |
+      IF parent_id IS NULL THEN
+        path = "/"
+      ELSE
+        parent_path = SELECT path FROM business_unit WHERE id = parent_id
+        path = parent_path + code + "/"
+      END IF
+
+  - name: check_hierarchy_depth
+    type: validation
+    validations:
+      - check: "max depth not exceeded"
+        condition: "count(path, '/') - 1 <= 15"
+        error: "Maximum hierarchy depth (15) exceeded"
+
+  - name: create_business_unit
+    type: database_operation
+    operation: INSERT
+    table: org_bu.unit
+    data:
+      id: "gen_random_uuid()"
+      code: ":code"
+      name: ":name"
+      type_id: ":type_id"
+      parent_id: ":parent_id"
+      path: ":path"
+      legal_entity_code: ":legal_entity_code"
+      manager_employee_id: ":manager_employee_id"
+      status_code: "DRAFT"
+      metadata: ":metadata"
+      effective_start_date: ":effective_start_date"
+      is_current_flag: true
+    outputs:
+      - business_unit_id: uuid
+
+  - name: update_closure_table
+    type: database_operation
+    description: "Update hierarchy closure table"
+    operation: EXECUTE
+    sql: |
+      -- Insert self-reference
+      INSERT INTO org_bu.unit_hierarchy (ancestor_id, descendant_id, depth, path_string, updated_at)
+      VALUES (:business_unit_id, :business_unit_id, 0, :code, now());
+      
+      -- Insert ancestor relationships
+      INSERT INTO org_bu.unit_hierarchy (ancestor_id, descendant_id, depth, path_string, updated_at)
+      SELECT ancestor_id, :business_unit_id, depth + 1, path_string || '/' || :code, now()
+      FROM org_bu.unit_hierarchy
+      WHERE descendant_id = :parent_id;
+
+  - name: emit_event
+    type: event
+    event: BusinessUnitCreated
+    payload:
+      business_unit_id: ":business_unit_id"
+      code: ":code"
+      name: ":name"
+      parent_id: ":parent_id"
+
+authorization:
+  required_roles: [HR_ADMIN, ORG_ADMIN]
+  required_permissions: [business_unit.create]
+
+references:
+  entity: "../../domain/03-org-structure/business-unit.aggregate.yaml"
+
+metadata:
+  created_at: "2025-12-25"
+  transaction: true

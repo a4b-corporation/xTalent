@@ -1,0 +1,118 @@
+---
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:co:master-data:country"
+
+module: CO
+submodule: master-data
+version: "1.0.0"
+
+entity: Country
+classification: REFERENCE_DATA
+
+definition: |
+  ISO 3166-1 country codes with metadata for global operations.
+
+purpose: |
+  Provide standardized country data for addresses, nationalities, tax jurisdictions,
+  and compliance. Supports multi-country payroll and global workforce management.
+
+attributes:
+  id:
+    type: uuid
+    required: true
+    primary_key: true
+    
+  code_alpha2:
+    type: string
+    required: true
+    length: 2
+    unique: true
+    description: "ISO 3166-1 alpha-2 code"
+    examples: [VN, US, SG]
+    
+  code_alpha3:
+    type: string
+    required: false
+    length: 3
+    description: "ISO 3166-1 alpha-3 code"
+    examples: [VNM, USA, SGP]
+    
+  code_numeric:
+    type: string
+    required: false
+    length: 3
+    description: "ISO 3166-1 numeric code"
+    
+  name_en:
+    type: string
+    required: true
+    max_length: 100
+    description: "Country name in English"
+    
+  name_local:
+    type: string
+    required: false
+    max_length: 100
+    description: "Country name in local language"
+    
+  currency_code:
+    type: string
+    required: false
+    length: 3
+    foreign_key: common.currency.code
+    description: "Default currency"
+    
+  phone_code:
+    type: string
+    required: false
+    max_length: 10
+    description: "International dialing code"
+    examples: ["+84", "+1", "+65"]
+    
+  metadata:
+    type: jsonb
+    required: false
+    description: "Extended attributes (region, continent, tax_system, etc.)"
+    
+  effective_start_date:
+    type: date
+    required: true
+    
+  effective_end_date:
+    type: date
+    required: false
+    
+  is_current_flag:
+    type: boolean
+    required: true
+    default: true
+
+mixins:
+  - EffectiveDated
+
+relationships:
+  currency:
+    target: Currency
+    target_ref: "xtalent:co:master-data:currency"
+    cardinality: N:1
+    required: false
+
+indexes:
+  - name: idx_country_alpha2
+    columns: [code_alpha2]
+    unique: true
+  - name: idx_country_alpha3
+    columns: [code_alpha3]
+    unique: true
+
+security:
+  data_classification: PUBLIC
+  access_control:
+    read: [ALL_USERS]
+    write: [SYSTEM_ADMIN]
+
+metadata:
+  tags: [master-data, country, iso-3166, geographic]
+  owner: "Platform Team"
+  last_updated: "2025-12-25"
+  status: complete

@@ -1,0 +1,136 @@
+$schema: "https://xtalent.io/schemas/workflow/v3"
+$id: "xtalent:core:org-structure:update-legal-entity"
+
+workflow: UpdateLegalEntity
+module: CO
+submodule: org-structure
+version: "1.0"
+
+description: |
+  Updates legal entity information with SCD2 support for tracking changes.
+  Handles name changes, type changes, and hierarchy restructuring.
+
+# ----------------------------------------------------------------------------
+# INPUTS
+# ----------------------------------------------------------------------------
+inputs:
+  legal_entity_id:
+    type: uuid
+    required: true
+    description: "Legal entity ID to update"
+    
+  updates:
+    type: object
+    required: true
+    description: "Fields to update"
+    properties:
+      name_vi: string
+      name_en: string
+      type_id: uuid
+      parent_id: uuid
+      # Note: code cannot be changed
+    
+  effective_date:
+    type: date
+    required: false
+    description: "Effective date for SCD2 (default: today)"
+    default: "today()"
+    
+  reason:
+    type: string
+    required: true
+    description: "Reason for change (audit trail)"
+
+# ----------------------------------------------------------------------------
+# STEPS
+# ----------------------------------------------------------------------------
+steps:
+  - name: validate_entity_exists
+    type: validation
+    validations:
+      - check: "entity exists and active"
+        query: "SELECT COUNT(*) FROM legal_entity WHERE id = :legal_entity_id AND is_current_flag = true"
+        condition: "count = 1"
+        error: "Legal entity not found or inactive"
+
+  - name: check_scd2_fields
+    type: computation
+    description: "Determine if SCD2 history needed"
+    logic: |
+      scd2_fields = ['name_vi', 'name_en', 'type_id', 'parent_id', 'path']
+      needs_scd2 = any(field in updates for field in scd2_fields)
+    outputs:
+      - needs_scd2: boolean
+
+  - name: close_current_record
+    type: database_operation
+    condition: "needs_scd2 = true"
+    operation: UPDATE
+    table: org_legal.entity
+    where: "id = :legal_entity_id AND is_current_flag = true"
+    data:
+      effective_end_date: ":effective_date - 1 day"
+      is_current_flag: false
+      updated_at: "now()"
+      updated_by: ":current_user_id"
+
+  - name: create_new_version
+    type: database_operation
+    condition: "needs_scd2 = true"
+    operation: INSERT
+    table: org_legal.entity
+    data:
+      id: ":legal_entity_id"  # Same ID for SCD2
+      code: ":current.code"
+      name_vi: ":updates.name_vi OR current.name_vi"
+      name_en: ":updates.name_en OR current.name_en"
+      type_id: ":updates.type_id OR current.type_id"
+      parent_id: ":updates.parent_id OR current.parent_id"
+      path: ":calculated_path"
+      effective_start_date: ":effective_date"
+      effective_end_date: null
+      is_current_flag: true
+
+  - name: update_closure_table
+    type: database_operation
+    condition: "needs_scd2 = true AND parent_id changed"
+    description: "Rebuild closure table for moved subtree"
+    operation: EXECUTE
+    sql: |
+      -- Delete old hierarchy
+      DELETE FROM org_legal.entity_hierarchy 
+      WHERE descendant_id IN (
+        SELECT descendant_id FROM org_legal.entity_hierarchy 
+        WHERE ancestor_id = :legal_entity_id
+      );
+      
+      -- Rebuild hierarchy
+      CALL rebuild_entity_hierarchy(:legal_entity_id);
+
+  - name: emit_event
+    type: event
+    event: LegalEntityUpdated
+    payload:
+      legal_entity_id: ":legal_entity_id"
+      changes: ":updates"
+      reason: ":reason"
+      effective_date: ":effective_date"
+
+# ----------------------------------------------------------------------------
+# AUTHORIZATION
+# ----------------------------------------------------------------------------
+authorization:
+  required_roles: [LEGAL_ADMIN, HR_ADMIN]
+  required_permissions: [legal_entity.update]
+
+# ----------------------------------------------------------------------------
+# REFERENCES
+# ----------------------------------------------------------------------------
+references:
+  entity: "../../domain/03-org-structure/legal-entity.aggregate.yaml"
+  actions: ["update-legal-entity.action.yaml"]
+
+metadata:
+  created_at: "2025-12-25"
+  complexity: HIGH
+  transaction: true

@@ -1,0 +1,56 @@
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:core:eligibility:eligibility-evaluation"
+
+entity: EligibilityEvaluation
+classification: ENTITY
+module: CO
+submodule: eligibility
+version: "1.0"
+
+definition: |
+  Immutable audit log of eligibility evaluations for compliance and troubleshooting.
+
+description: |
+  EligibilityEvaluation provides complete audit trail:
+  - All evaluation attempts logged
+  - Evaluation results and reasons
+  - Trigger tracking (employee change, rule change, manual, scheduled)
+  - Compliance and troubleshooting support
+
+parent_aggregate: EligibilityProfile
+
+attributes:
+  id: {type: uuid, required: true, primary_key: true}
+  profile_id: {type: uuid, required: true, foreign_key: eligibility_profile.id}
+  employee_id: {type: uuid, required: true, foreign_key: employee.id}
+  evaluated_at: {type: timestamp, required: true, default: "now()"}
+  evaluation_result: {type: string, required: true, max_length: 20, enum: [ELIGIBLE, NOT_ELIGIBLE]}
+  evaluation_reason: {type: text, required: true, description: "Which criteria matched/failed"}
+  triggered_by: {type: string, required: true, max_length: 50, enum: [EMPLOYEE_CHANGE, RULE_CHANGE, MANUAL, SCHEDULED]}
+  triggered_by_id: {type: uuid, required: false, description: "User ID if manual"}
+  metadata: {type: jsonb, required: false, description: "Evaluation details"}
+
+relationships:
+  profile:
+    target: EligibilityProfile
+    cardinality: N:1
+    required: true
+  employee:
+    target: Employee
+    cardinality: N:1
+    required: true
+
+indexes:
+  - name: idx_evaluation_profile
+    columns: [profile_id, evaluated_at]
+    note: "Profile audit trail"
+  - name: idx_evaluation_employee
+    columns: [employee_id, evaluated_at]
+    note: "Employee audit trail"
+
+references:
+  database_design: "../../../03-design/1.core.v4.dbml#eligibility.eligibility_evaluation"
+
+metadata:
+  created_at: "2025-12-25"
+  dbml_source: "eligibility.eligibility_evaluation (lines 1504-1525)"

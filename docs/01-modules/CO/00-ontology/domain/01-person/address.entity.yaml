@@ -1,0 +1,406 @@
+---
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:co:person:address"
+
+module: CO
+submodule: person
+version: "1.0.0"
+
+entity: Address
+classification: ENTITY
+parent_aggregate: Worker
+
+definition: |
+  Physical address information for a worker, including home address, work address,
+  and mailing address. Linked to geographic administrative areas for compliance
+  and reporting. Supports multiple addresses with primary designation and
+  effective dating.
+
+purpose: |
+  Maintain accurate worker address information for tax compliance, benefits
+  eligibility, remote work policies, and emergency response. Supports address
+  history tracking and geographic reporting. Critical for payroll tax calculations,
+  region-based compensation, and compliance with local labor laws.
+
+ai_instructions:
+  priority: HIGH
+  code_generation: true
+  test_generation: true
+  notes: |
+    - Address belongs to Worker aggregate (cascade delete)
+    - Linked to geo.admin_area for hierarchical geographic data
+    - Only one address per type can be marked as primary
+    - Address changes trigger tax jurisdiction recalculation
+    - Effective dating tracks address history for compliance
+    - Self-service allowed for workers to update own addresses
+    - Address validation against admin_area hierarchy
+
+mixins:
+  - Auditable
+  - EffectiveDated
+
+# ═══════════════════════════════════════════════════════════════════
+# ATTRIBUTES
+# ═══════════════════════════════════════════════════════════════════
+attributes:
+  id:
+    type: uuid
+    required: true
+    primary_key: true
+    description: "Unique identifier for address record"
+    example: "750e8400-e29b-41d4-a716-446655440000"
+    
+  worker_id:
+    type: uuid
+    required: true
+    foreign_key: person.worker.id
+    description: "Reference to worker who owns this address"
+    example: "550e8400-e29b-41d4-a716-446655440000"
+    
+  address_type_code:
+    type: string
+    required: true
+    max_length: 50
+    description: "Type of address (HOME, WORK, MAILING, etc.)"
+    example: "HOME"
+    reference:
+      entity: "xtalent:co:master-data:code-list"
+      group: "ADDRESS_TYPE"
+    allowed_values:
+      - HOME
+      - WORK
+      - MAILING
+      - TEMPORARY
+      - EMERGENCY
+    
+  admin_area_id:
+    type: uuid
+    required: true
+    foreign_key: geo.admin_area.id
+    description: "Reference to smallest administrative area (Ward/District)"
+    example: "850e8400-e29b-41d4-a716-446655440000"
+    note: "Links to hierarchical geographic data (Ward → District → Province → Country)"
+    
+  street_line:
+    type: string
+    required: true
+    max_length: 255
+    description: "Street address line (number, street name, building)"
+    example: "123 Main Street, Apartment 4B"
+    validation_rules:
+      - "Must not be empty or whitespace only"
+    
+  postal_code:
+    type: string
+    required: false
+    max_length: 20
+    description: "Postal/ZIP code"
+    example: "700000"
+    validation_rules:
+      - "Format varies by country"
+    
+  is_primary:
+    type: boolean
+    required: true
+    default: false
+    description: "Whether this is the primary address of this type"
+    example: true
+    validation_rules:
+      - "Only one address per worker per type can be primary"
+    
+  metadata:
+    type: jsonb
+    required: false
+    description: "Extended attributes (coordinates, delivery instructions, etc.)"
+    example:
+      latitude: 10.762622
+      longitude: 106.660172
+      delivery_instructions: "Gate code: 1234"
+      verified: true
+      verified_date: "2025-01-15"
+    schema:
+      type: object
+      properties:
+        latitude:
+          type: number
+          description: "Geographic latitude"
+        longitude:
+          type: number
+          description: "Geographic longitude"
+        delivery_instructions:
+          type: string
+        verified:
+          type: boolean
+        verified_date:
+          type: string
+          format: date
+    
+  effective_start_date:
+    type: date
+    required: true
+    description: "Date when this address becomes effective"
+    example: "2025-01-01"
+    note: "Critical for tax jurisdiction determination"
+    
+  effective_end_date:
+    type: date
+    required: false
+    description: "Date when this address expires (null = current)"
+    example: "2025-12-31"
+    
+  is_current_flag:
+    type: boolean
+    required: true
+    default: true
+    description: "Whether this is the current address record"
+    
+  created_at:
+    type: timestamp
+    required: true
+    default: "now()"
+    immutable: true
+    description: "Timestamp when address was created"
+    
+  updated_at:
+    type: timestamp
+    required: false
+    description: "Timestamp when address was last updated"
+
+# ═══════════════════════════════════════════════════════════════════
+# DERIVED ATTRIBUTES
+# ═══════════════════════════════════════════════════════════════════
+derived_attributes:
+  full_address:
+    type: string
+    formula: |
+      street_line || ', ' || 
+      (SELECT name FROM geo.admin_area WHERE id = this.admin_area_id) || ', ' ||
+      (SELECT name FROM geo.admin_area WHERE id = (SELECT parent_id FROM geo.admin_area WHERE id = this.admin_area_id))
+    description: "Complete formatted address"
+    example: "123 Main Street, Ward 1, District 1, Ho Chi Minh City"
+    
+  country_code:
+    type: string
+    formula: |
+      (SELECT country_code FROM geo.admin_area 
+       WHERE id = (SELECT get_root_admin_area(this.admin_area_id)))
+    description: "Country code derived from admin area hierarchy"
+    example: "VN"
+    
+  tax_jurisdiction:
+    type: string
+    formula: |
+      (SELECT code FROM geo.admin_area 
+       WHERE id = this.admin_area_id AND level = 'PROVINCE')
+    description: "Tax jurisdiction for payroll tax calculation"
+    example: "HCMC"
+
+# ═══════════════════════════════════════════════════════════════════
+# RELATIONSHIPS
+# ═══════════════════════════════════════════════════════════════════
+relationships:
+  worker:
+    target: Worker
+    target_ref: "xtalent:co:person:worker"
+    cardinality: N:1
+    required: true
+    inverse: addresses
+    description: "Worker who owns this address"
+    on_delete: CASCADE
+    
+  admin_area:
+    target: AdminArea
+    target_ref: "xtalent:co:master-data:admin-area"
+    cardinality: N:1
+    required: true
+    description: "Administrative area (Ward/District)"
+    note: "Provides hierarchical geographic context"
+
+# ═══════════════════════════════════════════════════════════════════
+# VALIDATION RULES
+# ═══════════════════════════════════════════════════════════════════
+validation_rules:
+  - rule: valid_admin_area
+    expression: "EXISTS(SELECT 1 FROM geo.admin_area WHERE id = this.admin_area_id)"
+    message: "Admin area must exist"
+    severity: ERROR
+    error_code: "ERR_ADDRESS_INVALID_ADMIN_AREA"
+    
+  - rule: unique_primary_per_type
+    expression: |
+      NOT EXISTS (
+        SELECT 1 FROM person.address a2
+        WHERE a2.worker_id = this.worker_id
+        AND a2.address_type_code = this.address_type_code
+        AND a2.is_primary = true
+        AND a2.is_current_flag = true
+        AND a2.id != this.id
+      ) OR this.is_primary = false
+    message: "Only one primary address allowed per type per worker"
+    severity: ERROR
+    error_code: "ERR_ADDRESS_MULTIPLE_PRIMARY"
+    
+  - rule: valid_effective_dates
+    expression: "effective_end_date IS NULL OR effective_end_date >= effective_start_date"
+    message: "Effective end date must be after start date"
+    severity: ERROR
+    error_code: "ERR_ADDRESS_INVALID_DATES"
+    
+  - rule: current_flag_consistency
+    expression: "(is_current_flag = true AND effective_end_date IS NULL) OR (is_current_flag = false AND effective_end_date IS NOT NULL)"
+    message: "Current flag must be consistent with effective end date"
+    severity: ERROR
+    error_code: "ERR_ADDRESS_CURRENT_FLAG_MISMATCH"
+    
+  - rule: non_empty_street
+    expression: "TRIM(street_line) != ''"
+    message: "Street line cannot be empty"
+    severity: ERROR
+    error_code: "ERR_ADDRESS_EMPTY_STREET"
+
+# ═══════════════════════════════════════════════════════════════════
+# INDEXES
+# ═══════════════════════════════════════════════════════════════════
+indexes:
+  - name: idx_address_worker
+    columns: [worker_id, is_current_flag]
+    type: btree
+    description: "Index for finding worker's current addresses"
+    
+  - name: idx_address_admin_area
+    columns: [admin_area_id]
+    type: btree
+    description: "Index for geographic queries"
+    
+  - name: idx_address_effective
+    columns: [effective_start_date, effective_end_date]
+    type: btree
+    description: "Index for effective date queries"
+    
+  - name: idx_address_unique
+    columns: [worker_id, address_type_code, effective_start_date]
+    type: btree
+    unique: true
+    description: "Unique constraint per worker, type, and effective date"
+
+# ═══════════════════════════════════════════════════════════════════
+# SECURITY
+# ═══════════════════════════════════════════════════════════════════
+security:
+  data_classification: PII_SENSITIVE
+  gdpr_applicable: true
+  encryption_required: true
+  audit_required: true
+  
+  access_control:
+    read:
+      - role: HR_ADMIN
+      - role: HR_MANAGER
+      - role: PAYROLL_ADMIN
+        note: "Payroll needs address for tax calculation"
+      - role: SELF
+        condition: "user.worker_id = this.worker_id"
+    
+    write:
+      - role: HR_ADMIN
+      - role: SELF
+        condition: "user.worker_id = this.worker_id"
+        note: "Workers can update own addresses (self-service)"
+    
+    delete:
+      - role: HR_ADMIN
+  
+  pii_fields:
+    - street_line
+    - postal_code
+    - metadata
+
+# ═══════════════════════════════════════════════════════════════════
+# BUSINESS RULES
+# ═══════════════════════════════════════════════════════════════════
+business_rules:
+  - rule: BR_ADDRESS_001
+    name: "Tax Jurisdiction Recalculation"
+    description: "Address changes trigger payroll tax jurisdiction recalculation"
+    condition: "address_type_code = 'HOME' AND is_primary = true"
+    action: "Trigger tax jurisdiction update in payroll system"
+    impact: "Affects payroll tax withholding"
+    
+  - rule: BR_ADDRESS_002
+    name: "Remote Work Policy Validation"
+    description: "Work address must comply with remote work policies"
+    condition: "address_type_code = 'WORK'"
+    action: "Validate against approved remote work locations"
+    
+  - rule: BR_ADDRESS_003
+    name: "Primary Address Requirement"
+    description: "Workers should have at least one primary home address"
+    condition: "Always"
+    action: "Warn if worker has no primary home address"
+    severity: WARNING
+    
+  - rule: BR_ADDRESS_004
+    name: "Address Verification"
+    description: "New addresses should be verified within 30 days"
+    condition: "metadata.verified IS NULL OR metadata.verified = false"
+    action: "Send verification request after 30 days"
+
+# ═══════════════════════════════════════════════════════════════════
+# EXAMPLES
+# ═══════════════════════════════════════════════════════════════════
+examples:
+  - name: "Home Address (Vietnam)"
+    description: "Primary home address in Ho Chi Minh City"
+    data:
+      id: "750e8400-e29b-41d4-a716-446655440000"
+      worker_id: "550e8400-e29b-41d4-a716-446655440000"
+      address_type_code: "HOME"
+      admin_area_id: "850e8400-e29b-41d4-a716-446655440000"  # Ward 1, District 1
+      street_line: "123 Nguyen Hue Street, Apartment 4B"
+      postal_code: "700000"
+      is_primary: true
+      metadata:
+        latitude: 10.762622
+        longitude: 106.660172
+        verified: true
+        verified_date: "2025-01-15"
+      effective_start_date: "2025-01-01"
+      effective_end_date: null
+      is_current_flag: true
+      
+  - name: "Work Address"
+    description: "Office address"
+    data:
+      id: "760e8400-e29b-41d4-a716-446655440001"
+      worker_id: "550e8400-e29b-41d4-a716-446655440000"
+      address_type_code: "WORK"
+      admin_area_id: "860e8400-e29b-41d4-a716-446655440001"  # District 1
+      street_line: "456 Le Loi Boulevard, Tower A, Floor 15"
+      postal_code: "700000"
+      is_primary: true
+      metadata:
+        delivery_instructions: "Reception on ground floor"
+      effective_start_date: "2025-01-01"
+      effective_end_date: null
+      is_current_flag: true
+
+# ═══════════════════════════════════════════════════════════════════
+# REFERENCES
+# ═══════════════════════════════════════════════════════════════════
+references:
+  parent_entity: "worker.entity.yaml"
+  glossary: "../glossary/person.glossary.yaml#address"
+  dbml_table: "../../03-design/1.core.v4.dbml#person.address"
+  
+metadata:
+  tags: [person, address, geographic, tax, compliance, pii, self-service]
+  owner: "HR Platform Team"
+  last_updated: "2025-12-25"
+  status: complete
+  industry_references:
+    - "Workday: Address management with geographic hierarchy"
+    - "SAP SuccessFactors: Address data for tax and compliance"
+  compliance_notes:
+    - "Address changes affect tax jurisdiction"
+    - "Required for remote work policy compliance"
+    - "Critical for benefits eligibility determination"

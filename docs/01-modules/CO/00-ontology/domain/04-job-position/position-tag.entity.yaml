@@ -1,0 +1,41 @@
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:core:job-position:position-tag"
+
+entity: PositionTag
+classification: ENTITY
+module: CO
+submodule: job-position
+version: "1.0"
+
+definition: "Tags for position categorization and filtering"
+
+parent_aggregate: Position
+
+attributes:
+  position_id: {type: uuid, required: true, primary_key: true, foreign_key: position.id}
+  tag_code: {type: string, required: true, primary_key: true, max_length: 50, description: "Tag code from code_list(POS_TAG)"}
+  assigned_at: {type: date, required: true, default: "current_date"}
+
+relationships:
+  position:
+    target: Position
+    cardinality: N:1
+    required: true
+    on_delete: CASCADE
+
+validation_rules:
+  - rule: "unique_tag_per_position"
+    expression: "UNIQUE(position_id, tag_code)"
+    severity: ERROR
+
+indexes:
+  - name: idx_position_tag_pk
+    columns: [position_id, tag_code]
+    unique: true
+
+references:
+  database_design: "../../../03-design/1.core.v4.dbml#jobpos.position_tag"
+
+metadata:
+  created_at: "2025-12-25"
+  dbml_source: "jobpos.position_tag (lines 1296-1302)"

@@ -1,0 +1,65 @@
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:core:eligibility:eligibility-member"
+
+entity: EligibilityMember
+classification: ENTITY
+module: CO
+submodule: eligibility
+version: "1.0"
+
+definition: |
+  Cached membership record for eligibility profile, supporting both automatic
+  (rule-based) and manual (override) membership.
+
+description: |
+  EligibilityMember provides O(1) eligibility checks through cached membership:
+  - Automatic membership from rule evaluation
+  - Manual overrides (additions/removals)
+  - Temporal validity (start_date, end_date)
+  - Evaluation tracking (source, reason)
+  - Performance optimization
+
+parent_aggregate: EligibilityProfile
+
+attributes:
+  id: {type: uuid, required: true, primary_key: true}
+  profile_id: {type: uuid, required: true, foreign_key: eligibility_profile.id}
+  employee_id: {type: uuid, required: true, foreign_key: employee.id}
+  start_date: {type: date, required: true, description: "When eligibility began"}
+  end_date: {type: date, required: false, description: "NULL = currently eligible"}
+  last_evaluated_at: {type: timestamp, required: true, description: "Last evaluation time"}
+  evaluation_source: {type: string, required: true, max_length: 50, enum: [AUTO, MANUAL, OVERRIDE]}
+  evaluation_reason: {type: text, required: false, description: "Why added/removed"}
+  metadata: {type: jsonb, required: false}
+
+relationships:
+  profile:
+    target: EligibilityProfile
+    cardinality: N:1
+    required: true
+    on_delete: CASCADE
+  employee:
+    target: Employee
+    cardinality: N:1
+    required: true
+
+validation_rules:
+  - rule: "unique_membership"
+    expression: "UNIQUE(profile_id, employee_id, start_date)"
+    severity: ERROR
+
+indexes:
+  - name: idx_member_unique
+    columns: [profile_id, employee_id, start_date]
+    unique: true
+  - name: idx_member_active
+    columns: [profile_id, employee_id]
+    where: "end_date IS NULL"
+    note: "Fast active lookup"
+
+references:
+  database_design: "../../../03-design/1.core.v4.dbml#eligibility.eligibility_member"
+
+metadata:
+  created_at: "2025-12-25"
+  dbml_source: "eligibility.eligibility_member (lines 1480-1502)"

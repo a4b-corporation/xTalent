@@ -1,0 +1,65 @@
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:core:job-position:taxonomy-tree"
+
+entity: TaxonomyTree
+classification: AGGREGATE_ROOT
+module: CO
+submodule: job-position
+version: "1.0"
+
+definition: |
+  Taxonomy tree registry defining independent job classification trees
+  (job family, job group, career track, etc.)
+
+description: |
+  TaxonomyTree provides multi-tree job classification architecture:
+  - Corporate taxonomy tree (standard)
+  - BU-specific taxonomy trees (customizations)
+  - Multiple classification dimensions (family, group, track)
+  - Tree-level ownership and governance
+
+purpose: |
+  - Define job classification trees
+  - Support multi-dimensional classification
+  - Enable BU customization
+  - Facilitate reporting and analytics
+
+mixins:
+  - Auditable
+
+attributes:
+  id: {type: uuid, required: true, primary_key: true}
+  tree_code: {type: string, required: true, unique: true, max_length: 50}
+  tree_name: {type: string, required: true, max_length: 255}
+  owner_scope: {type: string, required: true, max_length: 10, enum: [CORP, LE, BU]}
+  owner_unit_id: {type: uuid, required: false, foreign_key: business_unit.id}
+  description: {type: text, required: false}
+
+relationships:
+  owner_unit:
+    target: BusinessUnit
+    cardinality: N:1
+    required: false
+  taxonomy_nodes:
+    target: JobTaxonomy
+    cardinality: 1:N
+
+validation_rules:
+  - rule: "unique_tree_code"
+    expression: "UNIQUE(tree_code)"
+    severity: ERROR
+
+examples:
+  - name: "Corporate Tree"
+    data:
+      tree_code: "CORP_TAXONOMY"
+      tree_name: "Corporate Job Taxonomy"
+      owner_scope: "CORP"
+      owner_unit_id: null
+
+references:
+  database_design: "../../../03-design/1.core.v4.dbml#jobpos.taxonomy_tree"
+
+metadata:
+  created_at: "2025-12-25"
+  dbml_source: "jobpos.taxonomy_tree (lines 945-955)"

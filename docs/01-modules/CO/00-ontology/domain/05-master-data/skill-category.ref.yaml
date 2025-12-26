@@ -1,0 +1,69 @@
+---
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:co:master-data:skill-category"
+
+module: CO
+submodule: master-data
+version: "1.0.0"
+
+entity: SkillCategory
+classification: REFERENCE_DATA
+
+definition: |
+  Categories for organizing skills into logical groups (Technical, Business, Soft Skills).
+
+purpose: |
+  Enable skill taxonomy and filtering for talent marketplace and career development.
+
+attributes:
+  id:
+    type: uuid
+    required: true
+    primary_key: true
+    
+  code:
+    type: string
+    required: true
+    max_length: 50
+    unique: true
+    examples: [TECH, BUSINESS, SOFT, LANGUAGE]
+    
+  name:
+    type: string
+    required: true
+    max_length: 100
+    
+  parent_id:
+    type: uuid
+    required: false
+    foreign_key: common.skill_category.id
+    description: "Parent category for hierarchical taxonomy"
+    
+  sort_order:
+    type: integer
+    required: true
+    default: 0
+
+relationships:
+  parent:
+    target: SkillCategory
+    target_ref: "xtalent:co:master-data:skill-category"
+    cardinality: N:1
+    required: false
+
+indexes:
+  - name: idx_skill_category_code
+    columns: [code]
+    unique: true
+
+security:
+  data_classification: PUBLIC
+  access_control:
+    read: [ALL_USERS]
+    write: [HR_ADMIN]
+
+metadata:
+  tags: [master-data, skill, taxonomy]
+  owner: "Platform Team"
+  last_updated: "2025-12-25"
+  status: complete

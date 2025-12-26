@@ -1,0 +1,68 @@
+---
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:co:master-data:competency-category"
+
+module: CO
+submodule: master-data
+version: "1.0.0"
+
+entity: CompetencyCategory
+classification: REFERENCE_DATA
+
+definition: |
+  Categories for organizing competencies (Leadership, Communication, Problem Solving).
+
+purpose: |
+  Enable competency framework organization for performance management and succession planning.
+
+attributes:
+  id:
+    type: uuid
+    required: true
+    primary_key: true
+    
+  code:
+    type: string
+    required: true
+    max_length: 50
+    unique: true
+    examples: [LEADERSHIP, COMMUNICATION, PROBLEM_SOLVING]
+    
+  name:
+    type: string
+    required: true
+    max_length: 100
+    
+  parent_id:
+    type: uuid
+    required: false
+    foreign_key: common.competency_category.id
+    
+  sort_order:
+    type: integer
+    required: true
+    default: 0
+
+relationships:
+  parent:
+    target: CompetencyCategory
+    target_ref: "xtalent:co:master-data:competency-category"
+    cardinality: N:1
+    required: false
+
+indexes:
+  - name: idx_competency_category_code
+    columns: [code]
+    unique: true
+
+security:
+  data_classification: PUBLIC
+  access_control:
+    read: [ALL_USERS]
+    write: [HR_ADMIN]
+
+metadata:
+  tags: [master-data, competency, framework]
+  owner: "Platform Team"
+  last_updated: "2025-12-25"
+  status: complete

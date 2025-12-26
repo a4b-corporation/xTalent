@@ -1,0 +1,75 @@
+$schema: "https://xtalent.io/schemas/workflow/v3"
+$id: "xtalent:core:job-position:create-position"
+
+workflow: CreatePosition
+module: CO
+submodule: job-position
+version: "1.0"
+
+description: "Creates a new position with validation and headcount tracking"
+
+inputs:
+  code: {type: string, required: true}
+  title: {type: string, required: true}
+  job_id: {type: uuid, required: true}
+  job_profile_id: {type: uuid, required: false}
+  business_unit_id: {type: uuid, required: true}
+  reports_to_id: {type: uuid, required: false}
+  position_type_code: {type: string, required: true}
+  max_incumbents: {type: integer, required: true, default: 1}
+  effective_start_date: {type: date, required: true, default: "today()"}
+
+steps:
+  - name: validate_inputs
+    type: validation
+    validations:
+      - check: "code unique"
+        query: "SELECT COUNT(*) FROM position WHERE code = :code"
+        condition: "count = 0"
+      - check: "job exists"
+        query: "SELECT COUNT(*) FROM job WHERE id = :job_id AND is_current_flag = true"
+        condition: "count = 1"
+      - check: "business_unit exists"
+        query: "SELECT COUNT(*) FROM business_unit WHERE id = :business_unit_id AND is_current_flag = true"
+        condition: "count = 1"
+      - check: "reports_to exists if provided"
+        query: "SELECT COUNT(*) FROM position WHERE id = :reports_to_id AND is_current_flag = true"
+        condition: "reports_to_id IS NULL OR count = 1"
+
+  - name: create_position
+    type: database_operation
+    operation: INSERT
+    table: jobpos.position
+    data:
+      id: "gen_random_uuid()"
+      code: ":code"
+      title: ":title"
+      job_id: ":job_id"
+      job_profile_id: ":job_profile_id"
+      business_unit_id: ":business_unit_id"
+      reports_to_id: ":reports_to_id"
+      position_type_code: ":position_type_code"
+      max_incumbents: ":max_incumbents"
+      planned_headcount: ":max_incumbents"
+      actual_headcount: 0
+      status_code: "PLANNED"
+      effective_start_date: ":effective_start_date"
+      is_current_flag: true
+    outputs:
+      - position_id: uuid
+
+  - name: emit_event
+    type: event
+    event: PositionCreated
+    payload:
+      position_id: ":position_id"
+      code: ":code"
+      job_id: ":job_id"
+
+authorization:
+  required_roles: [HR_ADMIN, ORG_ADMIN]
+  required_permissions: [position.create]
+
+metadata:
+  created_at: "2025-12-25"
+  transaction: true

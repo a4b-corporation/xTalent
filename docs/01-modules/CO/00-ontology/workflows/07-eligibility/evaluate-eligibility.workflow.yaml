@@ -1,0 +1,81 @@
+$schema: "https://xtalent.io/schemas/workflow/v3"
+$id: "xtalent:core:eligibility:evaluate-eligibility"
+
+workflow: EvaluateEligibility
+module: CO
+submodule: eligibility
+version: "1.0"
+
+description: "Evaluates employee eligibility against profile rules and updates membership"
+
+inputs:
+  profile_id: {type: uuid, required: true}
+  employee_id: {type: uuid, required: true}
+  triggered_by: {type: string, required: true}
+
+steps:
+  - name: get_profile_rules
+    type: database_query
+    query: "SELECT rule_json FROM eligibility_profile WHERE id = :profile_id AND is_active = true"
+    outputs:
+      - rule_json: jsonb
+
+  - name: get_employee_data
+    type: database_query
+    query: "SELECT grade_code, country_code, tenure_months, employee_class FROM employee WHERE id = :employee_id"
+    outputs:
+      - employee_data: object
+
+  - name: evaluate_rules
+    type: computation
+    logic: |
+      eligible = true
+      reasons = []
+      
+      IF rule_json.grades IS NOT NULL THEN
+        IF employee_data.grade_code NOT IN rule_json.grades THEN
+          eligible = false
+          reasons.append("Grade not in eligible list")
+        END IF
+      END IF
+      
+      IF rule_json.min_tenure_months IS NOT NULL THEN
+        IF employee_data.tenure_months < rule_json.min_tenure_months THEN
+          eligible = false
+          reasons.append("Insufficient tenure")
+        END IF
+      END IF
+      
+      evaluation_result = eligible ? 'ELIGIBLE' : 'NOT_ELIGIBLE'
+      evaluation_reason = join(reasons, '; ')
+
+  - name: update_membership
+    type: database_operation
+    condition: "evaluation_result = 'ELIGIBLE'"
+    operation: UPSERT
+    table: eligibility.eligibility_member
+    data:
+      profile_id: ":profile_id"
+      employee_id: ":employee_id"
+      start_date: "today()"
+      last_evaluated_at: "now()"
+      evaluation_source: "AUTO"
+      evaluation_reason: ":evaluation_reason"
+
+  - name: log_evaluation
+    type: database_operation
+    operation: INSERT
+    table: eligibility.eligibility_evaluation
+    data:
+      profile_id: ":profile_id"
+      employee_id: ":employee_id"
+      evaluation_result: ":evaluation_result"
+      evaluation_reason: ":evaluation_reason"
+      triggered_by: ":triggered_by"
+
+authorization:
+  required_roles: [SYSTEM, HR_ADMIN]
+
+metadata:
+  created_at: "2025-12-25"
+  transaction: true

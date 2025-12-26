@@ -1,0 +1,58 @@
+$schema: "https://xtalent.io/schemas/action/v3"
+$id: "xtalent:core:org-structure:update-legal-entity"
+
+action: UpdateLegalEntity
+module: CO
+submodule: org-structure
+version: "1.0"
+
+description: "Updates legal entity with SCD2 support"
+
+inputs:
+  legal_entity_id: {type: uuid, required: true}
+  updates: {type: object, required: true}
+  effective_date: {type: date, required: true}
+
+outputs:
+  success: {type: boolean}
+
+preconditions:
+  - condition: "entity exists"
+    check: "EXISTS(SELECT 1 FROM legal_entity WHERE id = :legal_entity_id AND is_current_flag = true)"
+
+effects:
+  database:
+    - operation: UPDATE
+      table: org_legal.entity
+      where: "id = :legal_entity_id AND is_current_flag = true"
+      data:
+        effective_end_date: ":effective_date - 1 day"
+        is_current_flag: false
+    
+    - operation: INSERT
+      table: org_legal.entity
+      data:
+        id: ":legal_entity_id"
+        # ... merge updates with current values
+        effective_start_date: ":effective_date"
+        is_current_flag: true
+  
+  events:
+    - event: LegalEntityUpdated
+      payload:
+        legal_entity_id: ":legal_entity_id"
+        changes: ":updates"
+
+authorization:
+  required_roles: [LEGAL_ADMIN, HR_ADMIN]
+  required_permissions: [legal_entity.update]
+
+api:
+  rest:
+    method: PUT
+    path: "/api/v1/legal-entities/{legal_entity_id}"
+    status_code: 200
+
+metadata:
+  created_at: "2025-12-25"
+  transaction: true

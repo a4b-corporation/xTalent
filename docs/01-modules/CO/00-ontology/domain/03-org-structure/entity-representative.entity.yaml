@@ -1,0 +1,120 @@
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:core:org-structure:entity-representative"
+
+entity: EntityRepresentative
+classification: ENTITY
+module: CO
+submodule: org-structure
+version: "1.0"
+
+definition: |
+  Legal representatives and authorized signatories for a legal entity,
+  including CEO, legal representatives, and authorized representatives.
+
+description: |
+  Tracks individuals who can legally represent or sign on behalf of the legal entity.
+  Supports effective dating to track changes in representation over time.
+
+purpose: "Legal representation and signing authority management"
+
+parent_aggregate: LegalEntity
+
+# ----------------------------------------------------------------------------
+# MIXINS
+# ----------------------------------------------------------------------------
+mixins:
+  - HasEffectiveDates
+
+# ----------------------------------------------------------------------------
+# ATTRIBUTES
+# ----------------------------------------------------------------------------
+attributes:
+  id:
+    type: uuid
+    required: true
+    primary_key: true
+    
+  legal_entity_id:
+    type: uuid
+    required: true
+    foreign_key: legal_entity.id
+    description: "Parent legal entity"
+    
+  rep_type_code:
+    type: string
+    required: true
+    max_length: 50
+    description: "Representative type: LEGAL_REP, AUTH_REP, CEO"
+    enum:
+      - LEGAL_REP    # Legal representative
+      - AUTH_REP     # Authorized representative
+      - CEO          # Chief Executive Officer
+    
+  worker_id:
+    type: uuid
+    required: true
+    foreign_key: worker.id
+    description: "Worker ID of the representative"
+    
+  document_id:
+    type: uuid
+    required: false
+    foreign_key: document.id
+    description: "Authorization document ID (if applicable)"
+    
+  metadata:
+    type: jsonb
+    required: false
+    description: "Additional info (decision number, notes, etc.)"
+
+# ----------------------------------------------------------------------------
+# RELATIONSHIPS
+# ----------------------------------------------------------------------------
+relationships:
+  legal_entity:
+    target: LegalEntity
+    cardinality: N:1
+    required: true
+    on_delete: CASCADE
+    
+  worker:
+    target: Worker
+    cardinality: N:1
+    required: true
+    description: "Representative person"
+    
+  authorization_document:
+    target: Document
+    cardinality: N:1
+    required: false
+    description: "Authorization document"
+
+# ----------------------------------------------------------------------------
+# VALIDATION RULES
+# ----------------------------------------------------------------------------
+validation_rules:
+  - rule: "unique_rep_per_period"
+    expression: "UNIQUE(legal_entity_id, rep_type_code, effective_start_date)"
+    message: "Only one representative of each type per effective period"
+    severity: ERROR
+    
+  - rule: "effective_dates_valid"
+    expression: "effective_end_date IS NULL OR effective_end_date >= effective_start_date"
+    message: "End date must be after start date"
+    severity: ERROR
+
+# ----------------------------------------------------------------------------
+# INDEXES
+# ----------------------------------------------------------------------------
+indexes:
+  - name: idx_entity_rep_unique
+    columns: [legal_entity_id, rep_type_code, effective_start_date]
+    unique: true
+
+references:
+  parent_entity: "legal-entity.aggregate.yaml"
+  database_design: "../../../03-design/1.core.v4.dbml#org_legal.entity_representative"
+
+metadata:
+  created_at: "2025-12-25"
+  dbml_source: "org_legal.entity_representative (lines 402-414)"

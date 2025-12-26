@@ -1,0 +1,361 @@
+---
+$schema: "https://xtalent.io/schemas/glossary/v3"
+
+module: CO
+submodule: person
+version: "1.0.0"
+
+glossary_name: "Person Domain Glossary"
+description: |
+  Ubiquitous language for Person sub-module, defining terms related to
+  workers, personal data, and individual profiles.
+
+# ═══════════════════════════════════════════════════════════════════
+# ENTITIES
+# ═══════════════════════════════════════════════════════════════════
+terms:
+  - term: Worker
+    type: ENTITY
+    classification: AGGREGATE_ROOT
+    definition: |
+      A person who has or had a relationship with the organization, including
+      employees, contractors, candidates, and alumni. Worker is the master
+      record for all person-related data.
+    aliases:
+      - Person
+      - Individual
+      - Worker Record
+    context: |
+      Worker is the central entity in the Person domain. It maintains immutable
+      personal identifiers (ID, date of birth) and mutable profile information
+      (name, contact, address). A single worker can have multiple employment
+      relationships across different legal entities.
+    examples:
+      - "John Doe is a worker with ID 550e8400-e29b-41d4-a716-446655440000"
+      - "A worker can be an active employee, a candidate, or an alumni"
+    related_terms:
+      - Employee
+      - Candidate
+      - Contractor
+      - Alumni
+    references:
+      entity: "../domain/01-person/worker.entity.yaml"
+      
+  - term: Contact
+    type: ENTITY
+    classification: ENTITY
+    definition: |
+      Contact information for a worker, including phone numbers, email addresses,
+      and other communication channels.
+    parent_aggregate: Worker
+    context: |
+      Workers can have multiple contact methods (mobile, work email, personal email).
+      One contact can be marked as primary for each type.
+    examples:
+      - "Mobile: +84 90 123 4567"
+      - "Work Email: john.doe@company.com"
+    related_terms:
+      - ContactType
+      - PrimaryContact
+      
+  - term: Address
+    type: ENTITY
+    classification: ENTITY
+    definition: |
+      Physical address information for a worker, including home address,
+      work address, and mailing address.
+    parent_aggregate: Worker
+    context: |
+      Addresses are linked to administrative areas (country, province, district, ward)
+      for geographic reporting and compliance.
+    examples:
+      - "123 Main Street, Ward 1, District 1, Ho Chi Minh City"
+    related_terms:
+      - AdminArea
+      - AddressType
+      
+  - term: Document
+    type: ENTITY
+    classification: ENTITY
+    definition: |
+      Identity documents for a worker, such as national ID card, passport,
+      driver's license, or work permit.
+    parent_aggregate: Worker
+    context: |
+      Documents have issue dates, expiry dates, and issuing authorities.
+      Used for identity verification and compliance.
+    examples:
+      - "National ID: 079090001234"
+      - "Passport: N1234567"
+    related_terms:
+      - DocumentType
+      - IdentityVerification
+      
+  - term: BankAccount
+    type: ENTITY
+    classification: ENTITY
+    definition: |
+      Bank account information for a worker, used for salary payments
+      and reimbursements.
+    parent_aggregate: Worker
+    context: |
+      Workers can have multiple bank accounts. One account is marked as
+      primary for payroll purposes.
+    examples:
+      - "Vietcombank: 0123456789"
+    related_terms:
+      - PaymentMethod
+      - Payroll
+      
+  - term: WorkerRelationship
+    type: ENTITY
+    classification: ENTITY
+    definition: |
+      Family relationships and dependents of a worker, including spouse,
+      children, parents, and other relatives.
+    parent_aggregate: Worker
+    context: |
+      Used for benefits eligibility, emergency contacts, and tax dependents.
+      Relationships can be flagged as emergency contact, dependent, or beneficiary.
+    examples:
+      - "Spouse: Jane Doe"
+      - "Child (dependent): Tom Doe, age 5"
+    related_terms:
+      - Dependent
+      - EmergencyContact
+      - Beneficiary
+      - RelationshipType
+      
+  - term: WorkerQualification
+    type: ENTITY
+    classification: ENTITY
+    definition: |
+      Educational qualifications, certifications, and professional licenses
+      held by a worker.
+    parent_aggregate: Worker
+    context: |
+      Includes degrees, diplomas, certifications, language proficiency,
+      and professional licenses. Used for job matching and compliance.
+    examples:
+      - "Bachelor of Science in Computer Science, MIT, 2015"
+      - "PMP Certification, PMI, 2020"
+    related_terms:
+      - Education
+      - Certification
+      - License
+      
+  - term: WorkerSkill
+    type: ENTITY
+    classification: ENTITY
+    definition: |
+      Technical and functional skills possessed by a worker, with
+      proficiency levels and years of experience.
+    parent_aggregate: Worker
+    context: |
+      Skills can be self-reported, manager-assessed, or verified through
+      certifications. Used for talent matching and career development.
+    examples:
+      - "Python: Proficiency 4/5, 5 years experience"
+      - "Project Management: Proficiency 3/5, 3 years experience"
+    related_terms:
+      - SkillMaster
+      - Proficiency
+      - TalentMarketplace
+      
+  - term: WorkerCompetency
+    type: ENTITY
+    classification: ENTITY
+    definition: |
+      Behavioral and leadership competencies assessed for a worker,
+      typically through performance reviews or 360 assessments.
+    parent_aggregate: Worker
+    context: |
+      Competencies measure soft skills like communication, leadership,
+      teamwork. Used for performance management and succession planning.
+    examples:
+      - "Leadership: Rating 4.2/5"
+      - "Communication: Rating 3.8/5"
+    related_terms:
+      - CompetencyMaster
+      - PerformanceReview
+      - SuccessionPlanning
+      
+  - term: WorkerInterest
+    type: ENTITY
+    classification: ENTITY
+    definition: |
+      Career interests and preferences expressed by a worker, including
+      desired roles, locations, and development areas.
+    parent_aggregate: Worker
+    context: |
+      Used for internal mobility, career planning, and talent marketplace
+      recommendations. Workers can express interest in roles, locations,
+      skills to develop, or project types.
+    examples:
+      - "Interest: Data Science roles"
+      - "Preferred location: Singapore"
+    related_terms:
+      - CareerPath
+      - InternalMobility
+      - TalentMarketplace
+
+# ═══════════════════════════════════════════════════════════════════
+# ATTRIBUTES
+# ═══════════════════════════════════════════════════════════════════
+  - term: WorkerID
+    type: ATTRIBUTE
+    definition: |
+      Unique, immutable identifier for a worker. Persists across entire
+      lifecycle from candidate to alumni.
+    data_type: UUID
+    immutable: true
+    examples:
+      - "550e8400-e29b-41d4-a716-446655440000"
+    related_terms:
+      - Worker
+      
+  - term: FullName
+    type: ATTRIBUTE
+    definition: |
+      Complete name of worker, combining first name, middle name (if any),
+      and last name.
+    data_type: String
+    derived: true
+    formula: "first_name + ' ' + middle_name + ' ' + last_name"
+    examples:
+      - "John Michael Doe"
+    related_terms:
+      - FirstName
+      - LastName
+      - PreferredName
+      
+  - term: DateOfBirth
+    type: ATTRIBUTE
+    definition: |
+      Worker's date of birth. Immutable field used for age calculation
+      and compliance (minimum working age).
+    data_type: Date
+    immutable: true
+    validation: "Must be at least 16 years before current date"
+    examples:
+      - "1990-05-15"
+    related_terms:
+      - Age
+      - MinimumWorkingAge
+
+# ═══════════════════════════════════════════════════════════════════
+# WORKFLOWS
+# ═══════════════════════════════════════════════════════════════════
+  - term: CreateWorker
+    type: WORKFLOW
+    definition: |
+      Business process to create a new worker record in the system.
+      First step in onboarding any individual.
+    steps:
+      - Validate worker data
+      - Check for duplicates
+      - Create worker record
+      - Emit WorkerCreated event
+    actors:
+      - HR Administrator
+      - Recruiter
+    references:
+      workflow: "../workflows/01-person/create-worker.workflow.yaml"
+      
+  - term: UpdateWorkerProfile
+    type: WORKFLOW
+    definition: |
+      Business process to update worker's personal information and profile.
+      Supports both self-service and HR admin updates.
+    steps:
+      - Load current worker data
+      - Check field-level authorization
+      - Validate updates
+      - Apply updates
+      - Create audit log
+    actors:
+      - Worker (self-service)
+      - HR Administrator
+    references:
+      workflow: "../workflows/01-person/update-worker-profile.workflow.yaml"
+
+# ═══════════════════════════════════════════════════════════════════
+# BUSINESS CONCEPTS
+# ═══════════════════════════════════════════════════════════════════
+  - term: Candidate
+    type: CONCEPT
+    definition: |
+      A worker who has applied for a position but is not yet employed.
+      Worker state is CANDIDATE when they have applications but no employment.
+    context: |
+      Candidates are tracked in the Worker entity to maintain continuity
+      when they become employees. This allows preserving application data,
+      interview notes, and candidate profile.
+    related_terms:
+      - Worker
+      - Employee
+      - Recruiting
+      
+  - term: Alumni
+    type: CONCEPT
+    definition: |
+      A former worker whose employment has ended but whose record is
+      retained for potential rehire or alumni programs.
+    context: |
+      Worker state is ALUMNI when all employment relationships have ended.
+      Alumni data is retained for talent pool and potential rehire.
+    related_terms:
+      - Worker
+      - Rehire
+      - TalentPool
+      
+  - term: PII
+    type: CONCEPT
+    definition: |
+      Personally Identifiable Information - data that can identify an
+      individual, such as name, date of birth, ID numbers.
+    context: |
+      Worker entity contains sensitive PII and requires encryption,
+      access controls, and GDPR compliance (right to be forgotten).
+    security_classification: SENSITIVE
+    gdpr_applicable: true
+    related_terms:
+      - GDPR
+      - DataProtection
+      - RightToBeForgotten
+      
+  - term: RightToBeForgotten
+    type: CONCEPT
+    definition: |
+      GDPR right allowing individuals to request deletion of their
+      personal data. Implemented via soft delete and anonymization.
+    context: |
+      When worker requests deletion, PII fields are anonymized
+      (first_name → "REDACTED") while preserving ID for referential integrity.
+    compliance: GDPR
+    related_terms:
+      - PII
+      - GDPR
+      - DataAnonymization
+
+# ═══════════════════════════════════════════════════════════════════
+# CROSS-REFERENCES
+# ═══════════════════════════════════════════════════════════════════
+cross_references:
+  employment_module:
+    - Employee
+    - Contract
+    - Assignment
+  master_data_module:
+    - CodeList
+    - Country
+    - SkillMaster
+    - CompetencyMaster
+  recruiting_module:
+    - Application
+    - Candidate
+
+metadata:
+  owner: "HR Platform Team"
+  last_updated: "2025-12-25"
+  version: "1.0.0"

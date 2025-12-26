@@ -1,0 +1,374 @@
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:core:eligibility:eligibility-profile"
+
+# ============================================================================
+# ELIGIBILITY_PROFILE - AGGREGATE_ROOT
+# ============================================================================
+# Purpose: Cross-module eligibility management with hybrid model
+# Pattern: Default + Override with Dynamic Groups
+# DBML Source: eligibility.eligibility_profile
+
+module: CO
+submodule: eligibility
+version: "1.0"
+
+# ----------------------------------------------------------------------------
+# ENTITY DEFINITION
+# ----------------------------------------------------------------------------
+entity: EligibilityProfile
+classification: AGGREGATE_ROOT
+
+definition: |
+  Eligibility profile defining WHO is eligible based on organizational scope
+  and dynamic criteria. Supports cross-module reusability for TA, TR, LM modules.
+
+description: |
+  EligibilityProfile provides centralized eligibility management:
+  - Cross-module eligibility (TA, TR, LM)
+  - Hybrid model: Default (rule-based) + Override (explicit members)
+  - Dynamic criteria (grades, countries, tenure, etc.)
+  - Cached membership for O(1) checks
+  - Audit trail for compliance
+  
+  Key features:
+  - **Domain-scoped**: ABSENCE, BENEFITS, COMPENSATION, CORE
+  - **Rule-based**: Dynamic JSON criteria evaluation
+  - **Override support**: Explicit member additions/removals
+  - **Performance**: Cached membership in eligibility_member
+  - **Audit**: Complete evaluation history
+  
+  Pattern (11dec2025):
+  - Profile defines WHO (organizational scope)
+  - Consuming entity defines WHAT (leaveTypeId, benefitPlanId)
+  - Separation enables cross-module reusability
+
+purpose: |
+  - Define eligibility criteria
+  - Support cross-module eligibility
+  - Enable dynamic group membership
+  - Provide audit trail
+  - Optimize eligibility checks
+
+# ----------------------------------------------------------------------------
+# AI AGENT INSTRUCTIONS
+# ----------------------------------------------------------------------------
+ai_instructions:
+  priority: CRITICAL
+  code_generation: true
+  test_generation: true
+  documentation_generation: true
+  
+  notes: |
+    - Cross-module dependency for TA, TR, LM
+    - Hybrid model: Default (rules) + Override (explicit)
+    - rule_json contains dynamic criteria
+    - Cached membership for performance
+    - SCD2 for rule evolution
+  
+  related_context:
+    - "eligibility-member.entity.yaml"
+    - "eligibility-evaluation.entity.yaml"
+    - "../glossary/eligibility.glossary.yaml"
+
+# ----------------------------------------------------------------------------
+# MIXINS
+# ----------------------------------------------------------------------------
+mixins:
+  - Auditable
+  - HasEffectiveDates
+
+# ----------------------------------------------------------------------------
+# ATTRIBUTES
+# ----------------------------------------------------------------------------
+attributes:
+  # Primary key
+  id:
+    type: uuid
+    required: true
+    primary_key: true
+    description: "Unique identifier for eligibility profile"
+    
+  # Business key
+  code:
+    type: string
+    required: true
+    unique: true
+    max_length: 50
+    description: "Profile code"
+    examples:
+      - "ELIG_SENIOR_STAFF"
+      - "ELIG_VN_FULLTIME"
+      - "ELIG_MANAGER_LEVEL"
+    
+  # Name
+  name:
+    type: string
+    required: true
+    max_length: 255
+    description: "Display name"
+    examples:
+      - "Senior Staff Eligibility"
+      - "Vietnam Full-Time Employees"
+    
+  # Domain
+  domain:
+    type: string
+    required: true
+    max_length: 50
+    description: "Domain scope"
+    enum:
+      - ABSENCE       # Time & Absence
+      - BENEFITS      # Total Rewards - Benefits
+      - COMPENSATION  # Total Rewards - Compensation
+      - CORE          # Core module
+    note: "Enables domain-specific eligibility management"
+    
+  # Description
+  description:
+    type: text
+    required: false
+    description: "Business rationale and purpose"
+    
+  # Rule JSON
+  rule_json:
+    type: jsonb
+    required: true
+    description: "Dynamic eligibility criteria"
+    schema:
+      type: object
+      properties:
+        grades: {type: array, items: {type: string}}
+        countries: {type: array, items: {type: string}}
+        min_tenure_months: {type: integer}
+        employee_classes: {type: array, items: {type: string}}
+        business_units: {type: array, items: {type: string}}
+        positions: {type: array, items: {type: string}}
+    examples:
+      - grades: ["G4", "G5"]
+        countries: ["VN"]
+        min_tenure_months: 12
+      - employee_classes: ["FULL_TIME"]
+        business_units: ["BU_TECH"]
+    note: "Evaluated dynamically to determine eligibility"
+    
+  # Priority
+  priority:
+    type: integer
+    required: true
+    default: 10
+    description: "Evaluation priority (lower = higher priority)"
+    note: "Used when multiple profiles apply"
+    
+  # Active flag
+  is_active:
+    type: boolean
+    required: true
+    default: true
+    description: "Active status"
+
+# ----------------------------------------------------------------------------
+# DERIVED ATTRIBUTES
+# ----------------------------------------------------------------------------
+derived_attributes:
+  member_count:
+    type: integer
+    formula: "SELECT COUNT(*) FROM eligibility_member WHERE profile_id = id AND end_date IS NULL"
+    description: "Current member count"
+    dependencies:
+      - id
+
+# ----------------------------------------------------------------------------
+# RELATIONSHIPS
+# ----------------------------------------------------------------------------
+relationships:
+  # Members (1:N)
+  members:
+    target: EligibilityMember
+    target_ref: "xtalent:core:eligibility:eligibility-member"
+    cardinality: 1:N
+    description: "Cached membership (Default + Override)"
+    
+  # Evaluations (1:N)
+  evaluations:
+    target: EligibilityEvaluation
+    target_ref: "xtalent:core:eligibility:eligibility-evaluation"
+    cardinality: 1:N
+    description: "Evaluation audit trail"
+
+# ----------------------------------------------------------------------------
+# LIFECYCLE
+# ----------------------------------------------------------------------------
+lifecycle:
+  state_attribute: is_active
+  
+  states:
+    DRAFT:
+      description: "Profile being defined"
+      initial: true
+      
+    ACTIVE:
+      description: "Profile active and evaluating"
+      
+    INACTIVE:
+      description: "Profile deactivated"
+      terminal: true
+      
+  transitions:
+    - name: activate
+      from: DRAFT
+      to: ACTIVE
+      action_ref: "xtalent:core:eligibility:activate-profile"
+      requires:
+        - "rule_json validated"
+        
+    - name: deactivate
+      from: ACTIVE
+      to: INACTIVE
+      action_ref: "xtalent:core:eligibility:deactivate-profile"
+
+# ----------------------------------------------------------------------------
+# VALIDATION RULES
+# ----------------------------------------------------------------------------
+validation_rules:
+  - rule: "unique_code_per_domain"
+    expression: "UNIQUE(domain, code, effective_start_date)"
+    message: "Code must be unique within domain and period"
+    severity: ERROR
+    
+  - rule: "valid_rule_json"
+    expression: "rule_json IS NOT NULL AND jsonb_typeof(rule_json) = 'object'"
+    message: "rule_json must be valid JSON object"
+    severity: ERROR
+    
+  - rule: "valid_domain"
+    expression: "domain IN ('ABSENCE', 'BENEFITS', 'COMPENSATION', 'CORE')"
+    message: "Invalid domain"
+    severity: ERROR
+
+# ----------------------------------------------------------------------------
+# INDEXES
+# ----------------------------------------------------------------------------
+indexes:
+  - name: idx_eligibility_profile_domain_code
+    columns: [domain, code, effective_start_date]
+    unique: true
+    note: "Unique per domain"
+    
+  - name: idx_eligibility_profile_domain_active
+    columns: [domain, is_active]
+    note: "Fast active lookup"
+    
+  - name: idx_eligibility_profile_code
+    columns: [code]
+    note: "Code lookup"
+
+# ----------------------------------------------------------------------------
+# HYBRID MODEL PATTERN
+# ----------------------------------------------------------------------------
+hybrid_model:
+  description: |
+    Eligibility determined by combination of:
+    1. **Default (Rule-based)**: Automatic evaluation based on rule_json
+    2. **Override (Explicit)**: Manual additions/removals in eligibility_member
+    
+  evaluation_logic: |
+    1. Evaluate rule_json against employee data
+    2. Check explicit overrides in eligibility_member
+    3. Cache result in eligibility_member
+    4. Log evaluation in eligibility_evaluation
+    
+  performance: |
+    - O(1) eligibility check via cached membership
+    - Automatic re-evaluation on employee/rule changes
+    - Batch evaluation for efficiency
+    
+  use_cases:
+    - name: "Default Eligibility"
+      description: "All G4+ employees in VN"
+      rule_json:
+        grades: ["G4", "G5", "G6"]
+        countries: ["VN"]
+        
+    - name: "Override Addition"
+      description: "Manually add specific employee"
+      action: "Create eligibility_member with evaluation_source=MANUAL"
+      
+    - name: "Override Removal"
+      description: "Manually remove auto-eligible employee"
+      action: "Set end_date on eligibility_member"
+
+# ----------------------------------------------------------------------------
+# SECURITY
+# ----------------------------------------------------------------------------
+security:
+  classification: CONFIDENTIAL
+  
+  row_level_security:
+    enabled: true
+    policy: |
+      user.has_role('HR_ADMIN') OR
+      user.has_role('BENEFITS_ADMIN') OR
+      user.has_role('COMPENSATION_ADMIN')
+    note: "Domain-specific admin access"
+
+# ----------------------------------------------------------------------------
+# EXAMPLES
+# ----------------------------------------------------------------------------
+examples:
+  - name: "Senior Staff Eligibility"
+    description: "G4+ employees with 12+ months tenure"
+    data:
+      code: "ELIG_SENIOR_STAFF"
+      name: "Senior Staff Eligibility"
+      domain: "BENEFITS"
+      description: "Eligible for senior staff benefits"
+      rule_json:
+        grades: ["G4", "G5", "G6"]
+        min_tenure_months: 12
+      priority: 10
+      is_active: true
+      
+  - name: "Vietnam Full-Time"
+    description: "Full-time employees in Vietnam"
+    data:
+      code: "ELIG_VN_FULLTIME"
+      name: "Vietnam Full-Time Employees"
+      domain: "ABSENCE"
+      description: "Eligible for Vietnam leave policies"
+      rule_json:
+        countries: ["VN"]
+        employee_classes: ["FULL_TIME"]
+      priority: 5
+      is_active: true
+
+# ----------------------------------------------------------------------------
+# REFERENCES
+# ----------------------------------------------------------------------------
+references:
+  glossary: "../glossary/eligibility.glossary.yaml#eligibility-profile"
+  concept_guide: "../../01-concept/07-eligibility/eligibility-guide.md"
+  business_rules: "../../02-spec/04-BR/BR-07-eligibility.md"
+  bdd_scenarios: "../../02-spec/05-BDD/07-eligibility/eligibility-profile.feature"
+  database_design: "../../03-design/1.core.v4.dbml#eligibility.eligibility_profile"
+
+# ----------------------------------------------------------------------------
+# METADATA
+# ----------------------------------------------------------------------------
+metadata:
+  created_at: "2025-12-25"
+  created_by: "AI Agent"
+  updated_at: "2025-12-25"
+  updated_by: "AI Agent"
+  review_status: DRAFT
+  dbml_source: "eligibility.eligibility_profile (lines 1450-1478)"
+  change_date: "11dec2025"
+  change_note: "NEW - Centralized eligibility for cross-module reusability"
+  industry_references:
+    - "Workday Eligibility Rules"
+    - "SAP SuccessFactors Eligibility"
+    - "Oracle HCM Cloud Eligibility"
+  notes: |
+    - Cross-module dependency (TA, TR, LM)
+    - Hybrid model: Default + Override
+    - Performance optimized with cached membership
+    - Complete audit trail for compliance

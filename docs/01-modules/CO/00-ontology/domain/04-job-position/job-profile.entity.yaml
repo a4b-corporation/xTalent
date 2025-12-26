@@ -1,0 +1,187 @@
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:core:job-position:job-profile"
+
+entity: JobProfile
+classification: ENTITY
+module: CO
+submodule: job-position
+version: "1.0"
+
+definition: |
+  Multi-locale job profile containing detailed job descriptions, responsibilities,
+  qualifications, and competencies for a job.
+
+description: |
+  JobProfile provides localized, detailed descriptions of jobs including:
+  - Job summary and overview
+  - Key responsibilities and duties
+  - Required qualifications and experience
+  - Required competencies and skills
+  - Multi-locale support (en-US, vi-VN, etc.)
+  - SCD2 for profile evolution
+  
+  Important changes (17dec2025):
+  - Grade and level moved to Job entity
+  - Profile focuses on job description, not compensation
+  - Eliminates duplication across locales
+  
+  JobProfile vs Job:
+  - Job: Template with grade/level (what/compensation)
+  - JobProfile: Description with locale (how/requirements)
+
+purpose: |
+  - Detailed job descriptions
+  - Recruitment job postings
+  - Performance expectations
+  - Career development guidance
+  - Multi-locale support
+
+parent_aggregate: Job
+
+mixins:
+  - HasEffectiveDates
+  - Auditable
+
+attributes:
+  id:
+    type: uuid
+    required: true
+    primary_key: true
+    description: "Unique identifier for job profile"
+    
+  job_id:
+    type: uuid
+    required: true
+    foreign_key: job.id
+    description: "Job ID"
+    
+  locale_code:
+    type: string
+    required: true
+    max_length: 10
+    default: "en-US"
+    description: "Locale code (en-US, vi-VN, etc.)"
+    examples:
+      - "en-US"
+      - "vi-VN"
+      - "zh-CN"
+    
+  ranking_level_code:
+    type: string
+    required: false
+    max_length: 50
+    description: "Ranking level (DEPRECATED - use job.ranking_level_code)"
+    deprecated: true
+    note: "Kept for backward compatibility, will be removed in v5.0"
+    
+  job_type_code:
+    type: string
+    required: false
+    max_length: 50
+    description: "Job type (DEPRECATED - use job.job_type_code)"
+    deprecated: true
+    
+  job_title:
+    type: string
+    required: true
+    max_length: 255
+    description: "Localized job title"
+    
+  summary:
+    type: text
+    required: false
+    description: "Job summary/overview"
+    
+  responsibilities:
+    type: text
+    required: false
+    description: "Key responsibilities and duties"
+    
+  qualifications:
+    type: text
+    required: false
+    description: "Required qualifications and experience"
+    
+  competencies_json:
+    type: jsonb
+    required: false
+    description: "Required competencies"
+    schema:
+      type: array
+      items:
+        type: object
+        properties:
+          competency_id: uuid
+          proficiency_level: integer
+    
+  metadata:
+    type: jsonb
+    required: false
+    description: "Extended metadata"
+    schema:
+      type: object
+      properties:
+        work_environment: string
+        travel_requirements: string
+        physical_requirements: string
+
+relationships:
+  job:
+    target: Job
+    cardinality: N:1
+    required: true
+    on_delete: CASCADE
+    
+  skills:
+    target: JobProfileSkill
+    cardinality: 1:N
+    description: "Required skills for this profile"
+
+validation_rules:
+  - rule: "unique_profile_per_job_locale_period"
+    expression: "UNIQUE(job_id, locale_code, effective_start_date)"
+    severity: ERROR
+    message: "Only one profile per job/locale/period"
+
+indexes:
+  - name: idx_job_profile_unique
+    columns: [job_id, locale_code, effective_start_date]
+    unique: true
+
+history:
+  enabled: true
+  type: SCD2
+  tracked_attributes:
+    - job_title
+    - summary
+    - responsibilities
+    - qualifications
+  note: "Tracks profile evolution and updates"
+
+examples:
+  - name: "English Profile"
+    data:
+      job_id: "job-001"
+      locale_code: "en-US"
+      job_title: "Software Engineer"
+      summary: "Design, develop, and maintain software applications"
+      responsibilities: "- Write clean code\n- Review peer code\n- Participate in design"
+      qualifications: "- BS in Computer Science\n- 3+ years experience"
+      
+  - name: "Vietnamese Profile"
+    data:
+      job_id: "job-001"
+      locale_code: "vi-VN"
+      job_title: "Kỹ sư Phần mềm"
+      summary: "Thiết kế, phát triển và bảo trì ứng dụng phần mềm"
+
+references:
+  database_design: "../../../03-design/1.core.v4.dbml#jobpos.job_profile"
+
+metadata:
+  created_at: "2025-12-25"
+  dbml_source: "jobpos.job_profile (lines 1094-1122)"
+  notes: |
+    - Grade/level moved to Job (17dec2025)
+    - Profile focuses on description, not compensation
+    - Multi-locale support critical for global orgs

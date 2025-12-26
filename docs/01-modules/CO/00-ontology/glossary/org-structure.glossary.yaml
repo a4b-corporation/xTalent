@@ -1,0 +1,291 @@
+$schema: "https://xtalent.io/schemas/glossary/v3"
+$id: "xtalent:core:org-structure:glossary"
+
+# ============================================================================
+# ORGANIZATION STRUCTURE GLOSSARY
+# ============================================================================
+# Module: CO (Core)
+# Sub-Module: Organization Structure
+# Purpose: Business vocabulary for organizational entities and relationships
+
+glossary: OrgStructure
+module: CO
+submodule: org-structure
+version: "1.0"
+
+description: |
+  Comprehensive glossary of organizational structure terms including legal entities,
+  business units, and dynamic organizational relationships.
+
+# ============================================================================
+# ENTITIES
+# ============================================================================
+
+entities:
+  # Legal Entity
+  - name: LegalEntity
+    definition: |
+      A legal entity represents a company, branch, or subsidiary that has legal standing
+      for compliance, tax, and regulatory purposes.
+    synonyms:
+      - Company
+      - Legal Company
+      - Corporate Entity
+    examples:
+      - "VNG Corporation"
+      - "VNG Branch Ho Chi Minh City"
+    related_terms:
+      - BusinessUnit
+      - EntityProfile
+    entity_ref: "legal-entity.aggregate.yaml"
+    
+  # Business Unit
+  - name: BusinessUnit
+    definition: |
+      An operational organizational unit (division, department, team) used for
+      hierarchy, reporting, and management structure.
+    synonyms:
+      - Org Unit
+      - Department
+      - Division
+    examples:
+      - "Engineering Division"
+      - "Backend Development Department"
+      - "Sales Team Ho Chi Minh"
+    related_terms:
+      - LegalEntity
+      - Manager
+    entity_ref: "business-unit.aggregate.yaml"
+    
+  # Entity Profile
+  - name: EntityProfile
+    definition: |
+      Extended profile information for a legal entity including addresses, contacts,
+      tax identification, and corporate branding.
+    parent: LegalEntity
+    entity_ref: "entity-profile.entity.yaml"
+    
+  # Entity Representative
+  - name: EntityRepresentative
+    definition: |
+      Legal representatives and authorized signatories for a legal entity.
+    parent: LegalEntity
+    entity_ref: "entity-representative.entity.yaml"
+    
+  # Entity License
+  - name: EntityLicense
+    definition: |
+      Business licenses and permits held by a legal entity for regulatory compliance.
+    parent: LegalEntity
+    entity_ref: "entity-license.entity.yaml"
+    
+  # Entity Bank Account
+  - name: EntityBankAccount
+    definition: |
+      Corporate bank accounts for a legal entity.
+    parent: LegalEntity
+    entity_ref: "entity-bank-account.entity.yaml"
+
+# ============================================================================
+# BUSINESS CONCEPTS
+# ============================================================================
+
+concepts:
+  # Corporate Hierarchy
+  - name: CorporateHierarchy
+    definition: |
+      The hierarchical structure of legal entities representing corporate ownership
+      and control relationships.
+    description: |
+      Corporate hierarchy represents the legal structure of a corporate group,
+      including parent companies, subsidiaries, and branches.
+    examples:
+      - "VNG Corporation → VNG Subsidiary Singapore → VNG Branch Malaysia"
+    related_entities:
+      - LegalEntity
+    
+  # Organizational Hierarchy
+  - name: OrganizationalHierarchy
+    definition: |
+      The hierarchical structure of business units representing operational
+      reporting and management relationships.
+    description: |
+      Organizational hierarchy represents the operational structure, including
+      divisions, departments, and teams.
+    examples:
+      - "Engineering Division → Backend Department → Core Services Team"
+    related_entities:
+      - BusinessUnit
+    
+  # Closure Table
+  - name: ClosureTable
+    definition: |
+      A database pattern for efficiently querying hierarchical data by pre-computing
+      all ancestor-descendant relationships.
+    description: |
+      Closure tables enable O(1) queries for ancestors, descendants, and subtrees
+      by materializing the transitive closure of the hierarchy.
+    use_cases:
+      - "Query all ancestors for permissions"
+      - "Query all descendants for reporting"
+      - "Calculate subtree size"
+    trade_offs:
+      - "Storage: O(N²) for deep hierarchies"
+      - "Maintenance: O(N) for hierarchy moves"
+      - "Query: O(1) for all hierarchy operations"
+    
+  # Matrix Organization
+  - name: MatrixOrganization
+    definition: |
+      An organizational structure where employees report to multiple managers
+      (e.g., functional manager and project manager).
+    description: |
+      Implemented using dynamic organizational relationships (org_relation)
+      to represent multiple reporting lines beyond the primary hierarchy.
+    related_entities:
+      - OrgRelationSchema
+      - OrgRelationEdge
+    
+  # Cost Center
+  - name: CostCenter
+    definition: |
+      A business unit or tag used for budget allocation and cost tracking.
+    description: |
+      Cost centers can be represented as business unit tags or metadata for
+      flexible financial reporting.
+    related_entities:
+      - BusinessUnit
+      - BusinessUnitTag
+
+# ============================================================================
+# ATTRIBUTES
+# ============================================================================
+
+attributes:
+  # Path
+  - name: path
+    definition: |
+      Materialized path representing the hierarchical position of an entity.
+    format: "String in format: /parent/child/grandchild/"
+    examples:
+      - "/"
+      - "/eng_div/"
+      - "/eng_div/backend_dept/"
+    used_in:
+      - LegalEntity
+      - BusinessUnit
+    
+  # Status Code
+  - name: status_code
+    definition: |
+      Current lifecycle state of an organizational entity.
+    values:
+      - DRAFT: "Being set up, not yet active"
+      - ACTIVE: "Operational and in use"
+      - INACTIVE: "Temporarily inactive"
+      - DISSOLVED: "Permanently closed"
+    used_in:
+      - BusinessUnit
+    
+  # Manager
+  - name: manager_employee_id
+    definition: |
+      Employee who manages the business unit with organizational authority.
+    constraints:
+      - "Must be an active Employee (not Worker)"
+      - "Must have organizational authority"
+    used_in:
+      - BusinessUnit
+
+# ============================================================================
+# WORKFLOWS
+# ============================================================================
+
+workflows:
+  - name: CreateLegalEntity
+    definition: "Create a new legal entity with validation and hierarchy setup"
+    workflow_ref: "create-legal-entity.workflow.yaml"
+    
+  - name: CreateBusinessUnit
+    definition: "Create a new business unit with manager assignment"
+    workflow_ref: "create-business-unit.workflow.yaml"
+    
+  - name: OrganizationalRestructuring
+    definition: "Move business units in hierarchy (reorganization)"
+    description: |
+      Reorganization involves moving business units to new parents, which
+      triggers closure table rebuild for the entire subtree.
+    impact:
+      - "Closure table rebuild (O(N) where N = subtree size)"
+      - "Employee reporting line changes"
+      - "Permission recalculation"
+
+# ============================================================================
+# BUSINESS RULES
+# ============================================================================
+
+business_rules:
+  - rule: BR-ORG-001
+    description: "Legal entity code must follow naming convention"
+    
+  - rule: BR-ORG-002
+    description: "Parent entity must be active when creating child"
+    
+  - rule: BR-ORG-003
+    description: "Hierarchy depth limits (10 for LE, 15 for BU)"
+    
+  - rule: BR-ORG-010
+    description: "Business unit code must be unique per parent"
+    
+  - rule: BR-ORG-011
+    description: "Manager must be active Employee with authority"
+    
+  - rule: BR-ORG-012
+    description: "Cannot delete unit with active children or employees"
+
+# ============================================================================
+# INDUSTRY TERMS
+# ============================================================================
+
+industry_terms:
+  - term: "Supervisory Organization"
+    source: "Workday"
+    definition: "Workday's term for business units in organizational hierarchy"
+    xtalent_equivalent: BusinessUnit
+    
+  - term: "Legal Entity Management"
+    source: "SAP SuccessFactors"
+    definition: "SAP's module for managing legal entities and compliance"
+    xtalent_equivalent: LegalEntity
+    
+  - term: "Organization Hierarchy"
+    source: "Oracle HCM Cloud"
+    definition: "Oracle's hierarchical organization structure"
+    xtalent_equivalent: BusinessUnit + LegalEntity
+
+# ============================================================================
+# ACRONYMS
+# ============================================================================
+
+acronyms:
+  LE: "Legal Entity"
+  BU: "Business Unit"
+  SCD2: "Slowly Changing Dimension Type 2"
+  CEO: "Chief Executive Officer"
+
+# ============================================================================
+# METADATA
+# ============================================================================
+
+metadata:
+  created_at: "2025-12-25"
+  created_by: "AI Agent"
+  version: "1.0"
+  total_terms: 25
+  coverage:
+    entities: 6
+    concepts: 5
+    attributes: 3
+    workflows: 3
+    business_rules: 6
+    industry_terms: 3

@@ -1,0 +1,137 @@
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:core:job-position:job-profile-skill"
+
+entity: JobProfileSkill
+classification: ENTITY
+module: CO
+submodule: job-position
+version: "1.0"
+
+definition: |
+  Mapping between job profiles and required skills with proficiency levels
+  and experience requirements.
+
+description: |
+  JobProfileSkill defines the skills required for a job profile, including:
+  - Required skill
+  - Proficiency level (1-5 scale or custom)
+  - Years of experience required
+  - Importance/criticality
+  
+  Used for:
+  - Job posting skill requirements
+  - Candidate skill matching
+  - Skill gap analysis
+  - Learning recommendations
+
+purpose: |
+  - Define job skill requirements
+  - Match candidates to jobs
+  - Identify skill gaps
+  - Guide learning and development
+
+parent_aggregate: Job
+
+attributes:
+  job_profile_id:
+    type: uuid
+    required: true
+    primary_key: true
+    foreign_key: job_profile.id
+    description: "Job profile ID"
+    
+  skill_id:
+    type: uuid
+    required: true
+    primary_key: true
+    foreign_key: skill_master.id
+    description: "Skill ID from skill master"
+    
+  proficiency_level:
+    type: integer
+    required: false
+    min: 1
+    max: 5
+    description: "Required proficiency level (1-5)"
+    note: "1=Basic, 2=Intermediate, 3=Advanced, 4=Expert, 5=Master"
+    
+  years_required:
+    type: decimal
+    required: false
+    precision: 4
+    scale: 1
+    description: "Years of experience required"
+    examples:
+      - 2.0
+      - 3.5
+      - 5.0
+    
+  importance:
+    type: string
+    required: false
+    max_length: 20
+    description: "Skill importance"
+    enum:
+      - REQUIRED
+      - PREFERRED
+      - NICE_TO_HAVE
+    default: "REQUIRED"
+    
+  metadata:
+    type: jsonb
+    required: false
+    description: "Extended metadata"
+
+relationships:
+  job_profile:
+    target: JobProfile
+    cardinality: N:1
+    required: true
+    on_delete: CASCADE
+    
+  skill:
+    target: SkillMaster
+    cardinality: N:1
+    required: true
+    on_delete: RESTRICT
+
+validation_rules:
+  - rule: "unique_skill_per_profile"
+    expression: "UNIQUE(job_profile_id, skill_id)"
+    severity: ERROR
+    
+  - rule: "valid_proficiency_level"
+    expression: "proficiency_level IS NULL OR (proficiency_level >= 1 AND proficiency_level <= 5)"
+    severity: ERROR
+
+indexes:
+  - name: idx_job_profile_skill_unique
+    columns: [job_profile_id, skill_id]
+    unique: true
+  - name: idx_skill_lookup
+    columns: [skill_id]
+    note: "For skill-based job search"
+
+examples:
+  - name: "Required Programming Skill"
+    data:
+      job_profile_id: "profile-001"
+      skill_id: "skill-python"
+      proficiency_level: 3
+      years_required: 3.0
+      importance: "REQUIRED"
+      
+  - name: "Preferred Cloud Skill"
+    data:
+      job_profile_id: "profile-001"
+      skill_id: "skill-aws"
+      proficiency_level: 2
+      years_required: 1.0
+      importance: "PREFERRED"
+
+references:
+  database_design: "../../../03-design/1.core.v4.dbml#jobpos.job_profile_skill"
+
+metadata:
+  created_at: "2025-12-25"
+  dbml_source: "jobpos.job_profile_skill (lines 1125-1132)"

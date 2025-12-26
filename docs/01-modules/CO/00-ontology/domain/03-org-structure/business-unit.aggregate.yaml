@@ -1,0 +1,532 @@
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:core:org-structure:business-unit"
+
+# ============================================================================
+# BUSINESS UNIT - AGGREGATE_ROOT
+# ============================================================================
+# Purpose: Operational organizational units for hierarchy and reporting
+# Pattern: Workday Supervisory Organizations
+# DBML Source: org_bu.unit
+
+module: CO
+submodule: org-structure
+version: "1.0"
+
+# ----------------------------------------------------------------------------
+# ENTITY DEFINITION
+# ----------------------------------------------------------------------------
+entity: BusinessUnit
+classification: AGGREGATE_ROOT
+
+definition: |
+  A business unit represents an operational organizational unit (division, department,
+  team) used for hierarchy, reporting, and management structure. Business units are
+  dynamic and change frequently with organizational restructuring.
+
+description: |
+  Business units form the operational hierarchy of the organization, separate from
+  the legal entity structure. They represent:
+  - Divisions, departments, teams
+  - Cost centers and budget units
+  - Reporting hierarchies
+  - Management structures
+  
+  Key differences from Legal Entities:
+  - Many business units (hundreds to thousands)
+  - Frequent changes (reorganizations)
+  - Operational focus (not legal/compliance)
+  - Flexible tagging and categorization
+  
+  Each business unit can have:
+  - Manager (employee)
+  - Tags for flexible categorization
+  - Link to legal entity for legal jurisdiction
+  - Metadata (region, cost center, etc.)
+
+purpose: |
+  - Organizational hierarchy and reporting
+  - Management structure
+  - Cost center and budget management
+  - Employee assignment and supervision
+  - Operational planning and execution
+
+# ----------------------------------------------------------------------------
+# AI AGENT INSTRUCTIONS
+# ----------------------------------------------------------------------------
+ai_instructions:
+  priority: HIGH
+  code_generation: true
+  test_generation: true
+  documentation_generation: true
+  
+  notes: |
+    - Business units change frequently - optimize for updates
+    - Hierarchy (parent_id) represents org structure
+    - Closure table CRITICAL for efficient queries (many units, deep hierarchies)
+    - Manager must be an active Employee (not Worker)
+    - Legal entity link uses code (not ID) for flexibility
+    - Tags provide flexible categorization
+  
+  related_context:
+    - "../glossary/org-structure.glossary.yaml"
+    - "legal-entity.aggregate.yaml"
+    - "../../02-employment/employee.aggregate.yaml"
+
+# ----------------------------------------------------------------------------
+# MIXINS
+# ----------------------------------------------------------------------------
+mixins:
+  - Auditable
+  - HasEffectiveDates
+
+# ----------------------------------------------------------------------------
+# ATTRIBUTES
+# ----------------------------------------------------------------------------
+attributes:
+  # Primary key
+  id:
+    type: uuid
+    required: true
+    primary_key: true
+    description: "Unique identifier for the business unit"
+    
+  # Business key
+  code:
+    type: string
+    required: true
+    unique: true
+    min_length: 2
+    max_length: 50
+    pattern: "^[A-Z0-9_-]+$"
+    description: "Unique code for the business unit"
+    examples:
+      - "ENG_DEPT"
+      - "SALES_TEAM_HCM"
+      - "HR_DIV"
+    
+  # Name
+  name:
+    type: string
+    required: true
+    min_length: 1
+    max_length: 150
+    description: "Business unit name"
+    examples:
+      - "Engineering Department"
+      - "Sales Team Ho Chi Minh"
+      - "Human Resources Division"
+    
+  # Type
+  type_id:
+    type: uuid
+    required: true
+    foreign_key: business_unit_type.id
+    description: "Business unit type (DIVISION, DEPARTMENT, TEAM, etc.)"
+    
+  # Hierarchy
+  parent_id:
+    type: uuid
+    required: false
+    foreign_key: business_unit.id
+    description: "Parent business unit ID for organizational hierarchy"
+    
+  path:
+    type: string
+    required: true
+    max_length: 255
+    description: "Hierarchical path for efficient tree queries"
+    pattern: "^/([a-z0-9_-]+/)*$"
+    examples:
+      - "/"
+      - "/eng_div/"
+      - "/eng_div/backend_dept/"
+    
+  # Legal Entity Link
+  legal_entity_code:
+    type: string
+    required: false
+    max_length: 50
+    description: "Legal entity code for legal jurisdiction (flexible link)"
+    note: "Uses code instead of ID for flexibility across legal entity changes"
+    
+  # Manager
+  manager_employee_id:
+    type: uuid
+    required: false
+    foreign_key: employee.id
+    description: "Manager employee ID (must be active Employee)"
+    note: "Manager must have organizational authority"
+    
+  # Status
+  status_code:
+    type: string
+    required: true
+    max_length: 50
+    description: "Business unit status"
+    enum:
+      - DRAFT
+      - ACTIVE
+      - INACTIVE
+      - DISSOLVED
+    default: DRAFT
+    
+  # Metadata
+  metadata:
+    type: jsonb
+    required: false
+    description: "Extended metadata (region, cost_center, budget_code, etc.)"
+    schema:
+      type: object
+      properties:
+        region: string
+        cost_center: string
+        budget_code: string
+        location_id: uuid
+
+# ----------------------------------------------------------------------------
+# DERIVED ATTRIBUTES
+# ----------------------------------------------------------------------------
+derived_attributes:
+  level:
+    type: integer
+    formula: "count(path, '/') - 1"
+    description: "Hierarchy level (0 for root, 1 for direct children, etc.)"
+    dependencies:
+      - path
+      
+  is_root:
+    type: boolean
+    formula: "parent_id IS NULL"
+    description: "True if this is a root business unit (no parent)"
+    dependencies:
+      - parent_id
+      
+  has_manager:
+    type: boolean
+    formula: "manager_employee_id IS NOT NULL"
+    description: "True if business unit has an assigned manager"
+    dependencies:
+      - manager_employee_id
+
+# ----------------------------------------------------------------------------
+# RELATIONSHIPS
+# ----------------------------------------------------------------------------
+relationships:
+  # Type
+  business_unit_type:
+    target: BusinessUnitType
+    target_ref: "xtalent:core:org-structure:business-unit-type"
+    cardinality: N:1
+    required: true
+    foreign_key: type_id
+    description: "Type of business unit"
+    on_delete: RESTRICT
+    
+  # Hierarchy
+  parent:
+    target: BusinessUnit
+    target_ref: "xtalent:core:org-structure:business-unit"
+    cardinality: N:1
+    required: false
+    foreign_key: parent_id
+    description: "Parent business unit in organizational hierarchy"
+    on_delete: RESTRICT
+    
+  children:
+    target: BusinessUnit
+    target_ref: "xtalent:core:org-structure:business-unit"
+    cardinality: 1:N
+    inverse: parent
+    description: "Child business units"
+    
+  # Manager
+  manager:
+    target: Employee
+    target_ref: "xtalent:core:employment:employee"
+    cardinality: N:1
+    required: false
+    foreign_key: manager_employee_id
+    description: "Business unit manager (must be Employee)"
+    note: "Manager must have organizational authority"
+    
+  # Tags (1:N)
+  tags:
+    target: BusinessUnitTag
+    target_ref: "xtalent:core:org-structure:business-unit-tag"
+    cardinality: 1:N
+    description: "Flexible tags for categorization"
+
+# ----------------------------------------------------------------------------
+# LIFECYCLE
+# ----------------------------------------------------------------------------
+lifecycle:
+  state_attribute: status_code
+  
+  states:
+    DRAFT:
+      description: "Business unit being set up, not yet active"
+      initial: true
+      
+    ACTIVE:
+      description: "Business unit is active and operational"
+      
+    INACTIVE:
+      description: "Business unit temporarily inactive (e.g., pending reorganization)"
+      
+    DISSOLVED:
+      description: "Business unit dissolved or closed"
+      terminal: true
+      
+  transitions:
+    - name: activate
+      from: DRAFT
+      to: ACTIVE
+      action_ref: "xtalent:core:org-structure:activate-business-unit"
+      requires:
+        - "name populated"
+        - "type_id assigned"
+        
+    - name: deactivate
+      from: ACTIVE
+      to: INACTIVE
+      action_ref: "xtalent:core:org-structure:deactivate-business-unit"
+      requires:
+        - "reason provided"
+        
+    - name: reactivate
+      from: INACTIVE
+      to: ACTIVE
+      action_ref: "xtalent:core:org-structure:reactivate-business-unit"
+      
+    - name: dissolve
+      from: [ACTIVE, INACTIVE]
+      to: DISSOLVED
+      action_ref: "xtalent:core:org-structure:dissolve-business-unit"
+      requires:
+        - "dissolution date"
+        - "no active employees assigned"
+        - "no active child business units"
+
+# ----------------------------------------------------------------------------
+# VALIDATION RULES
+# ----------------------------------------------------------------------------
+validation_rules:
+  - rule: "unique_code_per_effective_period"
+    expression: "UNIQUE(code, effective_start_date)"
+    message: "Business unit code must be unique within effective period"
+    severity: ERROR
+    
+  - rule: "parent_not_self"
+    expression: "parent_id != id"
+    message: "Business unit cannot be its own parent"
+    severity: ERROR
+    
+  - rule: "path_matches_hierarchy"
+    expression: "path = concat(parent.path, code, '/')"
+    message: "Path must match parent hierarchy"
+    severity: ERROR
+    
+  - rule: "effective_dates_valid"
+    expression: "effective_end_date IS NULL OR effective_end_date >= effective_start_date"
+    message: "Effective end date must be on or after start date"
+    severity: ERROR
+    
+  - rule: "no_circular_hierarchy"
+    expression: "NOT EXISTS(SELECT 1 FROM business_unit_ancestors WHERE ancestor_id = id AND descendant_id = parent_id)"
+    message: "Circular hierarchy detected"
+    severity: ERROR
+    note: "Requires closure table org_bu.unit_hierarchy"
+    
+  - rule: "manager_is_active_employee"
+    expression: "manager_employee_id IS NULL OR EXISTS(SELECT 1 FROM employee WHERE id = manager_employee_id AND status_code = 'ACTIVE')"
+    message: "Manager must be an active employee"
+    severity: ERROR
+    
+  - rule: "unique_code_per_parent"
+    expression: "UNIQUE(parent_id, code)"
+    message: "Business unit code must be unique within same parent"
+    severity: ERROR
+
+# ----------------------------------------------------------------------------
+# INDEXES
+# ----------------------------------------------------------------------------
+indexes:
+  - name: idx_business_unit_code
+    columns: [code]
+    unique: true
+    
+  - name: idx_business_unit_parent_code
+    columns: [parent_id, code]
+    unique: true
+    note: "Ensures code uniqueness within same parent"
+    
+  - name: idx_business_unit_manager
+    columns: [manager_employee_id]
+    note: "For manager lookups"
+    
+  - name: idx_business_unit_path
+    columns: [path]
+    note: "For efficient hierarchy queries"
+    
+  - name: idx_business_unit_status
+    columns: [status_code, is_current_flag]
+    note: "For active unit queries"
+
+# ----------------------------------------------------------------------------
+# HISTORY / SCD Type 2
+# ----------------------------------------------------------------------------
+history:
+  enabled: true
+  type: SCD2
+  tracked_attributes:
+    - name
+    - type_id
+    - parent_id
+    - path
+    - manager_employee_id
+    - legal_entity_code
+    - status_code
+  history_table: business_unit_history
+  note: "Tracks organizational restructuring and management changes"
+
+# ----------------------------------------------------------------------------
+# HIERARCHY SUPPORT
+# ----------------------------------------------------------------------------
+hierarchy:
+  enabled: true
+  parent_attribute: parent_id
+  path_attribute: path
+  level_attribute: level  # derived
+  
+  closure_table:
+    enabled: true
+    table_name: org_bu.unit_hierarchy
+    note: |
+      Closure table for efficient ancestor/descendant queries.
+      CRITICAL for business units due to:
+      - High volume (hundreds to thousands of units)
+      - Deep hierarchies (5-10 levels common)
+      - Frequent queries (reporting, permissions, assignments)
+      
+      Structure:
+        - ancestor_id: uuid (FK to business_unit.id)
+        - descendant_id: uuid (FK to business_unit.id)
+        - depth: integer (0 for self, 1 for direct child, etc.)
+        - path_string: varchar (materialized path for display)
+        - updated_at: timestamp (for cache invalidation)
+      
+      Maintained via:
+        - Triggers on INSERT/UPDATE/DELETE of business_unit
+        - Stored procedure: rebuild_bu_hierarchy(unit_id)
+        - Batch rebuild: rebuild_all_bu_hierarchies()
+      
+      Query Patterns:
+        -- All ancestors (for permissions)
+        SELECT * FROM unit_hierarchy 
+        WHERE descendant_id = ? ORDER BY depth DESC;
+        
+        -- All descendants (for reporting)
+        SELECT * FROM unit_hierarchy 
+        WHERE ancestor_id = ? AND depth > 0;
+        
+        -- Direct reports only
+        SELECT * FROM unit_hierarchy 
+        WHERE ancestor_id = ? AND depth = 1;
+        
+        -- Subtree size
+        SELECT COUNT(*) FROM unit_hierarchy 
+        WHERE ancestor_id = ?;
+      
+      Performance:
+        - O(1) for ancestor/descendant queries
+        - O(N) for hierarchy moves (N = subtree size)
+        - Storage: ~N² for deep hierarchies (acceptable trade-off)
+      
+      Maintenance:
+        - Rebuild on parent_id change
+        - Incremental updates for new units
+        - Periodic validation (detect inconsistencies)
+  
+  max_depth: 15
+  note: "Business unit hierarchies can be deeper than legal entities (typically 5-10 levels)"
+
+# ----------------------------------------------------------------------------
+# SECURITY
+# ----------------------------------------------------------------------------
+security:
+  classification: INTERNAL
+  
+  row_level_security:
+    enabled: true
+    policy: |
+      user.has_role('HR_ADMIN') OR
+      user.has_role('ORG_ADMIN') OR
+      user.business_unit_id IN (
+        SELECT descendant_id FROM unit_hierarchy 
+        WHERE ancestor_id = business_unit.id
+      ) OR
+      user.employee_id = business_unit.manager_employee_id
+    note: "Users can access their business unit, all descendants, or units they manage"
+
+# ----------------------------------------------------------------------------
+# EXAMPLES
+# ----------------------------------------------------------------------------
+examples:
+  - name: "Root Division"
+    description: "Top-level division"
+    data:
+      id: "550e8400-e29b-41d4-a716-446655440000"
+      code: "ENG_DIV"
+      name: "Engineering Division"
+      type_id: "type-division-001"
+      parent_id: null
+      path: "/"
+      legal_entity_code: "VNG_HQ"
+      status_code: "ACTIVE"
+      effective_start_date: "2020-01-01"
+      is_current_flag: true
+      
+  - name: "Department"
+    description: "Department under division"
+    data:
+      id: "550e8400-e29b-41d4-a716-446655440001"
+      code: "BACKEND_DEPT"
+      name: "Backend Development Department"
+      type_id: "type-department-001"
+      parent_id: "550e8400-e29b-41d4-a716-446655440000"
+      path: "/eng_div/"
+      legal_entity_code: "VNG_HQ"
+      manager_employee_id: "emp-manager-001"
+      status_code: "ACTIVE"
+      effective_start_date: "2020-01-01"
+      is_current_flag: true
+
+# ----------------------------------------------------------------------------
+# REFERENCES
+# ----------------------------------------------------------------------------
+references:
+  glossary: "../glossary/org-structure.glossary.yaml#business-unit"
+  concept_guide: "../../01-concept/03-org-structure/business-unit-guide.md"
+  business_rules: "../../02-spec/04-BR/BR-03-org-structure.md"
+  bdd_scenarios: "../../02-spec/05-BDD/03-org-structure/business-unit.feature"
+  database_design: "../../03-design/1.core.v4.dbml#org_bu.unit"
+
+# ----------------------------------------------------------------------------
+# METADATA
+# ----------------------------------------------------------------------------
+metadata:
+  created_at: "2025-12-25"
+  created_by: "AI Agent"
+  updated_at: "2025-12-25"
+  updated_by: "AI Agent"
+  review_status: DRAFT
+  dbml_source: "org_bu.unit (lines 462-484)"
+  industry_references:
+    - "Workday Supervisory Organizations"
+    - "SAP SuccessFactors Organization Management"
+    - "Oracle HCM Cloud Organization Structures"
+  notes: |
+    - Closure table is CRITICAL for performance (approved by user)
+    - Manager must be Employee (not Worker) per DBML note
+    - Legal entity link uses code for flexibility
+    - High-volume, high-change entity - optimize for updates

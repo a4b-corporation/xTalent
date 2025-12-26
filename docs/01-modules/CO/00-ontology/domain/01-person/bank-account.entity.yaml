@@ -1,0 +1,371 @@
+---
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:co:person:bank-account"
+
+module: CO
+submodule: person
+version: "1.0.0"
+
+entity: BankAccount
+classification: ENTITY
+parent_aggregate: Worker
+
+definition: |
+  Bank account information for a worker, used for salary payments, reimbursements,
+  and other financial transactions. Supports multiple bank accounts with primary
+  designation for payroll purposes.
+
+purpose: |
+  Maintain worker bank account details for payroll processing, expense reimbursements,
+  and other payments. Ensures accurate and timely payment delivery. Supports
+  multi-currency payments and international bank transfers.
+
+ai_instructions:
+  priority: HIGH
+  code_generation: true
+  test_generation: true
+  notes: |
+    - BankAccount belongs to Worker aggregate (cascade delete)
+    - Primary bank account used for payroll by default
+    - Supports multiple currencies
+    - Bank account validation varies by country
+    - Sensitive financial data - requires encryption
+    - Self-service allowed for workers to update own accounts
+
+mixins:
+  - Auditable
+
+# ═══════════════════════════════════════════════════════════════════
+# ATTRIBUTES
+# ═══════════════════════════════════════════════════════════════════
+attributes:
+  id:
+    type: uuid
+    required: true
+    primary_key: true
+    description: "Unique identifier for bank account record"
+    
+  worker_id:
+    type: uuid
+    required: true
+    foreign_key: person.worker.id
+    description: "Reference to worker who owns this bank account"
+    
+  bank_name:
+    type: string
+    required: true
+    max_length: 255
+    description: "Name of the bank"
+    example: "Vietcombank"
+    
+  account_number:
+    type: string
+    required: true
+    max_length: 100
+    description: "Bank account number"
+    example: "0123456789"
+    validation_rules:
+      - "Format varies by country and bank"
+      - "Must be unique per worker"
+    
+  account_holder:
+    type: string
+    required: false
+    max_length: 255
+    description: "Name on the bank account (if different from worker name)"
+    example: "JOHN MICHAEL DOE"
+    note: "Should match worker's legal name for payroll compliance"
+    
+  currency_code:
+    type: string
+    required: true
+    length: 3
+    description: "Currency code (ISO 4217)"
+    example: "VND"
+    reference:
+      entity: "xtalent:co:master-data:currency"
+      attribute: "code"
+    validation_rules:
+      - "Must be valid ISO 4217 currency code"
+    
+  is_primary:
+    type: boolean
+    required: true
+    default: false
+    description: "Whether this is the primary account for payroll"
+    validation_rules:
+      - "Only one account can be primary per worker"
+    
+  metadata:
+    type: jsonb
+    required: false
+    description: "Extended attributes (SWIFT/BIC, IBAN, routing number, branch, etc.)"
+    example:
+      swift_code: "BFTVVNVX"
+      iban: "VN12BFTV0123456789"
+      routing_number: "021000021"
+      branch_code: "001"
+      branch_name: "District 1 Branch"
+      account_type: "CHECKING"
+      verified: true
+      verified_date: "2025-01-15"
+    schema:
+      type: object
+      properties:
+        swift_code:
+          type: string
+          description: "SWIFT/BIC code for international transfers"
+        iban:
+          type: string
+          description: "International Bank Account Number"
+        routing_number:
+          type: string
+          description: "Routing number (US)"
+        branch_code:
+          type: string
+        branch_name:
+          type: string
+        account_type:
+          type: string
+          enum: [CHECKING, SAVINGS]
+        verified:
+          type: boolean
+        verified_date:
+          type: string
+          format: date
+    
+  created_at:
+    type: timestamp
+    required: true
+    default: "now()"
+    immutable: true
+    
+  updated_at:
+    type: timestamp
+    required: false
+
+# ═══════════════════════════════════════════════════════════════════
+# DERIVED ATTRIBUTES
+# ═══════════════════════════════════════════════════════════════════
+derived_attributes:
+  masked_account_number:
+    type: string
+    formula: "'***' || RIGHT(account_number, 4)"
+    description: "Masked account number for display (last 4 digits)"
+    example: "***6789"
+    
+  full_account_info:
+    type: string
+    formula: "bank_name || ' - ' || masked_account_number || ' (' || currency_code || ')'"
+    description: "Formatted account information for display"
+    example: "Vietcombank - ***6789 (VND)"
+
+# ═══════════════════════════════════════════════════════════════════
+# RELATIONSHIPS
+# ═══════════════════════════════════════════════════════════════════
+relationships:
+  worker:
+    target: Worker
+    target_ref: "xtalent:co:person:worker"
+    cardinality: N:1
+    required: true
+    inverse: bank_accounts
+    on_delete: CASCADE
+    
+  currency:
+    target: Currency
+    target_ref: "xtalent:co:master-data:currency"
+    cardinality: N:1
+    required: true
+    description: "Currency of the bank account"
+
+# ═══════════════════════════════════════════════════════════════════
+# VALIDATION RULES
+# ═══════════════════════════════════════════════════════════════════
+validation_rules:
+  - rule: unique_primary
+    expression: |
+      NOT EXISTS (
+        SELECT 1 FROM person.bank_account ba2
+        WHERE ba2.worker_id = this.worker_id
+        AND ba2.is_primary = true
+        AND ba2.id != this.id
+      ) OR this.is_primary = false
+    message: "Only one primary bank account allowed per worker"
+    severity: ERROR
+    error_code: "ERR_BANK_ACCOUNT_MULTIPLE_PRIMARY"
+    
+  - rule: unique_account_number
+    expression: |
+      NOT EXISTS (
+        SELECT 1 FROM person.bank_account ba2
+        WHERE ba2.worker_id = this.worker_id
+        AND ba2.bank_name = this.bank_name
+        AND ba2.account_number = this.account_number
+        AND ba2.id != this.id
+      )
+    message: "Bank account number must be unique per worker per bank"
+    severity: ERROR
+    error_code: "ERR_BANK_ACCOUNT_DUPLICATE"
+    
+  - rule: valid_currency
+    expression: "EXISTS(SELECT 1 FROM common.currency WHERE code = this.currency_code)"
+    message: "Currency code must be valid"
+    severity: ERROR
+    error_code: "ERR_BANK_ACCOUNT_INVALID_CURRENCY"
+    
+  - rule: non_empty_account_number
+    expression: "TRIM(account_number) != ''"
+    message: "Account number cannot be empty"
+    severity: ERROR
+    error_code: "ERR_BANK_ACCOUNT_EMPTY_NUMBER"
+
+# ═══════════════════════════════════════════════════════════════════
+# INDEXES
+# ═══════════════════════════════════════════════════════════════════
+indexes:
+  - name: idx_bank_account_worker
+    columns: [worker_id, is_primary]
+    type: btree
+    description: "Index for finding worker's primary bank account"
+    
+  - name: idx_bank_account_currency
+    columns: [currency_code]
+    type: btree
+
+# ═══════════════════════════════════════════════════════════════════
+# SECURITY
+# ═══════════════════════════════════════════════════════════════════
+security:
+  data_classification: PII_HIGHLY_SENSITIVE
+  gdpr_applicable: true
+  encryption_required: true
+  audit_required: true
+  pci_dss_applicable: false
+  note: "Bank account data is financial PII, not payment card data"
+  
+  access_control:
+    read:
+      - role: HR_ADMIN
+      - role: PAYROLL_ADMIN
+        note: "Payroll needs full account details for payment processing"
+      - role: SELF
+        condition: "user.worker_id = this.worker_id"
+        fields: [bank_name, masked_account_number, currency_code, is_primary]
+        note: "Workers see masked account numbers only"
+    
+    write:
+      - role: HR_ADMIN
+      - role: PAYROLL_ADMIN
+      - role: SELF
+        condition: "user.worker_id = this.worker_id"
+        note: "Workers can update own bank accounts (self-service)"
+    
+    delete:
+      - role: HR_ADMIN
+      - role: PAYROLL_ADMIN
+  
+  pii_fields:
+    - account_number
+    - account_holder
+    - metadata
+  
+  data_masking:
+    account_number:
+      method: "Show last 4 digits only"
+      roles_exempt: [PAYROLL_ADMIN, HR_ADMIN]
+
+# ═══════════════════════════════════════════════════════════════════
+# BUSINESS RULES
+# ═══════════════════════════════════════════════════════════════════
+business_rules:
+  - rule: BR_BANK_ACCOUNT_001
+    name: "Primary Account Requirement"
+    description: "Workers must have at least one primary bank account for payroll"
+    condition: "Always"
+    action: "Warn if worker has no primary bank account"
+    severity: WARNING
+    impact: "Payroll processing may fail"
+    
+  - rule: BR_BANK_ACCOUNT_002
+    name: "Account Verification"
+    description: "New bank accounts should be verified before first payment"
+    condition: "metadata.verified IS NULL OR metadata.verified = false"
+    action: "Require micro-deposit verification or bank statement upload"
+    
+  - rule: BR_BANK_ACCOUNT_003
+    name: "Currency Matching"
+    description: "Bank account currency should match payroll currency"
+    condition: "is_primary = true"
+    action: "Warn if account currency differs from payroll currency"
+    severity: WARNING
+    note: "May incur currency conversion fees"
+    
+  - rule: BR_BANK_ACCOUNT_004
+    name: "Account Holder Name Matching"
+    description: "Account holder name should match worker's legal name"
+    condition: "account_holder IS NOT NULL"
+    action: "Validate account_holder matches worker full name"
+    severity: WARNING
+    note: "Prevents payment failures due to name mismatch"
+    
+  - rule: BR_BANK_ACCOUNT_005
+    name: "International Transfer Requirements"
+    description: "International transfers require SWIFT/IBAN"
+    condition: "currency_code != payroll.legal_entity.currency_code"
+    action: "Require SWIFT code and/or IBAN in metadata"
+    severity: ERROR
+
+# ═══════════════════════════════════════════════════════════════════
+# EXAMPLES
+# ═══════════════════════════════════════════════════════════════════
+examples:
+  - name: "Domestic Bank Account (Vietnam)"
+    data:
+      id: "a50e8400-e29b-41d4-a716-446655440000"
+      worker_id: "550e8400-e29b-41d4-a716-446655440000"
+      bank_name: "Vietcombank"
+      account_number: "0123456789"
+      account_holder: "JOHN MICHAEL DOE"
+      currency_code: "VND"
+      is_primary: true
+      metadata:
+        branch_code: "001"
+        branch_name: "District 1 Branch"
+        account_type: "CHECKING"
+        verified: true
+        verified_date: "2025-01-15"
+        
+  - name: "International Bank Account (US)"
+    data:
+      id: "a60e8400-e29b-41d4-a716-446655440001"
+      worker_id: "550e8400-e29b-41d4-a716-446655440000"
+      bank_name: "Chase Bank"
+      account_number: "123456789012"
+      account_holder: "JOHN M DOE"
+      currency_code: "USD"
+      is_primary: false
+      metadata:
+        swift_code: "CHASUS33"
+        routing_number: "021000021"
+        account_type: "CHECKING"
+        verified: true
+
+# ═══════════════════════════════════════════════════════════════════
+# REFERENCES
+# ═══════════════════════════════════════════════════════════════════
+references:
+  parent_entity: "worker.entity.yaml"
+  glossary: "../glossary/person.glossary.yaml#bank-account"
+  dbml_table: "../../03-design/1.core.v4.dbml#person.bank_account"
+  
+metadata:
+  tags: [person, bank-account, payroll, payment, pii, self-service]
+  owner: "HR Platform Team"
+  last_updated: "2025-12-25"
+  status: complete
+  compliance_notes:
+    - "Not PCI-DSS (payment card data) - different security requirements"
+    - "Requires encryption at rest and in transit"
+    - "Data masking for non-privileged users"
+    - "Verification required before first payment"

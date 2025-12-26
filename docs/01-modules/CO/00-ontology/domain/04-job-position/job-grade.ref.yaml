@@ -1,0 +1,118 @@
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:core:job-position:job-grade"
+
+entity: JobGrade
+classification: REFERENCE_DATA
+module: CO
+submodule: job-position
+version: "1.0"
+
+definition: |
+  Job grade classification for compensation and pay range determination.
+
+description: |
+  JobGrade defines compensation grades with support for:
+  - Corporate standard grades (owner_unit_id = null)
+  - Business unit-specific grades (owner_unit_id set)
+  - Grade mapping between BU and corporate
+  - Integration with Total Rewards (TR) module
+  
+  Grade determines:
+  - Pay range (min, mid, max salary)
+  - Bonus eligibility
+  - Benefits tier
+  - Compensation benchmarking
+  
+  17dec2025 change: Grade moved from job_profile to job for direct TR integration
+
+purpose: |
+  - Define compensation grades
+  - Link jobs to pay ranges
+  - Support compensation planning
+  - Enable benchmarking
+
+mixins:
+  - HasEffectiveDates
+  - Auditable
+
+attributes:
+  id:
+    type: uuid
+    required: true
+    primary_key: true
+    description: "Unique identifier for job grade"
+    
+  grade_code:
+    type: string
+    required: true
+    max_length: 50
+    description: "Grade code"
+    examples:
+      - "E1"
+      - "E2"
+      - "E3"
+      - "M1"
+      - "M2"
+    
+  grade_name:
+    type: string
+    required: false
+    max_length: 100
+    description: "Grade name"
+    examples:
+      - "Entry Level Grade"
+      - "Mid Level Grade"
+      - "Senior Grade"
+    
+  owner_unit_id:
+    type: uuid
+    required: false
+    foreign_key: business_unit.id
+    description: "Owning business unit (null = corporate standard)"
+    note: "null = corporate grade, set = BU-specific grade"
+    
+  description:
+    type: text
+    required: false
+    description: "Grade description"
+
+relationships:
+  owner_unit:
+    target: BusinessUnit
+    cardinality: N:1
+    required: false
+    description: "Owning business unit (if BU-specific)"
+
+validation_rules:
+  - rule: "unique_grade_code"
+    expression: "UNIQUE(grade_code, owner_unit_id, is_current_flag)"
+    severity: ERROR
+
+indexes:
+  - name: idx_job_grade_code
+    columns: [grade_code, owner_unit_id, is_current_flag]
+    unique: true
+
+examples:
+  - name: "Corporate Grade"
+    data:
+      grade_code: "E3"
+      grade_name: "Engineer Grade 3"
+      owner_unit_id: null
+      
+  - name: "BU-Specific Grade"
+    data:
+      grade_code: "GAME_E3"
+      grade_name: "Game Engineer Grade 3"
+      owner_unit_id: "bu-game-001"
+
+references:
+  database_design: "../../../03-design/1.core.v4.dbml#jobpos.job_grade"
+
+metadata:
+  created_at: "2025-12-25"
+  dbml_source: "jobpos.job_grade (lines 1191-1205)"
+  notes: |
+    - Supports corporate and BU-specific grades
+    - Links to TR module for pay ranges
+    - Moved from job_profile to job (17dec2025)

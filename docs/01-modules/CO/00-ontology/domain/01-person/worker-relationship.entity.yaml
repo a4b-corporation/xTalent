@@ -1,0 +1,388 @@
+---
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:co:person:worker-relationship"
+
+module: CO
+submodule: person
+version: "1.0.0"
+
+entity: WorkerRelationship
+classification: ENTITY
+parent_aggregate: Worker
+
+definition: |
+  Family relationships and dependents of a worker, including spouse, children,
+  parents, and other relatives. Supports emergency contacts, beneficiaries,
+  tax dependents, and visa sponsorship tracking.
+
+purpose: |
+  Maintain worker family relationships for benefits eligibility, emergency
+  notifications, tax dependent registration, and visa/relocation sponsorship.
+  Critical for benefits enrollment, life insurance beneficiaries, and
+  emergency response procedures.
+
+ai_instructions:
+  priority: MEDIUM
+  code_generation: true
+  test_generation: true
+  notes: |
+    - WorkerRelationship belongs to Worker aggregate
+    - Can link to another Worker if relative is also in system
+    - Supports multiple flags: emergency contact, dependent, beneficiary, visa sponsor
+    - Effective dating tracks relationship changes
+    - Used for benefits eligibility and tax calculations
+    - Has child entity: WorkerRelationshipContact
+
+mixins:
+  - Auditable
+  - EffectiveDated
+
+# ═══════════════════════════════════════════════════════════════════
+# ATTRIBUTES
+# ═══════════════════════════════════════════════════════════════════
+attributes:
+  id:
+    type: uuid
+    required: true
+    primary_key: true
+    
+  worker_id:
+    type: uuid
+    required: true
+    foreign_key: person.worker.id
+    description: "Primary worker (subject of relationship)"
+    
+  related_worker_id:
+    type: uuid
+    required: false
+    foreign_key: person.worker.id
+    description: "Related worker if they also have a worker record"
+    note: "Null if relative is not in the system"
+    
+  full_name:
+    type: string
+    required: false
+    max_length: 255
+    description: "Full name of relative (if not linked to worker record)"
+    validation_rules:
+      - "Required if related_worker_id is null"
+    
+  relation_code:
+    type: string
+    required: true
+    max_length: 50
+    description: "Type of relationship"
+    reference:
+      entity: "xtalent:co:master-data:relationship-type"
+      attribute: "code"
+    allowed_values:
+      - SPOUSE
+      - CHILD
+      - PARENT
+      - SIBLING
+      - GRANDPARENT
+      - GRANDCHILD
+      - DOMESTIC_PARTNER
+      - OTHER
+    
+  is_emergency:
+    type: boolean
+    required: true
+    default: false
+    description: "Whether this is an emergency contact"
+    
+  dependency_flag:
+    type: boolean
+    required: true
+    default: false
+    description: "Whether this is a tax dependent"
+    note: "Used for tax withholding calculations"
+    
+  beneficiary_flag:
+    type: boolean
+    required: true
+    default: false
+    description: "Whether this is a beneficiary (life insurance, retirement)"
+    
+  visa_sponsor_flag:
+    type: boolean
+    required: true
+    default: false
+    description: "Whether worker sponsors this person's visa/relocation"
+    note: "Used for global mobility and relocation benefits"
+    
+  metadata:
+    type: jsonb
+    required: false
+    description: "Extended attributes (date of birth, gender, beneficiary percentage, etc.)"
+    example:
+      date_of_birth: "2015-05-20"
+      gender: "M"
+      beneficiary_percentage: 50
+      student_status: true
+      disability_status: false
+    schema:
+      type: object
+      properties:
+        date_of_birth:
+          type: string
+          format: date
+        gender:
+          type: string
+        beneficiary_percentage:
+          type: integer
+          minimum: 0
+          maximum: 100
+        student_status:
+          type: boolean
+        disability_status:
+          type: boolean
+    
+  effective_start_date:
+    type: date
+    required: true
+    description: "Date when relationship becomes effective"
+    
+  effective_end_date:
+    type: date
+    required: false
+    description: "Date when relationship ends (divorce, death, etc.)"
+    
+  is_current_flag:
+    type: boolean
+    required: true
+    default: true
+    
+  created_at:
+    type: timestamp
+    required: true
+    default: "now()"
+    immutable: true
+    
+  updated_at:
+    type: timestamp
+    required: false
+
+# ═══════════════════════════════════════════════════════════════════
+# DERIVED ATTRIBUTES
+# ═══════════════════════════════════════════════════════════════════
+derived_attributes:
+  age:
+    type: integer
+    formula: "CASE WHEN metadata->>'date_of_birth' IS NOT NULL THEN EXTRACT(YEAR FROM AGE(CURRENT_DATE, (metadata->>'date_of_birth')::date)) ELSE NULL END"
+    description: "Age of related person"
+    
+  is_minor:
+    type: boolean
+    formula: "age IS NOT NULL AND age < 18"
+    description: "Whether related person is under 18"
+    
+  relationship_display:
+    type: string
+    formula: "COALESCE(full_name, (SELECT display_name FROM person.worker WHERE id = related_worker_id)) || ' (' || relation_code || ')'"
+    description: "Formatted relationship for display"
+    example: "Jane Doe (SPOUSE)"
+
+# ═══════════════════════════════════════════════════════════════════
+# RELATIONSHIPS
+# ═══════════════════════════════════════════════════════════════════
+relationships:
+  worker:
+    target: Worker
+    target_ref: "xtalent:co:person:worker"
+    cardinality: N:1
+    required: true
+    inverse: relationships
+    on_delete: CASCADE
+    
+  related_worker:
+    target: Worker
+    target_ref: "xtalent:co:person:worker"
+    cardinality: N:1
+    required: false
+    description: "Related worker if they are in the system"
+    
+  relationship_type:
+    target: RelationshipType
+    target_ref: "xtalent:co:master-data:relationship-type"
+    cardinality: N:1
+    required: true
+    
+  contacts:
+    target: WorkerRelationshipContact
+    target_ref: "xtalent:co:person:worker-relationship-contact"
+    cardinality: 1:N
+    required: false
+    inverse: relationship
+    description: "Contact information for this relationship"
+    cascade_delete: true
+
+# ═══════════════════════════════════════════════════════════════════
+# VALIDATION RULES
+# ═══════════════════════════════════════════════════════════════════
+validation_rules:
+  - rule: name_or_worker_required
+    expression: "full_name IS NOT NULL OR related_worker_id IS NOT NULL"
+    message: "Either full_name or related_worker_id must be provided"
+    severity: ERROR
+    error_code: "ERR_RELATIONSHIP_MISSING_IDENTITY"
+    
+  - rule: valid_effective_dates
+    expression: "effective_end_date IS NULL OR effective_end_date >= effective_start_date"
+    message: "Effective end date must be after start date"
+    severity: ERROR
+    error_code: "ERR_RELATIONSHIP_INVALID_DATES"
+    
+  - rule: beneficiary_percentage_total
+    expression: |
+      beneficiary_flag = false OR
+      (SELECT SUM((metadata->>'beneficiary_percentage')::int)
+       FROM person.worker_relationship
+       WHERE worker_id = this.worker_id
+       AND beneficiary_flag = true
+       AND is_current_flag = true) <= 100
+    message: "Total beneficiary percentages cannot exceed 100%"
+    severity: ERROR
+    error_code: "ERR_RELATIONSHIP_BENEFICIARY_TOTAL"
+    
+  - rule: no_self_relationship
+    expression: "related_worker_id IS NULL OR related_worker_id != worker_id"
+    message: "Worker cannot have relationship with self"
+    severity: ERROR
+    error_code: "ERR_RELATIONSHIP_SELF"
+
+# ═══════════════════════════════════════════════════════════════════
+# INDEXES
+# ═══════════════════════════════════════════════════════════════════
+indexes:
+  - name: idx_relationship_worker
+    columns: [worker_id, is_current_flag]
+    type: btree
+    
+  - name: idx_relationship_type
+    columns: [relation_code, is_emergency]
+    type: btree
+    
+  - name: idx_relationship_flags
+    columns: [dependency_flag, beneficiary_flag]
+    type: btree
+
+# ═══════════════════════════════════════════════════════════════════
+# SECURITY
+# ═══════════════════════════════════════════════════════════════════
+security:
+  data_classification: PII_SENSITIVE
+  gdpr_applicable: true
+  encryption_required: true
+  audit_required: true
+  
+  access_control:
+    read:
+      - role: HR_ADMIN
+      - role: BENEFITS_ADMIN
+      - role: SELF
+        condition: "user.worker_id = this.worker_id"
+    
+    write:
+      - role: HR_ADMIN
+      - role: BENEFITS_ADMIN
+      - role: SELF
+        condition: "user.worker_id = this.worker_id"
+        note: "Workers can manage own family relationships"
+    
+    delete:
+      - role: HR_ADMIN
+  
+  pii_fields:
+    - full_name
+    - metadata
+
+# ═══════════════════════════════════════════════════════════════════
+# BUSINESS RULES
+# ═══════════════════════════════════════════════════════════════════
+business_rules:
+  - rule: BR_RELATIONSHIP_001
+    name: "Emergency Contact Requirement"
+    description: "Workers should have at least one emergency contact"
+    condition: "Always"
+    action: "Warn if worker has no emergency contact"
+    severity: WARNING
+    
+  - rule: BR_RELATIONSHIP_002
+    name: "Dependent Age Validation"
+    description: "Tax dependents must meet age requirements"
+    condition: "dependency_flag = true"
+    action: "Validate age <= 26 for child dependents (varies by country)"
+    
+  - rule: BR_RELATIONSHIP_003
+    name: "Beneficiary Percentage Validation"
+    description: "Beneficiary percentages must total 100%"
+    condition: "beneficiary_flag = true"
+    action: "Warn if total beneficiary percentage != 100%"
+    severity: WARNING
+    
+  - rule: BR_RELATIONSHIP_004
+    name: "Visa Sponsorship Eligibility"
+    description: "Only certain relationships eligible for visa sponsorship"
+    condition: "visa_sponsor_flag = true"
+    action: "Validate relation_code IN ('SPOUSE', 'CHILD', 'DOMESTIC_PARTNER')"
+    severity: ERROR
+
+# ═══════════════════════════════════════════════════════════════════
+# EXAMPLES
+# ═══════════════════════════════════════════════════════════════════
+examples:
+  - name: "Spouse (Emergency Contact + Beneficiary)"
+    data:
+      id: "b50e8400-e29b-41d4-a716-446655440000"
+      worker_id: "550e8400-e29b-41d4-a716-446655440000"
+      related_worker_id: null
+      full_name: "Jane Doe"
+      relation_code: "SPOUSE"
+      is_emergency: true
+      dependency_flag: false
+      beneficiary_flag: true
+      visa_sponsor_flag: false
+      metadata:
+        date_of_birth: "1992-08-20"
+        gender: "F"
+        beneficiary_percentage: 100
+      effective_start_date: "2020-06-15"
+      effective_end_date: null
+      is_current_flag: true
+      
+  - name: "Child (Dependent)"
+    data:
+      id: "b60e8400-e29b-41d4-a716-446655440001"
+      worker_id: "550e8400-e29b-41d4-a716-446655440000"
+      related_worker_id: null
+      full_name: "Tom Doe"
+      relation_code: "CHILD"
+      is_emergency: false
+      dependency_flag: true
+      beneficiary_flag: false
+      visa_sponsor_flag: true
+      metadata:
+        date_of_birth: "2015-05-20"
+        gender: "M"
+        student_status: true
+      effective_start_date: "2015-05-20"
+      effective_end_date: null
+      is_current_flag: true
+
+# ═══════════════════════════════════════════════════════════════════
+# REFERENCES
+# ═══════════════════════════════════════════════════════════════════
+references:
+  parent_entity: "worker.entity.yaml"
+  glossary: "../glossary/person.glossary.yaml#worker-relationship"
+  dbml_table: "../../03-design/1.core.v4.dbml#person.worker_relationship"
+  
+metadata:
+  tags: [person, relationship, family, dependent, beneficiary, emergency-contact]
+  owner: "HR Platform Team"
+  last_updated: "2025-12-25"
+  status: complete
+  industry_references:
+    - "Workday: Dependent and beneficiary management"
+    - "SAP SuccessFactors: Family member data for benefits"

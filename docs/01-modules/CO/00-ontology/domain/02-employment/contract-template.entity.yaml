@@ -1,0 +1,43 @@
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:core:employment:contract-template"
+
+entity: ContractTemplate
+classification: ENTITY
+module: CO
+submodule: employment
+version: "1.0"
+
+definition: "Standardized contract templates for consistent contract generation"
+
+mixins:
+  - HasEffectiveDates
+  - Auditable
+
+attributes:
+  id: {type: uuid, required: true, primary_key: true}
+  template_code: {type: string, required: true, max_length: 50, unique: true}
+  template_name: {type: string, required: true, max_length: 255}
+  contract_type_code: {type: string, required: true, max_length: 50}
+  legal_entity_code: {type: string, required: false, max_length: 50}
+  template_content: {type: text, required: true}
+  variables_json: {type: jsonb, required: false}
+  is_default: {type: boolean, required: true, default: false}
+  status_code: {type: string, required: true, default: "ACTIVE"}
+  metadata: {type: jsonb, required: false}
+
+validation_rules:
+  - rule: "unique_template_code_per_period"
+    expression: "UNIQUE(template_code, effective_start_date)"
+    severity: ERROR
+
+indexes:
+  - name: idx_contract_template_code
+    columns: [template_code, effective_start_date]
+    unique: true
+
+references:
+  database_design: "../../../03-design/1.core.v4.dbml#employment.contract_template"
+
+metadata:
+  created_at: "2025-12-25"
+  dbml_source: "employment.contract_template (lines 804-826)"

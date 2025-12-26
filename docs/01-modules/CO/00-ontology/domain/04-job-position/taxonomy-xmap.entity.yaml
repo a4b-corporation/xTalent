@@ -1,0 +1,41 @@
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:core:job-position:taxonomy-xmap"
+
+entity: TaxonomyXMap
+classification: ENTITY
+module: CO
+submodule: job-position
+version: "1.0"
+
+definition: "Cross-tree taxonomy node mapping for multi-tree alignment"
+
+description: |
+  TaxonomyXMap enables mapping between taxonomy nodes across different trees
+  (e.g., BU taxonomy to corporate taxonomy) for consolidated reporting.
+
+mixins:
+  - HasEffectiveDates
+
+attributes:
+  id: {type: uuid, required: true, primary_key: true}
+  src_node_id: {type: uuid, required: true, foreign_key: job_taxonomy.id, description: "Source taxonomy node (e.g., BU)"}
+  target_node_id: {type: uuid, required: true, foreign_key: job_taxonomy.id, description: "Target taxonomy node (e.g., Corporate)"}
+  map_type_code: {type: string, required: true, max_length: 20, enum: [REPORT_TO, ALIGN_WITH, DUPLICATE_OF]}
+  comment: {type: text, required: false}
+
+relationships:
+  src_node:
+    target: JobTaxonomy
+    cardinality: N:1
+    required: true
+  target_node:
+    target: JobTaxonomy
+    cardinality: N:1
+    required: true
+
+references:
+  database_design: "../../../03-design/1.core.v4.dbml#jobpos.taxonomy_xmap"
+
+metadata:
+  created_at: "2025-12-25"
+  dbml_source: "jobpos.taxonomy_xmap (lines 990-1003)"

@@ -1,0 +1,503 @@
+---
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:co:person:worker"
+
+module: CO
+submodule: person
+version: "1.0.0"
+
+entity: Worker
+classification: AGGREGATE_ROOT
+
+definition: |
+  A person who has or had a relationship with the organization, including
+  employees, contractors, candidates, and alumni. Worker is the central
+  entity for all person-related data and serves as the foundation for
+  employment relationships.
+
+purpose: |
+  Worker serves as the master record for individuals across their entire
+  lifecycle with the organization - from candidate through employment to
+  alumni status. It maintains immutable personal data (id, date_of_birth)
+  and mutable profile information (name, contact, address) while supporting
+  multiple employment relationships across different legal entities.
+
+ai_instructions:
+  priority: HIGH
+  code_generation: true
+  test_generation: true
+  notes: |
+    - Worker is AGGREGATE_ROOT - owns contact, address, document, relationships
+    - Worker.id is immutable and persists across all employment relationships
+    - Worker can have multiple Employee records (different legal entities)
+    - Worker data is sensitive PII - implement data protection controls
+    - Support GDPR right to be forgotten via soft delete
+    - Photo is stored separately (1:1 relationship)
+
+mixins:
+  - Auditable
+
+# ═══════════════════════════════════════════════════════════════════
+# ATTRIBUTES
+# ═══════════════════════════════════════════════════════════════════
+attributes:
+  id:
+    type: uuid
+    required: true
+    primary_key: true
+    immutable: true
+    description: "Unique identifier for worker, immutable across entire lifecycle"
+    example: "550e8400-e29b-41d4-a716-446655440000"
+    
+  first_name:
+    type: string
+    required: true
+    min_length: 1
+    max_length: 100
+    description: "Worker's first name (given name)"
+    example: "John"
+    validation_rules:
+      - "Must not contain numbers or special characters except hyphens and apostrophes"
+    
+  middle_name:
+    type: string
+    required: false
+    max_length: 100
+    description: "Worker's middle name(s)"
+    example: "Michael"
+    
+  last_name:
+    type: string
+    required: true
+    min_length: 1
+    max_length: 100
+    description: "Worker's last name (family name, surname)"
+    example: "Doe"
+    validation_rules:
+      - "Must not contain numbers or special characters except hyphens and apostrophes"
+    
+  preferred_name:
+    type: string
+    required: false
+    max_length: 100
+    description: "Name worker prefers to be called (nickname)"
+    example: "Johnny"
+    
+  date_of_birth:
+    type: date
+    required: true
+    immutable: true
+    description: "Worker's date of birth (immutable)"
+    example: "1990-05-15"
+    validation_rules:
+      - "Must be at least 16 years before current date (minimum working age)"
+      - "Must not be more than 100 years before current date"
+    
+  gender_code:
+    type: string
+    required: true
+    max_length: 50
+    description: "Gender code from code_list(GENDER)"
+    example: "M"
+    reference:
+      entity: "xtalent:co:master-data:code-list"
+      group: "GENDER"
+    allowed_values: ["M", "F", "X", "U"]  # Male, Female, Non-binary, Unspecified
+    
+  nationality_code:
+    type: string
+    required: true
+    length: 2
+    description: "Nationality (ISO 3166-1 alpha-2 country code)"
+    example: "VN"
+    reference:
+      entity: "xtalent:co:master-data:country"
+      attribute: "code_alpha2"
+    pattern: "^[A-Z]{2}$"
+    
+  marital_status_code:
+    type: string
+    required: false
+    max_length: 50
+    description: "Marital status code from code_list(MARITAL_STATUS)"
+    example: "SINGLE"
+    reference:
+      entity: "xtalent:co:master-data:code-list"
+      group: "MARITAL_STATUS"
+    allowed_values: ["SINGLE", "MARRIED", "DIVORCED", "WIDOWED", "SEPARATED"]
+    
+  metadata:
+    type: jsonb
+    required: false
+    description: "Extended attributes (ethnicity, religion, blood_type, avatar_url, etc.)"
+    example:
+      ethnicity: "Kinh"
+      religion: "Buddhism"
+      blood_type: "O+"
+      avatar_url: "https://cdn.example.com/avatars/worker-123.jpg"
+      preferred_language: "vi"
+    schema:
+      type: object
+      properties:
+        ethnicity:
+          type: string
+        religion:
+          type: string
+        blood_type:
+          type: string
+          enum: ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]
+        avatar_url:
+          type: string
+          format: uri
+        preferred_language:
+          type: string
+          pattern: "^[a-z]{2}$"
+    
+  created_at:
+    type: timestamp
+    required: true
+    default: "now()"
+    immutable: true
+    description: "Timestamp when worker record was created"
+    
+  updated_at:
+    type: timestamp
+    required: false
+    description: "Timestamp when worker record was last updated"
+
+# ═══════════════════════════════════════════════════════════════════
+# DERIVED ATTRIBUTES
+# ═══════════════════════════════════════════════════════════════════
+derived_attributes:
+  full_name:
+    type: string
+    formula: "CONCAT(first_name, ' ', COALESCE(middle_name || ' ', ''), last_name)"
+    description: "Full name combining first, middle, and last names"
+    example: "John Michael Doe"
+    
+  display_name:
+    type: string
+    formula: "COALESCE(preferred_name, first_name) || ' ' || last_name"
+    description: "Display name using preferred name if available"
+    example: "Johnny Doe"
+    
+  age:
+    type: integer
+    formula: "EXTRACT(YEAR FROM AGE(CURRENT_DATE, date_of_birth))"
+    description: "Current age in years"
+    example: 34
+    
+  is_minor:
+    type: boolean
+    formula: "age < 18"
+    description: "Whether worker is under 18 years old"
+    
+  primary_contact:
+    type: object
+    formula: "SELECT contact_value FROM person.contact WHERE worker_id = this.id AND is_primary = true LIMIT 1"
+    description: "Primary contact information"
+    
+  primary_address:
+    type: object
+    formula: "SELECT * FROM person.address WHERE worker_id = this.id AND is_primary = true LIMIT 1"
+    description: "Primary address"
+    
+  active_employment_count:
+    type: integer
+    formula: "SELECT COUNT(*) FROM employment.employee WHERE worker_id = this.id AND status_code = 'ACTIVE'"
+    description: "Number of active employment relationships"
+
+# ═══════════════════════════════════════════════════════════════════
+# RELATIONSHIPS
+# ═══════════════════════════════════════════════════════════════════
+relationships:
+  contacts:
+    target: Contact
+    target_ref: "xtalent:co:person:contact"
+    cardinality: 1:N
+    required: false
+    inverse: worker
+    description: "Worker's contact information (phone, email, etc.)"
+    cascade_delete: true
+    
+  addresses:
+    target: Address
+    target_ref: "xtalent:co:person:address"
+    cardinality: 1:N
+    required: false
+    inverse: worker
+    description: "Worker's addresses (home, work, etc.)"
+    cascade_delete: true
+    
+  documents:
+    target: Document
+    target_ref: "xtalent:co:person:document"
+    cardinality: 1:N
+    required: false
+    inverse: worker
+    description: "Worker's identity documents (ID card, passport, etc.)"
+    cascade_delete: true
+    
+  bank_accounts:
+    target: BankAccount
+    target_ref: "xtalent:co:person:bank-account"
+    cardinality: 1:N
+    required: false
+    inverse: worker
+    description: "Worker's bank accounts for payment"
+    cascade_delete: true
+    
+  relationships:
+    target: WorkerRelationship
+    target_ref: "xtalent:co:person:worker-relationship"
+    cardinality: 1:N
+    required: false
+    inverse: worker
+    description: "Worker's family relationships and dependents"
+    cascade_delete: true
+    
+  qualifications:
+    target: WorkerQualification
+    target_ref: "xtalent:co:person:worker-qualification"
+    cardinality: 1:N
+    required: false
+    inverse: worker
+    description: "Worker's education, certifications, and qualifications"
+    cascade_delete: true
+    
+  skills:
+    target: WorkerSkill
+    target_ref: "xtalent:co:person:worker-skill"
+    cardinality: 1:N
+    required: false
+    inverse: worker
+    description: "Worker's skills and proficiency levels"
+    cascade_delete: true
+    
+  competencies:
+    target: WorkerCompetency
+    target_ref: "xtalent:co:person:worker-competency"
+    cardinality: 1:N
+    required: false
+    inverse: worker
+    description: "Worker's competency assessments"
+    cascade_delete: true
+    
+  interests:
+    target: WorkerInterest
+    target_ref: "xtalent:co:person:worker-interest"
+    cardinality: 1:N
+    required: false
+    inverse: worker
+    description: "Worker's career interests and preferences"
+    cascade_delete: true
+    
+  photo:
+    target: Photo
+    target_ref: "xtalent:co:person:photo"
+    cardinality: 1:1
+    required: false
+    inverse: worker
+    description: "Worker's profile photo"
+    cascade_delete: true
+    
+  employees:
+    target: Employee
+    target_ref: "xtalent:co:employment:employee"
+    cardinality: 1:N
+    required: false
+    inverse: worker
+    description: "Employment relationships (can have multiple across legal entities)"
+    cascade_delete: false
+    note: "Worker can have multiple Employee records for different legal entities"
+
+# ═══════════════════════════════════════════════════════════════════
+# LIFECYCLE
+# ═══════════════════════════════════════════════════════════════════
+lifecycle:
+  note: |
+    Worker doesn't have explicit status field - lifecycle is implicit based on
+    employment relationships and data completeness. Worker record persists
+    even after all employment relationships end (alumni status).
+  
+  states:
+    DRAFT:
+      description: "Worker record created but incomplete (missing required data)"
+      initial: true
+      
+    CANDIDATE:
+      description: "Worker is a candidate (has application but no employment)"
+      
+    ACTIVE:
+      description: "Worker has at least one active employment relationship"
+      
+    INACTIVE:
+      description: "Worker has no active employment but record is retained"
+      
+    ALUMNI:
+      description: "Former worker, all employment relationships ended"
+      
+    ARCHIVED:
+      description: "Worker record archived (soft delete for GDPR compliance)"
+      terminal: true
+  
+  state_determination:
+    formula: |
+      CASE
+        WHEN is_archived = true THEN 'ARCHIVED'
+        WHEN active_employment_count > 0 THEN 'ACTIVE'
+        WHEN EXISTS(SELECT 1 FROM employment.employee WHERE worker_id = this.id) THEN 'ALUMNI'
+        WHEN EXISTS(SELECT 1 FROM recruitment.application WHERE worker_id = this.id) THEN 'CANDIDATE'
+        WHEN first_name IS NULL OR last_name IS NULL OR date_of_birth IS NULL THEN 'DRAFT'
+        ELSE 'INACTIVE'
+      END
+    description: "Worker state is derived from employment relationships and data completeness"
+
+# ═══════════════════════════════════════════════════════════════════
+# VALIDATION RULES
+# ═══════════════════════════════════════════════════════════════════
+validation_rules:
+  - rule: valid_date_of_birth
+    expression: "date_of_birth <= CURRENT_DATE - INTERVAL '16 years'"
+    message: "Worker must be at least 16 years old"
+    severity: ERROR
+    error_code: "ERR_WORKER_TOO_YOUNG"
+    
+  - rule: reasonable_date_of_birth
+    expression: "date_of_birth >= CURRENT_DATE - INTERVAL '100 years'"
+    message: "Date of birth cannot be more than 100 years ago"
+    severity: ERROR
+    error_code: "ERR_WORKER_INVALID_DOB"
+    
+  - rule: valid_name_format
+    expression: "first_name ~ '^[A-Za-zÀ-ỹ\\s\\-'']+$' AND last_name ~ '^[A-Za-zÀ-ỹ\\s\\-'']+$'"
+    message: "Names must contain only letters, spaces, hyphens, and apostrophes"
+    severity: ERROR
+    error_code: "ERR_WORKER_INVALID_NAME"
+    
+  - rule: unique_primary_contact
+    expression: "COUNT(SELECT * FROM person.contact WHERE worker_id = this.id AND is_primary = true) <= 1"
+    message: "Worker can have only one primary contact"
+    severity: ERROR
+    error_code: "ERR_WORKER_MULTIPLE_PRIMARY_CONTACT"
+    
+  - rule: unique_primary_address
+    expression: "COUNT(SELECT * FROM person.address WHERE worker_id = this.id AND is_primary = true) <= 1"
+    message: "Worker can have only one primary address"
+    severity: ERROR
+    error_code: "ERR_WORKER_MULTIPLE_PRIMARY_ADDRESS"
+
+# ═══════════════════════════════════════════════════════════════════
+# INDEXES
+# ═══════════════════════════════════════════════════════════════════
+indexes:
+  - name: idx_worker_name
+    columns: [last_name, first_name]
+    type: btree
+    description: "Index for name-based searches"
+    
+  - name: idx_worker_dob
+    columns: [date_of_birth]
+    type: btree
+    description: "Index for age-based queries"
+    
+  - name: idx_worker_nationality
+    columns: [nationality_code]
+    type: btree
+    description: "Index for nationality-based filtering"
+    
+  - name: idx_worker_created
+    columns: [created_at]
+    type: btree
+    description: "Index for temporal queries"
+
+# ═══════════════════════════════════════════════════════════════════
+# SECURITY
+# ═══════════════════════════════════════════════════════════════════
+security:
+  data_classification: PII_SENSITIVE
+  gdpr_applicable: true
+  encryption_required: true
+  audit_required: true
+  
+  access_control:
+    read:
+      - role: HR_ADMIN
+      - role: HR_MANAGER
+      - role: SELF
+        condition: "user.worker_id = this.id"
+    
+    write:
+      - role: HR_ADMIN
+      - role: SELF
+        condition: "user.worker_id = this.id"
+        fields: [preferred_name, metadata]
+    
+    delete:
+      - role: HR_ADMIN
+        note: "Soft delete only (archive)"
+  
+  pii_fields:
+    - first_name
+    - middle_name
+    - last_name
+    - date_of_birth
+    - nationality_code
+    - metadata
+  
+  right_to_be_forgotten:
+    enabled: true
+    method: SOFT_DELETE
+    retention_period_days: 2555  # 7 years
+    anonymization_fields:
+      - first_name: "REDACTED"
+      - last_name: "REDACTED"
+      - date_of_birth: null
+      - metadata: {}
+
+# ═══════════════════════════════════════════════════════════════════
+# EXAMPLES
+# ═══════════════════════════════════════════════════════════════════
+examples:
+  - name: "Standard Worker"
+    description: "Typical worker with complete profile"
+    data:
+      id: "550e8400-e29b-41d4-a716-446655440000"
+      first_name: "John"
+      middle_name: "Michael"
+      last_name: "Doe"
+      preferred_name: "Johnny"
+      date_of_birth: "1990-05-15"
+      gender_code: "M"
+      nationality_code: "VN"
+      marital_status_code: "MARRIED"
+      metadata:
+        ethnicity: "Kinh"
+        blood_type: "O+"
+        preferred_language: "vi"
+      created_at: "2025-01-15T10:00:00Z"
+      
+  - name: "Minimal Worker"
+    description: "Worker with only required fields"
+    data:
+      id: "660e8400-e29b-41d4-a716-446655440001"
+      first_name: "Jane"
+      last_name: "Smith"
+      date_of_birth: "1995-08-20"
+      gender_code: "F"
+      nationality_code: "US"
+      created_at: "2025-02-01T14:30:00Z"
+
+# ═══════════════════════════════════════════════════════════════════
+# REFERENCES
+# ═══════════════════════════════════════════════════════════════════
+references:
+  glossary: "../glossary/person.glossary.yaml#worker"
+  concept_guide: "../../01-concept/01-person/worker-guide.md"
+  dbml_table: "../../03-design/1.core.v4.dbml#person.worker"
+  
+metadata:
+  tags: [person, worker, aggregate-root, pii]
+  owner: "HR Platform Team"
+  last_updated: "2025-12-25"
+  status: in_progress

@@ -1,0 +1,36 @@
+$schema: "https://xtalent.io/schemas/action/v3"
+$id: "xtalent:core:job-position:create-position"
+
+action: CreatePosition
+module: CO
+submodule: job-position
+version: "1.0"
+
+inputs:
+  code: {type: string, required: true}
+  title: {type: string, required: true}
+  job_id: {type: uuid, required: true}
+  business_unit_id: {type: uuid, required: true}
+  position_type_code: {type: string, required: true}
+
+outputs:
+  position_id: {type: uuid}
+
+effects:
+  database:
+    - operation: INSERT
+      table: jobpos.position
+  events:
+    - event: PositionCreated
+
+authorization:
+  required_roles: [HR_ADMIN, ORG_ADMIN]
+
+api:
+  rest:
+    method: POST
+    path: "/api/v1/positions"
+    status_code: 201
+
+metadata:
+  created_at: "2025-12-25"

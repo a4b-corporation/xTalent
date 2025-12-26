@@ -1,0 +1,134 @@
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:core:org-structure:entity-bank-account"
+
+entity: EntityBankAccount
+classification: ENTITY
+module: CO
+submodule: org-structure
+version: "1.0"
+
+definition: |
+  Corporate bank accounts for a legal entity, supporting multi-currency
+  and primary account designation.
+
+description: |
+  Tracks bank accounts owned by the legal entity for financial operations,
+  payroll, and vendor payments. Supports multiple currencies and primary
+  account designation.
+
+purpose: "Corporate banking information for financial operations"
+
+parent_aggregate: LegalEntity
+
+mixins:
+  - Auditable
+
+# ----------------------------------------------------------------------------
+# ATTRIBUTES
+# ----------------------------------------------------------------------------
+attributes:
+  id:
+    type: uuid
+    required: true
+    primary_key: true
+    
+  legal_entity_id:
+    type: uuid
+    required: true
+    foreign_key: legal_entity.id
+    
+  bank_name:
+    type: string
+    required: true
+    max_length: 255
+    description: "Bank name"
+    
+  account_number:
+    type: string
+    required: true
+    max_length: 100
+    description: "Bank account number"
+    sensitive: true
+    
+  account_holder:
+    type: string
+    required: false
+    max_length: 255
+    description: "Account holder name (if different from legal entity)"
+    
+  currency_code:
+    type: string
+    required: true
+    length: 3
+    foreign_key: currency.code
+    description: "Currency code (ISO 4217)"
+    
+  is_primary:
+    type: boolean
+    required: true
+    default: false
+    description: "Primary account flag"
+    
+  metadata:
+    type: jsonb
+    required: false
+
+# ----------------------------------------------------------------------------
+# RELATIONSHIPS
+# ----------------------------------------------------------------------------
+relationships:
+  legal_entity:
+    target: LegalEntity
+    cardinality: N:1
+    required: true
+    on_delete: CASCADE
+    
+  currency:
+    target: Currency
+    cardinality: N:1
+    required: true
+
+# ----------------------------------------------------------------------------
+# VALIDATION RULES
+# ----------------------------------------------------------------------------
+validation_rules:
+  - rule: "unique_account_per_entity"
+    expression: "UNIQUE(legal_entity_id, account_number)"
+    message: "Account number must be unique per legal entity"
+    severity: ERROR
+    
+  - rule: "only_one_primary_per_currency"
+    expression: "COUNT(is_primary = true AND currency_code = :currency_code) <= 1"
+    message: "Only one primary account per currency"
+    severity: ERROR
+
+# ----------------------------------------------------------------------------
+# SECURITY
+# ----------------------------------------------------------------------------
+security:
+  classification: HIGHLY_SENSITIVE
+  sensitive_attributes:
+    - account_number
+  
+  data_masking:
+    account_number:
+      strategy: partial
+      visible_chars: 4
+      mask_char: "*"
+      position: suffix
+
+# ----------------------------------------------------------------------------
+# INDEXES
+# ----------------------------------------------------------------------------
+indexes:
+  - name: idx_entity_bank_account_unique
+    columns: [legal_entity_id, account_number]
+    unique: true
+
+references:
+  parent_entity: "legal-entity.aggregate.yaml"
+  database_design: "../../../03-design/1.core.v4.dbml#org_legal.entity_bank_account"
+
+metadata:
+  created_at: "2025-12-25"
+  dbml_source: "org_legal.entity_bank_account (lines 432-445)"

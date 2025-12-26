@@ -1,0 +1,126 @@
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:core:job-position:job-taxonomy"
+
+entity: JobTaxonomy
+classification: ENTITY
+module: CO
+submodule: job-position
+version: "1.0"
+
+definition: |
+  Job taxonomy node representing job classification in hierarchical taxonomy trees
+  (job family, job group, career track, etc.)
+
+description: |
+  JobTaxonomy provides multi-dimensional job classification through taxonomy trees.
+  Each node represents a classification category (family, group, track) and can
+  belong to different taxonomy trees for different classification purposes.
+  
+  Key features:
+  - Multi-tree support (multiple taxonomy dimensions)
+  - Hierarchical structure (parent-child relationships)
+  - Cross-tree mapping (align BU taxonomies with corporate)
+  - Job mapping (jobs can belong to multiple taxonomy nodes)
+
+purpose: |
+  - Job classification and categorization
+  - Career path definition
+  - Talent marketplace job matching
+  - Reporting and analytics
+  - Compensation benchmarking
+
+parent_aggregate: TaxonomyTree
+
+mixins:
+  - HasEffectiveDates
+  - Auditable
+
+attributes:
+  id:
+    type: uuid
+    required: true
+    primary_key: true
+    description: "Unique identifier for taxonomy node"
+    
+  tree_id:
+    type: uuid
+    required: true
+    foreign_key: taxonomy_tree.id
+    description: "Taxonomy tree ID"
+    
+  taxonomy_type:
+    type: string
+    required: true
+    max_length: 50
+    description: "Taxonomy type"
+    examples:
+      - "JOB_FAMILY"
+      - "JOB_GROUP"
+      - "CAREER_TRACK"
+      - "SKILL_CLUSTER"
+    
+  taxonomy_code:
+    type: string
+    required: true
+    max_length: 50
+    description: "Taxonomy code (unique within tree and type)"
+    examples:
+      - "ENG_FAMILY"
+      - "SOFTWARE_GROUP"
+      - "TECH_TRACK"
+    
+  taxonomy_name:
+    type: string
+    required: true
+    max_length: 255
+    description: "Taxonomy name"
+    
+  parent_id:
+    type: uuid
+    required: false
+    foreign_key: job_taxonomy.id
+    description: "Parent taxonomy node"
+    
+  description:
+    type: text
+    required: false
+    description: "Taxonomy description"
+    
+  metadata:
+    type: jsonb
+    required: false
+    description: "Extended metadata"
+
+relationships:
+  taxonomy_tree:
+    target: TaxonomyTree
+    cardinality: N:1
+    required: true
+    on_delete: RESTRICT
+    
+  parent:
+    target: JobTaxonomy
+    cardinality: N:1
+    required: false
+    
+  children:
+    target: JobTaxonomy
+    cardinality: 1:N
+    inverse: parent
+
+validation_rules:
+  - rule: "unique_code_per_tree_type"
+    expression: "UNIQUE(tree_id, taxonomy_type, taxonomy_code, is_current_flag)"
+    severity: ERROR
+
+indexes:
+  - name: idx_job_taxonomy_unique
+    columns: [tree_id, taxonomy_type, taxonomy_code, is_current_flag]
+    unique: true
+
+references:
+  database_design: "../../../03-design/1.core.v4.dbml#jobpos.job_taxonomy"
+
+metadata:
+  created_at: "2025-12-25"
+  dbml_source: "jobpos.job_taxonomy (lines 970-987)"

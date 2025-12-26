@@ -1,0 +1,124 @@
+---
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:co:master-data:code-list"
+
+module: CO
+submodule: master-data
+version: "1.0.0"
+
+entity: CodeList
+classification: REFERENCE_DATA
+
+definition: |
+  Multi-purpose lookup table for standardized code values grouped by category.
+  Provides centralized management of dropdown lists, enumerations, and
+  classification codes used throughout the system.
+
+purpose: |
+  Eliminate hard-coded values and enable business users to manage lookup data
+  without code changes. Supports localization, effective dating, and metadata
+  for extensibility.
+
+attributes:
+  id:
+    type: uuid
+    required: true
+    primary_key: true
+    
+  group_code:
+    type: string
+    required: true
+    max_length: 50
+    description: "Category/group of codes"
+    examples:
+      - GENDER
+      - MARITAL_STATUS
+      - EMPLOYMENT_TYPE
+      - ADDRESS_TYPE
+      - DOCUMENT_TYPE
+    
+  code:
+    type: string
+    required: true
+    max_length: 50
+    description: "Actual code value"
+    examples:
+      - M  # for GENDER
+      - SINGLE  # for MARITAL_STATUS
+      - FULL_TIME  # for EMPLOYMENT_TYPE
+    
+  display_en:
+    type: string
+    required: false
+    max_length: 100
+    description: "Display text in English"
+    
+  display_local:
+    type: string
+    required: false
+    max_length: 100
+    description: "Display text in local language"
+    
+  sort_order:
+    type: integer
+    required: true
+    default: 0
+    description: "Display order within group"
+    
+  metadata:
+    type: jsonb
+    required: false
+    description: "Extended attributes specific to code type"
+    examples:
+      - group: BLOOD_TYPE, metadata: {rhFactor: "+", degree: 1}
+      - group: EMPLOYMENT_TYPE, metadata: {full_time_equivalent: 1.0}
+    
+  effective_start_date:
+    type: date
+    required: true
+    
+  effective_end_date:
+    type: date
+    required: false
+    
+  is_current_flag:
+    type: boolean
+    required: true
+    default: true
+
+mixins:
+  - EffectiveDated
+
+validation_rules:
+  - rule: unique_code_per_group
+    expression: "UNIQUE(group_code, code)"
+    message: "Code must be unique within group"
+    severity: ERROR
+
+indexes:
+  - name: idx_code_list_group_code
+    columns: [group_code, code]
+    unique: true
+  - name: idx_code_list_sort
+    columns: [group_code, sort_order]
+
+security:
+  data_classification: PUBLIC
+  access_control:
+    read: [ALL_USERS]
+    write: [HR_ADMIN, SYSTEM_ADMIN]
+
+examples:
+  - name: "Gender Codes"
+    data:
+      - {group_code: "GENDER", code: "M", display_en: "Male", display_local: "Nam", sort_order: 1}
+      - {group_code: "GENDER", code: "F", display_en: "Female", display_local: "Nữ", sort_order: 2}
+
+references:
+  dbml_table: "../../03-design/1.core.v4.dbml#common.code_list"
+  
+metadata:
+  tags: [master-data, lookup, reference]
+  owner: "Platform Team"
+  last_updated: "2025-12-25"
+  status: complete

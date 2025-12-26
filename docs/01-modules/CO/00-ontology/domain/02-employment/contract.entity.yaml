@@ -1,0 +1,55 @@
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:core:employment:contract"
+
+entity: Contract
+classification: ENTITY
+module: CO
+submodule: employment
+version: "1.0"
+
+definition: "Employment contract linking employee to terms and conditions"
+
+parent_aggregate: Employee
+
+mixins:
+  - Auditable
+
+attributes:
+  id: {type: uuid, required: true, primary_key: true}
+  employee_id: {type: uuid, required: true, foreign_key: employee.id}
+  contract_type_code: {type: string, required: true, max_length: 50}
+  template_id: {type: uuid, required: false, foreign_key: contract_template.id}
+  work_schedule_type_code: {type: string, required: true, max_length: 50}
+  supplier_id: {type: uuid, required: false}
+  primary_flag: {type: boolean, required: true, default: false}
+  parent_contract_id: {type: uuid, required: false, foreign_key: contract.id}
+  parent_relationship_type: {type: string, required: false, max_length: 50, enum: [AMENDMENT, ADDENDUM, RENEWAL, SUPERSESSION]}
+  amendment_type_code: {type: string, required: false, max_length: 50}
+  document_id: {type: uuid, required: false}
+  is_main: {type: boolean, required: true, default: true}
+  contract_number: {type: string, required: true, max_length: 100}
+  start_date: {type: date, required: true}
+  end_date: {type: date, required: false}
+  metadata: {type: jsonb, required: false}
+
+relationships:
+  employee:
+    target: Employee
+    cardinality: N:1
+    required: true
+    on_delete: CASCADE
+  template:
+    target: ContractTemplate
+    cardinality: N:1
+    required: false
+  parent_contract:
+    target: Contract
+    cardinality: N:1
+    required: false
+
+references:
+  database_design: "../../../03-design/1.core.v4.dbml#employment.contract"
+
+metadata:
+  created_at: "2025-12-25"
+  dbml_source: "employment.contract (lines 828-868)"

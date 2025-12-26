@@ -1,0 +1,457 @@
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:core:org-structure:legal-entity"
+
+# ============================================================================
+# LEGAL ENTITY - AGGREGATE_ROOT
+# ============================================================================
+# Purpose: Legal company entities for compliance, reporting, and legal jurisdiction
+# Pattern: SAP SuccessFactors Legal Entity Management
+# DBML Source: org_legal.entity + org_legal.entity_profile + children
+
+# Module context
+module: CO
+submodule: org-structure
+version: "1.0"
+
+# ----------------------------------------------------------------------------
+# ENTITY DEFINITION
+# ----------------------------------------------------------------------------
+entity: LegalEntity
+classification: AGGREGATE_ROOT
+
+definition: |
+  A legal entity represents a company, branch, or subsidiary that has legal standing
+  for compliance, tax, and regulatory purposes. Legal entities form a hierarchical
+  structure for corporate groups and holdings.
+
+description: |
+  Legal entities are the foundation for legal and compliance operations in the system.
+  They represent companies that can:
+  - Enter into contracts
+  - Own assets and liabilities
+  - File tax returns
+  - Comply with local regulations
+  
+  Each legal entity can have:
+  - Extended profile information (addresses, contacts, tax IDs)
+  - Legal representatives (CEO, authorized signatories)
+  - Business licenses and permits
+  - Bank accounts
+  
+  Legal entities are typically few in number and stable over time, changing only
+  when corporate structure changes (M&A, new subsidiaries, closures).
+
+purpose: |
+  - Legal compliance and regulatory reporting
+  - Tax jurisdiction management
+  - Corporate structure representation
+  - Contract signing authority
+  - Financial consolidation
+
+# ----------------------------------------------------------------------------
+# AI AGENT INSTRUCTIONS
+# ----------------------------------------------------------------------------
+ai_instructions:
+  priority: HIGH
+  code_generation: true
+  test_generation: true
+  documentation_generation: true
+  
+  notes: |
+    - Legal entities are critical for compliance - validate carefully
+    - Hierarchy (parent_id) represents corporate structure
+    - Effective dating tracks M&A and restructuring
+    - Consider legal jurisdiction when validating addresses
+    - Representatives must have proper authorization documents
+  
+  related_context:
+    - "../glossary/org-structure.glossary.yaml"
+    - "../../05-master-data/country.ref.yaml"
+    - "../../01-person/worker.aggregate.yaml"
+
+# ----------------------------------------------------------------------------
+# MIXINS
+# ----------------------------------------------------------------------------
+mixins:
+  - Auditable           # created_at, updated_at, created_by, updated_by
+  - HasEffectiveDates   # effective_start_date, effective_end_date, is_current_flag
+
+# ----------------------------------------------------------------------------
+# ATTRIBUTES
+# ----------------------------------------------------------------------------
+attributes:
+  # Primary key
+  id:
+    type: uuid
+    required: true
+    primary_key: true
+    description: "Unique identifier for the legal entity"
+    
+  # Business key
+  code:
+    type: string
+    required: true
+    unique: true
+    min_length: 2
+    max_length: 50
+    pattern: "^[A-Z0-9_-]+$"
+    description: "Unique code for the legal entity (e.g., VNG_HQ, VNG_BRANCH_HCM)"
+    examples:
+      - "VNG_HQ"
+      - "VNG_BRANCH_HCM"
+      - "VNG_SUBSIDIARY_SG"
+    
+  # Names (bilingual)
+  name_vi:
+    type: string
+    required: true
+    min_length: 1
+    max_length: 150
+    description: "Legal entity name in Vietnamese"
+    examples:
+      - "Công ty Cổ phần VNG"
+      - "Chi nhánh Công ty VNG tại TP.HCM"
+    
+  name_en:
+    type: string
+    required: false
+    max_length: 150
+    description: "Legal entity name in English"
+    examples:
+      - "VNG Corporation"
+      - "VNG Company Branch in Ho Chi Minh City"
+    
+  # Hierarchy
+  parent_id:
+    type: uuid
+    required: false
+    foreign_key: legal_entity.id
+    description: "Parent legal entity ID for corporate hierarchy"
+    
+  path:
+    type: string
+    required: true
+    max_length: 255
+    description: "Hierarchical path for efficient tree queries (e.g., /parent/child/grandchild)"
+    pattern: "^/([a-z0-9_-]+/)*$"
+    examples:
+      - "/"
+      - "/vng_hq/"
+      - "/vng_hq/vng_branch_hcm/"
+    
+  # Type
+  type_id:
+    type: uuid
+    required: true
+    foreign_key: entity_type.id
+    description: "Legal entity type (COMPANY, BRANCH, SUBSIDIARY, etc.)"
+
+# ----------------------------------------------------------------------------
+# DERIVED ATTRIBUTES
+# ----------------------------------------------------------------------------
+derived_attributes:
+  level:
+    type: integer
+    formula: "count(path, '/') - 1"
+    description: "Hierarchy level (0 for root, 1 for direct children, etc.)"
+    dependencies:
+      - path
+      
+  full_name:
+    type: string
+    formula: "coalesce(name_en, name_vi)"
+    description: "Preferred display name (English if available, otherwise Vietnamese)"
+    dependencies:
+      - name_en
+      - name_vi
+      
+  is_root:
+    type: boolean
+    formula: "parent_id IS NULL"
+    description: "True if this is a root legal entity (no parent)"
+    dependencies:
+      - parent_id
+
+# ----------------------------------------------------------------------------
+# RELATIONSHIPS
+# ----------------------------------------------------------------------------
+relationships:
+  # Type
+  entity_type:
+    target: EntityType
+    target_ref: "xtalent:core:org-structure:entity-type"
+    cardinality: N:1
+    required: true
+    foreign_key: type_id
+    description: "Type of legal entity"
+    on_delete: RESTRICT
+    
+  # Hierarchy
+  parent:
+    target: LegalEntity
+    target_ref: "xtalent:core:org-structure:legal-entity"
+    cardinality: N:1
+    required: false
+    foreign_key: parent_id
+    description: "Parent legal entity in corporate hierarchy"
+    on_delete: RESTRICT
+    
+  children:
+    target: LegalEntity
+    target_ref: "xtalent:core:org-structure:legal-entity"
+    cardinality: 1:N
+    inverse: parent
+    description: "Child legal entities (branches, subsidiaries)"
+    
+  # Profile (1:1)
+  profile:
+    target: EntityProfile
+    target_ref: "xtalent:core:org-structure:entity-profile"
+    cardinality: 1:1
+    description: "Extended profile information (addresses, contacts, tax ID)"
+    
+  # Representatives (1:N)
+  representatives:
+    target: EntityRepresentative
+    target_ref: "xtalent:core:org-structure:entity-representative"
+    cardinality: 1:N
+    description: "Legal representatives and authorized signatories"
+    
+  # Licenses (1:N)
+  licenses:
+    target: EntityLicense
+    target_ref: "xtalent:core:org-structure:entity-license"
+    cardinality: 1:N
+    description: "Business licenses and permits"
+    
+  # Bank Accounts (1:N)
+  bank_accounts:
+    target: EntityBankAccount
+    target_ref: "xtalent:core:org-structure:entity-bank-account"
+    cardinality: 1:N
+    description: "Corporate bank accounts"
+
+# ----------------------------------------------------------------------------
+# LIFECYCLE
+# ----------------------------------------------------------------------------
+lifecycle:
+  state_attribute: is_current_flag
+  
+  states:
+    DRAFT:
+      description: "Legal entity being set up, not yet active"
+      initial: true
+      
+    ACTIVE:
+      description: "Legal entity is active and operational"
+      
+    INACTIVE:
+      description: "Legal entity temporarily inactive (e.g., pending restructuring)"
+      
+    DISSOLVED:
+      description: "Legal entity dissolved or closed"
+      terminal: true
+      
+  transitions:
+    - name: activate
+      from: DRAFT
+      to: ACTIVE
+      action_ref: "xtalent:core:org-structure:activate-legal-entity"
+      requires:
+        - "name_vi populated"
+        - "type_id assigned"
+        - "at least one business license"
+        
+    - name: deactivate
+      from: ACTIVE
+      to: INACTIVE
+      action_ref: "xtalent:core:org-structure:deactivate-legal-entity"
+      requires:
+        - "reason provided"
+        
+    - name: reactivate
+      from: INACTIVE
+      to: ACTIVE
+      action_ref: "xtalent:core:org-structure:reactivate-legal-entity"
+      
+    - name: dissolve
+      from: [ACTIVE, INACTIVE]
+      to: DISSOLVED
+      action_ref: "xtalent:core:org-structure:dissolve-legal-entity"
+      requires:
+        - "dissolution date"
+        - "no active employees"
+        - "no active business units"
+
+# ----------------------------------------------------------------------------
+# VALIDATION RULES
+# ----------------------------------------------------------------------------
+validation_rules:
+  - rule: "unique_code_per_effective_period"
+    expression: "UNIQUE(code, effective_start_date)"
+    message: "Legal entity code must be unique within effective period"
+    severity: ERROR
+    
+  - rule: "parent_not_self"
+    expression: "parent_id != id"
+    message: "Legal entity cannot be its own parent"
+    severity: ERROR
+    
+  - rule: "path_matches_hierarchy"
+    expression: "path = concat(parent.path, code, '/')"
+    message: "Path must match parent hierarchy"
+    severity: ERROR
+    
+  - rule: "effective_dates_valid"
+    expression: "effective_end_date IS NULL OR effective_end_date >= effective_start_date"
+    message: "Effective end date must be on or after start date"
+    severity: ERROR
+    
+  - rule: "no_circular_hierarchy"
+    expression: "NOT EXISTS(SELECT 1 FROM legal_entity_ancestors WHERE ancestor_id = id AND descendant_id = parent_id)"
+    message: "Circular hierarchy detected"
+    severity: ERROR
+    note: "Requires closure table org_legal.entity_hierarchy for efficient validation"
+
+# ----------------------------------------------------------------------------
+# INDEXES
+# ----------------------------------------------------------------------------
+indexes:
+  - name: idx_legal_entity_code
+    columns: [code, effective_start_date]
+    unique: true
+    
+  - name: idx_legal_entity_parent
+    columns: [parent_id, code]
+    unique: true
+    
+  - name: idx_legal_entity_type
+    columns: [type_id]
+    
+  - name: idx_legal_entity_path
+    columns: [path]
+    note: "For efficient hierarchy queries"
+
+# ----------------------------------------------------------------------------
+# HISTORY / SCD Type 2
+# ----------------------------------------------------------------------------
+history:
+  enabled: true
+  type: SCD2
+  tracked_attributes:
+    - name_vi
+    - name_en
+    - type_id
+    - parent_id
+    - path
+  history_table: legal_entity_history
+  note: "Tracks corporate restructuring, M&A, and name changes"
+
+# ----------------------------------------------------------------------------
+# HIERARCHY SUPPORT
+# ----------------------------------------------------------------------------
+hierarchy:
+  enabled: true
+  parent_attribute: parent_id
+  path_attribute: path
+  level_attribute: level  # derived
+  
+  closure_table:
+    enabled: true
+    table_name: org_legal.entity_hierarchy
+    note: |
+      Closure table for efficient ancestor/descendant queries.
+      
+      Structure:
+        - ancestor_id: uuid (FK to legal_entity.id)
+        - descendant_id: uuid (FK to legal_entity.id)
+        - depth: integer (0 for self, 1 for direct child, etc.)
+        - path_string: varchar (materialized path for display)
+      
+      Maintained via triggers on INSERT/UPDATE/DELETE of legal_entity.
+      
+      Benefits:
+        - O(1) ancestor queries: "SELECT * FROM entity_hierarchy WHERE descendant_id = ?"
+        - O(1) descendant queries: "SELECT * FROM entity_hierarchy WHERE ancestor_id = ?"
+        - Efficient subtree operations
+      
+      Trade-offs:
+        - Additional storage (~N² for deep hierarchies)
+        - Maintenance overhead on hierarchy changes
+        - Acceptable for legal entities (few, stable)
+  
+  max_depth: 10
+  note: "Legal entity hierarchies are typically shallow (2-4 levels)"
+
+# ----------------------------------------------------------------------------
+# SECURITY
+# ----------------------------------------------------------------------------
+security:
+  classification: CONFIDENTIAL
+  
+  sensitive_attributes:
+    - tax_id  # in profile
+    - registration_number  # in profile
+    
+  row_level_security:
+    enabled: true
+    policy: |
+      user.has_role('LEGAL_ADMIN') OR
+      user.has_role('FINANCE_ADMIN') OR
+      user.legal_entity_id IN (SELECT descendant_id FROM entity_hierarchy WHERE ancestor_id = legal_entity.id)
+    note: "Users can access their legal entity and all descendants"
+
+# ----------------------------------------------------------------------------
+# EXAMPLES
+# ----------------------------------------------------------------------------
+examples:
+  - name: "Root Company"
+    description: "Parent holding company"
+    data:
+      id: "550e8400-e29b-41d4-a716-446655440000"
+      code: "VNG_HQ"
+      name_vi: "Công ty Cổ phần VNG"
+      name_en: "VNG Corporation"
+      type_id: "type-company-001"
+      parent_id: null
+      path: "/"
+      effective_start_date: "2004-04-01"
+      is_current_flag: true
+      
+  - name: "Branch Office"
+    description: "Branch of parent company"
+    data:
+      id: "550e8400-e29b-41d4-a716-446655440001"
+      code: "VNG_BRANCH_HCM"
+      name_vi: "Chi nhánh Công ty VNG tại TP.HCM"
+      name_en: "VNG Company Branch in Ho Chi Minh City"
+      type_id: "type-branch-001"
+      parent_id: "550e8400-e29b-41d4-a716-446655440000"
+      path: "/vng_hq/"
+      effective_start_date: "2010-06-01"
+      is_current_flag: true
+
+# ----------------------------------------------------------------------------
+# REFERENCES
+# ----------------------------------------------------------------------------
+references:
+  glossary: "../glossary/org-structure.glossary.yaml#legal-entity"
+  concept_guide: "../../01-concept/03-org-structure/legal-entity-guide.md"
+  business_rules: "../../02-spec/04-BR/BR-03-org-structure.md"
+  bdd_scenarios: "../../02-spec/05-BDD/03-org-structure/legal-entity.feature"
+  database_design: "../../03-design/1.core.v4.dbml#org_legal.entity"
+
+# ----------------------------------------------------------------------------
+# METADATA
+# ----------------------------------------------------------------------------
+metadata:
+  created_at: "2025-12-25"
+  created_by: "AI Agent"
+  updated_at: "2025-12-25"
+  updated_by: "AI Agent"
+  review_status: DRAFT
+  dbml_source: "org_legal.entity (lines 345-368)"
+  industry_references:
+    - "SAP SuccessFactors Legal Entity Management"
+    - "Workday Company Hierarchy"
+    - "Oracle HCM Cloud Legal Entities"

@@ -1,0 +1,458 @@
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:core:employment:employee"
+
+# ============================================================================
+# EMPLOYEE - AGGREGATE_ROOT
+# ============================================================================
+# Purpose: Employment relationship between Worker and Legal Entity
+# Pattern: SAP SuccessFactors Employment, Workday Worker
+# DBML Source: employment.employee
+
+module: CO
+submodule: employment
+version: "1.0"
+
+# ----------------------------------------------------------------------------
+# ENTITY DEFINITION
+# ----------------------------------------------------------------------------
+entity: Employee
+classification: AGGREGATE_ROOT
+
+definition: |
+  An employee represents the employment relationship between a Worker (person) and
+  a Legal Entity (company). It captures the formal employment contract, status,
+  and classification within the organization.
+
+description: |
+  Employee is the core entity for HR operations, representing:
+  - Employment relationship (Worker + Legal Entity)
+  - Employment status and lifecycle
+  - Employee classification (category, class, type)
+  - Hire and termination dates
+  - Employee code (unique within legal entity)
+  
+  Key relationships:
+  - Employee → Worker (N:1): One worker can have multiple employments
+  - Employee → LegalEntity (N:1): Employment is with a specific legal entity
+  - Employee → Contracts (1:N): One employee can have multiple contracts
+  - Employee → Assignments (1:N): One employee can have multiple position assignments
+  
+  Employee vs Worker:
+  - **Worker**: Person data (demographics, contacts, skills)
+  - **Employee**: Employment relationship (hire date, status, classification)
+  - **Pattern**: SAP Person → Employment
+
+purpose: |
+  - Employment lifecycle management
+  - Contract management
+  - Position assignment
+  - Payroll and benefits eligibility
+  - Organizational reporting
+
+# ----------------------------------------------------------------------------
+# AI AGENT INSTRUCTIONS
+# ----------------------------------------------------------------------------
+ai_instructions:
+  priority: CRITICAL
+  code_generation: true
+  test_generation: true
+  documentation_generation: true
+  
+  notes: |
+    - Employee is CRITICAL to all HR operations
+    - Employee references Worker (1:1 or N:1)
+    - Legal entity link uses code (not ID) for flexibility
+    - 3-layer classification: worker_category, employee_class, employee_type
+    - Status lifecycle: ACTIVE, TERMINATED, etc.
+    - Employee code must be unique within legal entity
+  
+  related_context:
+    - "../../01-person/worker.aggregate.yaml"
+    - "../../../03-org-structure/legal-entity.aggregate.yaml"
+    - "../glossary/employment.glossary.yaml"
+
+# ----------------------------------------------------------------------------
+# MIXINS
+# ----------------------------------------------------------------------------
+mixins:
+  - Auditable
+
+# ----------------------------------------------------------------------------
+# ATTRIBUTES
+# ----------------------------------------------------------------------------
+attributes:
+  # Primary key
+  id:
+    type: uuid
+    required: true
+    primary_key: true
+    description: "Unique identifier for the employee"
+    
+  # Worker reference
+  worker_id:
+    type: uuid
+    required: true
+    foreign_key: worker.id
+    description: "Worker (person) ID"
+    note: "One worker can have multiple employments (e.g., rehire, multiple legal entities)"
+    
+  # Legal Entity reference
+  legal_entity_code:
+    type: string
+    required: true
+    max_length: 50
+    description: "Legal entity code (flexible link)"
+    note: "Uses code instead of ID for resilience to legal entity restructuring"
+    
+  # Employee code
+  employee_code:
+    type: string
+    required: true
+    max_length: 50
+    description: "Employee code (unique within legal entity)"
+    examples:
+      - "EMP001234"
+      - "VNG-HCM-00123"
+    
+  # 3-layer classification
+  worker_category_code:
+    type: string
+    required: true
+    max_length: 50
+    description: "Worker category (high-level grouping)"
+    examples:
+      - "EMPLOYEE"      # Regular employee
+      - "CONTRACTOR"    # Contractor
+      - "INTERN"        # Intern
+      - "CONSULTANT"    # Consultant
+    note: "From code_list(WORKER_CATEGORY)"
+    
+  employee_class_code:
+    type: string
+    required: true
+    max_length: 50
+    description: "Employee class (detailed classification)"
+    examples:
+      - "FULL_TIME"
+      - "PART_TIME"
+      - "TEMPORARY"
+      - "SEASONAL"
+    note: "From code_list(EMPLOYEE_CLASS)"
+    
+  employee_type_code:
+    type: string
+    required: false
+    max_length: 50
+    description: "Employee type (DEPRECATED - use category + class)"
+    deprecated: true
+    note: "Kept temporarily for migration, will be dropped later"
+    
+  # Status
+  status_code:
+    type: string
+    required: true
+    max_length: 50
+    description: "Employment status"
+    enum:
+      - ACTIVE          # Currently employed
+      - TERMINATED      # Employment ended
+      - SUSPENDED       # Temporarily suspended
+      - ON_LEAVE        # On leave (long-term)
+      - PENDING         # Pending start
+    default: PENDING
+    note: "From code_list(EMP_STATUS)"
+    
+  # Dates
+  hire_date:
+    type: date
+    required: true
+    description: "Employment start date (hire date)"
+    
+  termination_date:
+    type: date
+    required: false
+    description: "Employment end date (if terminated)"
+    
+  # Metadata
+  metadata:
+    type: jsonb
+    required: false
+    description: "Extended metadata"
+    schema:
+      type: object
+      properties:
+        probation_end_date: date
+        seniority_level: string
+        notice_period_days: integer
+        rehire_eligible: boolean
+
+# ----------------------------------------------------------------------------
+# DERIVED ATTRIBUTES
+# ----------------------------------------------------------------------------
+derived_attributes:
+  is_active:
+    type: boolean
+    formula: "status_code = 'ACTIVE'"
+    description: "True if employee is currently active"
+    dependencies:
+      - status_code
+      
+  is_terminated:
+    type: boolean
+    formula: "status_code = 'TERMINATED'"
+    description: "True if employment is terminated"
+    dependencies:
+      - status_code
+      
+  tenure_days:
+    type: integer
+    formula: "CASE WHEN termination_date IS NULL THEN current_date - hire_date ELSE termination_date - hire_date END"
+    description: "Employment tenure in days"
+    dependencies:
+      - hire_date
+      - termination_date
+      
+  tenure_years:
+    type: decimal
+    formula: "tenure_days / 365.25"
+    description: "Employment tenure in years"
+    dependencies:
+      - tenure_days
+
+# ----------------------------------------------------------------------------
+# RELATIONSHIPS
+# ----------------------------------------------------------------------------
+relationships:
+  # Worker
+  worker:
+    target: Worker
+    target_ref: "xtalent:core:person:worker"
+    cardinality: N:1
+    required: true
+    foreign_key: worker_id
+    description: "Worker (person) for this employment"
+    on_delete: RESTRICT
+    note: "One worker can have multiple employments"
+    
+  # Contracts (1:N)
+  contracts:
+    target: Contract
+    target_ref: "xtalent:core:employment:contract"
+    cardinality: 1:N
+    description: "Employment contracts"
+    
+  # Assignments (1:N)
+  assignments:
+    target: Assignment
+    target_ref: "xtalent:core:employment:assignment"
+    cardinality: 1:N
+    description: "Position assignments"
+    
+  # Work Relationships (1:N)
+  work_relationships:
+    target: WorkRelationship
+    target_ref: "xtalent:core:employment:work-relationship"
+    cardinality: 1:N
+    description: "Work relationship history"
+    
+  # Employee Identifiers (1:N)
+  identifiers:
+    target: EmployeeIdentifier
+    target_ref: "xtalent:core:employment:employee-identifier"
+    cardinality: 1:N
+    description: "External system identifiers"
+
+# ----------------------------------------------------------------------------
+# LIFECYCLE
+# ----------------------------------------------------------------------------
+lifecycle:
+  state_attribute: status_code
+  
+  states:
+    PENDING:
+      description: "Employment pending start (offer accepted, not yet started)"
+      initial: true
+      
+    ACTIVE:
+      description: "Currently employed and working"
+      
+    ON_LEAVE:
+      description: "On extended leave (maternity, sabbatical, etc.)"
+      
+    SUSPENDED:
+      description: "Employment temporarily suspended"
+      
+    TERMINATED:
+      description: "Employment ended"
+      terminal: true
+      
+  transitions:
+    - name: activate
+      from: PENDING
+      to: ACTIVE
+      action_ref: "xtalent:core:employment:activate-employee"
+      requires:
+        - "hire_date reached"
+        - "at least one active contract"
+        
+    - name: suspend
+      from: ACTIVE
+      to: SUSPENDED
+      action_ref: "xtalent:core:employment:suspend-employee"
+      requires:
+        - "suspension reason"
+        
+    - name: reactivate
+      from: [SUSPENDED, ON_LEAVE]
+      to: ACTIVE
+      action_ref: "xtalent:core:employment:reactivate-employee"
+      
+    - name: terminate
+      from: [ACTIVE, SUSPENDED, ON_LEAVE]
+      to: TERMINATED
+      action_ref: "xtalent:core:employment:terminate-employee"
+      requires:
+        - "termination_date"
+        - "termination_reason"
+      effects:
+        - "End all active contracts"
+        - "End all active assignments"
+        - "Revoke system access"
+
+# ----------------------------------------------------------------------------
+# VALIDATION RULES
+# ----------------------------------------------------------------------------
+validation_rules:
+  - rule: "unique_employee_code_per_legal_entity"
+    expression: "UNIQUE(legal_entity_code, employee_code)"
+    message: "Employee code must be unique within legal entity"
+    severity: ERROR
+    
+  - rule: "worker_exists"
+    expression: "EXISTS(SELECT 1 FROM worker WHERE id = worker_id)"
+    message: "Worker must exist"
+    severity: ERROR
+    
+  - rule: "hire_date_not_future"
+    expression: "hire_date <= current_date + interval '1 year'"
+    message: "Hire date cannot be more than 1 year in the future"
+    severity: WARNING
+    
+  - rule: "termination_after_hire"
+    expression: "termination_date IS NULL OR termination_date >= hire_date"
+    message: "Termination date must be on or after hire date"
+    severity: ERROR
+    
+  - rule: "terminated_has_termination_date"
+    expression: "status_code != 'TERMINATED' OR termination_date IS NOT NULL"
+    message: "Terminated employees must have termination date"
+    severity: ERROR
+    
+  - rule: "active_no_termination_date"
+    expression: "status_code != 'ACTIVE' OR termination_date IS NULL"
+    message: "Active employees cannot have termination date"
+    severity: WARNING
+
+# ----------------------------------------------------------------------------
+# INDEXES
+# ----------------------------------------------------------------------------
+indexes:
+  - name: idx_employee_code_unique
+    columns: [legal_entity_code, employee_code]
+    unique: true
+    
+  - name: idx_employee_worker
+    columns: [worker_id]
+    note: "For worker lookup"
+    
+  - name: idx_employee_status
+    columns: [status_code]
+    note: "For active employee queries"
+    
+  - name: idx_employee_hire_date
+    columns: [hire_date]
+    note: "For tenure and anniversary queries"
+
+# ----------------------------------------------------------------------------
+# SECURITY
+# ----------------------------------------------------------------------------
+security:
+  classification: CONFIDENTIAL
+  
+  sensitive_attributes:
+    - employee_code
+    - hire_date
+    - termination_date
+    
+  row_level_security:
+    enabled: true
+    policy: |
+      user.has_role('HR_ADMIN') OR
+      user.has_role('PAYROLL_ADMIN') OR
+      user.employee_id = employee.id OR
+      user.employee_id IN (
+        SELECT manager_employee_id FROM assignment 
+        WHERE employee_id = employee.id
+      )
+    note: "Users can access their own record or records they manage"
+
+# ----------------------------------------------------------------------------
+# EXAMPLES
+# ----------------------------------------------------------------------------
+examples:
+  - name: "Active Full-Time Employee"
+    description: "Regular full-time employee"
+    data:
+      id: "550e8400-e29b-41d4-a716-446655440000"
+      worker_id: "worker-001"
+      legal_entity_code: "VNG_HQ"
+      employee_code: "EMP001234"
+      worker_category_code: "EMPLOYEE"
+      employee_class_code: "FULL_TIME"
+      status_code: "ACTIVE"
+      hire_date: "2020-01-15"
+      termination_date: null
+      
+  - name: "Terminated Employee"
+    description: "Employee who left the company"
+    data:
+      id: "550e8400-e29b-41d4-a716-446655440001"
+      worker_id: "worker-002"
+      legal_entity_code: "VNG_HQ"
+      employee_code: "EMP001235"
+      worker_category_code: "EMPLOYEE"
+      employee_class_code: "FULL_TIME"
+      status_code: "TERMINATED"
+      hire_date: "2018-03-01"
+      termination_date: "2024-12-31"
+
+# ----------------------------------------------------------------------------
+# REFERENCES
+# ----------------------------------------------------------------------------
+references:
+  glossary: "../glossary/employment.glossary.yaml#employee"
+  concept_guide: "../../01-concept/02-employment/employee-guide.md"
+  business_rules: "../../02-spec/04-BR/BR-02-employment.md"
+  bdd_scenarios: "../../02-spec/05-BDD/02-employment/employee.feature"
+  database_design: "../../03-design/1.core.v4.dbml#employment.employee"
+
+# ----------------------------------------------------------------------------
+# METADATA
+# ----------------------------------------------------------------------------
+metadata:
+  created_at: "2025-12-25"
+  created_by: "AI Agent"
+  updated_at: "2025-12-25"
+  updated_by: "AI Agent"
+  review_status: DRAFT
+  dbml_source: "employment.employee (lines 781-801)"
+  industry_references:
+    - "SAP SuccessFactors Employment"
+    - "Workday Worker"
+    - "Oracle HCM Cloud Employment"
+  notes: |
+    - Employee is the core HR entity
+    - Separates person data (Worker) from employment relationship (Employee)
+    - Supports multiple employments per worker (rehire, multiple entities)
+    - 3-layer classification for flexibility
+    - Legal entity link via code for resilience

@@ -1,0 +1,99 @@
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:core:org-structure:entity-license"
+
+entity: EntityLicense
+classification: ENTITY
+module: CO
+submodule: org-structure
+version: "1.0"
+
+definition: |
+  Business licenses and permits held by a legal entity for regulatory compliance.
+
+description: |
+  Tracks business registration licenses, operating permits, and other regulatory
+  documents required for legal operation. Supports effective dating for license
+  renewals and changes.
+
+purpose: "Business license and permit management for compliance"
+
+parent_aggregate: LegalEntity
+
+mixins:
+  - HasEffectiveDates
+
+# ----------------------------------------------------------------------------
+# ATTRIBUTES
+# ----------------------------------------------------------------------------
+attributes:
+  id:
+    type: uuid
+    required: true
+    primary_key: true
+    
+  legal_entity_id:
+    type: uuid
+    required: true
+    foreign_key: legal_entity.id
+    
+  license_number:
+    type: string
+    required: true
+    max_length: 100
+    description: "License/permit number"
+    
+  issue_date:
+    type: date
+    required: true
+    description: "Date license was issued"
+    
+  issued_by:
+    type: string
+    required: false
+    max_length: 255
+    description: "Issuing authority"
+    
+  metadata:
+    type: jsonb
+    required: false
+    description: "Additional info (attached files, etc.)"
+
+# ----------------------------------------------------------------------------
+# RELATIONSHIPS
+# ----------------------------------------------------------------------------
+relationships:
+  legal_entity:
+    target: LegalEntity
+    cardinality: N:1
+    required: true
+    on_delete: CASCADE
+
+# ----------------------------------------------------------------------------
+# VALIDATION RULES
+# ----------------------------------------------------------------------------
+validation_rules:
+  - rule: "unique_license_per_period"
+    expression: "UNIQUE(legal_entity_id, license_number, effective_start_date)"
+    message: "License number must be unique per effective period"
+    severity: ERROR
+    
+  - rule: "issue_date_not_future"
+    expression: "issue_date <= today()"
+    message: "Issue date cannot be in the future"
+    severity: ERROR
+
+# ----------------------------------------------------------------------------
+# INDEXES
+# ----------------------------------------------------------------------------
+indexes:
+  - name: idx_entity_license_unique
+    columns: [legal_entity_id, license_number, effective_start_date]
+    unique: true
+
+references:
+  parent_entity: "legal-entity.aggregate.yaml"
+  database_design: "../../../03-design/1.core.v4.dbml#org_legal.entity_license"
+
+metadata:
+  created_at: "2025-12-25"
+  dbml_source: "org_legal.entity_license (lines 417-429)"

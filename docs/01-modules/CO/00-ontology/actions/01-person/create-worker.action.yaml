@@ -1,0 +1,186 @@
+---
+$schema: "https://xtalent.io/schemas/action/v3"
+$id: "xtalent:co:person:create-worker"
+
+module: CO
+submodule: person
+version: "1.0.0"
+
+action: CreateWorker
+type: MUTATION
+category: CREATE
+
+definition: |
+  Atomic operation to create a new worker record in the database.
+  This is a low-level action called by the CreateWorker workflow.
+
+purpose: |
+  Provide a reusable, atomic operation for worker creation that can be
+  composed into higher-level workflows. Handles database insertion,
+  ID generation, and timestamp management.
+
+# ═══════════════════════════════════════════════════════════════════
+# PARAMETERS
+# ═══════════════════════════════════════════════════════════════════
+parameters:
+  input:
+    data:
+      type: object
+      required: true
+      description: "Worker data to create"
+      properties:
+        first_name:
+          type: string
+          required: true
+        middle_name:
+          type: string
+        last_name:
+          type: string
+          required: true
+        preferred_name:
+          type: string
+        date_of_birth:
+          type: date
+          required: true
+        gender_code:
+          type: string
+          required: true
+        nationality_code:
+          type: string
+          required: true
+        marital_status_code:
+          type: string
+        metadata:
+          type: jsonb
+          
+  output:
+    worker:
+      type: object
+      description: "Created worker record with generated ID"
+
+# ═══════════════════════════════════════════════════════════════════
+# PRECONDITIONS
+# ═══════════════════════════════════════════════════════════════════
+preconditions:
+  - condition: "data.first_name IS NOT NULL"
+    message: "First name is required"
+    
+  - condition: "data.last_name IS NOT NULL"
+    message: "Last name is required"
+    
+  - condition: "data.date_of_birth IS NOT NULL"
+    message: "Date of birth is required"
+
+# ═══════════════════════════════════════════════════════════════════
+# MUTATIONS
+# ═══════════════════════════════════════════════════════════════════
+mutations:
+  - entity: Worker
+    operation: INSERT
+    table: person.worker
+    data:
+      id: "gen_random_uuid()"
+      first_name: "{{data.first_name}}"
+      middle_name: "{{data.middle_name}}"
+      last_name: "{{data.last_name}}"
+      preferred_name: "{{data.preferred_name}}"
+      date_of_birth: "{{data.date_of_birth}}"
+      gender_code: "{{data.gender_code}}"
+      nationality_code: "{{data.nationality_code}}"
+      marital_status_code: "{{data.marital_status_code}}"
+      metadata: "{{data.metadata}}"
+      created_at: "now()"
+      updated_at: null
+    returning: "*"
+    output: worker
+
+# ═══════════════════════════════════════════════════════════════════
+# SIDE EFFECTS
+# ═══════════════════════════════════════════════════════════════════
+side_effects:
+  - type: AUDIT_LOG
+    description: "Log worker creation"
+    data:
+      entity_type: Worker
+      entity_id: "{{worker.id}}"
+      operation: CREATE
+      user_id: "{{context.user_id}}"
+      
+  - type: CACHE_INVALIDATE
+    description: "Invalidate worker cache"
+    keys:
+      - "worker:*"
+
+# ═══════════════════════════════════════════════════════════════════
+# POSTCONDITIONS
+# ═══════════════════════════════════════════════════════════════════
+postconditions:
+  - condition: "worker.id IS NOT NULL"
+    message: "Worker must have generated ID"
+    
+  - condition: "worker.created_at IS NOT NULL"
+    message: "Worker must have creation timestamp"
+    
+  - condition: "worker.first_name = data.first_name"
+    message: "First name must match input"
+
+# ═══════════════════════════════════════════════════════════════════
+# ERROR HANDLING
+# ═══════════================================================================
+error_handling:
+  on_constraint_violation:
+    action: ROLLBACK
+    error_code: "ERR_WORKER_CONSTRAINT_VIOLATION"
+    
+  on_database_error:
+    action: ROLLBACK
+    error_code: "ERR_WORKER_CREATE_FAILED"
+    log_level: ERROR
+
+# ═══════════════════════════════════════════════════════════════════
+# AUTHORIZATION
+# ═══════════════════════════════════════════════════════════════════
+authorization:
+  required_permissions:
+    - worker:create
+  required_roles:
+    - HR_ADMIN
+    - RECRUITER
+
+# ═══════════════════════════════════════════════════════════════════
+# API MAPPING
+# ═══════════════════════════════════════════════════════════════════
+api_mapping:
+  rest:
+    method: POST
+    path: "/api/v1/workers"
+    request_body: "{{data}}"
+    response_body: "{{worker}}"
+    status_code: 201
+    
+  graphql:
+    mutation: |
+      mutation CreateWorker($input: CreateWorkerInput!) {
+        createWorker(input: $input) {
+          id
+          firstName
+          lastName
+          dateOfBirth
+          createdAt
+        }
+      }
+
+# ═══════════════════════════════════════════════════════════════════
+# PERFORMANCE
+# ═══════════════════════════════════════════════════════════════════
+performance:
+  expected_duration_ms: 50
+  timeout_ms: 5000
+  retry_policy:
+    max_attempts: 3
+    backoff_strategy: EXPONENTIAL
+    
+metadata:
+  tags: [worker, create, mutation]
+  owner: "HR Platform Team"
+  last_updated: "2025-12-25"

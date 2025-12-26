@@ -1,0 +1,56 @@
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:core:employment:assignment"
+
+entity: Assignment
+classification: ENTITY
+module: CO
+submodule: employment
+version: "1.0"
+
+definition: "Employee assignment to position and business unit"
+
+parent_aggregate: Employee
+
+mixins:
+  - Auditable
+
+attributes:
+  id: {type: uuid, required: true, primary_key: true}
+  employee_id: {type: uuid, required: true, foreign_key: employee.id}
+  position_id: {type: uuid, required: false, foreign_key: position.id}
+  business_unit_id: {type: uuid, required: true, foreign_key: business_unit.id}
+  primary_location_id: {type: uuid, required: false}
+  status_code: {type: string, required: true, max_length: 50}
+  fte: {type: decimal, required: false, precision: 4, scale: 2}
+  supervisor_assignment_id: {type: uuid, required: false, foreign_key: assignment.id}
+  work_pattern_code: {type: string, required: false, max_length: 50}
+  reason_code: {type: string, required: false, max_length: 50}
+  start_date: {type: date, required: true}
+  end_date: {type: date, required: false}
+  metadata: {type: jsonb, required: false}
+
+relationships:
+  employee:
+    target: Employee
+    cardinality: N:1
+    required: true
+    on_delete: CASCADE
+  position:
+    target: Position
+    cardinality: N:1
+    required: false
+  business_unit:
+    target: BusinessUnit
+    cardinality: N:1
+    required: true
+  supervisor_assignment:
+    target: Assignment
+    cardinality: N:1
+    required: false
+
+references:
+  database_design: "../../../03-design/1.core.v4.dbml#employment.assignment"
+
+metadata:
+  created_at: "2025-12-25"
+  dbml_source: "employment.assignment (lines 870-886)"

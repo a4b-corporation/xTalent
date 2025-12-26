@@ -1,0 +1,380 @@
+$schema: "https://xtalent.io/schemas/entity-index/v1"
+
+module: CO
+version: "1.0.0"
+last_updated: "2025-12-25"
+
+# ═══════════════════════════════════════════════════════════════════
+# AGGREGATE_ROOT - Core Domain Objects (require full artifact set)
+# ═══════════════════════════════════════════════════════════════════
+aggregate_roots:
+  - entity: Worker
+    file: 01-person/worker.aggregate.yaml
+    workflows:
+      - create-worker.workflow.yaml
+      - update-worker-profile.workflow.yaml
+    actions:
+      - create-worker.action.yaml
+      - update-worker.action.yaml
+      - delete-worker.action.yaml
+    concept_guide: ../../01-concept/01-person/worker-guide.md
+    bdd_feature: ../../02-spec/05-BDD/01-person/worker.feature
+    status: complete
+    
+  # Phase 2
+  - entity: Employee
+    file: 02-employment/employee.aggregate.yaml
+    status: planned
+    
+  - entity: LegalEntity
+    file: 03-org-structure/legal-entity.aggregate.yaml
+    status: planned
+    
+  - entity: BusinessUnit
+    file: 03-org-structure/business-unit.aggregate.yaml
+    status: planned
+    
+  # Phase 3
+  - entity: Job
+    file: 04-job-position/job.aggregate.yaml
+    status: planned
+    
+  - entity: Position
+    file: 04-job-position/position.aggregate.yaml
+    status: planned
+    
+  - entity: TaxonomyTree
+    file: 04-job-position/taxonomy-tree.aggregate.yaml
+    status: planned
+    
+  - entity: JobTree
+    file: 04-job-position/job-tree.aggregate.yaml
+    status: planned
+    
+  - entity: CareerPath
+    file: 04-job-position/career-path.aggregate.yaml
+    status: planned
+    
+  # Phase 4
+  - entity: TalentMarket
+    file: 05-master-data/talent-market.aggregate.yaml
+    status: planned
+    
+  - entity: Opportunity
+    file: 05-master-data/opportunity.aggregate.yaml
+    status: planned
+    
+  - entity: EligibilityProfile
+    file: 07-eligibility/eligibility-profile.aggregate.yaml
+    status: planned
+
+# ═══════════════════════════════════════════════════════════════════
+# ENTITY - Child entities (belong to aggregates)
+# ═══════════════════════════════════════════════════════════════════
+entities:
+  # Person sub-module (Batch 1B) - COMPLETE
+  - entity: Contact
+    file: 01-person/contact.entity.yaml
+    parent_aggregate: Worker
+    status: complete
+    
+  - entity: Address
+    file: 01-person/address.entity.yaml
+    parent_aggregate: Worker
+    status: complete
+    
+  - entity: Document
+    file: 01-person/document.entity.yaml
+    parent_aggregate: Worker
+    status: complete
+    
+  - entity: BankAccount
+    file: 01-person/bank-account.entity.yaml
+    parent_aggregate: Worker
+    status: complete
+    
+  - entity: WorkerRelationship
+    file: 01-person/worker-relationship.entity.yaml
+    parent_aggregate: Worker
+    status: complete
+    
+  - entity: WorkerQualification
+    file: 01-person/worker-qualification.entity.yaml
+    parent_aggregate: Worker
+    status: complete
+    
+  - entity: WorkerSkill
+    file: 01-person/worker-skill.entity.yaml
+    parent_aggregate: Worker
+    status: complete
+    
+  - entity: WorkerCompetency
+    file: 01-person/worker-competency.entity.yaml
+    parent_aggregate: Worker
+    status: complete
+    
+  - entity: WorkerInterest
+    file: 01-person/worker-interest.entity.yaml
+    parent_aggregate: Worker
+    status: complete
+    
+  # Employment sub-module (Phase 2)
+  - entity: WorkRelationship
+    file: 02-employment/work-relationship.entity.yaml
+    parent_aggregate: Employee
+    status: planned
+    
+  - entity: ContractTemplate
+    file: 02-employment/contract-template.entity.yaml
+    parent_aggregate: null
+    status: planned
+    
+  - entity: Contract
+    file: 02-employment/contract.entity.yaml
+    parent_aggregate: Employee
+    status: planned
+    
+  - entity: Assignment
+    file: 02-employment/assignment.entity.yaml
+    parent_aggregate: Employee
+    status: planned
+    
+  - entity: EmployeeIdentifier
+    file: 02-employment/employee-identifier.entity.yaml
+    parent_aggregate: Employee
+    status: planned
+    
+  - entity: GlobalAssignment
+    file: 02-employment/global-assignment.entity.yaml
+    parent_aggregate: Employee
+    status: planned
+    
+  # Org Structure sub-module (Phase 2)
+  - entity: EntityProfile
+    file: 03-org-structure/entity-profile.entity.yaml
+    parent_aggregate: LegalEntity
+    status: planned
+    
+  - entity: EntityRepresentative
+    file: 03-org-structure/entity-representative.entity.yaml
+    parent_aggregate: LegalEntity
+    status: planned
+    
+  - entity: EntityLicense
+    file: 03-org-structure/entity-license.entity.yaml
+    parent_aggregate: LegalEntity
+    status: planned
+    
+  - entity: EntityBankAccount
+    file: 03-org-structure/entity-bank-account.entity.yaml
+    parent_aggregate: LegalEntity
+    status: planned
+    
+  - entity: OrgRelationSchema
+    file: 03-org-structure/org-relation-schema.entity.yaml
+    parent_aggregate: null
+    status: planned
+    
+  - entity: OrgRelationType
+    file: 03-org-structure/org-relation-type.entity.yaml
+    parent_aggregate: null
+    status: planned
+    
+  - entity: OrgRelationEdge
+    file: 03-org-structure/org-relation-edge.entity.yaml
+    parent_aggregate: null
+    status: planned
+    
+  # Job-Position sub-module (Phase 3)
+  - entity: JobTaxonomy
+    file: 04-job-position/job-taxonomy.entity.yaml
+    parent_aggregate: TaxonomyTree
+    status: planned
+    
+  - entity: JobProfile
+    file: 04-job-position/job-profile.entity.yaml
+    parent_aggregate: Job
+    status: planned
+    
+  - entity: JobProgression
+    file: 04-job-position/job-progression.entity.yaml
+    parent_aggregate: Job
+    status: planned
+    
+  # Facility sub-module (Phase 3)
+  - entity: Place
+    file: 06-facility/place.entity.yaml
+    parent_aggregate: null
+    status: planned
+    
+  - entity: Location
+    file: 06-facility/location.entity.yaml
+    parent_aggregate: null
+    status: planned
+    
+  - entity: WorkLocation
+    file: 06-facility/work-location.entity.yaml
+    parent_aggregate: null
+    status: planned
+    
+  # Vendor (Phase 3)
+  - entity: VendorCompany
+    file: 05-master-data/vendor-company.entity.yaml
+    parent_aggregate: null
+    status: planned
+    
+  # Talent Market (Phase 4)
+  - entity: TalentMarketParameter
+    file: 05-master-data/talent-market-parameter.entity.yaml
+    parent_aggregate: TalentMarket
+    status: planned
+    
+  - entity: TalentMarketLocalization
+    file: 05-master-data/talent-market-localization.entity.yaml
+    parent_aggregate: TalentMarket
+    status: planned
+    
+  - entity: OpportunitySkill
+    file: 05-master-data/opportunity-skill.entity.yaml
+    parent_aggregate: Opportunity
+    status: planned
+    
+  - entity: OpportunityApplication
+    file: 05-master-data/opportunity-application.entity.yaml
+    parent_aggregate: Opportunity
+    status: planned
+    
+  # Eligibility (Phase 4)
+  - entity: EligibilityMember
+    file: 07-eligibility/eligibility-member.entity.yaml
+    parent_aggregate: EligibilityProfile
+    status: planned
+    
+  - entity: EligibilityEvaluation
+    file: 07-eligibility/eligibility-evaluation.entity.yaml
+    parent_aggregate: EligibilityProfile
+    status: planned
+    
+  # Tax (Phase 4)
+  - entity: DependentRegistration
+    file: 05-master-data/dependent-registration.entity.yaml
+    parent_aggregate: null
+    status: planned
+
+# ═══════════════════════════════════════════════════════════════════
+# REFERENCE_DATA - Lookup/configuration data
+# ═══════════════════════════════════════════════════════════════════
+reference_data:
+  # Common Master Data (Batch 1C) - COMPLETE
+  - entity: CodeList
+    file: 05-master-data/code-list.ref.yaml
+    status: complete
+    
+  - entity: Currency
+    file: 05-master-data/currency.ref.yaml
+    status: complete
+    
+  - entity: TimeZone
+    file: 05-master-data/time-zone.ref.yaml
+    status: complete
+    
+  - entity: Industry
+    file: 05-master-data/industry.ref.yaml
+    status: complete
+    
+  - entity: ContactType
+    file: 05-master-data/contact-type.ref.yaml
+    status: complete
+    
+  - entity: RelationshipGroup
+    file: 05-master-data/relationship-group.ref.yaml
+    status: complete
+    
+  - entity: RelationshipType
+    file: 05-master-data/relationship-type.ref.yaml
+    status: complete
+    
+  # Skills & Competency (Batch 1C) - COMPLETE
+  - entity: SkillCategory
+    file: 05-master-data/skill-category.ref.yaml
+    status: complete
+    
+  - entity: SkillMaster
+    file: 05-master-data/skill-master.ref.yaml
+    status: complete
+    
+  - entity: CompetencyCategory
+    file: 05-master-data/competency-category.ref.yaml
+    status: complete
+    
+  - entity: CompetencyMaster
+    file: 05-master-data/competency-master.ref.yaml
+    status: complete
+    
+  # Geographic Data (Batch 1C) - COMPLETE
+  - entity: Country
+    file: 05-master-data/country.ref.yaml
+    status: complete
+    
+  - entity: AdminArea
+    file: 05-master-data/admin-area.ref.yaml
+    status: complete
+    
+  # Org Structure Reference (Phase 2)
+  - entity: EntityType
+    file: 03-org-structure/entity-type.ref.yaml
+    status: planned
+    
+  - entity: BusinessUnitType
+    file: 03-org-structure/business-unit-type.ref.yaml
+    status: planned
+    
+  # Job-Position Reference (Phase 3)
+  - entity: JobLevel
+    file: 04-job-position/job-level.ref.yaml
+    status: planned
+    
+  - entity: JobGrade
+    file: 04-job-position/job-grade.ref.yaml
+    status: planned
+    
+  - entity: JobLevelPolicy
+    file: 04-job-position/job-level-policy.ref.yaml
+    status: planned
+
+# ═══════════════════════════════════════════════════════════════════
+# VALUE_OBJECT - Embedded value types (optional entity files)
+# ═══════════════════════════════════════════════════════════════════
+value_objects:
+  - name: Money
+    embedded_in: [Contract, Compensation, PayElement]
+    note: "Embedded value type, no separate entity file"
+    
+  - name: DateRange
+    embedded_in: [Assignment, Contract, all SCD2 entities]
+    note: "Embedded value type via effective_start_date/effective_end_date"
+
+# ═══════════════════════════════════════════════════════════════════
+# SUMMARY STATISTICS
+# ═══════════════════════════════════════════════════════════════════
+statistics:
+  aggregate_roots: 12
+  entities: 40
+  reference_data: 18
+  value_objects: 2
+  total: 70
+  
+  # By status
+  completed: 23  # Phase 1: Worker + child entities + master data
+  planned: 47
+  
+  # By phase
+  phase_1: 23  # Worker + child entities + master data (COMPLETE)
+  phase_2: 17  # Employment + Org Structure
+  phase_3: 20  # Job-Position + Facility
+  phase_4: 10  # TalentMarket + Eligibility
+
+# Naming Convention (see ENTITY-NAMING-CONVENTION.md):
+# - AGGREGATE_ROOT: *.aggregate.yaml
+# - ENTITY: *.entity.yaml
+# - REFERENCE_DATA: *.ref.yaml

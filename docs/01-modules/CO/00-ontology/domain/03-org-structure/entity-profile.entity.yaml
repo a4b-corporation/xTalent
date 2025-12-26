@@ -1,0 +1,268 @@
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:core:org-structure:entity-profile"
+
+entity: EntityProfile
+classification: ENTITY
+module: CO
+submodule: org-structure
+version: "1.0"
+
+definition: |
+  Extended profile information for a legal entity including addresses, contacts,
+  tax identification, and corporate branding.
+
+description: |
+  EntityProfile provides detailed information about a legal entity that is not
+  part of the core entity record. This includes:
+  - Corporate branding (logo, tagline)
+  - Legal names (full legal names in multiple languages)
+  - Addresses (primary and secondary)
+  - Contact information (phone, fax, email)
+  - Tax and registration details
+  - Corporate structure (group name, head office flag)
+
+purpose: "Extended legal entity information for compliance and operations"
+
+# ----------------------------------------------------------------------------
+# RELATIONSHIPS
+# ----------------------------------------------------------------------------
+parent_aggregate: LegalEntity
+
+relationships:
+  legal_entity:
+    target: LegalEntity
+    target_ref: "xtalent:core:org-structure:legal-entity"
+    cardinality: N:1
+    required: true
+    foreign_key: legal_entity_id
+    description: "Parent legal entity"
+    on_delete: CASCADE
+
+# ----------------------------------------------------------------------------
+# ATTRIBUTES
+# ----------------------------------------------------------------------------
+attributes:
+  legal_entity_id:
+    type: uuid
+    required: true
+    primary_key: true
+    description: "Legal entity ID (1:1 relationship)"
+    
+  # Branding
+  logo_url:
+    type: string
+    required: false
+    max_length: 255
+    description: "URL to company logo"
+    
+  tagline:
+    type: string
+    required: false
+    max_length: 255
+    description: "Company tagline or slogan"
+    
+  # Legal Names
+  legal_name_local:
+    type: string
+    required: false
+    max_length: 255
+    description: "Full legal name in local language"
+    
+  legal_name_en:
+    type: string
+    required: false
+    max_length: 255
+    description: "Full legal name in English"
+    
+  group_name:
+    type: string
+    required: false
+    max_length: 255
+    description: "Corporate group name (if part of a group)"
+    
+  # Primary Address
+  address1_country_code:
+    type: string
+    required: false
+    length: 2
+    foreign_key: country.code_alpha2
+    description: "Primary address country code (ISO 3166-1 alpha-2)"
+    
+  address1_admin_area_id:
+    type: uuid
+    required: false
+    foreign_key: admin_area.id
+    description: "Primary address administrative area"
+    
+  address1_street:
+    type: string
+    required: false
+    max_length: 255
+    description: "Primary address street"
+    
+  address1_postal_code:
+    type: string
+    required: false
+    max_length: 20
+    description: "Primary address postal code"
+    
+  # Secondary Address
+  address2_country_code:
+    type: string
+    required: false
+    length: 2
+    foreign_key: country.code_alpha2
+    description: "Secondary address country code"
+    
+  address2_admin_area_id:
+    type: uuid
+    required: false
+    foreign_key: admin_area.id
+    description: "Secondary address administrative area"
+    
+  address2_street:
+    type: string
+    required: false
+    max_length: 255
+    description: "Secondary address street"
+    
+  address2_postal_code:
+    type: string
+    required: false
+    max_length: 20
+    description: "Secondary address postal code"
+    
+  # Contact Information
+  phone:
+    type: string
+    required: false
+    max_length: 50
+    description: "Primary phone number"
+    
+  fax:
+    type: string
+    required: false
+    max_length: 50
+    description: "Fax number"
+    
+  email:
+    type: string
+    required: false
+    max_length: 100
+    description: "Primary email address"
+    validation:
+      - pattern: "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
+    
+  email_suffix:
+    type: string
+    required: false
+    max_length: 100
+    description: "Email domain suffix for company emails (e.g., @vng.com.vn)"
+    
+  website:
+    type: string
+    required: false
+    max_length: 255
+    description: "Company website URL"
+    
+  # Corporate Structure
+  is_head_office:
+    type: boolean
+    required: true
+    default: false
+    description: "True if this is the head office/headquarters"
+    
+  is_member:
+    type: boolean
+    required: true
+    default: true
+    description: "True if this is a member company (within a corporate group)"
+    
+  # Leadership
+  ceo_worker_id:
+    type: uuid
+    required: false
+    foreign_key: worker.id
+    description: "CEO worker ID (if in system)"
+    
+  # Tax & Registration
+  tax_id:
+    type: string
+    required: false
+    max_length: 50
+    description: "Tax identification number"
+    sensitive: true
+    
+  registration_number:
+    type: string
+    required: false
+    max_length: 100
+    description: "Business registration number"
+    sensitive: true
+    
+  insurance_type_code:
+    type: string
+    required: false
+    max_length: 50
+    description: "Insurance type code (from code_list)"
+    
+  # Additional Info
+  description:
+    type: text
+    required: false
+    description: "Additional description or notes"
+    
+  metadata:
+    type: jsonb
+    required: false
+    description: "Extended metadata (flexible JSON)"
+    
+  active:
+    type: boolean
+    required: true
+    default: true
+    description: "Active status"
+
+# ----------------------------------------------------------------------------
+# VALIDATION RULES
+# ----------------------------------------------------------------------------
+validation_rules:
+  - rule: "email_valid_format"
+    expression: "email IS NULL OR email ~ '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$'"
+    message: "Invalid email format"
+    severity: ERROR
+    
+  - rule: "at_least_one_address"
+    expression: "address1_street IS NOT NULL OR address2_street IS NOT NULL"
+    message: "At least one address should be provided"
+    severity: WARNING
+
+# ----------------------------------------------------------------------------
+# SECURITY
+# ----------------------------------------------------------------------------
+security:
+  classification: CONFIDENTIAL
+  sensitive_attributes:
+    - tax_id
+    - registration_number
+  
+  data_masking:
+    tax_id:
+      strategy: partial
+      visible_chars: 4
+      mask_char: "*"
+    registration_number:
+      strategy: partial
+      visible_chars: 4
+      mask_char: "*"
+
+# ----------------------------------------------------------------------------
+# REFERENCES
+# ----------------------------------------------------------------------------
+references:
+  parent_entity: "legal-entity.aggregate.yaml"
+  database_design: "../../../03-design/1.core.v4.dbml#org_legal.entity_profile"
+
+metadata:
+  created_at: "2025-12-25"
+  dbml_source: "org_legal.entity_profile (lines 370-399)"

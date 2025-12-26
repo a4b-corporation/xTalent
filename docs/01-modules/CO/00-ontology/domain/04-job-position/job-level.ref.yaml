@@ -1,0 +1,131 @@
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:core:job-position:job-level"
+
+entity: JobLevel
+classification: REFERENCE_DATA
+module: CO
+submodule: job-position
+version: "1.0"
+
+definition: |
+  Job level/seniority classification defining career progression levels
+  (e.g., Junior, Mid, Senior, Lead, Principal).
+
+description: |
+  JobLevel provides standardized job seniority classification with support for:
+  - Corporate standard levels (owner_unit_id = null)
+  - Business unit-specific levels (owner_unit_id set)
+  - Level mapping between BU and corporate
+  - Rank ordering for progression
+  
+  Used for:
+  - Career progression paths
+  - Compensation level determination
+  - Job classification
+  - Talent marketplace matching
+
+purpose: |
+  - Define job seniority levels
+  - Support career progression
+  - Enable level-based compensation
+  - Facilitate talent mobility
+
+mixins:
+  - HasEffectiveDates
+  - Auditable
+
+attributes:
+  id:
+    type: uuid
+    required: true
+    primary_key: true
+    description: "Unique identifier for job level"
+    
+  level_code:
+    type: string
+    required: true
+    max_length: 50
+    description: "Level code"
+    examples:
+      - "L1"
+      - "L2"
+      - "L3"
+      - "JUNIOR"
+      - "MID"
+      - "SENIOR"
+    
+  level_name:
+    type: string
+    required: false
+    max_length: 100
+    description: "Level name"
+    examples:
+      - "Junior Level"
+      - "Mid Level"
+      - "Senior Level"
+    
+  rank_order:
+    type: integer
+    required: false
+    description: "Rank order for sorting (lower = junior, higher = senior)"
+    examples:
+      - 1  # Junior
+      - 2  # Mid
+      - 3  # Senior
+      - 4  # Lead
+      - 5  # Principal
+    
+  owner_unit_id:
+    type: uuid
+    required: false
+    foreign_key: business_unit.id
+    description: "Owning business unit (null = corporate standard)"
+    note: "null = corporate level, set = BU-specific level"
+    
+  description:
+    type: text
+    required: false
+    description: "Level description"
+
+relationships:
+  owner_unit:
+    target: BusinessUnit
+    cardinality: N:1
+    required: false
+    description: "Owning business unit (if BU-specific)"
+
+validation_rules:
+  - rule: "unique_level_code"
+    expression: "UNIQUE(level_code, owner_unit_id, is_current_flag)"
+    severity: ERROR
+
+indexes:
+  - name: idx_job_level_code
+    columns: [level_code, owner_unit_id, is_current_flag]
+    unique: true
+
+examples:
+  - name: "Corporate Level"
+    data:
+      level_code: "L3"
+      level_name: "Mid Level"
+      rank_order: 3
+      owner_unit_id: null
+      
+  - name: "BU-Specific Level"
+    data:
+      level_code: "GAME_L3"
+      level_name: "Game Mid Level"
+      rank_order: 3
+      owner_unit_id: "bu-game-001"
+
+references:
+  database_design: "../../../03-design/1.core.v4.dbml#jobpos.job_level"
+
+metadata:
+  created_at: "2025-12-25"
+  dbml_source: "jobpos.job_level (lines 1157-1172)"
+  notes: |
+    - Supports corporate and BU-specific levels
+    - Rank order enables progression logic
+    - SCD2 for level evolution

@@ -1,0 +1,73 @@
+$schema: "https://xtalent.io/schemas/workflow/v3"
+$id: "xtalent:core:job-position:fill-position"
+
+workflow: FillPosition
+module: CO
+submodule: job-position
+version: "1.0"
+
+description: "Fills position by assigning employee and updating headcount"
+
+inputs:
+  position_id: {type: uuid, required: true}
+  employee_id: {type: uuid, required: true}
+  assignment_start_date: {type: date, required: true}
+
+steps:
+  - name: validate_position
+    type: validation
+    validations:
+      - check: "position is open or approved"
+        query: "SELECT status_code FROM position WHERE id = :position_id"
+        condition: "status_code IN ('APPROVED', 'OPEN')"
+      - check: "position has vacancy"
+        query: "SELECT actual_headcount, max_incumbents FROM position WHERE id = :position_id"
+        condition: "actual_headcount < max_incumbents"
+
+  - name: create_assignment
+    type: database_operation
+    operation: INSERT
+    table: employment.assignment
+    data:
+      employee_id: ":employee_id"
+      position_id: ":position_id"
+      start_date: ":assignment_start_date"
+      status_code: "ACTIVE"
+
+  - name: update_headcount
+    type: database_operation
+    operation: UPDATE
+    table: jobpos.position
+    where: "id = :position_id"
+    data:
+      actual_headcount: "actual_headcount + 1"
+
+  - name: check_if_filled
+    type: computation
+    logic: |
+      IF actual_headcount >= max_incumbents THEN
+        status_code = 'FILLED'
+      END IF
+
+  - name: update_status_if_filled
+    type: database_operation
+    condition: "status_code = 'FILLED'"
+    operation: UPDATE
+    table: jobpos.position
+    where: "id = :position_id"
+    data:
+      status_code: "FILLED"
+
+  - name: emit_event
+    type: event
+    event: PositionFilled
+    payload:
+      position_id: ":position_id"
+      employee_id: ":employee_id"
+
+authorization:
+  required_roles: [HR_ADMIN, HIRING_MANAGER]
+
+metadata:
+  created_at: "2025-12-25"
+  transaction: true

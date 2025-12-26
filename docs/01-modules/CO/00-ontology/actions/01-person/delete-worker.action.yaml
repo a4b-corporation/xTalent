@@ -1,0 +1,138 @@
+---
+$schema: "https://xtalent.io/schemas/action/v3"
+$id: "xtalent:co:person:delete-worker"
+
+module: CO
+submodule: person
+version: "1.0.0"
+
+action: DeleteWorker
+type: MUTATION
+category: DELETE
+
+definition: |
+  Soft delete worker record for GDPR compliance. Archives worker data
+  while maintaining referential integrity.
+
+purpose: |
+  Implement "right to be forgotten" by anonymizing worker data while
+  preserving audit trail and referential integrity for historical records.
+
+parameters:
+  input:
+    worker_id:
+      type: uuid
+      required: true
+      description: "ID of worker to delete"
+      
+    deletion_reason:
+      type: string
+      required: true
+      description: "Reason for deletion (GDPR, data cleanup, etc.)"
+      
+    anonymize:
+      type: boolean
+      required: false
+      default: true
+      description: "Whether to anonymize PII fields"
+      
+  output:
+    success:
+      type: boolean
+      description: "Whether deletion succeeded"
+      
+    archived_worker_id:
+      type: uuid
+      description: "ID of archived worker"
+
+preconditions:
+  - condition: "EXISTS(SELECT 1 FROM person.worker WHERE id = worker_id)"
+    message: "Worker not found"
+    error_code: "ERR_WORKER_NOT_FOUND"
+    
+  - condition: "NOT EXISTS(SELECT 1 FROM employment.employee WHERE worker_id = worker_id AND status_code = 'ACTIVE')"
+    message: "Cannot delete worker with active employment"
+    error_code: "ERR_WORKER_HAS_ACTIVE_EMPLOYMENT"
+
+mutations:
+  - entity: Worker
+    operation: UPDATE
+    table: person.worker
+    where:
+      id: "{{worker_id}}"
+    data:
+      # Anonymize PII if requested
+      first_name: "{{anonymize ? 'REDACTED' : first_name}}"
+      last_name: "{{anonymize ? 'REDACTED' : last_name}}"
+      middle_name: null
+      preferred_name: null
+      date_of_birth: null
+      metadata: "{}"
+      updated_at: "now()"
+    note: "Soft delete - preserve ID for referential integrity"
+    returning: "id"
+    output: archived_worker
+
+side_effects:
+  - type: AUDIT_LOG
+    description: "Log worker deletion"
+    data:
+      entity_type: Worker
+      entity_id: "{{worker_id}}"
+      operation: DELETE
+      reason: "{{deletion_reason}}"
+      anonymized: "{{anonymize}}"
+      user_id: "{{context.user_id}}"
+      
+  - type: ARCHIVE
+    description: "Archive worker data before anonymization"
+    table: person.worker_archive
+    data: "SELECT * FROM person.worker WHERE id = {{worker_id}}"
+    
+  - type: CACHE_INVALIDATE
+    description: "Invalidate all worker caches"
+    keys:
+      - "worker:{{worker_id}}"
+      - "worker:*"
+
+postconditions:
+  - condition: "anonymize = false OR (SELECT first_name FROM person.worker WHERE id = worker_id) = 'REDACTED'"
+    message: "Worker must be anonymized if requested"
+
+authorization:
+  required_permissions:
+    - worker:delete
+  required_roles:
+    - HR_ADMIN
+  note: "Only HR Admin can delete workers"
+
+api_mapping:
+  rest:
+    method: DELETE
+    path: "/api/v1/workers/{{worker_id}}"
+    query_params:
+      reason: "{{deletion_reason}}"
+      anonymize: "{{anonymize}}"
+    response_body:
+      success: true
+      message: "Worker deleted successfully"
+    status_code: 200
+    
+  graphql:
+    mutation: |
+      mutation DeleteWorker($id: ID!, $reason: String!, $anonymize: Boolean) {
+        deleteWorker(id: $id, reason: $reason, anonymize: $anonymize) {
+          success
+          message
+        }
+      }
+
+performance:
+  expected_duration_ms: 100
+  timeout_ms: 5000
+  note: "Includes archiving step"
+
+metadata:
+  tags: [worker, delete, gdpr, soft-delete]
+  owner: "HR Platform Team"
+  last_updated: "2025-12-25"

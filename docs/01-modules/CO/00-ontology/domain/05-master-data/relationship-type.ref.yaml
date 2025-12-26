@@ -1,0 +1,113 @@
+---
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:co:master-data:relationship-type"
+
+module: CO
+submodule: master-data
+version: "1.0.0"
+
+entity: RelationshipType
+classification: REFERENCE_DATA
+
+definition: |
+  Types of relationships between workers (SPOUSE, CHILD, PARENT, etc.)
+  with dependency flags and inverse relationships.
+
+purpose: |
+  Standardize relationship types for benefits eligibility, tax dependents,
+  and emergency contacts.
+
+attributes:
+  id:
+    type: uuid
+    required: true
+    primary_key: true
+    
+  group_id:
+    type: uuid
+    required: true
+    foreign_key: common.relationship_group.id
+    
+  code:
+    type: string
+    required: true
+    max_length: 50
+    unique: true
+    examples: [SPOUSE, CHILD, PARENT, SIBLING]
+    
+  name:
+    type: string
+    required: true
+    max_length: 100
+    
+  inverse_type_id:
+    type: uuid
+    required: false
+    foreign_key: common.relationship_type.id
+    description: "Inverse relationship (e.g., PARENT <-> CHILD)"
+    
+  dependency_flag:
+    type: boolean
+    required: true
+    default: false
+    description: "Whether this relationship type implies financial dependency"
+    
+  sort_order:
+    type: integer
+    required: true
+    default: 0
+    
+  metadata:
+    type: jsonb
+    required: false
+    
+  effective_start_date:
+    type: date
+    required: true
+    
+  effective_end_date:
+    type: date
+    required: false
+    
+  is_current_flag:
+    type: boolean
+    required: true
+    default: true
+
+mixins:
+  - EffectiveDated
+
+relationships:
+  group:
+    target: RelationshipGroup
+    target_ref: "xtalent:co:master-data:relationship-group"
+    cardinality: N:1
+    required: true
+    
+  inverse_type:
+    target: RelationshipType
+    target_ref: "xtalent:co:master-data:relationship-type"
+    cardinality: N:1
+    required: false
+
+indexes:
+  - name: idx_relationship_type_code
+    columns: [code]
+    unique: true
+  - name: idx_relationship_type_group
+    columns: [group_id, sort_order]
+
+security:
+  data_classification: PUBLIC
+  access_control:
+    read: [ALL_USERS]
+    write: [HR_ADMIN]
+
+references:
+  dbml_table: "../../03-design/1.core.v4.dbml#common.relationship_type"
+  
+metadata:
+  tags: [master-data, relationship, dependency]
+  owner: "Platform Team"
+  last_updated: "2025-12-25"
+  status: complete

@@ -1,0 +1,98 @@
+---
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:co:master-data:competency-master"
+
+module: CO
+submodule: master-data
+version: "1.0.0"
+
+entity: CompetencyMaster
+classification: REFERENCE_DATA
+
+definition: |
+  Master catalog of behavioral and leadership competencies for performance management.
+
+purpose: |
+  Provide standardized competency framework for assessments, succession planning,
+  and leadership development.
+
+attributes:
+  id:
+    type: uuid
+    required: true
+    primary_key: true
+    
+  category_id:
+    type: uuid
+    required: true
+    foreign_key: common.competency_category.id
+    
+  code:
+    type: string
+    required: true
+    max_length: 50
+    unique: true
+    examples: [STRATEGIC_THINKING, TEAM_LEADERSHIP, CONFLICT_RESOLUTION]
+    
+  name:
+    type: string
+    required: true
+    max_length: 255
+    
+  description:
+    type: text
+    required: false
+    
+  rating_scale:
+    type: string
+    required: false
+    max_length: 50
+    description: "Default rating scale"
+    default: "1-5"
+    
+  metadata:
+    type: jsonb
+    required: false
+    description: "Extended attributes (behavioral_indicators, proficiency_levels)"
+    
+  effective_start_date:
+    type: date
+    required: true
+    
+  effective_end_date:
+    type: date
+    required: false
+    
+  is_current_flag:
+    type: boolean
+    required: true
+    default: true
+
+mixins:
+  - EffectiveDated
+
+relationships:
+  category:
+    target: CompetencyCategory
+    target_ref: "xtalent:co:master-data:competency-category"
+    cardinality: N:1
+    required: true
+
+indexes:
+  - name: idx_competency_master_code
+    columns: [code]
+    unique: true
+  - name: idx_competency_master_category
+    columns: [category_id]
+
+security:
+  data_classification: PUBLIC
+  access_control:
+    read: [ALL_USERS]
+    write: [HR_ADMIN, TALENT_ADMIN]
+
+metadata:
+  tags: [master-data, competency, performance]
+  owner: "Platform Team"
+  last_updated: "2025-12-25"
+  status: complete

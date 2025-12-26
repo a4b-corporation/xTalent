@@ -1,0 +1,101 @@
+---
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:co:master-data:skill-master"
+
+module: CO
+submodule: master-data
+version: "1.0.0"
+
+entity: SkillMaster
+classification: REFERENCE_DATA
+
+definition: |
+  Master catalog of standardized skills for talent matching and development.
+
+purpose: |
+  Provide centralized skill taxonomy for worker skills, job requirements,
+  and talent marketplace matching. Supports AI-driven recommendations.
+
+attributes:
+  id:
+    type: uuid
+    required: true
+    primary_key: true
+    
+  category_id:
+    type: uuid
+    required: true
+    foreign_key: common.skill_category.id
+    
+  code:
+    type: string
+    required: true
+    max_length: 50
+    unique: true
+    examples: [PYTHON, PROJECT_MGT, COMMUNICATION]
+    
+  name:
+    type: string
+    required: true
+    max_length: 255
+    
+  description:
+    type: text
+    required: false
+    
+  proficiency_scale:
+    type: string
+    required: false
+    max_length: 50
+    description: "Default proficiency scale (1-5, BEGINNER-EXPERT)"
+    default: "1-5"
+    
+  metadata:
+    type: jsonb
+    required: false
+    description: "Extended attributes (aliases, related_skills, certifications)"
+    
+  effective_start_date:
+    type: date
+    required: true
+    
+  effective_end_date:
+    type: date
+    required: false
+    
+  is_current_flag:
+    type: boolean
+    required: true
+    default: true
+
+mixins:
+  - EffectiveDated
+
+relationships:
+  category:
+    target: SkillCategory
+    target_ref: "xtalent:co:master-data:skill-category"
+    cardinality: N:1
+    required: true
+
+indexes:
+  - name: idx_skill_master_code
+    columns: [code]
+    unique: true
+  - name: idx_skill_master_category
+    columns: [category_id]
+
+security:
+  data_classification: PUBLIC
+  access_control:
+    read: [ALL_USERS]
+    write: [HR_ADMIN, TALENT_ADMIN]
+
+metadata:
+  tags: [master-data, skill, talent-marketplace]
+  owner: "Platform Team"
+  last_updated: "2025-12-25"
+  status: complete
+  industry_references:
+    - "Workday Skills Cloud"
+    - "SAP SuccessFactors Talent Intelligence Hub"

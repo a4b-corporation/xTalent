@@ -1,0 +1,165 @@
+$schema: "https://xtalent.io/schemas/manifest/v3"
+
+module:
+  code: CO
+  name: "Core HR"
+  version: "1.0.0"
+  description: "Foundation module for worker, organization, and position management"
+  
+owner:
+  team: "HR Platform Team"
+  contact: "hr-platform@company.com"
+
+# Dependencies on other modules
+dependencies:
+  - module: AUTH
+    version: ">=1.0.0"
+    required: true
+    description: "User authentication and authorization"
+
+# What this module provides to others
+exports:
+  entities:
+    # Person sub-module
+    - worker
+    - contact
+    - address
+    - document
+    - bank_account
+    - worker_relationship
+    - worker_qualification
+    - worker_skill
+    - worker_competency
+    - worker_interest
+    
+    # Employment sub-module
+    - employee
+    - work_relationship
+    - contract_template
+    - contract
+    - assignment
+    - employee_identifier
+    - global_assignment
+    
+    # Org Structure sub-module
+    - legal_entity
+    - business_unit
+    - entity_profile
+    - entity_representative
+    - entity_license
+    - entity_bank_account
+    
+    # Job-Position sub-module
+    - job
+    - position
+    - taxonomy_tree
+    - job_tree
+    - career_path
+    - job_taxonomy
+    - job_profile
+    - job_level
+    - job_grade
+    - job_progression
+    
+    # Master Data sub-module
+    - code_list
+    - currency
+    - time_zone
+    - industry
+    - contact_type
+    - relationship_type
+    - skill_category
+    - skill_master
+    - competency_category
+    - competency_master
+    - country
+    - admin_area
+    - talent_market
+    - opportunity
+    
+    # Facility sub-module
+    - place
+    - location
+    - work_location
+    
+    # Eligibility sub-module
+    - eligibility_profile
+    - eligibility_member
+    - eligibility_evaluation
+    
+  actions:
+    - create-worker
+    - update-worker
+    - delete-worker
+    - create-employee
+    - hire-employee
+    - terminate-employee
+    - create-assignment
+    - update-assignment
+    
+  events:
+    - WorkerCreated
+    - WorkerUpdated
+    - EmployeeHired
+    - EmployeeTerminated
+    - AssignmentCreated
+    - AssignmentEnded
+
+# Submodules
+submodules:
+  - code: person
+    name: "Person Management"
+    status: in_progress
+    entities: 10
+    workflows: 2
+    
+  - code: employment
+    name: "Employment Management"
+    status: planned
+    entities: 7
+    workflows: 3
+    
+  - code: org-structure
+    name: "Organization Structure"
+    status: planned
+    entities: 10
+    workflows: 2
+    
+  - code: job-position
+    name: "Job & Position Management"
+    status: planned
+    entities: 13
+    workflows: 4
+    
+  - code: master-data
+    name: "Master Data"
+    status: planned
+    entities: 15
+    workflows: 0
+    
+  - code: facility
+    name: "Facility Management"
+    status: planned
+    entities: 3
+    workflows: 0
+    
+  - code: eligibility
+    name: "Eligibility Management"
+    status: planned
+    entities: 3
+    workflows: 1
+
+# Statistics
+statistics:
+  total_entities: 68
+  total_workflows: 12
+  total_actions: 30
+  total_business_rules: 150
+  aggregate_roots: 12
+  
+# Status
+status:
+  phase: DEVELOPMENT
+  current_batch: "1A"
+  last_updated: "2025-12-25"
+  completion_percentage: 5

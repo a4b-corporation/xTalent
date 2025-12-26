@@ -1,0 +1,581 @@
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:core:job-position:job"
+
+# ============================================================================
+# JOB - AGGREGATE_ROOT
+# ============================================================================
+# Purpose: Job catalog/template for position creation
+# Pattern: Workday Job Profile, SAP SuccessFactors Job Classification
+# DBML Source: jobpos.job
+
+module: CO
+submodule: job-position
+version: "1.0"
+
+# ----------------------------------------------------------------------------
+# ENTITY DEFINITION
+# ----------------------------------------------------------------------------
+entity: Job
+classification: AGGREGATE_ROOT
+
+definition: |
+  A Job represents a job catalog entry or template that defines the characteristics,
+  requirements, and classification of a type of work. Jobs are used as templates
+  for creating Positions (specific job instances).
+
+description: |
+  Job is the foundation of the job architecture, representing:
+  - Job catalog/library (e.g., "Software Engineer", "Sales Manager")
+  - Job templates for position creation
+  - Job classification and taxonomy
+  - Job hierarchy and families
+  - Multi-tree support (corporate, business unit)
+  - Override/inherit pattern for customization
+  
+  Key concepts:
+  - **Job**: Template/catalog entry (e.g., "Software Engineer")
+  - **Position**: Specific instance (e.g., "Software Engineer - Backend Team - Req #12345")
+  - **Job Tree**: Hierarchical job structure (corporate or BU-specific)
+  - **Override/Inherit**: BU can customize corporate jobs
+  
+  Job vs Position:
+  - **Job**: 1 (template) → N Positions (instances)
+  - **Job**: Defines what the work is
+  - **Position**: Defines where/when the work is done
+  
+  Multi-tree architecture:
+  - Corporate job tree (CORP_JOB): Standard jobs for entire organization
+  - BU job trees: Business unit-specific customizations
+  - Jobs can inherit from parent tree or override
+
+purpose: |
+  - Job catalog management
+  - Position template
+  - Job classification and taxonomy
+  - Compensation grade mapping
+  - Career progression paths
+  - Talent marketplace job matching
+
+# ----------------------------------------------------------------------------
+# AI AGENT INSTRUCTIONS
+# ----------------------------------------------------------------------------
+ai_instructions:
+  priority: CRITICAL
+  code_generation: true
+  test_generation: true
+  documentation_generation: true
+  
+  notes: |
+    - Job is template for Position creation
+    - Multi-tree support: CORP_JOB + BU-specific trees
+    - Override/inherit pattern for customization
+    - Grade and level moved from job_profile to job (17dec2025 change)
+    - SCD2 for job evolution tracking
+    - Job code unique within tree
+  
+  related_context:
+    - "position.aggregate.yaml"
+    - "job-tree.aggregate.yaml"
+    - "job-taxonomy.entity.yaml"
+    - "../glossary/job-position.glossary.yaml"
+
+# ----------------------------------------------------------------------------
+# MIXINS
+# ----------------------------------------------------------------------------
+mixins:
+  - Auditable
+  - HasEffectiveDates
+
+# ----------------------------------------------------------------------------
+# ATTRIBUTES
+# ----------------------------------------------------------------------------
+attributes:
+  # Primary key
+  id:
+    type: uuid
+    required: true
+    primary_key: true
+    description: "Unique identifier for the job"
+    
+  # Tree reference
+  tree_id:
+    type: uuid
+    required: true
+    foreign_key: job_tree.id
+    description: "Job tree ID (CORP_JOB or BU-specific tree)"
+    note: "Jobs belong to a specific tree for multi-tree architecture"
+    
+  # Business key
+  job_code:
+    type: string
+    required: true
+    max_length: 50
+    description: "Job code (unique within tree)"
+    examples:
+      - "ENG_SOFTWARE"
+      - "SALES_MANAGER"
+      - "HR_SPECIALIST"
+    note: "Uniqueness enforced within tree_id, not globally"
+    
+  # Job title
+  job_title:
+    type: string
+    required: true
+    max_length: 255
+    description: "Job title"
+    examples:
+      - "Software Engineer"
+      - "Sales Manager"
+      - "HR Specialist"
+    
+  # Hierarchy
+  parent_id:
+    type: uuid
+    required: false
+    foreign_key: job.id
+    description: "Parent job ID (within same tree)"
+    note: "For job family hierarchy"
+    
+  # Ownership and override
+  owner_scope:
+    type: string
+    required: true
+    max_length: 10
+    description: "Ownership scope"
+    enum:
+      - CORP      # Corporate-owned (standard)
+      - LE        # Legal entity-owned
+      - BU        # Business unit-owned
+    
+  owner_unit_id:
+    type: uuid
+    required: false
+    foreign_key: business_unit.id
+    description: "Owning business unit ID (if BU-owned)"
+    
+  inherit_flag:
+    type: boolean
+    required: true
+    default: true
+    description: "Inheritance flag"
+    note: |
+      - true: Inherit/extend from parent (default)
+      - false: Override parent completely
+    
+  override_title:
+    type: string
+    required: false
+    max_length: 255
+    description: "Localized/overridden title (if inherit_flag = false)"
+    
+  visibility:
+    type: string
+    required: false
+    max_length: 20
+    description: "Visibility scope"
+    enum:
+      - PUBLIC      # Visible to all
+      - PRIVATE     # Visible only to owner
+      - RESTRICTED  # Visible to specific groups
+    
+  # Classification
+  job_type_code:
+    type: string
+    required: false
+    max_length: 50
+    description: "Job type classification"
+    examples:
+      - "INDIVIDUAL_CONTRIBUTOR"
+      - "MANAGER"
+      - "EXECUTIVE"
+    note: "From code_list(JOB_TYPE)"
+    
+  ranking_level_code:
+    type: string
+    required: false
+    max_length: 50
+    description: "Job ranking/seniority"
+    examples:
+      - "ENTRY"
+      - "MID"
+      - "SENIOR"
+      - "LEAD"
+      - "PRINCIPAL"
+    note: "From code_list(JOB_RANK)"
+    
+  # Grade and Level (moved from job_profile - 17dec2025)
+  level_code:
+    type: string
+    required: false
+    max_length: 50
+    foreign_key: job_level.level_code
+    description: "Job level/seniority code"
+    note: |
+      Moved from job_profile (17dec2025):
+      - Simpler integration
+      - No duplication across profiles
+      - Aligns with ontology
+    
+  grade_code:
+    type: string
+    required: false
+    max_length: 50
+    description: "Compensation grade code"
+    note: |
+      Moved from job_profile (17dec2025):
+      - Grade determines compensation (Job concern, not Profile)
+      - Direct TR integration: Job → grade_code → TR.GradeVersion → PayRange
+      - Position can access grade directly via job.grade_code
+    
+  # Description
+  description:
+    type: text
+    required: false
+    description: "Job description"
+    
+  # Metadata
+  metadata:
+    type: jsonb
+    required: false
+    description: "Extended metadata"
+    schema:
+      type: object
+      properties:
+        flsa_status: string
+        job_family: string
+        career_track: string
+
+# ----------------------------------------------------------------------------
+# DERIVED ATTRIBUTES
+# ----------------------------------------------------------------------------
+derived_attributes:
+  is_corporate:
+    type: boolean
+    formula: "owner_scope = 'CORP'"
+    description: "True if corporate-owned job"
+    dependencies:
+      - owner_scope
+      
+  is_override:
+    type: boolean
+    formula: "inherit_flag = false"
+    description: "True if this job overrides parent"
+    dependencies:
+      - inherit_flag
+      
+  effective_title:
+    type: string
+    formula: "COALESCE(override_title, job_title)"
+    description: "Effective title (override or default)"
+    dependencies:
+      - override_title
+      - job_title
+
+# ----------------------------------------------------------------------------
+# RELATIONSHIPS
+# ----------------------------------------------------------------------------
+relationships:
+  # Tree
+  job_tree:
+    target: JobTree
+    target_ref: "xtalent:core:job-position:job-tree"
+    cardinality: N:1
+    required: true
+    foreign_key: tree_id
+    description: "Job tree (CORP_JOB or BU tree)"
+    on_delete: RESTRICT
+    
+  # Hierarchy
+  parent:
+    target: Job
+    target_ref: "xtalent:core:job-position:job"
+    cardinality: N:1
+    required: false
+    foreign_key: parent_id
+    description: "Parent job in hierarchy"
+    on_delete: RESTRICT
+    
+  children:
+    target: Job
+    target_ref: "xtalent:core:job-position:job"
+    cardinality: 1:N
+    inverse: parent
+    description: "Child jobs"
+    
+  # Owner
+  owner_unit:
+    target: BusinessUnit
+    target_ref: "xtalent:core:org-structure:business-unit"
+    cardinality: N:1
+    required: false
+    foreign_key: owner_unit_id
+    description: "Owning business unit (if BU-owned)"
+    
+  # Level
+  job_level:
+    target: JobLevel
+    target_ref: "xtalent:core:job-position:job-level"
+    cardinality: N:1
+    required: false
+    foreign_key: level_code
+    description: "Job level/seniority"
+    
+  # Profiles (1:N)
+  profiles:
+    target: JobProfile
+    target_ref: "xtalent:core:job-position:job-profile"
+    cardinality: 1:N
+    description: "Job profiles (multi-locale)"
+    
+  # Taxonomy mappings (N:N)
+  taxonomy_mappings:
+    target: JobTaxonomyMap
+    target_ref: "xtalent:core:job-position:job-taxonomy-map"
+    cardinality: 1:N
+    description: "Job taxonomy classifications"
+    
+  # Positions (1:N)
+  positions:
+    target: Position
+    target_ref: "xtalent:core:job-position:position"
+    cardinality: 1:N
+    description: "Positions created from this job template"
+
+# ----------------------------------------------------------------------------
+# LIFECYCLE
+# ----------------------------------------------------------------------------
+lifecycle:
+  state_attribute: is_current_flag
+  
+  states:
+    DRAFT:
+      description: "Job being defined, not yet active"
+      initial: true
+      
+    ACTIVE:
+      description: "Job is active and can be used for positions"
+      
+    DEPRECATED:
+      description: "Job is deprecated, no new positions allowed"
+      
+    OBSOLETE:
+      description: "Job is obsolete and archived"
+      terminal: true
+      
+  transitions:
+    - name: activate
+      from: DRAFT
+      to: ACTIVE
+      action_ref: "xtalent:core:job-position:activate-job"
+      requires:
+        - "job_title populated"
+        - "at least one job profile"
+        
+    - name: deprecate
+      from: ACTIVE
+      to: DEPRECATED
+      action_ref: "xtalent:core:job-position:deprecate-job"
+      requires:
+        - "deprecation reason"
+        
+    - name: obsolete
+      from: DEPRECATED
+      to: OBSOLETE
+      action_ref: "xtalent:core:job-position:obsolete-job"
+      requires:
+        - "no active positions"
+
+# ----------------------------------------------------------------------------
+# VALIDATION RULES
+# ----------------------------------------------------------------------------
+validation_rules:
+  - rule: "unique_job_code_per_tree"
+    expression: "UNIQUE(tree_id, job_code, is_current_flag)"
+    message: "Job code must be unique within tree"
+    severity: ERROR
+    
+  - rule: "parent_in_same_tree"
+    expression: "parent_id IS NULL OR parent.tree_id = tree_id"
+    message: "Parent job must be in same tree"
+    severity: ERROR
+    
+  - rule: "owner_unit_required_for_bu_scope"
+    expression: "owner_scope != 'BU' OR owner_unit_id IS NOT NULL"
+    message: "Owner unit required for BU-scoped jobs"
+    severity: ERROR
+    
+  - rule: "override_title_with_override_flag"
+    expression: "inherit_flag = true OR override_title IS NOT NULL"
+    message: "Override title required when inherit_flag is false"
+    severity: WARNING
+    
+  - rule: "effective_dates_valid"
+    expression: "effective_end_date IS NULL OR effective_end_date >= effective_start_date"
+    message: "Effective end date must be after start date"
+    severity: ERROR
+
+# ----------------------------------------------------------------------------
+# INDEXES
+# ----------------------------------------------------------------------------
+indexes:
+  - name: idx_job_code_tree
+    columns: [tree_id, job_code, is_current_flag]
+    unique: true
+    note: "Ensures job code uniqueness within tree"
+    
+  - name: idx_job_grade
+    columns: [grade_code]
+    note: "For TR integration lookups (17dec2025)"
+    
+  - name: idx_job_level
+    columns: [level_code]
+    note: "For level-based queries (17dec2025)"
+    
+  - name: idx_job_owner
+    columns: [owner_scope, owner_unit_id]
+    note: "For ownership queries"
+
+# ----------------------------------------------------------------------------
+# HISTORY / SCD Type 2
+# ----------------------------------------------------------------------------
+history:
+  enabled: true
+  type: SCD2
+  tracked_attributes:
+    - job_title
+    - override_title
+    - level_code
+    - grade_code
+    - job_type_code
+    - ranking_level_code
+    - description
+  history_table: job_history
+  note: "Tracks job evolution and reclassification"
+
+# ----------------------------------------------------------------------------
+# MULTI-TREE ARCHITECTURE
+# ----------------------------------------------------------------------------
+multi_tree:
+  enabled: true
+  tree_attribute: tree_id
+  
+  patterns:
+    corporate_tree:
+      description: "Standard corporate job catalog"
+      tree_code: "CORP_JOB"
+      owner_scope: "CORP"
+      note: "Single source of truth for standard jobs"
+      
+    bu_tree:
+      description: "Business unit-specific job customizations"
+      tree_code: "BU_{unit_code}_JOB"
+      owner_scope: "BU"
+      note: "BU can clone and customize corporate jobs"
+      
+  override_pattern:
+    description: |
+      Business units can customize corporate jobs:
+      
+      1. **Inherit** (inherit_flag = true):
+         - BU job extends corporate job
+         - Inherits all properties
+         - Can add BU-specific profiles
+         
+      2. **Override** (inherit_flag = false):
+         - BU job replaces corporate job
+         - Must define all properties
+         - Complete customization
+      
+      Example:
+        CORP_JOB: "Software Engineer" (grade: E3)
+        BU_GAME_JOB: "Software Engineer" (inherit, add gaming-specific skills)
+        BU_FINTECH_JOB: "Software Engineer" (override, different grade: E4)
+
+# ----------------------------------------------------------------------------
+# SECURITY
+# ----------------------------------------------------------------------------
+security:
+  classification: INTERNAL
+  
+  row_level_security:
+    enabled: true
+    policy: |
+      visibility = 'PUBLIC' OR
+      user.has_role('JOB_ADMIN') OR
+      (owner_scope = 'BU' AND user.business_unit_id = owner_unit_id) OR
+      (owner_scope = 'BU' AND user.business_unit_id IN (
+        SELECT descendant_id FROM unit_hierarchy WHERE ancestor_id = owner_unit_id
+      ))
+    note: "Users can access public jobs or jobs owned by their BU hierarchy"
+
+# ----------------------------------------------------------------------------
+# EXAMPLES
+# ----------------------------------------------------------------------------
+examples:
+  - name: "Corporate Job"
+    description: "Standard corporate job"
+    data:
+      id: "550e8400-e29b-41d4-a716-446655440000"
+      tree_id: "corp-tree-001"
+      job_code: "ENG_SOFTWARE"
+      job_title: "Software Engineer"
+      parent_id: null
+      owner_scope: "CORP"
+      owner_unit_id: null
+      inherit_flag: true
+      visibility: "PUBLIC"
+      job_type_code: "INDIVIDUAL_CONTRIBUTOR"
+      ranking_level_code: "MID"
+      level_code: "L3"
+      grade_code: "E3"
+      effective_start_date: "2020-01-01"
+      is_current_flag: true
+      
+  - name: "BU Override Job"
+    description: "BU-customized job with override"
+    data:
+      id: "550e8400-e29b-41d4-a716-446655440001"
+      tree_id: "bu-game-tree-001"
+      job_code: "ENG_SOFTWARE"
+      job_title: "Software Engineer"
+      parent_id: "550e8400-e29b-41d4-a716-446655440000"
+      owner_scope: "BU"
+      owner_unit_id: "bu-game-001"
+      inherit_flag: false
+      override_title: "Game Software Engineer"
+      visibility: "PUBLIC"
+      level_code: "L3"
+      grade_code: "E4"  # Different grade
+      effective_start_date: "2020-01-01"
+      is_current_flag: true
+
+# ----------------------------------------------------------------------------
+# REFERENCES
+# ----------------------------------------------------------------------------
+references:
+  glossary: "../glossary/job-position.glossary.yaml#job"
+  concept_guide: "../../01-concept/04-job-position/job-guide.md"
+  business_rules: "../../02-spec/04-BR/BR-04-job-position.md"
+  bdd_scenarios: "../../02-spec/05-BDD/04-job-position/job.feature"
+  database_design: "../../03-design/1.core.v4.dbml#jobpos.job"
+
+# ----------------------------------------------------------------------------
+# METADATA
+# ----------------------------------------------------------------------------
+metadata:
+  created_at: "2025-12-25"
+  created_by: "AI Agent"
+  updated_at: "2025-12-25"
+  updated_by: "AI Agent"
+  review_status: DRAFT
+  dbml_source: "jobpos.job (lines 1034-1074)"
+  industry_references:
+    - "Workday Job Profile"
+    - "SAP SuccessFactors Job Classification"
+    - "Oracle HCM Cloud Job"
+  notes: |
+    - Job is template for Position
+    - Multi-tree architecture for flexibility
+    - Override/inherit pattern for customization
+    - Grade and level moved from job_profile (17dec2025)
+    - SCD2 for job evolution

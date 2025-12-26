@@ -1,0 +1,212 @@
+---
+$schema: "https://xtalent.io/schemas/workflow/v3"
+$id: "xtalent:co:person:create-worker"
+
+module: CO
+submodule: person
+version: "1.0.0"
+
+workflow: CreateWorker
+type: TRANSACTIONAL
+category: CORE_HR
+
+definition: |
+  Creates a new worker record with personal information. This is the first step
+  in onboarding any individual into the system, whether as candidate, contractor,
+  or employee.
+
+purpose: |
+  Establish a unique worker identity that persists across the individual's entire
+  lifecycle with the organization. Worker record serves as the foundation for all
+  subsequent employment relationships and HR processes.
+
+# ═══════════════════════════════════════════════════════════════════
+# PARAMETERS
+# ═══════════════════════════════════════════════════════════════════
+parameters:
+  input:
+    first_name:
+      type: string
+      required: true
+      description: "Worker's first name"
+      
+    middle_name:
+      type: string
+      required: false
+      description: "Worker's middle name"
+      
+    last_name:
+      type: string
+      required: true
+      description: "Worker's last name"
+      
+    preferred_name:
+      type: string
+      required: false
+      description: "Preferred name or nickname"
+      
+    date_of_birth:
+      type: date
+      required: true
+      description: "Date of birth"
+      
+    gender_code:
+      type: string
+      required: true
+      description: "Gender code (M/F/X/U)"
+      
+    nationality_code:
+      type: string
+      required: true
+      description: "Nationality (ISO 3166-1 alpha-2)"
+      
+    marital_status_code:
+      type: string
+      required: false
+      description: "Marital status code"
+      
+    metadata:
+      type: jsonb
+      required: false
+      description: "Extended attributes"
+      
+  output:
+    worker_id:
+      type: uuid
+      description: "Unique identifier of created worker"
+      
+    worker:
+      type: object
+      description: "Complete worker record"
+
+# ═══════════════════════════════════════════════════════════════════
+# PRECONDITIONS
+# ═══════════════════════════════════════════════════════════════════
+preconditions:
+  - condition: "date_of_birth <= CURRENT_DATE - INTERVAL '16 years'"
+    message: "Worker must be at least 16 years old"
+    error_code: "ERR_WORKER_TOO_YOUNG"
+    
+  - condition: "first_name IS NOT NULL AND last_name IS NOT NULL"
+    message: "First name and last name are required"
+    error_code: "ERR_WORKER_MISSING_NAME"
+
+# ═══════════════════════════════════════════════════════════════════
+# STEPS
+# ═══════════════════════════════════════════════════════════════════
+steps:
+  - step: validate_input
+    description: "Validate input parameters"
+    action: "xtalent:core:validation:validate-entity"
+    parameters:
+      entity_type: Worker
+      data: "{{input}}"
+    on_error: ABORT
+    
+  - step: check_duplicate
+    description: "Check for potential duplicate workers"
+    action: "xtalent:co:person:check-duplicate-worker"
+    parameters:
+      first_name: "{{input.first_name}}"
+      last_name: "{{input.last_name}}"
+      date_of_birth: "{{input.date_of_birth}}"
+    on_match: WARN
+    note: "Warn but allow creation (manual review required)"
+    
+  - step: create_worker
+    description: "Create worker record"
+    action: "xtalent:co:person:create-worker"
+    parameters:
+      data: "{{input}}"
+    output: worker
+    
+  - step: emit_event
+    description: "Emit WorkerCreated event"
+    action: "xtalent:core:events:emit"
+    parameters:
+      event_type: WorkerCreated
+      payload:
+        worker_id: "{{worker.id}}"
+        full_name: "{{worker.full_name}}"
+    
+  - step: return_result
+    description: "Return created worker"
+    output:
+      worker_id: "{{worker.id}}"
+      worker: "{{worker}}"
+
+# ═══════════════════════════════════════════════════════════════════
+# POSTCONDITIONS
+# ═══════════════════════════════════════════════════════════════════
+postconditions:
+  - condition: "worker.id IS NOT NULL"
+    message: "Worker must have valid ID"
+    
+  - condition: "worker.created_at IS NOT NULL"
+    message: "Worker must have creation timestamp"
+
+# ═══════════════════════════════════════════════════════════════════
+# ERROR HANDLING
+# ═══════════════════════════════════════════════════════════════════
+error_handling:
+  on_validation_error:
+    action: ROLLBACK
+    notify: user
+    
+  on_duplicate_error:
+    action: WARN
+    notify: user
+    message: "Potential duplicate worker found"
+    
+  on_system_error:
+    action: ROLLBACK
+    notify: admin
+    log_level: ERROR
+
+# ═══════════════════════════════════════════════════════════════════
+# AUTHORIZATION
+# ═══════════════════════════════════════════════════════════════════
+authorization:
+  required_roles:
+    - HR_ADMIN
+    - RECRUITER
+  required_permissions:
+    - worker:create
+
+# ═══════════════════════════════════════════════════════════════════
+# BDD TEMPLATE
+# ═══════════════════════════════════════════════════════════════════
+bdd_template: |
+  Feature: Create Worker
+    As an HR Administrator
+    I want to create a new worker record
+    So that I can track individuals throughout their lifecycle
+    
+    Scenario: Create worker with complete information
+      Given I am authenticated as HR Admin
+      And I have valid worker data
+      When I create a new worker
+      Then the worker should be created successfully
+      And a WorkerCreated event should be emitted
+      And the worker should have a unique ID
+      
+    Scenario: Prevent creating underage worker
+      Given I am authenticated as HR Admin
+      And the worker's date of birth is less than 16 years ago
+      When I attempt to create the worker
+      Then the creation should fail
+      And I should see error "Worker must be at least 16 years old"
+
+# ═══════════════════════════════════════════════════════════════════
+# REFERENCES
+# ═══════════════════════════════════════════════════════════════════
+references:
+  entity: "../domain/01-person/worker.entity.yaml"
+  actions:
+    - create-worker.action.yaml
+  bdd_feature: "../../02-spec/05-BDD/01-person/worker.feature"
+  
+metadata:
+  tags: [worker, create, onboarding]
+  owner: "HR Platform Team"
+  last_updated: "2025-12-25"

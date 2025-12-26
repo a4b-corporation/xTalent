@@ -1,0 +1,69 @@
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:core:career:career-path"
+
+entity: CareerPath
+classification: AGGREGATE_ROOT
+module: CO
+submodule: career
+version: "1.0"
+
+definition: |
+  Career path template defining progression sequences through multiple jobs
+  for career development and planning
+
+description: |
+  CareerPath provides structured career progression templates:
+  - Sequence of jobs in career progression
+  - Time requirements per step
+  - Development recommendations
+  - Link to career track taxonomy
+  
+  Used for:
+  - Career planning and development
+  - Succession planning
+  - Internal mobility guidance
+  - Talent development programs
+
+purpose: |
+  - Define career progression templates
+  - Guide employee development
+  - Support career planning
+  - Enable talent mobility
+
+mixins:
+  - HasEffectiveDates
+
+attributes:
+  id: {type: uuid, required: true, primary_key: true}
+  code: {type: string, required: true, unique: true, max_length: 50}
+  name: {type: string, required: true, max_length: 255}
+  track_taxonomy_id: {type: uuid, required: false, foreign_key: job_taxonomy.id, description: "Career track taxonomy"}
+  description: {type: text, required: false}
+
+relationships:
+  track_taxonomy:
+    target: JobTaxonomy
+    cardinality: N:1
+    required: false
+  career_steps:
+    target: CareerStep
+    cardinality: 1:N
+
+validation_rules:
+  - rule: "unique_code"
+    expression: "UNIQUE(code)"
+    severity: ERROR
+
+examples:
+  - name: "Engineering Career Path"
+    data:
+      code: "ENG_CAREER"
+      name: "Engineering Career Path"
+      description: "Junior → Mid → Senior → Lead → Principal"
+
+references:
+  database_design: "../../../03-design/1.core.v4.dbml#career.career_path"
+
+metadata:
+  created_at: "2025-12-25"
+  dbml_source: "career.career_path (lines 1319-1328)"

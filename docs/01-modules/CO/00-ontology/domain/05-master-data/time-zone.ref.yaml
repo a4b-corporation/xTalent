@@ -1,0 +1,85 @@
+---
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:co:master-data:time-zone"
+
+module: CO
+submodule: master-data
+version: "1.0.0"
+
+entity: TimeZone
+classification: REFERENCE_DATA
+
+definition: |
+  IANA time zone database for global time zone support.
+
+purpose: |
+  Enable accurate time tracking across global workforce, supporting
+  time-based calculations for attendance, scheduling, and payroll.
+
+attributes:
+  id:
+    type: uuid
+    required: true
+    primary_key: true
+    
+  tzid:
+    type: string
+    required: true
+    max_length: 100
+    unique: true
+    description: "IANA time zone identifier"
+    examples: ["Asia/Ho_Chi_Minh", "America/New_York"]
+    
+  offset_hours:
+    type: decimal
+    required: true
+    precision: 4
+    scale: 2
+    description: "UTC offset in hours"
+    examples: [7.00, -5.00]
+    
+  abbreviation:
+    type: string
+    required: false
+    max_length: 10
+    examples: ["ICT", "EST"]
+    
+  metadata:
+    type: jsonb
+    required: false
+    
+  effective_start_date:
+    type: date
+    required: true
+    
+  effective_end_date:
+    type: date
+    required: false
+    
+  is_current_flag:
+    type: boolean
+    required: true
+    default: true
+
+mixins:
+  - EffectiveDated
+
+indexes:
+  - name: idx_timezone_tzid
+    columns: [tzid]
+    unique: true
+
+security:
+  data_classification: PUBLIC
+  access_control:
+    read: [ALL_USERS]
+    write: [SYSTEM_ADMIN]
+
+references:
+  dbml_table: "../../03-design/1.core.v4.dbml#common.time_zone"
+  
+metadata:
+  tags: [master-data, timezone, iana]
+  owner: "Platform Team"
+  last_updated: "2025-12-25"
+  status: complete

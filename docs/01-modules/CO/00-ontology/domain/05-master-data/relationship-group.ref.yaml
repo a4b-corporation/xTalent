@@ -1,0 +1,58 @@
+---
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:co:master-data:relationship-group"
+
+module: CO
+submodule: master-data
+version: "1.0.0"
+
+entity: RelationshipGroup
+classification: REFERENCE_DATA
+
+definition: |
+  Groups of relationship types for categorization and reporting.
+
+purpose: |
+  Organize relationship types into logical groups (FAMILY, FIN_DEP, PROJECT).
+
+attributes:
+  id:
+    type: uuid
+    required: true
+    primary_key: true
+    
+  code:
+    type: string
+    required: true
+    max_length: 50
+    unique: true
+    examples: [FAMILY, FIN_DEP, PROJECT]
+    
+  name:
+    type: string
+    required: true
+    max_length: 100
+    
+  description:
+    type: text
+    required: false
+
+indexes:
+  - name: idx_relationship_group_code
+    columns: [code]
+    unique: true
+
+security:
+  data_classification: PUBLIC
+  access_control:
+    read: [ALL_USERS]
+    write: [HR_ADMIN]
+
+references:
+  dbml_table: "../../03-design/1.core.v4.dbml#common.relationship_group"
+  
+metadata:
+  tags: [master-data, relationship]
+  owner: "Platform Team"
+  last_updated: "2025-12-25"
+  status: complete

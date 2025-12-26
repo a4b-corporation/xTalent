@@ -1,0 +1,160 @@
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:core:org-structure:org-relation-edge"
+
+entity: OrgRelationEdge
+classification: ENTITY
+module: CO
+submodule: org-structure
+version: "1.0"
+
+definition: |
+  Dynamic organizational relationships between business units and/or legal entities
+  in custom schemas (multi-graph structure).
+
+description: |
+  Represents edges in custom organizational relationship graphs. Supports:
+  - BU to BU relationships
+  - LE to LE relationships
+  - Cross-entity relationships
+  - Multiple relationship types
+  - Effective dating for temporal relationships
+
+purpose: "Dynamic organizational relationship management"
+
+mixins:
+  - HasEffectiveDates
+
+# ----------------------------------------------------------------------------
+# ATTRIBUTES
+# ----------------------------------------------------------------------------
+attributes:
+  id:
+    type: uuid
+    required: true
+    primary_key: true
+    
+  schema_id:
+    type: uuid
+    required: true
+    foreign_key: org_relation_schema.id
+    description: "Relationship schema"
+    
+  # From node (BU or LE)
+  from_bu_id:
+    type: uuid
+    required: false
+    foreign_key: business_unit.id
+    description: "Source business unit (if BU relationship)"
+    
+  from_le_id:
+    type: uuid
+    required: false
+    foreign_key: legal_entity.id
+    description: "Source legal entity (if LE relationship)"
+    
+  # To node (BU or LE)
+  to_bu_id:
+    type: uuid
+    required: false
+    foreign_key: business_unit.id
+    description: "Target business unit (if BU relationship)"
+    
+  to_le_id:
+    type: uuid
+    required: false
+    foreign_key: legal_entity.id
+    description: "Target legal entity (if LE relationship)"
+    
+  # Relationship type
+  rel_type_id:
+    type: uuid
+    required: true
+    foreign_key: org_relation_type.id
+    description: "Relationship type"
+    
+  # Metadata
+  metadata:
+    type: jsonb
+    required: false
+    description: "Additional properties (weight, percentage, etc.)"
+    schema:
+      type: object
+      properties:
+        weight: number
+        percentage: number
+        priority: integer
+
+# ----------------------------------------------------------------------------
+# RELATIONSHIPS
+# ----------------------------------------------------------------------------
+relationships:
+  schema:
+    target: OrgRelationSchema
+    cardinality: N:1
+    required: true
+    
+  relation_type:
+    target: OrgRelationType
+    cardinality: N:1
+    required: true
+    
+  from_business_unit:
+    target: BusinessUnit
+    cardinality: N:1
+    required: false
+    
+  from_legal_entity:
+    target: LegalEntity
+    cardinality: N:1
+    required: false
+    
+  to_business_unit:
+    target: BusinessUnit
+    cardinality: N:1
+    required: false
+    
+  to_legal_entity:
+    target: LegalEntity
+    cardinality: N:1
+    required: false
+
+# ----------------------------------------------------------------------------
+# VALIDATION RULES
+# ----------------------------------------------------------------------------
+validation_rules:
+  - rule: "from_node_specified"
+    expression: "from_bu_id IS NOT NULL OR from_le_id IS NOT NULL"
+    message: "Either from_bu_id or from_le_id must be specified"
+    severity: ERROR
+    
+  - rule: "to_node_specified"
+    expression: "to_bu_id IS NOT NULL OR to_le_id IS NOT NULL"
+    message: "Either to_bu_id or to_le_id must be specified"
+    severity: ERROR
+    
+  - rule: "consistent_node_types"
+    expression: "(from_bu_id IS NOT NULL AND to_bu_id IS NOT NULL) OR (from_le_id IS NOT NULL AND to_le_id IS NOT NULL)"
+    message: "From and to nodes must be of same type (both BU or both LE)"
+    severity: WARNING
+    
+  - rule: "unique_edge_per_period"
+    expression: "UNIQUE(schema_id, from_bu_id, to_bu_id, rel_type_id, effective_start_date)"
+    message: "Edge already exists for this period"
+    severity: ERROR
+
+# ----------------------------------------------------------------------------
+# INDEXES
+# ----------------------------------------------------------------------------
+indexes:
+  - name: idx_org_edge_unique
+    columns: [schema_id, from_bu_id, to_bu_id, rel_type_id]
+    unique: true
+    note: "Ensures unique edges per schema"
+
+references:
+  database_design: "../../../03-design/1.core.v4.dbml#org_relation.edge"
+
+metadata:
+  created_at: "2025-12-25"
+  dbml_source: "org_relation.edge (lines 516-530)"
+  note: "Supports multi-graph organizational structures"

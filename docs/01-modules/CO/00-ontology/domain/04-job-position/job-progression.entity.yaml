@@ -1,0 +1,177 @@
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:core:job-position:job-progression"
+
+entity: JobProgression
+classification: ENTITY
+module: CO
+submodule: job-position
+version: "1.0"
+
+definition: |
+  Defines career progression paths between jobs, specifying valid transitions
+  and progression requirements.
+
+description: |
+  JobProgression maps career progression paths including:
+  - Source job (current job)
+  - Target job (next job in progression)
+  - Progression type (promotion, lateral move, development)
+  - Requirements (time in role, performance, skills)
+  - Typical timeline
+  
+  Used for:
+  - Career path planning
+  - Succession planning
+  - Development planning
+  - Internal mobility
+  - Talent marketplace recommendations
+
+purpose: |
+  - Define career progression paths
+  - Guide employee development
+  - Support succession planning
+  - Enable internal mobility
+
+mixins:
+  - HasEffectiveDates
+  - Auditable
+
+attributes:
+  id:
+    type: uuid
+    required: true
+    primary_key: true
+    description: "Unique identifier for progression"
+    
+  from_job_id:
+    type: uuid
+    required: true
+    foreign_key: job.id
+    description: "Source job ID (current job)"
+    
+  to_job_id:
+    type: uuid
+    required: true
+    foreign_key: job.id
+    description: "Target job ID (next job)"
+    
+  progression_type_code:
+    type: string
+    required: true
+    max_length: 50
+    description: "Progression type"
+    enum:
+      - PROMOTION        # Upward move
+      - LATERAL          # Same level, different function
+      - DEVELOPMENT      # Developmental assignment
+      - SUCCESSION       # Succession path
+    
+  min_time_in_role_months:
+    type: integer
+    required: false
+    description: "Minimum time in current role (months)"
+    examples:
+      - 12
+      - 24
+      - 36
+    
+  typical_time_months:
+    type: integer
+    required: false
+    description: "Typical time to progression (months)"
+    
+  min_performance_rating:
+    type: string
+    required: false
+    max_length: 50
+    description: "Minimum performance rating required"
+    examples:
+      - "MEETS_EXPECTATIONS"
+      - "EXCEEDS_EXPECTATIONS"
+    
+  required_skills_json:
+    type: jsonb
+    required: false
+    description: "Required skills for progression"
+    schema:
+      type: array
+      items:
+        type: object
+        properties:
+          skill_id: uuid
+          proficiency_level: integer
+    
+  description:
+    type: text
+    required: false
+    description: "Progression description and guidance"
+    
+  metadata:
+    type: jsonb
+    required: false
+    description: "Extended metadata"
+
+relationships:
+  from_job:
+    target: Job
+    cardinality: N:1
+    required: true
+    on_delete: CASCADE
+    description: "Source job"
+    
+  to_job:
+    target: Job
+    cardinality: N:1
+    required: true
+    on_delete: CASCADE
+    description: "Target job"
+
+validation_rules:
+  - rule: "unique_progression_path"
+    expression: "UNIQUE(from_job_id, to_job_id, progression_type_code, effective_start_date)"
+    severity: ERROR
+    
+  - rule: "no_self_progression"
+    expression: "from_job_id != to_job_id"
+    severity: ERROR
+    message: "Job cannot progress to itself"
+
+indexes:
+  - name: idx_job_progression_unique
+    columns: [from_job_id, to_job_id, progression_type_code, effective_start_date]
+    unique: true
+  - name: idx_from_job
+    columns: [from_job_id]
+    note: "For career path queries"
+  - name: idx_to_job
+    columns: [to_job_id]
+    note: "For succession planning"
+
+examples:
+  - name: "Promotion Path"
+    data:
+      from_job_id: "job-eng-mid"
+      to_job_id: "job-eng-senior"
+      progression_type_code: "PROMOTION"
+      min_time_in_role_months: 24
+      typical_time_months: 36
+      min_performance_rating: "EXCEEDS_EXPECTATIONS"
+      description: "Promotion from Mid to Senior Engineer"
+      
+  - name: "Lateral Move"
+    data:
+      from_job_id: "job-backend-eng"
+      to_job_id: "job-frontend-eng"
+      progression_type_code: "LATERAL"
+      min_time_in_role_months: 12
+      description: "Lateral move to different tech stack"
+
+references:
+  database_design: "../../../03-design/1.core.v4.dbml#jobpos.job_progression"
+
+metadata:
+  created_at: "2025-12-25"
+  notes: |
+    - Defines career progression paths
+    - Supports succession planning
+    - Enables internal mobility recommendations

@@ -1,0 +1,48 @@
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:core:career:career-step"
+
+entity: CareerStep
+classification: ENTITY
+module: CO
+submodule: career
+version: "1.0"
+
+definition: "Individual step in a career path progression sequence"
+
+parent_aggregate: CareerPath
+
+attributes:
+  path_id: {type: uuid, required: true, primary_key: true, foreign_key: career_path.id}
+  seq_no: {type: integer, required: true, primary_key: true, description: "Sequence number"}
+  job_id: {type: uuid, required: true, foreign_key: job.id}
+  min_time_months: {type: integer, required: false, description: "Minimum time in months"}
+  recommended: {type: text, required: false, description: "Development recommendations"}
+  weight: {type: integer, required: false, description: "Fit percentage"}
+
+relationships:
+  career_path:
+    target: CareerPath
+    cardinality: N:1
+    required: true
+    on_delete: CASCADE
+  job:
+    target: Job
+    cardinality: N:1
+    required: true
+
+validation_rules:
+  - rule: "unique_step"
+    expression: "UNIQUE(path_id, seq_no)"
+    severity: ERROR
+
+indexes:
+  - name: idx_career_step_pk
+    columns: [path_id, seq_no]
+    unique: true
+
+references:
+  database_design: "../../../03-design/1.core.v4.dbml#career.career_step"
+
+metadata:
+  created_at: "2025-12-25"
+  dbml_source: "career.career_step (lines 1330-1339)"

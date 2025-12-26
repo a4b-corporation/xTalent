@@ -1,0 +1,32 @@
+$schema: "https://xtalent.io/schemas/action/v3"
+$id: "xtalent:core:eligibility:evaluate-eligibility"
+
+action: EvaluateEligibility
+module: CO
+submodule: eligibility
+version: "1.0"
+
+inputs:
+  profile_id: {type: uuid, required: true}
+  employee_id: {type: uuid, required: true}
+
+outputs:
+  evaluation_result: {type: string}
+
+effects:
+  database:
+    - operation: UPSERT
+      table: eligibility.eligibility_member
+    - operation: INSERT
+      table: eligibility.eligibility_evaluation
+
+authorization:
+  required_roles: [SYSTEM, HR_ADMIN]
+
+api:
+  rest:
+    method: POST
+    path: "/api/v1/eligibility/evaluate"
+
+metadata:
+  created_at: "2025-12-25"

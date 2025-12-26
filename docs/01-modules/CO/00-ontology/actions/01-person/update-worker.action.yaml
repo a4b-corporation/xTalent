@@ -1,0 +1,119 @@
+---
+$schema: "https://xtalent.io/schemas/action/v3"
+$id: "xtalent:co:person:update-worker"
+
+module: CO
+submodule: person
+version: "1.0.0"
+
+action: UpdateWorker
+type: MUTATION
+category: UPDATE
+
+definition: |
+  Atomic operation to update worker record fields. Supports partial updates
+  and maintains updated_at timestamp.
+
+purpose: |
+  Provide reusable update operation for worker data that can be composed
+  into workflows. Handles optimistic locking via updated_at comparison.
+
+parameters:
+  input:
+    worker_id:
+      type: uuid
+      required: true
+      description: "ID of worker to update"
+      
+    updates:
+      type: object
+      required: true
+      description: "Fields to update (partial update supported)"
+      
+    updated_by:
+      type: uuid
+      required: true
+      description: "User ID performing the update"
+      
+    update_reason:
+      type: string
+      required: false
+      description: "Reason for update"
+      
+  output:
+    worker:
+      type: object
+      description: "Updated worker record"
+
+preconditions:
+  - condition: "EXISTS(SELECT 1 FROM person.worker WHERE id = worker_id)"
+    message: "Worker not found"
+    error_code: "ERR_WORKER_NOT_FOUND"
+
+mutations:
+  - entity: Worker
+    operation: UPDATE
+    table: person.worker
+    where:
+      id: "{{worker_id}}"
+    data: "{{updates}}"
+    set:
+      updated_at: "now()"
+    returning: "*"
+    output: worker
+
+side_effects:
+  - type: AUDIT_LOG
+    description: "Log worker update"
+    data:
+      entity_type: Worker
+      entity_id: "{{worker_id}}"
+      operation: UPDATE
+      changes: "{{updates}}"
+      user_id: "{{updated_by}}"
+      reason: "{{update_reason}}"
+      
+  - type: CACHE_INVALIDATE
+    description: "Invalidate worker cache"
+    keys:
+      - "worker:{{worker_id}}"
+      - "worker:*"
+
+postconditions:
+  - condition: "worker.updated_at > (SELECT updated_at FROM person.worker WHERE id = worker_id)"
+    message: "updated_at must be newer"
+
+authorization:
+  required_permissions:
+    - worker:update
+  required_roles:
+    - HR_ADMIN
+    - SELF
+
+api_mapping:
+  rest:
+    method: PATCH
+    path: "/api/v1/workers/{{worker_id}}"
+    request_body: "{{updates}}"
+    response_body: "{{worker}}"
+    status_code: 200
+    
+  graphql:
+    mutation: |
+      mutation UpdateWorker($id: ID!, $input: UpdateWorkerInput!) {
+        updateWorker(id: $id, input: $input) {
+          id
+          firstName
+          lastName
+          updatedAt
+        }
+      }
+
+performance:
+  expected_duration_ms: 30
+  timeout_ms: 3000
+
+metadata:
+  tags: [worker, update, mutation]
+  owner: "HR Platform Team"
+  last_updated: "2025-12-25"

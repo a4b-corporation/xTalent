@@ -1,0 +1,229 @@
+---
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:co:person:worker-qualification"
+
+module: CO
+submodule: person
+version: "1.0.0"
+
+entity: WorkerQualification
+classification: ENTITY
+parent_aggregate: Worker
+
+definition: |
+  Educational qualifications, certifications, professional licenses, and language
+  proficiency held by a worker. Supports effective dating to track qualification
+  history and expiry dates for certifications/licenses.
+
+purpose: |
+  Maintain comprehensive record of worker qualifications for job matching,
+  compliance verification, and career development. Critical for professional
+  licensing requirements, educational prerequisites, and skills validation.
+
+ai_instructions:
+  priority: MEDIUM
+  code_generation: true
+  test_generation: true
+  notes: |
+    - WorkerQualification belongs to Worker aggregate
+    - Supports multiple qualification types: education, certification, language, skill
+    - Effective dating tracks qualification history
+    - Expiry tracking for certifications and licenses
+    - Used for job matching and compliance verification
+
+mixins:
+  - Auditable
+  - EffectiveDated
+
+attributes:
+  id:
+    type: uuid
+    required: true
+    primary_key: true
+    
+  worker_id:
+    type: uuid
+    required: true
+    foreign_key: person.worker.id
+    
+  qual_type_code:
+    type: string
+    required: true
+    max_length: 50
+    description: "Type of qualification"
+    reference:
+      entity: "xtalent:co:master-data:code-list"
+      group: "QUAL_TYPE"
+    allowed_values:
+      - EDU  # Education (degree, diploma)
+      - CERT  # Certification
+      - LICENSE  # Professional license
+      - LANG  # Language proficiency
+      - SKILL  # Specialized skill/training
+    
+  name:
+    type: string
+    required: true
+    max_length: 255
+    description: "Name of qualification"
+    examples:
+      - "Bachelor of Science in Computer Science"
+      - "PMP Certification"
+      - "CPA License"
+      - "IELTS English Proficiency"
+    
+  institution:
+    type: string
+    required: false
+    max_length: 255
+    description: "Institution that issued the qualification"
+    example: "Massachusetts Institute of Technology"
+    
+  start_date:
+    type: date
+    required: false
+    description: "Start date (for education)"
+    
+  end_date:
+    type: date
+    required: false
+    description: "End/completion date"
+    
+  level_or_score:
+    type: string
+    required: false
+    max_length: 50
+    description: "Level, grade, or score achieved"
+    examples:
+      - "Bachelor's Degree"
+      - "GPA 3.8/4.0"
+      - "IELTS 7.5"
+      - "Pass"
+    
+  metadata:
+    type: jsonb
+    required: false
+    description: "Extended attributes"
+    example:
+      field_of_study: "Computer Science"
+      major: "Software Engineering"
+      minor: "Mathematics"
+      honors: "Summa Cum Laude"
+      file_url: "https://cdn.example.com/certs/pmp-cert.pdf"
+      expiry_date: "2027-12-31"
+      license_number: "CPA-123456"
+    
+  effective_start_date:
+    type: date
+    required: true
+    
+  effective_end_date:
+    type: date
+    required: false
+    
+  is_current_flag:
+    type: boolean
+    required: true
+    default: true
+    
+  created_at:
+    type: timestamp
+    required: true
+    default: "now()"
+    immutable: true
+    
+  updated_at:
+    type: timestamp
+    required: false
+
+derived_attributes:
+  is_expired:
+    type: boolean
+    formula: "metadata->>'expiry_date' IS NOT NULL AND (metadata->>'expiry_date')::date < CURRENT_DATE"
+    description: "Whether qualification has expired"
+    
+  qualification_display:
+    type: string
+    formula: "name || COALESCE(' - ' || institution, '') || COALESCE(' (' || level_or_score || ')', '')"
+    description: "Formatted qualification for display"
+    example: "Bachelor of Science - MIT (GPA 3.8)"
+
+relationships:
+  worker:
+    target: Worker
+    target_ref: "xtalent:co:person:worker"
+    cardinality: N:1
+    required: true
+    inverse: qualifications
+    on_delete: CASCADE
+
+validation_rules:
+  - rule: valid_dates
+    expression: "end_date IS NULL OR start_date IS NULL OR end_date >= start_date"
+    message: "End date must be after start date"
+    severity: ERROR
+    error_code: "ERR_QUALIFICATION_INVALID_DATES"
+
+indexes:
+  - name: idx_qualification_worker
+    columns: [worker_id, is_current_flag]
+    type: btree
+    
+  - name: idx_qualification_type
+    columns: [qual_type_code]
+    type: btree
+
+security:
+  data_classification: PII_STANDARD
+  gdpr_applicable: true
+  encryption_required: false
+  audit_required: true
+  
+  access_control:
+    read:
+      - role: HR_ADMIN
+      - role: HR_MANAGER
+      - role: RECRUITER
+      - role: SELF
+        condition: "user.worker_id = this.worker_id"
+    write:
+      - role: HR_ADMIN
+      - role: SELF
+        condition: "user.worker_id = this.worker_id"
+    delete:
+      - role: HR_ADMIN
+
+business_rules:
+  - rule: BR_QUALIFICATION_001
+    name: "Certification Expiry Alerts"
+    description: "Send alerts before certification expiry"
+    condition: "qual_type_code IN ('CERT', 'LICENSE') AND metadata->>'expiry_date' IS NOT NULL"
+    action: "Alert 90/60/30 days before expiry"
+
+examples:
+  - name: "Bachelor's Degree"
+    data:
+      id: "c50e8400-e29b-41d4-a716-446655440000"
+      worker_id: "550e8400-e29b-41d4-a716-446655440000"
+      qual_type_code: "EDU"
+      name: "Bachelor of Science in Computer Science"
+      institution: "Massachusetts Institute of Technology"
+      start_date: "2008-09-01"
+      end_date: "2012-06-15"
+      level_or_score: "GPA 3.8/4.0"
+      metadata:
+        field_of_study: "Computer Science"
+        honors: "Summa Cum Laude"
+      effective_start_date: "2012-06-15"
+      is_current_flag: true
+
+references:
+  parent_entity: "worker.entity.yaml"
+  glossary: "../glossary/person.glossary.yaml#worker-qualification"
+  dbml_table: "../../03-design/1.core.v4.dbml#person.worker_qualification"
+  
+metadata:
+  tags: [person, qualification, education, certification, compliance]
+  owner: "HR Platform Team"
+  last_updated: "2025-12-25"
+  status: complete

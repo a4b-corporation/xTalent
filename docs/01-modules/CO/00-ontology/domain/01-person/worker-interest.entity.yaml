@@ -1,0 +1,273 @@
+---
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:co:person:worker-interest"
+
+module: CO
+submodule: person
+version: "1.0.0"
+
+entity: WorkerInterest
+classification: ENTITY
+parent_aggregate: Worker
+
+definition: |
+  Career interests and preferences expressed by a worker, including desired roles,
+  locations, skills to develop, and project types. Supports internal mobility,
+  career planning, and talent marketplace recommendations.
+
+purpose: |
+  Enable workers to express career aspirations and preferences for AI-driven
+  opportunity matching. Critical for internal talent marketplace, career development,
+  and retention. Helps match workers with internal opportunities, projects,
+  mentoring, and development programs.
+
+ai_instructions:
+  priority: MEDIUM
+  code_generation: true
+  test_generation: true
+  notes: |
+    - WorkerInterest belongs to Worker aggregate
+    - Flexible interest types: ROLE, LOCATION, SKILL, PROJECT, MENTOR, etc.
+    - Priority ranking for multiple interests
+    - Effective dating tracks interest changes over time
+    - Used for talent marketplace matching and recommendations
+    - Supports AI-driven opportunity suggestions (Workday/SAP pattern)
+
+mixins:
+  - Auditable
+  - EffectiveDated
+
+attributes:
+  id:
+    type: uuid
+    required: true
+    primary_key: true
+    
+  worker_id:
+    type: uuid
+    required: true
+    foreign_key: person.worker.id
+    
+  interest_type_code:
+    type: string
+    required: true
+    max_length: 50
+    description: "Type of career interest"
+    allowed_values:
+      - ROLE  # Interested in specific role/job
+      - LOCATION  # Preferred work location
+      - SKILL  # Skill to develop/learn
+      - PROJECT  # Type of project
+      - MENTOR  # Mentoring interest
+      - INDUSTRY  # Industry sector
+      - FUNCTION  # Business function
+    examples:
+      - "ROLE: Data Scientist"
+      - "LOCATION: Singapore"
+      - "SKILL: Machine Learning"
+    
+  interest_value:
+    type: string
+    required: true
+    max_length: 255
+    description: "Specific interest value"
+    examples:
+      - "Data Science"
+      - "Singapore"
+      - "Machine Learning"
+      - "AI/ML Projects"
+    
+  priority_rank:
+    type: smallint
+    required: false
+    description: "Priority ranking (1=highest priority)"
+    example: 1
+    validation_rules:
+      - "Lower number = higher priority"
+    
+  metadata:
+    type: jsonb
+    required: false
+    description: "Extended attributes"
+    example:
+      notes: "Interested in transitioning to data science role"
+      timeline: "6-12 months"
+      willingness_to_relocate: true
+      remote_preference: "hybrid"
+    schema:
+      type: object
+      properties:
+        notes:
+          type: string
+        timeline:
+          type: string
+        willingness_to_relocate:
+          type: boolean
+        remote_preference:
+          type: string
+          enum: [remote, hybrid, onsite]
+    
+  effective_start_date:
+    type: date
+    required: true
+    
+  effective_end_date:
+    type: date
+    required: false
+    description: "When interest expires or was fulfilled"
+    
+  is_current_flag:
+    type: boolean
+    required: true
+    default: true
+    
+  created_at:
+    type: timestamp
+    required: true
+    default: "now()"
+    immutable: true
+    
+  updated_at:
+    type: timestamp
+    required: false
+
+derived_attributes:
+  interest_display:
+    type: string
+    formula: "interest_type_code || ': ' || interest_value"
+    description: "Formatted interest for display"
+    example: "ROLE: Data Scientist"
+
+relationships:
+  worker:
+    target: Worker
+    target_ref: "xtalent:co:person:worker"
+    cardinality: N:1
+    required: true
+    inverse: interests
+    on_delete: CASCADE
+
+validation_rules:
+  - rule: valid_effective_dates
+    expression: "effective_end_date IS NULL OR effective_end_date >= effective_start_date"
+    message: "Effective end date must be after start date"
+    severity: ERROR
+    error_code: "ERR_INTEREST_INVALID_DATES"
+    
+  - rule: non_empty_value
+    expression: "TRIM(interest_value) != ''"
+    message: "Interest value cannot be empty"
+    severity: ERROR
+    error_code: "ERR_INTEREST_EMPTY_VALUE"
+
+indexes:
+  - name: idx_worker_interest_worker
+    columns: [worker_id, is_current_flag]
+    type: btree
+    
+  - name: idx_worker_interest_type
+    columns: [interest_type_code, interest_value]
+    type: btree
+    description: "Index for interest-based matching"
+    
+  - name: idx_worker_interest_priority
+    columns: [worker_id, priority_rank]
+    type: btree
+
+security:
+  data_classification: PII_STANDARD
+  gdpr_applicable: false
+  encryption_required: false
+  audit_required: true
+  
+  access_control:
+    read:
+      - role: HR_ADMIN
+      - role: HR_MANAGER
+      - role: TALENT_MARKETPLACE_USER
+      - role: CAREER_COACH
+      - role: SELF
+        condition: "user.worker_id = this.worker_id"
+    write:
+      - role: HR_ADMIN
+      - role: SELF
+        condition: "user.worker_id = this.worker_id"
+        note: "Workers can express own career interests"
+    delete:
+      - role: HR_ADMIN
+      - role: SELF
+        condition: "user.worker_id = this.worker_id"
+
+business_rules:
+  - rule: BR_INTEREST_001
+    name: "Opportunity Matching"
+    description: "Match worker interests with available opportunities"
+    condition: "is_current_flag = true"
+    action: "Use interests for AI-driven opportunity recommendations"
+    note: "Talent marketplace matching algorithm"
+    
+  - rule: BR_INTEREST_002
+    name: "Development Plan Alignment"
+    description: "Align development plans with career interests"
+    condition: "interest_type_code = 'SKILL'"
+    action: "Recommend learning content and development programs"
+    
+  - rule: BR_INTEREST_003
+    name: "Internal Mobility Alerts"
+    description: "Alert workers about matching opportunities"
+    condition: "interest_type_code IN ('ROLE', 'LOCATION', 'PROJECT')"
+    action: "Send notifications when matching opportunities become available"
+
+examples:
+  - name: "Role Interest (Data Science)"
+    data:
+      id: "f50e8400-e29b-41d4-a716-446655440000"
+      worker_id: "550e8400-e29b-41d4-a716-446655440000"
+      interest_type_code: "ROLE"
+      interest_value: "Data Scientist"
+      priority_rank: 1
+      metadata:
+        notes: "Interested in transitioning to data science"
+        timeline: "6-12 months"
+      effective_start_date: "2025-01-01"
+      is_current_flag: true
+      
+  - name: "Location Preference"
+    data:
+      id: "f60e8400-e29b-41d4-a716-446655440001"
+      worker_id: "550e8400-e29b-41d4-a716-446655440000"
+      interest_type_code: "LOCATION"
+      interest_value: "Singapore"
+      priority_rank: 2
+      metadata:
+        willingness_to_relocate: true
+        timeline: "12-18 months"
+      effective_start_date: "2025-01-01"
+      is_current_flag: true
+      
+  - name: "Skill Development"
+    data:
+      id: "f70e8400-e29b-41d4-a716-446655440002"
+      worker_id: "550e8400-e29b-41d4-a716-446655440000"
+      interest_type_code: "SKILL"
+      interest_value: "Machine Learning"
+      priority_rank: 1
+      metadata:
+        notes: "Want to learn ML for career transition"
+      effective_start_date: "2025-01-01"
+      is_current_flag: true
+
+references:
+  parent_entity: "worker.entity.yaml"
+  glossary: "../glossary/person.glossary.yaml#worker-interest"
+  dbml_table: "../../03-design/1.core.v4.dbml#person.worker_interest"
+  
+metadata:
+  tags: [person, interest, career-development, talent-marketplace, ai-matching]
+  owner: "HR Platform Team"
+  last_updated: "2025-12-25"
+  status: complete
+  industry_references:
+    - "Workday: Career interests for talent marketplace"
+    - "SAP SuccessFactors: Career preferences and aspirations"
+    - "AI-driven opportunity matching and recommendations"

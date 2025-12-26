@@ -1,0 +1,116 @@
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:core:org-structure:entity-type"
+
+entity: EntityType
+classification: REFERENCE_DATA
+module: CO
+submodule: org-structure
+version: "1.0"
+
+definition: |
+  Types of legal entities (COMPANY, BRANCH, SUBSIDIARY, etc.) for classification
+  and hierarchy rules.
+
+description: |
+  Defines the types of legal entities that can exist in the system, with
+  hierarchy rules and ordering for organizational structure.
+
+purpose: "Legal entity type classification and hierarchy rules"
+
+mixins:
+  - HasEffectiveDates
+
+# ----------------------------------------------------------------------------
+# ATTRIBUTES
+# ----------------------------------------------------------------------------
+attributes:
+  id:
+    type: uuid
+    required: true
+    primary_key: true
+    
+  code:
+    type: string
+    required: true
+    max_length: 50
+    description: "Entity type code"
+    examples:
+      - "COMPANY"
+      - "BRANCH"
+      - "SUBSIDIARY"
+      - "REPRESENTATIVE_OFFICE"
+    
+  name:
+    type: string
+    required: true
+    max_length: 100
+    description: "Entity type name"
+    
+  level_order:
+    type: integer
+    required: true
+    description: "Hierarchy level order (lower = higher in hierarchy)"
+    
+  metadata:
+    type: jsonb
+    required: false
+    description: "Additional rules (e.g., allowed_parent types)"
+    schema:
+      type: object
+      properties:
+        allowed_parent:
+          type: array
+          items: string
+          description: "List of allowed parent entity type codes"
+
+# ----------------------------------------------------------------------------
+# VALIDATION RULES
+# ----------------------------------------------------------------------------
+validation_rules:
+  - rule: "unique_code_per_period"
+    expression: "UNIQUE(code, effective_start_date)"
+    message: "Entity type code must be unique per effective period"
+    severity: ERROR
+
+# ----------------------------------------------------------------------------
+# INDEXES
+# ----------------------------------------------------------------------------
+indexes:
+  - name: idx_entity_type_code
+    columns: [code, effective_start_date]
+    unique: true
+
+# ----------------------------------------------------------------------------
+# EXAMPLES
+# ----------------------------------------------------------------------------
+examples:
+  - name: "Company Type"
+    data:
+      code: "COMPANY"
+      name: "Company"
+      level_order: 1
+      metadata:
+        allowed_parent: null
+        
+  - name: "Branch Type"
+    data:
+      code: "BRANCH"
+      name: "Branch"
+      level_order: 2
+      metadata:
+        allowed_parent: ["COMPANY"]
+        
+  - name: "Subsidiary Type"
+    data:
+      code: "SUBSIDIARY"
+      name: "Subsidiary"
+      level_order: 2
+      metadata:
+        allowed_parent: ["COMPANY", "SUBSIDIARY"]
+
+references:
+  database_design: "../../../03-design/1.core.v4.dbml#org_legal.entity_type"
+
+metadata:
+  created_at: "2025-12-25"
+  dbml_source: "org_legal.entity_type (lines 331-343)"

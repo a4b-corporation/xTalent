@@ -1,0 +1,364 @@
+---
+$schema: "https://xtalent.io/schemas/entity/v3"
+$id: "xtalent:co:person:document"
+
+module: CO
+submodule: person
+version: "1.0.0"
+
+entity: Document
+classification: ENTITY
+parent_aggregate: Worker
+
+definition: |
+  Identity documents for a worker, such as national ID card, passport, driver's license,
+  work permit, or visa. Supports document expiry tracking, file attachments, and
+  primary designation for identity verification.
+
+purpose: |
+  Maintain worker identity documents for verification, compliance, and onboarding.
+  Tracks document expiry dates for proactive renewal reminders. Critical for
+  I-9 verification (US), right-to-work checks, and visa/work permit management
+  for global workforce.
+
+ai_instructions:
+  priority: HIGH
+  code_generation: true
+  test_generation: true
+  notes: |
+    - Document belongs to Worker aggregate (cascade delete)
+    - Supports file attachments (scanned copies)
+    - Expiry date tracking with proactive alerts
+    - Primary document used for identity verification
+    - Sensitive PII - requires encryption and access controls
+    - Different document types required by country
+
+mixins:
+  - Auditable
+
+# ═══════════════════════════════════════════════════════════════════
+# ATTRIBUTES
+# ═══════════════════════════════════════════════════════════════════
+attributes:
+  id:
+    type: uuid
+    required: true
+    primary_key: true
+    description: "Unique identifier for document record"
+    
+  worker_id:
+    type: uuid
+    required: true
+    foreign_key: person.worker.id
+    description: "Reference to worker who owns this document"
+    
+  doc_type_code:
+    type: string
+    required: true
+    max_length: 50
+    description: "Type of document"
+    reference:
+      entity: "xtalent:co:master-data:code-list"
+      group: "DOCUMENT_TYPE"
+    allowed_values:
+      - NATIONAL_ID
+      - PASSPORT
+      - DRIVERS_LICENSE
+      - WORK_PERMIT
+      - VISA
+      - RESIDENCE_PERMIT
+      - BIRTH_CERTIFICATE
+      - SOCIAL_SECURITY
+      - TAX_ID
+    
+  doc_number:
+    type: string
+    required: true
+    max_length: 100
+    description: "Document number/identifier"
+    example: "079090001234"
+    validation_rules:
+      - "Format varies by document type and country"
+      - "Must be unique per worker per document type"
+    
+  issue_date:
+    type: date
+    required: false
+    description: "Date when document was issued"
+    example: "2020-01-15"
+    
+  expiry_date:
+    type: date
+    required: false
+    description: "Date when document expires"
+    example: "2030-01-15"
+    validation_rules:
+      - "Must be after issue_date if both present"
+      - "Expiry alerts triggered 90/60/30 days before expiry"
+    
+  issuing_country:
+    type: string
+    required: false
+    length: 2
+    description: "Country that issued the document (ISO 3166-1 alpha-2)"
+    example: "VN"
+    reference:
+      entity: "xtalent:co:master-data:country"
+      attribute: "code_alpha2"
+    
+  is_primary:
+    type: boolean
+    required: true
+    default: false
+    description: "Whether this is the primary identity document"
+    validation_rules:
+      - "Only one document can be primary per worker"
+    
+  file_url:
+    type: string
+    required: false
+    max_length: 255
+    description: "URL to scanned document file"
+    example: "https://cdn.example.com/documents/worker-123-passport.pdf"
+    validation_rules:
+      - "Must be secure URL (HTTPS)"
+      - "File must be encrypted at rest"
+    
+  metadata:
+    type: jsonb
+    required: false
+    description: "Extended attributes (issuing authority, verification status, etc.)"
+    example:
+      issuing_authority: "Ministry of Public Security"
+      place_of_issue: "Ho Chi Minh City"
+      verified: true
+      verified_date: "2025-01-15"
+      verified_by: "HR Admin"
+    
+  created_at:
+    type: timestamp
+    required: true
+    default: "now()"
+    immutable: true
+    
+  updated_at:
+    type: timestamp
+    required: false
+
+# ═══════════════════════════════════════════════════════════════════
+# DERIVED ATTRIBUTES
+# ═══════════════════════════════════════════════════════════════════
+derived_attributes:
+  is_expired:
+    type: boolean
+    formula: "expiry_date IS NOT NULL AND expiry_date < CURRENT_DATE"
+    description: "Whether document has expired"
+    
+  days_until_expiry:
+    type: integer
+    formula: "CASE WHEN expiry_date IS NULL THEN NULL ELSE expiry_date - CURRENT_DATE END"
+    description: "Number of days until document expires"
+    
+  expiry_alert_level:
+    type: string
+    formula: |
+      CASE
+        WHEN expiry_date IS NULL THEN 'NONE'
+        WHEN expiry_date < CURRENT_DATE THEN 'EXPIRED'
+        WHEN expiry_date <= CURRENT_DATE + INTERVAL '30 days' THEN 'CRITICAL'
+        WHEN expiry_date <= CURRENT_DATE + INTERVAL '60 days' THEN 'WARNING'
+        WHEN expiry_date <= CURRENT_DATE + INTERVAL '90 days' THEN 'INFO'
+        ELSE 'NONE'
+      END
+    description: "Alert level based on expiry date"
+
+# ═══════════════════════════════════════════════════════════════════
+# RELATIONSHIPS
+# ═══════════════════════════════════════════════════════════════════
+relationships:
+  worker:
+    target: Worker
+    target_ref: "xtalent:co:person:worker"
+    cardinality: N:1
+    required: true
+    inverse: documents
+    on_delete: CASCADE
+
+# ═══════════════════════════════════════════════════════════════════
+# VALIDATION RULES
+# ═══════════════════════════════════════════════════════════════════
+validation_rules:
+  - rule: valid_expiry_date
+    expression: "expiry_date IS NULL OR issue_date IS NULL OR expiry_date > issue_date"
+    message: "Expiry date must be after issue date"
+    severity: ERROR
+    error_code: "ERR_DOCUMENT_INVALID_EXPIRY"
+    
+  - rule: unique_primary
+    expression: |
+      NOT EXISTS (
+        SELECT 1 FROM person.document d2
+        WHERE d2.worker_id = this.worker_id
+        AND d2.is_primary = true
+        AND d2.id != this.id
+      ) OR this.is_primary = false
+    message: "Only one primary document allowed per worker"
+    severity: ERROR
+    error_code: "ERR_DOCUMENT_MULTIPLE_PRIMARY"
+    
+  - rule: unique_doc_number
+    expression: |
+      NOT EXISTS (
+        SELECT 1 FROM person.document d2
+        WHERE d2.worker_id = this.worker_id
+        AND d2.doc_type_code = this.doc_type_code
+        AND d2.doc_number = this.doc_number
+        AND d2.id != this.id
+      )
+    message: "Document number must be unique per worker per type"
+    severity: ERROR
+    error_code: "ERR_DOCUMENT_DUPLICATE_NUMBER"
+    
+  - rule: secure_file_url
+    expression: "file_url IS NULL OR file_url LIKE 'https://%'"
+    message: "File URL must use HTTPS"
+    severity: ERROR
+    error_code: "ERR_DOCUMENT_INSECURE_URL"
+
+# ═══════════════════════════════════════════════════════════════════
+# INDEXES
+# ═══════════════════════════════════════════════════════════════════
+indexes:
+  - name: idx_document_worker
+    columns: [worker_id]
+    type: btree
+    
+  - name: idx_document_expiry
+    columns: [expiry_date]
+    type: btree
+    description: "Index for expiry date queries and alerts"
+    
+  - name: idx_document_type
+    columns: [doc_type_code, is_primary]
+    type: btree
+
+# ═══════════════════════════════════════════════════════════════════
+# SECURITY
+# ═══════════════════════════════════════════════════════════════════
+security:
+  data_classification: PII_HIGHLY_SENSITIVE
+  gdpr_applicable: true
+  encryption_required: true
+  audit_required: true
+  
+  access_control:
+    read:
+      - role: HR_ADMIN
+      - role: COMPLIANCE_OFFICER
+      - role: SELF
+        condition: "user.worker_id = this.worker_id"
+        fields: [doc_type_code, expiry_date]
+        note: "Workers can view own document types and expiry, not full numbers"
+    
+    write:
+      - role: HR_ADMIN
+      - role: COMPLIANCE_OFFICER
+    
+    delete:
+      - role: HR_ADMIN
+  
+  pii_fields:
+    - doc_number
+    - file_url
+    - metadata
+  
+  file_security:
+    encryption_at_rest: required
+    encryption_in_transit: required
+    access_logging: required
+    retention_policy: "7 years after employment end"
+
+# ═══════════════════════════════════════════════════════════════════
+# BUSINESS RULES
+# ═══════════════════════════════════════════════════════════════════
+business_rules:
+  - rule: BR_DOCUMENT_001
+    name: "Expiry Alert Notifications"
+    description: "Send alerts before document expiry"
+    condition: "expiry_date IS NOT NULL"
+    action: |
+      - 90 days before: INFO notification to worker
+      - 60 days before: WARNING notification to worker + HR
+      - 30 days before: CRITICAL notification to worker + HR + manager
+      - On expiry: EXPIRED notification + block certain actions
+    
+  - rule: BR_DOCUMENT_002
+    name: "Primary Document Requirement"
+    description: "Workers must have at least one primary identity document"
+    condition: "Always"
+    action: "Warn if worker has no primary document"
+    severity: WARNING
+    
+  - rule: BR_DOCUMENT_003
+    name: "Work Authorization Check"
+    description: "Check work permit/visa for international workers"
+    condition: "worker.nationality_code != employment.legal_entity.country_code"
+    action: "Require valid work permit or visa"
+    severity: ERROR
+    
+  - rule: BR_DOCUMENT_004
+    name: "Document Verification"
+    description: "New documents should be verified within 7 days"
+    condition: "metadata.verified IS NULL OR metadata.verified = false"
+    action: "Send verification reminder after 7 days"
+
+# ═══════════════════════════════════════════════════════════════════
+# EXAMPLES
+# ═══════════════════════════════════════════════════════════════════
+examples:
+  - name: "National ID Card"
+    data:
+      id: "950e8400-e29b-41d4-a716-446655440000"
+      worker_id: "550e8400-e29b-41d4-a716-446655440000"
+      doc_type_code: "NATIONAL_ID"
+      doc_number: "079090001234"
+      issue_date: "2020-01-15"
+      expiry_date: "2030-01-15"
+      issuing_country: "VN"
+      is_primary: true
+      file_url: "https://cdn.example.com/docs/worker-123-id.pdf"
+      metadata:
+        issuing_authority: "Ministry of Public Security"
+        place_of_issue: "Ho Chi Minh City"
+        verified: true
+        verified_date: "2025-01-15"
+        
+  - name: "Passport"
+    data:
+      id: "960e8400-e29b-41d4-a716-446655440001"
+      worker_id: "550e8400-e29b-41d4-a716-446655440000"
+      doc_type_code: "PASSPORT"
+      doc_number: "N1234567"
+      issue_date: "2022-06-01"
+      expiry_date: "2032-06-01"
+      issuing_country: "VN"
+      is_primary: false
+
+# ═══════════════════════════════════════════════════════════════════
+# REFERENCES
+# ═══════════════════════════════════════════════════════════════════
+references:
+  parent_entity: "worker.entity.yaml"
+  glossary: "../glossary/person.glossary.yaml#document"
+  dbml_table: "../../03-design/1.core.v4.dbml#person.document"
+  
+metadata:
+  tags: [person, document, identity, compliance, pii, verification]
+  owner: "HR Platform Team"
+  last_updated: "2025-12-25"
+  status: complete
+  compliance_notes:
+    - "I-9 verification (US)"
+    - "Right-to-work checks"
+    - "Work permit/visa management"
+    - "Document retention: 7 years post-employment"

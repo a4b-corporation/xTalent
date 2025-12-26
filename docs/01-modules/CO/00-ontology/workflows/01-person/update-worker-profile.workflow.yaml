@@ -1,0 +1,284 @@
+---
+$schema: "https://xtalent.io/schemas/workflow/v3"
+$id: "xtalent:co:person:update-worker-profile"
+
+module: CO
+submodule: person
+version: "1.0.0"
+
+workflow: UpdateWorkerProfile
+type: TRANSACTIONAL
+category: CORE_HR
+
+definition: |
+  Updates worker's personal information and profile data. Supports both self-service
+  updates (limited fields) and HR admin updates (all fields).
+
+purpose: |
+  Allow workers to maintain their own profile information while giving HR admins
+  full control over worker data. Ensures data quality through validation and
+  maintains audit trail of all changes.
+
+# ═══════════════════════════════════════════════════════════════════
+# PARAMETERS
+# ═══════════════════════════════════════════════════════════════════
+parameters:
+  input:
+    worker_id:
+      type: uuid
+      required: true
+      description: "ID of worker to update"
+      
+    updates:
+      type: object
+      required: true
+      description: "Fields to update"
+      properties:
+        preferred_name:
+          type: string
+          description: "Preferred name (self-service allowed)"
+        marital_status_code:
+          type: string
+          description: "Marital status (HR admin only)"
+        metadata:
+          type: jsonb
+          description: "Extended attributes (partial updates allowed)"
+        # Immutable fields cannot be updated
+        # first_name, last_name, date_of_birth require special workflow
+        
+    update_reason:
+      type: string
+      required: false
+      description: "Reason for update (for audit)"
+      
+  output:
+    worker:
+      type: object
+      description: "Updated worker record"
+      
+    changes:
+      type: array
+      description: "List of fields changed"
+
+# ═══════════════════════════════════════════════════════════════════
+# PRECONDITIONS
+# ═══════════════════════════════════════════════════════════════════
+preconditions:
+  - condition: "worker_id IS NOT NULL"
+    message: "Worker ID is required"
+    error_code: "ERR_WORKER_ID_REQUIRED"
+    
+  - condition: "EXISTS(SELECT 1 FROM person.worker WHERE id = worker_id)"
+    message: "Worker not found"
+    error_code: "ERR_WORKER_NOT_FOUND"
+    
+  - condition: "updates IS NOT NULL AND jsonb_object_keys(updates) IS NOT EMPTY"
+    message: "At least one field must be updated"
+    error_code: "ERR_NO_UPDATES"
+
+# ═══════════════════════════════════════════════════════════════════
+# STEPS
+# ═══════════════════════════════════════════════════════════════════
+steps:
+  - step: load_current_worker
+    description: "Load current worker data"
+    action: "xtalent:co:person:get-worker"
+    parameters:
+      worker_id: "{{input.worker_id}}"
+    output: current_worker
+    
+  - step: check_authorization
+    description: "Check if user can update requested fields"
+    action: "xtalent:core:auth:check-field-permissions"
+    parameters:
+      entity_type: Worker
+      entity_id: "{{input.worker_id}}"
+      fields: "{{keys(input.updates)}}"
+      operation: UPDATE
+    on_error: ABORT
+    
+  - step: validate_updates
+    description: "Validate update data"
+    action: "xtalent:core:validation:validate-updates"
+    parameters:
+      entity_type: Worker
+      current_data: "{{current_worker}}"
+      updates: "{{input.updates}}"
+    on_error: ABORT
+    
+  - step: detect_changes
+    description: "Detect actual changes"
+    action: "xtalent:core:utils:diff-objects"
+    parameters:
+      old: "{{current_worker}}"
+      new: "{{merge(current_worker, input.updates)}}"
+    output: changes
+    
+  - step: skip_if_no_changes
+    description: "Skip update if no actual changes"
+    condition: "length(changes) = 0"
+    action: SKIP_TO_END
+    
+  - step: update_worker
+    description: "Apply updates to worker"
+    action: "xtalent:co:person:update-worker"
+    parameters:
+      worker_id: "{{input.worker_id}}"
+      updates: "{{input.updates}}"
+      updated_by: "{{context.user_id}}"
+      update_reason: "{{input.update_reason}}"
+    output: updated_worker
+    
+  - step: create_audit_log
+    description: "Create audit log entry"
+    action: "xtalent:core:audit:log-change"
+    parameters:
+      entity_type: Worker
+      entity_id: "{{input.worker_id}}"
+      operation: UPDATE
+      changes: "{{changes}}"
+      reason: "{{input.update_reason}}"
+      user_id: "{{context.user_id}}"
+    
+  - step: emit_event
+    description: "Emit WorkerUpdated event"
+    action: "xtalent:core:events:emit"
+    parameters:
+      event_type: WorkerUpdated
+      payload:
+        worker_id: "{{updated_worker.id}}"
+        changes: "{{changes}}"
+        updated_by: "{{context.user_id}}"
+    
+  - step: return_result
+    description: "Return updated worker"
+    output:
+      worker: "{{updated_worker}}"
+      changes: "{{changes}}"
+
+# ═══════════════════════════════════════════════════════════════════
+# POSTCONDITIONS
+# ═══════════════════════════════════════════════════════════════════
+postconditions:
+  - condition: "updated_worker.updated_at > current_worker.updated_at"
+    message: "Worker updated_at timestamp must be newer"
+    
+  - condition: "updated_worker.id = current_worker.id"
+    message: "Worker ID must not change"
+
+# ═══════════════════════════════════════════════════════════════════
+# ERROR HANDLING
+# ═══════════════════════════════════════════════════════════════════
+error_handling:
+  on_validation_error:
+    action: ROLLBACK
+    notify: user
+    
+  on_authorization_error:
+    action: ABORT
+    notify: user
+    message: "You do not have permission to update these fields"
+    
+  on_not_found_error:
+    action: ABORT
+    notify: user
+    message: "Worker not found"
+    
+  on_system_error:
+    action: ROLLBACK
+    notify: admin
+    log_level: ERROR
+
+# ═══════════════════════════════════════════════════════════════════
+# AUTHORIZATION
+# ═══════════════════════════════════════════════════════════════════
+authorization:
+  required_roles:
+    - HR_ADMIN
+    - SELF
+  
+  field_permissions:
+    # Self-service allowed fields
+    preferred_name:
+      roles: [SELF, HR_ADMIN]
+    metadata:
+      roles: [SELF, HR_ADMIN]
+      note: "Workers can update own metadata (avatar, preferences)"
+    
+    # HR admin only fields
+    first_name:
+      roles: [HR_ADMIN]
+      note: "Name changes require special approval workflow"
+    last_name:
+      roles: [HR_ADMIN]
+    middle_name:
+      roles: [HR_ADMIN]
+    marital_status_code:
+      roles: [HR_ADMIN]
+    gender_code:
+      roles: [HR_ADMIN]
+    
+    # Immutable fields (cannot be updated via this workflow)
+    id:
+      roles: []
+      note: "Immutable"
+    date_of_birth:
+      roles: []
+      note: "Immutable - requires special correction workflow"
+    nationality_code:
+      roles: []
+      note: "Immutable - requires special correction workflow"
+    created_at:
+      roles: []
+      note: "Immutable"
+
+# ═══════════════════════════════════════════════════════════════════
+# BDD TEMPLATE
+# ═══════════════════════════════════════════════════════════════════
+bdd_template: |
+  Feature: Update Worker Profile
+    As a Worker or HR Administrator
+    I want to update worker profile information
+    So that worker data remains current and accurate
+    
+    Scenario: Worker updates own preferred name
+      Given I am authenticated as a worker
+      And I have a worker profile
+      When I update my preferred name to "Johnny"
+      Then my profile should be updated
+      And a WorkerUpdated event should be emitted
+      And an audit log entry should be created
+      
+    Scenario: HR Admin updates worker marital status
+      Given I am authenticated as HR Admin
+      And a worker exists with ID "550e8400-e29b-41d4-a716-446655440000"
+      When I update the worker's marital status to "MARRIED"
+      Then the worker's marital status should be updated
+      And an audit log should record the change
+      
+    Scenario: Worker cannot update immutable fields
+      Given I am authenticated as a worker
+      When I attempt to update my date of birth
+      Then the update should fail
+      And I should see error "This field cannot be updated"
+      
+    Scenario: Skip update when no changes
+      Given I am authenticated as HR Admin
+      And a worker exists
+      When I submit updates with same values as current
+      Then no database update should occur
+      And I should receive the current worker data
+
+# ═══════════════════════════════════════════════════════════════════
+# REFERENCES
+# ═══════════════════════════════════════════════════════════════════
+references:
+  entity: "../domain/01-person/worker.entity.yaml"
+  actions:
+    - update-worker.action.yaml
+  bdd_feature: "../../02-spec/05-BDD/01-person/worker.feature"
+  
+metadata:
+  tags: [worker, update, profile, self-service]
+  owner: "HR Platform Team"
+  last_updated: "2025-12-25"
