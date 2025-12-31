@@ -1,6 +1,3 @@
-Cảm ơn bạn đã clarify! Tôi hiểu rồi - Worker chính là Person (người lao động thực sự), và Working Relationship là entity kết nối Worker với Legal Entity. Tùy loại Working Relationship mà có thể tạo ra Employee, Contractor, hoặc Contingent Worker.
-
-Tôi sẽ update document với data model chính xác:
 
 # xTalent HCM - Employee 360 View
 ## Product Concept Document
