@@ -801,17 +801,39 @@ Table employment.employee {                   // thông tin Employment của Wor
 }
 
 // changed 11dec2025: ADDED - Contract Template table from ontology (missing in v3)
+// changed 24Dec2025: Enhanced scope hierarchy (country, BU) and clarified future features
 Table employment.contract_template {          // mẫu hợp đồng lao động
   id                uuid       [pk, default: `gen_random_uuid()`]
   template_code     varchar(50) [unique]                       // mã mẫu HĐ
   template_name     varchar(255)                               // tên mẫu HĐ
   contract_type_code varchar(50)                               // loại HĐ áp dụng (common.code_list(CONTRACT_TYPE))
-  legal_entity_code varchar(50) [null]                        // pháp nhân áp dụng (null = all)
-  template_content  text                                       // nội dung mẫu (có thể chứa placeholders)
-  variables_json    jsonb      [null]                         // danh sách biến thay thế {"employee_name", "start_date", ...}
-  is_default        boolean    [default: false]               // mẫu mặc định cho loại HĐ này?
-  status_code       varchar(50) [default: 'ACTIVE']           // trạng thái: ACTIVE, INACTIVE, DRAFT
-  metadata          jsonb      [null]                         // thông tin bổ sung (version, approval_date, ...)
+  
+  // --- Scope Hierarchy (most specific wins) ---
+  country_code      char(2)    [null]                          // changed 24Dec2025: quốc gia áp dụng (null = all countries)
+  legal_entity_code varchar(50) [null]                         // pháp nhân áp dụng (null = all entities)
+  business_unit_id  uuid       [ref: > org_bu.unit.id, null]   // changed 24Dec2025: đơn vị áp dụng (null = all BUs)
+  
+  // --- Document Generation (FUTURE FEATURE) ---
+  template_content  text       [null]                          // changed 24Dec2025: OPTIONAL - nội dung mẫu văn bản (future feature)
+  variables_json    jsonb      [null]                          // changed 24Dec2025: OPTIONAL - biến thay thế (future feature)
+  
+  // --- Template Settings ---
+  is_default        boolean    [default: false]                // mẫu mặc định cho loại HĐ này?
+  status_code       varchar(50) [default: 'ACTIVE']            // trạng thái: ACTIVE, INACTIVE, DRAFT
+  
+  // --- Business Rules & Metadata ---
+  metadata          jsonb      [null]                          // changed 24Dec2025: business rules defaults + thông tin bổ sung
+  // metadata example:
+  // {
+  //   "duration": { "default_months": 12, "min_months": 6, "max_months": 36 },
+  //   "probation": { "required": true, "duration_days": 60 },
+  //   "renewal": { "allowed": true, "max_count": 1, "notice_days": 30 },
+  //   "notice_period": { "default_days": 30 },
+  //   "compliance": { "max_consecutive_fixed_terms": 2 },
+  //   "version": "2025-01",
+  //   "approval_date": "2025-01-01"
+  // }
+  
   effective_start_date date
   effective_end_date   date    [null]
   is_current_flag      boolean [default: true]
@@ -819,10 +841,24 @@ Table employment.contract_template {          // mẫu hợp đồng lao động
   updated_at        timestamp  [null]
 
   Indexes { 
-    (contract_type_code, legal_entity_code, is_default),
-    (template_code, effective_start_date) [unique]
+    (contract_type_code, country_code, legal_entity_code, business_unit_id, is_default),  // changed 24Dec2025: include all scope levels
+    (template_code, effective_start_date) [unique],
+    (country_code, legal_entity_code)                          // changed 24Dec2025: scope lookup
   }
-  Note: 'changed 11dec2025: ADDED from ontology - standardized contract templates for consistent contract generation'
+  Note: '''
+  changed 11dec2025: ADDED from ontology - standardized contract templates for consistent contract generation
+  changed 24Dec2025: Enhanced with scope hierarchy and business rules in metadata
+  
+  Scope Priority (most specific wins):
+  1. Business Unit specific (business_unit_id matches)
+  2. Legal Entity specific (legal_entity_code matches)
+  3. Country specific (country_code matches)
+  4. Global (all null)
+  
+  Future Features:
+  - template_content: Document template with placeholders for PDF generation
+  - variables_json: Schema for placeholder variables (see separate JSON Schema document)
+  '''
 }
 
 Table employment.contract {                   // hợp đồng lao động
