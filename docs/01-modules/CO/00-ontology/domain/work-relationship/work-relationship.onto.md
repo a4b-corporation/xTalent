@@ -4,7 +4,7 @@ domain: core-hr
 version: "1.0.0"
 status: draft
 owner: core-team
-tags: [work-relationship, classification, core]
+tags: [work-relationship, employment, core]
 
 classification:
   type: AGGREGATE_ROOT
@@ -25,13 +25,13 @@ attributes:
   - name: relationshipTypeCode
     type: enum
     required: true
-    values: [EMPLOYEE, CONTINGENT, CANDIDATE, ALUMNUS, NONWORKER]
+    values: [EMPLOYEE, CONTINGENT, CONTRACTOR, NON_WORKER]
     description: Type of work relationship
 
   - name: legalEntityCode
     type: string
-    required: false
-    description: Associated legal entity
+    required: true
+    description: Legal entity for this relationship
 
   - name: startDate
     type: date
@@ -46,13 +46,13 @@ attributes:
   - name: statusCode
     type: enum
     required: true
-    values: [ACTIVE, INACTIVE, TERMINATED]
+    values: [ACTIVE, SUSPENDED, TERMINATED]
     description: Relationship status
 
   - name: isPrimary
     type: boolean
     required: true
-    default: false
+    default: true
     description: Primary work relationship
 
   - name: metadata
@@ -84,46 +84,42 @@ relationships:
     inverse: hasWorkRelationships
     description: The person
 
-  - name: inLegalEntity
+  - name: withLegalEntity
     target: LegalEntity
     cardinality: many-to-one
-    required: false
-    description: Associated legal entity
+    required: true
+    description: The employer
 
-  - name: hasEmployeeRecords
+  - name: hasEmployeeRecord
     target: Employee
-    cardinality: one-to-many
+    cardinality: one-to-one
     required: false
-    description: Employee records under this relationship
+    description: Employee record (if type=EMPLOYEE)
 
 lifecycle:
-  states: [active, inactive, terminated]
+  states: [active, suspended, terminated]
   initial: active
   terminal: [terminated]
   transitions:
     - from: active
-      to: inactive
+      to: suspended
       trigger: suspend
-    - from: inactive
+    - from: suspended
       to: active
       trigger: reactivate
-    - from: [active, inactive]
+    - from: [active, suspended]
       to: terminated
       trigger: terminate
 
 actions:
   - name: create
     description: Create work relationship
-    requiredFields: [workerId, relationshipTypeCode, startDate]
+    requiredFields: [workerId, relationshipTypeCode, legalEntityCode, startDate]
 
   - name: terminate
     description: End work relationship
     triggersTransition: terminate
     affectsAttributes: [endDate, statusCode]
-
-  - name: convert
-    description: Convert relationship type (e.g., CANDIDATE → EMPLOYEE)
-    affectsAttributes: [relationshipTypeCode]
 
 policies:
   - name: uniqueTypePerEntity
@@ -132,30 +128,29 @@ policies:
 
   - name: primaryRequired
     type: business
-    rule: "Worker must have exactly one primary work relationship if any exist"
+    rule: "Worker must have exactly one primary work relationship"
 
-  - name: candidateNoEntity
-    type: business
-    rule: "CANDIDATE type may not have legal entity until conversion"
+  - name: entityRequired
+    type: validation
+    rule: "Legal entity is required for all relationship types"
 ---
 
 # WorkRelationship
 
 ## Overview
 
-A **WorkRelationship** represents the fundamental classification of a [[Worker]]'s affiliation with the organization. This is the **Tier 1** of the Employment Model (per Oracle HCM/Workday patterns). It answers: "What TYPE of worker is this person?" before any employment details.
+A **WorkRelationship** represents the **employment relationship type** between a [[Worker]] and a [[LegalEntity]]. This defines HOW the person is engaged with the organization - as an employee, contractor, contingent worker, or non-worker (board member, dependent).
 
-This entity separates the **classification** (Employee, Contingent, Candidate, Alumnus) from the **employment details** ([[Employee]], [[Contract]], [[Assignment]]).
+This is distinct from [[Employee]] which contains employment DETAILS - WorkRelationship is the classification of the relationship itself.
 
 ```mermaid
 mindmap
   root((WorkRelationship))
     Types
-      EMPLOYEE["Employee"]
-      CONTINGENT["Contingent/Contractor"]
-      CANDIDATE["Candidate"]
-      ALUMNUS["Alumni"]
-      NONWORKER["Non-worker"]
+      EMPLOYEE["Employee (HĐLĐ)"]
+      CONTINGENT["Contingent Worker"]
+      CONTRACTOR["Independent Contractor"]
+      NON_WORKER["Non-worker"]
     Properties
       startDate
       endDate
@@ -163,57 +158,53 @@ mindmap
     Links
       Worker
       LegalEntity
-      Employee["→ Employee records"]
 ```
 
 ## Business Context
 
-### Why This Entity Exists
+### What is WorkRelationship?
 
-Leading HR solutions (Oracle HCM, Workday, SAP SuccessFactors) separate:
-- **Work Relationship**: Legal tie between person and employer
-- **Employee**: Specific employment record with details
-- **Assignment**: Role placement (position, department)
+WorkRelationship answers: **"What TYPE of working arrangement does this person have with this legal entity?"**
 
-This separation enables:
-- Pre-hire tracking (candidates)
-- Contingent worker management (contractors without full employment)
-- Alumni tracking (former employees for rehire/networking)
-- Multi-entity employment (same person, multiple relationships)
+| Type | Description | Example |
+|------|-------------|---------|
+| **EMPLOYEE** | Người lao động theo HĐLĐ | Full-time, Part-time employees |
+| **CONTINGENT** | Lao động phụ thuộc qua agency | Temps, Agency workers |
+| **CONTRACTOR** | Nhà thầu độc lập | Freelancers, Consultants |
+| **NON_WORKER** | Không phải lao động | Board members, Dependents |
 
 ### Key Stakeholders
-- **Recruiter**: Manages CANDIDATE relationships
-- **HR Admin**: Creates EMPLOYEE relationships on hire
-- **Procurement**: Manages CONTINGENT relationships
-- **Alumni Relations**: Tracks ALUMNUS relationships
+- **HR Admin**: Creates/manages relationships
+- **Procurement**: Manages CONTRACTOR relationships
+- **Legal**: Ensures correct classification (employee vs contractor)
+- **Payroll**: Different processing by type
 
 ### Business Processes
 This entity is central to:
-- **Recruiting to Hiring**: CANDIDATE → EMPLOYEE conversion
-- **Contingent Workforce**: Track contractors without full employment
-- **Alumni Management**: Former employee engagement
-- **Multi-Entity Workers**: Multiple relationships across legal entities
+- **Hiring**: Create EMPLOYEE relationship
+- **Contractor Engagement**: Create CONTRACTOR relationship
+- **Compliance**: Correct worker classification (avoid misclassification risk)
+- **Multi-Entity**: Same person, different relationships in different entities
 
 ### Business Value
-WorkRelationship provides a unified view of ALL person-organization affiliations, not just employees. Enables complete workforce visibility and proper classification for compliance.
+Proper worker classification ensures legal compliance (labor law, tax), enables correct payroll processing, and provides complete workforce visibility.
 
 ## Attributes Guide
 
-### Core Classification
-- **relationshipTypeCode**: Type of affiliation:
-  - *EMPLOYEE*: Has employment contract, is an employee
-  - *CONTINGENT*: Contractor, consultant, agency worker
-  - *CANDIDATE*: In recruiting pipeline, not yet hired
-  - *ALUMNUS*: Former employee
-  - *NONWORKER*: Dependent, pensioner, board member
+### Classification
+- **relationshipTypeCode**: Type of working relationship:
+  - *EMPLOYEE*: Has employment contract (HĐLĐ), employment benefits
+  - *CONTINGENT*: Agency worker, temp - employed elsewhere but works here
+  - *CONTRACTOR*: Independent, own business, service agreement
+  - *NON_WORKER*: No labor relationship but tracked (board member, dependent)
 
 ### Scope
 - **workerId**: The [[Worker]] (person).
-- **legalEntityCode**: Which [[LegalEntity]] this relationship is with. CANDIDATE may have null until conversion.
+- **legalEntityCode**: Which [[LegalEntity]] this relationship is with. **Required** - every work relationship is with a specific legal entity.
 - **startDate / endDate**: Relationship duration.
 
 ### Status
-- **statusCode**: Lifecycle state.
+- **statusCode**: Lifecycle state (ACTIVE, SUSPENDED, TERMINATED).
 - **isPrimary**: If worker has multiple relationships, one must be primary.
 
 ## Relationships Explained
@@ -221,18 +212,18 @@ WorkRelationship provides a unified view of ALL person-organization affiliations
 ```mermaid
 erDiagram
     WORK_RELATIONSHIP }o--|| WORKER : "forWorker"
-    WORK_RELATIONSHIP }o--o| LEGAL_ENTITY : "inLegalEntity"
-    WORK_RELATIONSHIP ||--o{ EMPLOYEE : "hasEmployeeRecords"
+    WORK_RELATIONSHIP }o--|| LEGAL_ENTITY : "withLegalEntity"
+    WORK_RELATIONSHIP ||--o| EMPLOYEE : "hasEmployeeRecord"
 ```
 
 ### Worker
-- **forWorker** → [[Worker]]: The person. Worker can have multiple WorkRelationships (different types, different entities).
+- **forWorker** → [[Worker]]: The person. Worker can have multiple WorkRelationships (different types or different entities).
 
 ### Legal Entity
-- **inLegalEntity** → [[LegalEntity]]: The employing entity. May be null for CANDIDATE.
+- **withLegalEntity** → [[LegalEntity]]: The employer/engaging entity. Required.
 
 ### Employment Details
-- **hasEmployeeRecords** → [[Employee]]: When type = EMPLOYEE, links to detailed employment records.
+- **hasEmployeeRecord** → [[Employee]]: When type = EMPLOYEE, links to detailed employment record (employee code, hire date, etc.).
 
 ## Lifecycle & Workflows
 
@@ -240,8 +231,8 @@ erDiagram
 
 | State | Business Meaning | System Impact |
 |-------|------------------|---------------|
-| **active** | Current affiliation | Included in workforce |
-| **inactive** | Temporarily suspended | Limited access |
+| **active** | Currently engaged | Included in workforce |
+| **suspended** | Temporarily paused | Limited access |
 | **terminated** | Relationship ended | Historical only |
 
 ### State Diagram
@@ -250,53 +241,34 @@ erDiagram
 stateDiagram-v2
     [*] --> active: create
     
-    active --> inactive: suspend
-    inactive --> active: reactivate
+    active --> suspended: suspend
+    suspended --> active: reactivate
     
     active --> terminated: terminate
-    inactive --> terminated: terminate
+    suspended --> terminated: terminate
     
     terminated --> [*]
-```
-
-### Candidate to Employee Conversion
-
-```mermaid
-flowchart TD
-    A[Candidate Accepted] --> B[Convert WorkRelationship]
-    B --> C[Set type = EMPLOYEE]
-    C --> D[Set legalEntityCode]
-    D --> E[Create Employee Record]
-    E --> F[Create Contract]
-    F --> G[Create Assignment]
 ```
 
 ## Actions & Operations
 
 ### create
-**Who**: Recruiter (CANDIDATE), HR (others)  
-**When**: New person-organization relationship  
-**Required**: workerId, relationshipTypeCode, startDate  
+**Who**: HR Admin  
+**When**: New engagement with organization  
+**Required**: workerId, relationshipTypeCode, legalEntityCode, startDate  
 **Process**:
 1. Verify worker exists
 2. Check for duplicate type+entity
 3. Create relationship
+4. If EMPLOYEE type → create [[Employee]] record
 
 ### terminate
 **Who**: HR Admin  
-**When**: Ending relationship (offboarding)  
+**When**: Ending engagement (offboarding, contract end)  
 **Process**:
 1. Set endDate
 2. Transition to terminated
-3. If EMPLOYEE type, triggers Employee termination
-
-### convert
-**Who**: HR Admin  
-**When**: Changing relationship type (hire, conversion)  
-**Process**:
-1. Update relationshipTypeCode
-2. Set legalEntityCode if needed
-3. Create downstream records (Employee, Contract)
+3. If EMPLOYEE type → terminate [[Employee]] record
 
 ## Business Rules
 
@@ -305,23 +277,22 @@ flowchart TD
 #### One Per Type Per Entity (uniqueTypePerEntity)
 **Rule**: One active relationship of each type per legal entity.  
 **Reason**: Prevents duplicate classifications.  
-**Violation**: System prevents save.
+**Example OK**: EMPLOYEE at VNG_CORP + CONTRACTOR at ZaloPay  
+**Example NOT OK**: Two EMPLOYEE at VNG_CORP
+
+#### Entity Required (entityRequired)
+**Rule**: Legal entity is required for all types.  
+**Reason**: Work relationship is always with a specific legal entity.
 
 ### Business Logic
 
 #### Primary Required (primaryRequired)
 **Rule**: If worker has any relationships, exactly one must be primary.  
-**Reason**: Default for reporting, payroll.  
-**Implementation**: System auto-selects first as primary.
-
-#### Candidate No Entity (candidateNoEntity)
-**Rule**: CANDIDATE type may not have legal entity assigned.  
-**Reason**: Not yet hired.  
-**Implementation**: Set on conversion to EMPLOYEE.
+**Reason**: Default for reporting, payroll.
 
 ## Examples
 
-### Example 1: Full-Time Employee
+### Example 1: Regular Employee
 - **workerId**: WRK-00042
 - **relationshipTypeCode**: EMPLOYEE
 - **legalEntityCode**: VNG_CORP
@@ -329,38 +300,22 @@ flowchart TD
 - **isPrimary**: true
 - **statusCode**: ACTIVE
 
-### Example 2: Candidate (Pre-Hire)
+### Example 2: Independent Contractor
 - **workerId**: WRK-00100
-- **relationshipTypeCode**: CANDIDATE
-- **legalEntityCode**: null (not yet assigned)
+- **relationshipTypeCode**: CONTRACTOR
+- **legalEntityCode**: ZALOPAY
 - **startDate**: 2024-06-01
 - **statusCode**: ACTIVE
 
-### Example 3: Alumnus (Former Employee)
-- **workerId**: WRK-00030
-- **relationshipTypeCode**: ALUMNUS
-- **legalEntityCode**: VNG_CORP
-- **startDate**: 2015-01-01
-- **endDate**: 2023-12-31
-- **statusCode**: TERMINATED
-
-## Edge Cases
-
-### Multiple Relationships
-Worker may have:
+### Example 3: Multi-Entity Worker
+Same person with two relationships:
 - EMPLOYEE at VNG_CORP (primary)
-- CONTINGENT at ZaloPay (secondary)
-
-### Conversion
-When CANDIDATE converts to EMPLOYEE:
-1. Keep same WorkRelationship record
-2. Update type from CANDIDATE → EMPLOYEE
-3. Create new [[Employee]] record
+- CONTRACTOR at ZaloPay (secondary)
 
 ## Related Entities
 
 | Entity | Relationship | Description |
 |--------|--------------|-------------|
 | [[Worker]] | forWorker | The person |
-| [[LegalEntity]] | inLegalEntity | Employer |
-| [[Employee]] | hasEmployeeRecords | Employment details |
+| [[LegalEntity]] | withLegalEntity | Employer |
+| [[Employee]] | hasEmployeeRecord | Employment details |
