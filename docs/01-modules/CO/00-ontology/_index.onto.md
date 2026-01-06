@@ -101,7 +101,7 @@ flowchart LR
 
 ---
 
-## Entity List (25 entities)
+## Entity List (26 entities)
 
 ### Organization (3)
 | Entity | File | Type |
@@ -118,9 +118,10 @@ flowchart LR
 | WorkerSkill | [worker-skill.onto.md](domain/person/worker-skill.onto.md) | E |
 | WorkerCompetency | [worker-competency.onto.md](domain/person/worker-competency.onto.md) | E |
 
-### Work Relationship (4)
+### Work Relationship (5)
 | Entity | File | Type |
 |--------|------|------|
+| **WorkRelationship** | [work-relationship.onto.md](domain/work-relationship/work-relationship.onto.md) | **A** |
 | Employee | [employee.onto.md](domain/work-relationship/employee.onto.md) | A |
 | Contract | [contract.onto.md](domain/work-relationship/contract.onto.md) | A |
 | ContractTemplate | [contract-template.onto.md](domain/work-relationship/contract-template.onto.md) | A |
