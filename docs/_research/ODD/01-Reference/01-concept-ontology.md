@@ -1,4 +1,7 @@
-# Part 1: Ontology Concept (THE WHAT)
+# 01. Ontology Concept (THE WHAT)
+
+> [!NOTE]
+> **Mục tiêu**: Giải thích các khái niệm cơ bản về Ontology trong bối cảnh Khoa học Dữ liệu và Kỹ thuật Phần mềm, tách biệt khỏi các triển khai cụ thể.
 
 Tài liệu này giải thích các khái niệm cơ bản về **Ontology** trong bối cảnh Khoa học Dữ liệu và Kỹ thuật Phần mềm, tách biệt khỏi các triển khai cụ thể (như Palantir).
 
@@ -57,3 +60,8 @@ Vai trò của Semantic Layer:
 ## Kết luận
 
 Ontology không phải là một công nghệ lưu trữ mới thay thế Database. Nó là một **lớp mô hình hóa** (Modeling Layer) nằm bên trên, giúp biến đổi "Dữ liệu vô tri" thành "Tri thức có thể hành động" (Actionable Knowledge).
+
+## Related Documents
+- **Next**: [Palantir Foundry Case Study](./02-case-study-palantir-foundry.md)
+- **Strategic Value**: [Why Ontology Matters](./03-strategic-value.md)
+- **Our Solution**: [Ontology-Driven Development](../03-Solution/07-concept-odd.md)

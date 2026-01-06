@@ -6,6 +6,10 @@ status: draft
 owner: payroll-team
 tags: [reporting, template, scd2]
 
+classification:
+  type: ENTITY
+  category: reporting
+
 attributes:
   - name: id
     type: string
@@ -74,7 +78,13 @@ attributes:
     default: true
     description: Version hiện tại
 
-relationships: []
+relationships:
+  - name: usedByPayGroups
+    target: PayGroup
+    cardinality: one-to-many
+    required: false
+    inverse: hasPayslipTemplate
+    description: Pay groups using this template
 
 lifecycle:
   states: [draft, active, inactive]
@@ -129,6 +139,8 @@ policies:
 
 ## Overview
 
+**PayslipTemplate** (Mẫu phiếu lương) định nghĩa layout và format cho payslip documents. Hỗ trợ multiple templates cho different locales và employee groups.
+
 ```mermaid
 mindmap
   root((PayslipTemplate))
@@ -146,8 +158,6 @@ mindmap
       isActive
 ```
 
-**PayslipTemplate** (Mẫu phiếu lương) định nghĩa layout và format cho payslip documents. Hỗ trợ multiple templates cho different locales và employee groups.
-
 ## Business Context
 
 ### Key Stakeholders
@@ -156,50 +166,169 @@ mindmap
 - **HR**: Review templates cho policy compliance
 - **Legal**: Ensure required information displayed
 
-### Business Processes
-- **Payslip Generation**: Apply template cho payslip PDF/view
-- **Multi-language**: Different templates per locale
-- **Customization**: Templates cho different employee types
+### Payslip Sections
+
+| Section | Description | Required Fields |
+|---------|-------------|-----------------|
+| **Header** | Company info, logo | Company name, address, tax ID |
+| **Employee Info** | Employee details | Code, name, department |
+| **Earnings** | Income breakdown | Element, amount, YTD |
+| **Deductions** | Deduction breakdown | Element, amount |
+| **Summary** | Totals | Gross, deductions, net |
+| **Footer** | Signature, disclaimer | Date, signature line |
+
+### Business Value
+PayslipTemplate ensures consistent, professional payslip presentation, supports multi-language requirements, và meets legal disclosure requirements.
 
 ## Attributes Guide
 
+### Core Identity
+- **code**: Mã duy nhất. Format: VN_STANDARD, EN_STANDARD
+- **name**: Tên hiển thị. VD: "Vietnam Standard Payslip"
 - **localeCode**: Language/region (vi_VN, en_US, zh_SG)
-- **templateJson**: Template definition
-  ```json
-  {
-    "header": {
-      "showLogo": true,
-      "companyInfo": ["name", "address", "taxId"]
+
+### Template Definition (templateJson)
+```json
+{
+  "header": {
+    "showLogo": true,
+    "logoPath": "/assets/logo.png",
+    "companyInfo": ["name", "address", "taxId"]
+  },
+  "sections": [
+    {
+      "name": "employee_info",
+      "fields": ["code", "name", "department", "position"]
     },
-    "sections": [
-      {"name": "employee_info", "fields": ["code", "name", "department"]},
-      {"name": "earnings", "showDetails": true},
-      {"name": "deductions", "showDetails": true},
-      {"name": "summary", "fields": ["gross", "deductions", "net"]}
-    ],
-    "footer": {
-      "showSignature": true,
-      "disclaimer": "Confidential"
+    {
+      "name": "earnings",
+      "showDetails": true,
+      "showYTD": true
+    },
+    {
+      "name": "deductions",
+      "showDetails": true
+    },
+    {
+      "name": "summary",
+      "fields": ["gross", "totalDeductions", "net"]
     }
+  ],
+  "footer": {
+    "showSignature": true,
+    "disclaimer": "This is a confidential document"
   }
-  ```
+}
+```
+
+## Relationships Explained
+
+```mermaid
+erDiagram
+    PAYSLIP_TEMPLATE ||--o{ PAY_GROUP : "usedByPayGroups"
+```
+
+### PayGroup
+- **usedByPayGroups** → [[PayGroup]]: Pay groups using this template
+
+## Lifecycle & Workflows
+
+```mermaid
+stateDiagram-v2
+    [*] --> draft: create
+    draft --> active: activate
+    active --> inactive: deactivate
+    inactive --> active: reactivate
+```
+
+| State | Meaning |
+|-------|---------|
+| **draft** | Đang design |
+| **active** | Có thể sử dụng |
+| **inactive** | Tạm ngừng |
+
+### Payslip Generation Flow
+
+```mermaid
+flowchart LR
+    A[Payroll Run Complete] --> B[Load Employee Data]
+    B --> C[Select Template]
+    C --> D[Apply Template Layout]
+    D --> E[Generate PDF/View]
+```
+
+## Actions & Operations
+
+### create
+**Who**: Payroll Administrator  
+**Required**: code, name, effectiveStartDate
+
+### setDefault
+**Who**: Payroll Administrator  
+**Effect**: Only one default per locale
+
+### preview
+**Who**: Payroll Administrator  
+**Input**: sampleData object  
+**Output**: Rendered payslip preview
+
+## Business Rules
+
+#### Unique Code (uniqueCode)
+**Rule**: Mã template phải duy nhất.
+
+#### Single Default (singleDefault)
+**Rule**: Chỉ có một template default per locale.
 
 ## Examples
 
 ### Example 1: Vietnam Standard
-- **code**: VN_STANDARD
-- **name**: Vietnam Standard Payslip
-- **localeCode**: vi_VN
-- **isDefault**: true
+```yaml
+code: VN_STANDARD
+name: "Vietnam Standard Payslip"
+localeCode: vi_VN
+isDefault: true
+templateJson:
+  header:
+    showLogo: true
+    companyInfo: ["name", "address", "taxId"]
+  sections:
+    - name: employee_info
+      fields: ["code", "name", "department"]
+    - name: earnings
+      showDetails: true
+    - name: deductions
+      showDetails: true
+    - name: summary
+      fields: ["gross", "deductions", "net"]
+```
 
 ### Example 2: English Version
-- **code**: EN_STANDARD
-- **name**: English Standard Payslip
-- **localeCode**: en_US
-- **isDefault**: false
+```yaml
+code: EN_STANDARD
+name: "English Standard Payslip"
+localeCode: en_US
+isDefault: false
+```
 
 ### Example 3: Executive Confidential
-- **code**: EXEC_CONFIDENTIAL
-- **name**: Executive Confidential Payslip
-- **localeCode**: en_US
-- **description**: Template cho executives với additional privacy
+```yaml
+code: EXEC_CONFIDENTIAL
+name: "Executive Confidential Payslip"
+localeCode: en_US
+description: "Template for executives with additional privacy"
+templateJson:
+  header:
+    showLogo: true
+  sections:
+    - name: employee_info
+      fields: ["code", "name"]  # Minimal info
+    - name: summary
+      fields: ["net"]  # Only net pay
+```
+
+## Related Entities
+
+| Entity | Relationship | Description |
+|--------|--------------|-------------|
+| [[PayGroup]] | usedBy | Pay groups using template |
