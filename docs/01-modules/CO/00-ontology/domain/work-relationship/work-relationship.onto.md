@@ -151,15 +151,19 @@ This entity separates the **classification** (Employee, Contingent, Candidate, A
 mindmap
   root((WorkRelationship))
     Types
-      EMPLOYEE["Employee (hired)"]
+      EMPLOYEE["Employee"]
       CONTINGENT["Contingent/Contractor"]
-      CANDIDATE["Candidate (pre-hire)"]
-      ALUMNUS["Alumni (former)"]
-      NONWORKER["Non-worker (dependent)"]
-    Oracle/Workday Model
-      Tier1["Tier 1: Work Relationship"]
-      Tier2["Tier 2: Employment Terms"]
-      Tier3["Tier 3: Assignment"]
+      CANDIDATE["Candidate"]
+      ALUMNUS["Alumni"]
+      NONWORKER["Non-worker"]
+    Properties
+      startDate
+      endDate
+      isPrimary
+    Links
+      Worker
+      LegalEntity
+      Employee["→ Employee records"]
 ```
 
 ## Business Context
