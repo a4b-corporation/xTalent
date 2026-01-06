@@ -61,15 +61,16 @@ Worker:
 ### Person Types
 | Type | Description | Has Employee Record? |
 |------|-------------|---------------------|
-| **EMPLOYEE** | Current employee | Yes (active) |
+| **EMPLOYEE** | Current employee (including paid interns) | Yes (active) |
 | **CONTRACTOR** | Independent contractor | No |
-| **CONTINGENT_WORKER** | Temp/agency worker | No |
-| **INTERN** | Internship program | Optional |
-| **VOLUNTEER** | Unpaid volunteer | No |
+| **CONTINGENT** | Temp/agency worker | No |
+| **NON_WORKER** | Volunteer, unpaid intern, board member | No |
 | **ALUMNUS** | Former employee | No (terminated) |
 | **APPLICANT** | Job applicant | No |
 
 **Important**: `person_type` reflects the **current primary relationship type**, not a permanent classification.
+
+> **Note**: Paid interns are type=EMPLOYEE with `employee_class_code=INTERN`. Unpaid interns and volunteers are type=NON_WORKER.
 
 ---
 
@@ -150,10 +151,10 @@ WorkRelationship:
 
 ---
 
-#### 3. CONTINGENT_WORKER
+#### 3. CONTINGENT
 ```yaml
 WorkRelationship:
-  relationship_type_code: CONTINGENT_WORKER
+  relationship_type_code: CONTINGENT
   legal_entity_code: VNG-VN
   status_code: ACTIVE
   start_date: 2024-01-15
@@ -181,39 +182,10 @@ WorkRelationship:
 
 ---
 
-#### 4. INTERN
+#### 4. NON_WORKER
 ```yaml
 WorkRelationship:
-  relationship_type_code: INTERN
-  legal_entity_code: VNG-VN
-  status_code: ACTIVE
-  start_date: 2024-06-01
-  end_date: 2024-08-31
-```
-
-**Characteristics**:
-- **Requires Employee record**: OPTIONAL (depends on paid vs unpaid)
-- **Has contract**: YES (internship agreement)
-- **Payroll**: If paid, yes
-- **Benefits eligible**: Usually NO
-- **Tax withholding**: If paid, yes
-- **Supervision**: Mentorship-based
-
-**When to Use**:
-- University internship programs
-- Co-op students
-- Summer interns
-
-**Employee Record Decision**:
-- **Paid intern**: Create Employee record (on payroll)
-- **Unpaid intern**: No Employee record (educational credit only)
-
----
-
-#### 5. VOLUNTEER
-```yaml
-WorkRelationship:
-  relationship_type_code: VOLUNTEER
+  relationship_type_code: NON_WORKER
   legal_entity_code: VNG-FOUNDATION
   status_code: ACTIVE
   start_date: 2024-01-01
@@ -221,16 +193,48 @@ WorkRelationship:
 
 **Characteristics**:
 - **Requires Employee record**: NO ❌
-- **Has contract**: Volunteer agreement
+- **Has contract**: Volunteer agreement or none
 - **Payroll**: NO (unpaid)
 - **Benefits eligible**: NO
 - **Tax withholding**: NO
 - **Supervision**: Coordination-based
 
 **When to Use**:
-- Non-profit volunteers
-- Community service
-- Pro bono work
+- **Unpaid interns** (educational credit only)
+- **Volunteers** (non-profit, community service)
+- **Board members** (non-executive directors)
+- **Dependents** tracked for benefits purposes
+
+---
+
+### Special Case: Interns
+
+Interns are NOT a separate relationship type. They are handled based on compensation:
+
+| Intern Type | WorkRelationship Type | Employee Record | Employee Class |
+|-------------|----------------------|-----------------|----------------|
+| **Paid Intern** | EMPLOYEE | ✅ Yes | INTERN |
+| **Unpaid Intern** | NON_WORKER | ❌ No | N/A |
+
+**Example: Paid Intern**
+```yaml
+WorkRelationship:
+  relationship_type_code: EMPLOYEE  # Not INTERN
+  legal_entity_code: VNG-VN
+  
+Employee:
+  employee_class_code: INTERN  # Classification here
+  hire_date: 2024-06-01
+```
+
+**Example: Unpaid Intern**
+```yaml
+WorkRelationship:
+  relationship_type_code: NON_WORKER  # No labor relationship
+  legal_entity_code: VNG-VN
+  
+# NO Employee record
+```
 
 ---
 
@@ -289,13 +293,10 @@ WorkRelationship.relationship_type_code = EMPLOYEE
 WorkRelationship.relationship_type_code = CONTRACTOR
   → Employee record FORBIDDEN ❌
   
-WorkRelationship.relationship_type_code = CONTINGENT_WORKER
+WorkRelationship.relationship_type_code = CONTINGENT
   → Employee record FORBIDDEN ❌
   
-WorkRelationship.relationship_type_code = INTERN
-  → Employee record OPTIONAL (paid interns only)
-  
-WorkRelationship.relationship_type_code = VOLUNTEER
+WorkRelationship.relationship_type_code = NON_WORKER
   → Employee record FORBIDDEN ❌
 ```
 
@@ -578,12 +579,12 @@ Assignment:
 # Step 1: Create Worker
 Worker:
   full_name: "Carol White"
-  person_type: CONTINGENT_WORKER
+  person_type: CONTINGENT
   
 # Step 2: Create WorkRelationship
 WorkRelationship:
   worker_id: WORKER-003
-  relationship_type_code: CONTINGENT_WORKER
+  relationship_type_code: CONTINGENT
   legal_entity_code: VNG-VN
   supplier_id: AGENCY-001  # Staffing agency
   start_date: 2024-03-01
@@ -691,7 +692,7 @@ WorkRelationship:
   
 # Step 4: Update Worker
 Worker:
-  person_type: CONTINGENT_WORKER
+  person_type: CONTINGENT
 ```
 
 **Order**: Assignment → WorkRelationship → Worker
