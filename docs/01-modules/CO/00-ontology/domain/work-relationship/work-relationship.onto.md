@@ -41,7 +41,7 @@ attributes:
   - name: endDate
     type: date
     required: false
-    description: Relationship end date
+    description: Relationship end date (set on termination)
 
   - name: statusCode
     type: enum
@@ -116,6 +116,14 @@ actions:
     description: Create work relationship
     requiredFields: [workerId, relationshipTypeCode, legalEntityCode, startDate]
 
+  - name: suspend
+    description: Temporarily suspend relationship
+    triggersTransition: suspend
+
+  - name: reactivate
+    description: Reactivate suspended relationship
+    triggersTransition: reactivate
+
   - name: terminate
     description: End work relationship
     triggersTransition: terminate
@@ -139,73 +147,216 @@ policies:
 
 ## Overview
 
-A **WorkRelationship** represents the **employment relationship type** between a [[Worker]] and a [[LegalEntity]]. This defines HOW the person is engaged with the organization - as an employee, contractor, contingent worker, or non-worker (board member, dependent).
-
-This is distinct from [[Employee]] which contains employment DETAILS - WorkRelationship is the classification of the relationship itself.
+A **WorkRelationship** represents the **employment relationship type** between a [[Worker]] and a [[LegalEntity]]. This defines HOW the person is engaged with the organization.
 
 ```mermaid
 mindmap
   root((WorkRelationship))
     Types
-      EMPLOYEE["Employee (HĐLĐ)"]
-      CONTINGENT["Contingent Worker"]
-      CONTRACTOR["Independent Contractor"]
-      NON_WORKER["Non-worker"]
-    Properties
+      EMPLOYEE["EMPLOYEE"]
+      CONTINGENT["CONTINGENT"]
+      CONTRACTOR["CONTRACTOR"]
+      NON_WORKER["NON_WORKER"]
+    Status
+      ACTIVE
+      SUSPENDED
+      TERMINATED
+    Dates
       startDate
       endDate
-      isPrimary
-    Links
-      Worker
-      LegalEntity
 ```
 
-## Business Context
+---
 
-### What is WorkRelationship?
+## Relationship Type Mapping
 
-WorkRelationship answers: **"What TYPE of working arrangement does this person have with this legal entity?"**
+### Complete Mapping của TẤT CẢ các loại mối quan hệ lao động
 
-| Type | Description | Example |
-|------|-------------|---------|
-| **EMPLOYEE** | Người lao động theo HĐLĐ | Full-time, Part-time employees |
-| **CONTINGENT** | Lao động phụ thuộc qua agency | Temps, Agency workers |
-| **CONTRACTOR** | Nhà thầu độc lập | Freelancers, Consultants |
-| **NON_WORKER** | Không phải lao động | Board members, Dependents |
+| Real-world Scenario | WorkRelationship Type | Employee Class | Notes |
+|---------------------|----------------------|----------------|-------|
+| **Nhân viên chính thức** | EMPLOYEE | PERMANENT | Có HĐLĐ không xác định thời hạn |
+| **Nhân viên thử việc** | EMPLOYEE | PROBATION | Có HĐTT, thử việc 60 ngày |
+| **Nhân viên có thời hạn** | EMPLOYEE | FIXED_TERM | HĐLĐ 12-36 tháng |
+| **Nhân viên thời vụ** | EMPLOYEE | SEASONAL | HĐLĐ < 12 tháng |
+| **Nhân viên bán thời gian** | EMPLOYEE | PART_TIME | < 8h/ngày hoặc < 40h/tuần |
+| **Thực tập sinh có lương** | EMPLOYEE | INTERN | Có HĐTT/HĐLĐ, đóng BHXH |
+| **Lao động thuê qua agency** | CONTINGENT | - | Thuộc payroll của agency |
+| **Temp staff / Outsource** | CONTINGENT | - | Làm việc tại công ty nhưng HĐLĐ với bên thứ 3 |
+| **Freelancer** | CONTRACTOR | - | Tự kinh doanh, HĐDV |
+| **Consultant** | CONTRACTOR | - | Tư vấn độc lập, HĐDV |
+| **Nhà thầu phụ** | CONTRACTOR | - | Công ty/cá nhân cung cấp dịch vụ |
+| **Thực tập sinh không lương** | NON_WORKER | - | Thỏa thuận thực tập, không đóng BHXH |
+| **Tình nguyện viên** | NON_WORKER | - | Không có nghĩa vụ pháp lý |
+| **Thành viên HĐQT** | NON_WORKER | - | Không phải lao động |
+| **Cố vấn cao cấp** | NON_WORKER | - | Nếu không có HĐDV/HĐLĐ |
+| **Người phụ thuộc** | NON_WORKER | - | Tracked for benefits/tax |
 
-### Key Stakeholders
-- **HR Admin**: Creates/manages relationships
-- **Procurement**: Manages CONTRACTOR relationships
-- **Legal**: Ensures correct classification (employee vs contractor)
-- **Payroll**: Different processing by type
+### Type Definitions
 
-### Business Processes
-This entity is central to:
-- **Hiring**: Create EMPLOYEE relationship
-- **Contractor Engagement**: Create CONTRACTOR relationship
-- **Compliance**: Correct worker classification (avoid misclassification risk)
-- **Multi-Entity**: Same person, different relationships in different entities
+| Type | Tên tiếng Việt | Đặc điểm pháp lý | BHXH | Payroll |
+|------|----------------|------------------|------|---------|
+| **EMPLOYEE** | Người lao động | Có HĐLĐ/HĐTT với công ty | ✅ Có | ✅ Internal |
+| **CONTINGENT** | Lao động phụ thuộc | HĐLĐ với bên thứ 3 (agency) | ❌ External | ❌ External |
+| **CONTRACTOR** | Nhà thầu độc lập | HĐDV, tự kinh doanh | ❌ Tự đóng | ❌ Invoice |
+| **NON_WORKER** | Không lao động | Không quan hệ lao động | ❌ Không | ❌ Không |
 
-### Business Value
-Proper worker classification ensures legal compliance (labor law, tax), enables correct payroll processing, and provides complete workforce visibility.
+---
 
-## Attributes Guide
+## Status & Lifecycle
 
-### Classification
-- **relationshipTypeCode**: Type of working relationship:
-  - *EMPLOYEE*: Has employment contract (HĐLĐ), employment benefits
-  - *CONTINGENT*: Agency worker, temp - employed elsewhere but works here
-  - *CONTRACTOR*: Independent, own business, service agreement
-  - *NON_WORKER*: No labor relationship but tracked (board member, dependent)
+### Status Definitions
 
-### Scope
-- **workerId**: The [[Worker]] (person).
-- **legalEntityCode**: Which [[LegalEntity]] this relationship is with. **Required** - every work relationship is with a specific legal entity.
-- **startDate / endDate**: Relationship duration.
+| Status | Ý nghĩa | endDate | Có thể reactivate? |
+|--------|---------|---------|-------------------|
+| **ACTIVE** | Đang có hiệu lực | null | N/A |
+| **SUSPENDED** | Tạm ngưng (LOA, disciplinary) | **null** (chưa kết thúc) | ✅ Có |
+| **TERMINATED** | Đã kết thúc | **Set = ngày kết thúc** | ❌ Không (tạo mới) |
 
-### Status
-- **statusCode**: Lifecycle state (ACTIVE, SUSPENDED, TERMINATED).
-- **isPrimary**: If worker has multiple relationships, one must be primary.
+### State Diagram với Examples
+
+```mermaid
+stateDiagram-v2
+    [*] --> ACTIVE: create (hire)
+    
+    ACTIVE --> SUSPENDED: suspend
+    note right of SUSPENDED
+        VD: Nghỉ không lương dài hạn
+        VD: Kỷ luật tạm đình chỉ
+        endDate = null
+    end note
+    
+    SUSPENDED --> ACTIVE: reactivate
+    note right of ACTIVE
+        VD: Quay lại làm việc
+        endDate = null
+    end note
+    
+    ACTIVE --> TERMINATED: terminate
+    SUSPENDED --> TERMINATED: terminate
+    note right of TERMINATED
+        VD: Nghỉ việc, hết hợp đồng
+        endDate = ngày kết thúc
+    end note
+    
+    TERMINATED --> [*]
+```
+
+---
+
+## Date Behavior Chi Tiết
+
+### startDate vs endDate
+
+| Trường | Mô tả | Set khi nào | Thay đổi? |
+|--------|-------|-------------|-----------|
+| **startDate** | Ngày bắt đầu quan hệ lao động | Create | ❌ Không thay đổi |
+| **endDate** | Ngày kết thúc quan hệ | Terminate | ✅ Set khi terminate |
+
+### Quy tắc Date theo Status
+
+| Status | startDate | endDate |
+|--------|-----------|---------|
+| ACTIVE | ✅ Có | ❌ null |
+| SUSPENDED | ✅ Có | ❌ null (chưa kết thúc) |
+| TERMINATED | ✅ Có | ✅ Có (ngày kết thúc) |
+
+---
+
+## Business Scenarios Chi Tiết
+
+### Scenario 1: Nhân viên mới vào làm
+```
+Action: create
+startDate: 2024-01-15
+endDate: null
+status: ACTIVE
+→ Tạo Employee record với employeeClassCode = PROBATION
+```
+
+### Scenario 2: Nhân viên nghỉ không lương dài hạn (Leave of Absence)
+```
+Action: suspend
+Reason: LEAVE_OF_ABSENCE
+startDate: 2024-01-15 (không đổi)
+endDate: null (vẫn null - chưa kết thúc hẳn)
+status: SUSPENDED
+→ Employee status = SUSPENDED
+→ Không tính payroll, nhưng vẫn giữ quan hệ
+```
+
+### Scenario 3: Nhân viên quay lại làm việc sau LOA
+```
+Action: reactivate
+startDate: 2024-01-15 (không đổi - vẫn là ngày vào ban đầu)
+endDate: null
+status: ACTIVE
+→ Employee status = ACTIVE
+→ Resume payroll
+```
+
+### Scenario 4: Kỷ luật tạm đình chỉ công tác
+```
+Action: suspend
+Reason: DISCIPLINARY
+startDate: 2024-01-15 (không đổi)
+endDate: null
+status: SUSPENDED
+→ Sau khi xử lý kỷ luật: reactivate hoặc terminate
+```
+
+### Scenario 5: Nhân viên nghỉ việc (Resignation)
+```
+Action: terminate
+Reason: RESIGNATION
+startDate: 2024-01-15 (không đổi)
+endDate: 2024-12-31 (ngày làm việc cuối)
+status: TERMINATED
+→ Employee status = TERMINATED
+→ Không thể reactivate (phải tạo WorkRelationship mới nếu rehire)
+```
+
+### Scenario 6: Hết hạn hợp đồng
+```
+Action: terminate
+Reason: CONTRACT_EXPIRED
+startDate: 2023-01-01
+endDate: 2024-12-31 (ngày hết HĐ)
+status: TERMINATED
+→ Nếu ký lại HĐ: tạo WorkRelationship MỚI với startDate mới
+```
+
+### Scenario 7: Sa thải do vi phạm
+```
+Action: terminate
+Reason: TERMINATION_FOR_CAUSE
+startDate: 2024-01-15
+endDate: 2024-06-15 (ngày quyết định)
+status: TERMINATED
+```
+
+### Scenario 8: Rehire (tuyển lại cựu nhân viên)
+```
+Old WorkRelationship:
+  startDate: 2020-01-01, endDate: 2023-12-31, status: TERMINATED
+
+New WorkRelationship (tạo mới):
+  startDate: 2025-01-15, endDate: null, status: ACTIVE
+→ Worker có 2 WorkRelationship records (1 old terminated, 1 new active)
+→ Seniority có thể tính cộng dồn nếu policy cho phép
+```
+
+---
+
+## Khi nào KHÔNG thể Reactivate?
+
+| Tình huống | Có thể Reactivate? | Lý do |
+|------------|-------------------|-------|
+| SUSPENDED (LOA) | ✅ Có | Quay lại làm việc |
+| SUSPENDED (Disciplinary) | ✅ Có | Sau xử lý kỷ luật |
+| TERMINATED | ❌ Không | Quan hệ đã kết thúc pháp lý |
+| TERMINATED muốn quay lại | → Tạo mới | Rehire = WorkRelationship mới |
+
+---
 
 ## Relationships Explained
 
@@ -214,103 +365,128 @@ erDiagram
     WORK_RELATIONSHIP }o--|| WORKER : "forWorker"
     WORK_RELATIONSHIP }o--|| LEGAL_ENTITY : "withLegalEntity"
     WORK_RELATIONSHIP ||--o| EMPLOYEE : "hasEmployeeRecord"
+    
+    EMPLOYEE ||--o{ CONTRACT : "hasContracts"
+    EMPLOYEE ||--o{ ASSIGNMENT : "hasAssignments"
 ```
 
-### Worker
-- **forWorker** → [[Worker]]: The person. Worker can have multiple WorkRelationships (different types or different entities).
+### Relationship với Employee
 
-### Legal Entity
-- **withLegalEntity** → [[LegalEntity]]: The employer/engaging entity. Required.
+- **EMPLOYEE type**: Bắt buộc có [[Employee]] record
+- **Other types**: Không có Employee record (CONTINGENT, CONTRACTOR, NON_WORKER)
 
-### Employment Details
-- **hasEmployeeRecord** → [[Employee]]: When type = EMPLOYEE, links to detailed employment record (employee code, hire date, etc.).
-
-## Lifecycle & Workflows
-
-### State Definitions
-
-| State | Business Meaning | System Impact |
-|-------|------------------|---------------|
-| **active** | Currently engaged | Included in workforce |
-| **suspended** | Temporarily paused | Limited access |
-| **terminated** | Relationship ended | Historical only |
-
-### State Diagram
-
-```mermaid
-stateDiagram-v2
-    [*] --> active: create
-    
-    active --> suspended: suspend
-    suspended --> active: reactivate
-    
-    active --> terminated: terminate
-    suspended --> terminated: terminate
-    
-    terminated --> [*]
+```
+WorkRelationship (type=EMPLOYEE)
+    │
+    └── Employee (employeeCode, hireDate, classCode)
+            │
+            ├── Contract (HĐLĐ/HĐTT)
+            └── Assignment (Position, BU)
 ```
 
-## Actions & Operations
+---
 
-### create
-**Who**: HR Admin  
-**When**: New engagement with organization  
-**Required**: workerId, relationshipTypeCode, legalEntityCode, startDate  
-**Process**:
-1. Verify worker exists
-2. Check for duplicate type+entity
-3. Create relationship
-4. If EMPLOYEE type → create [[Employee]] record
+## Business Context
 
-### terminate
-**Who**: HR Admin  
-**When**: Ending engagement (offboarding, contract end)  
-**Process**:
-1. Set endDate
-2. Transition to terminated
-3. If EMPLOYEE type → terminate [[Employee]] record
+### Key Stakeholders
+- **HR Admin**: Tạo và quản lý relationships
+- **Manager**: Request suspend/terminate
+- **Payroll**: Xác định ai được trả lương
+- **Legal**: Xác định đúng loại quan hệ (compliance)
+
+### Quyết định phân loại quan trọng
+
+| Câu hỏi | Nếu Có | Nếu Không |
+|---------|--------|-----------|
+| Có HĐLĐ/HĐTT với công ty này? | EMPLOYEE | Next question |
+| Có HĐLĐ với agency/outsource? | CONTINGENT | Next question |
+| Có HĐDV, tự kinh doanh? | CONTRACTOR | NON_WORKER |
+
+### Vietnam Labor Law Considerations
+
+- **EMPLOYEE**: Áp dụng Bộ luật Lao động 2019
+- **CONTINGENT**: Công ty chịu trách nhiệm về an toàn lao động, không phải BHXH
+- **CONTRACTOR**: Áp dụng Bộ luật Dân sự (HĐDV)
+- **NON_WORKER**: Không áp dụng Luật Lao động
+
+---
 
 ## Business Rules
 
 ### Data Integrity
 
-#### One Per Type Per Entity (uniqueTypePerEntity)
-**Rule**: One active relationship of each type per legal entity.  
-**Reason**: Prevents duplicate classifications.  
-**Example OK**: EMPLOYEE at VNG_CORP + CONTRACTOR at ZaloPay  
-**Example NOT OK**: Two EMPLOYEE at VNG_CORP
+#### One Per Type Per Entity
+**Rule**: Worker chỉ có 1 active relationship mỗi type per legal entity.
+**OK**: EMPLOYEE @ VNG + CONTRACTOR @ ZaloPay  
+**NOT OK**: 2x EMPLOYEE @ VNG
 
-#### Entity Required (entityRequired)
-**Rule**: Legal entity is required for all types.  
-**Reason**: Work relationship is always with a specific legal entity.
+#### Required Legal Entity
+**Rule**: Legal entity bắt buộc.
+**Reason**: Mọi quan hệ lao động đều với một pháp nhân cụ thể.
 
-### Business Logic
+### Date Rules
 
-#### Primary Required (primaryRequired)
-**Rule**: If worker has any relationships, exactly one must be primary.  
-**Reason**: Default for reporting, payroll.
+#### startDate immutable
+**Rule**: startDate không thay đổi sau khi tạo.
+**Reason**: Đây là ngày bắt đầu chính thức, dùng tính seniority.
+
+#### endDate only on terminate
+**Rule**: endDate chỉ set khi status = TERMINATED.
+**Reason**: SUSPENDED vẫn là active relationship (chưa kết thúc).
+
+---
 
 ## Examples
 
-### Example 1: Regular Employee
-- **workerId**: WRK-00042
-- **relationshipTypeCode**: EMPLOYEE
-- **legalEntityCode**: VNG_CORP
-- **startDate**: 2023-01-15
-- **isPrimary**: true
-- **statusCode**: ACTIVE
+### Example 1: Full-time Employee
+```yaml
+id: "wr-001"
+workerId: "wrk-00042"
+relationshipTypeCode: "EMPLOYEE"
+legalEntityCode: "VNG_CORP"
+startDate: "2023-01-15"
+endDate: null
+statusCode: "ACTIVE"
+isPrimary: true
+```
 
-### Example 2: Independent Contractor
-- **workerId**: WRK-00100
-- **relationshipTypeCode**: CONTRACTOR
-- **legalEntityCode**: ZALOPAY
-- **startDate**: 2024-06-01
-- **statusCode**: ACTIVE
+### Example 2: Suspended Employee (LOA)
+```yaml
+id: "wr-001"
+workerId: "wrk-00042"
+relationshipTypeCode: "EMPLOYEE"
+legalEntityCode: "VNG_CORP"
+startDate: "2023-01-15"
+endDate: null              # vẫn null vì chưa terminate
+statusCode: "SUSPENDED"
+isPrimary: true
+```
 
-### Example 3: Multi-Entity Worker
-Same person with two relationships:
-- EMPLOYEE at VNG_CORP (primary)
-- CONTRACTOR at ZaloPay (secondary)
+### Example 3: Terminated Employee
+```yaml
+id: "wr-001"
+workerId: "wrk-00042"
+relationshipTypeCode: "EMPLOYEE"
+legalEntityCode: "VNG_CORP"
+startDate: "2023-01-15"
+endDate: "2024-12-31"      # set khi terminate
+statusCode: "TERMINATED"
+isPrimary: false           # không còn primary vì đã kết thúc
+```
+
+### Example 4: Contractor
+```yaml
+id: "wr-002"
+workerId: "wrk-00100"
+relationshipTypeCode: "CONTRACTOR"
+legalEntityCode: "ZALOPAY"
+startDate: "2024-06-01"
+endDate: null
+statusCode: "ACTIVE"
+isPrimary: true
+```
+
+---
 
 ## Related Entities
 
@@ -318,4 +494,4 @@ Same person with two relationships:
 |--------|--------------|-------------|
 | [[Worker]] | forWorker | The person |
 | [[LegalEntity]] | withLegalEntity | Employer |
-| [[Employee]] | hasEmployeeRecord | Employment details |
+| [[Employee]] | hasEmployeeRecord | Details (if EMPLOYEE type) |
