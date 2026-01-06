@@ -98,7 +98,36 @@ flowchart TB
     PE --> PFo
     PE --> GL
     SR --> PE
+
+    %% Color by Classification
+    %% AGGREGATE_ROOT - Green
+    style PC fill:#2ecc71,stroke:#27ae60,color:#fff
+    style PP fill:#2ecc71,stroke:#27ae60,color:#fff
+    style PE fill:#2ecc71,stroke:#27ae60,color:#fff
+    style SR fill:#2ecc71,stroke:#27ae60,color:#fff
+    style PI fill:#2ecc71,stroke:#27ae60,color:#fff
+    
+    %% ENTITY - Blue
+    style PG fill:#3498db,stroke:#2980b9,color:#fff
+    style PFo fill:#3498db,stroke:#2980b9,color:#fff
+    style PBD fill:#3498db,stroke:#2980b9,color:#fff
+    style DP fill:#3498db,stroke:#2980b9,color:#fff
+    style VR fill:#3498db,stroke:#2980b9,color:#fff
+    style CR fill:#3498db,stroke:#2980b9,color:#fff
+    style GL fill:#3498db,stroke:#2980b9,color:#fff
+    style PT fill:#3498db,stroke:#2980b9,color:#fff
+    style TT fill:#3498db,stroke:#2980b9,color:#fff
+    
+    %% REFERENCE_DATA - Orange
+    style PF fill:#e67e22,stroke:#d35400,color:#fff
+    style AR fill:#e67e22,stroke:#d35400,color:#fff
+    style BT fill:#e67e22,stroke:#d35400,color:#fff
 ```
+
+**Chú thích màu sắc:**
+- 🟢 **AGGREGATE_ROOT**: PayCalendar, PayProfile, PayElement, StatutoryRule, PayrollInterface
+- 🔵 **ENTITY**: PayGroup, PayFormula, PayBalanceDefinition, DeductionPolicy, ValidationRule, CostingRule, GLMappingPolicy, PayslipTemplate, TaxReportTemplate
+- 🟠 **REFERENCE_DATA**: PayFrequency, PayAdjustReason, BankTemplate
 
 ### 2.2 Entity Classification
 
