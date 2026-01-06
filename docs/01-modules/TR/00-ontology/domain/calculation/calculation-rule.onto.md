@@ -160,6 +160,8 @@ policies:
 
 ## Overview
 
+**CalculationRule** định nghĩa các quy tắc tính toán - thuế TNCN, bảo hiểm xã hội, OT, proration. Là AGGREGATE_ROOT của calculation domain, versioned theo SCD-2 để track changes theo thời gian.
+
 ```mermaid
 mindmap
   root((CalculationRule))
@@ -180,63 +182,79 @@ mindmap
       Jurisdiction
 ```
 
-**CalculationRule** định nghĩa các quy tắc tính toán - thuế, bảo hiểm xã hội, OT, proration. Versioned theo SCD-2 để track theo thời gian.
-
 ## Business Context
 
 ### Key Stakeholders
 - **Compliance Team**: Define statutory rules
 - **Payroll Team**: Apply rules in calculation
 - **Legal**: Verify compliance
+- **Finance**: Audit calculations
 
-### Business Processes
-- **Statutory Updates**: Update khi law changes
-- **Payroll Processing**: Apply rules to calculate
-- **Compliance Audit**: Verify correct application
+### Rule Categories Explained
+
+| Category | Description | Update Frequency | Example |
+|----------|-------------|------------------|---------|
+| **TAX** | Income tax calculation | Annual/Law change | VN PIT brackets |
+| **SOCIAL_INSURANCE** | SI/HI contribution rates | Annual | BHXH 8%/17.5% |
+| **OVERTIME** | OT multipliers | Rare | 150%, 200%, 300% |
+| **PRORATION** | Partial period calculation | Rare | Calendar days method |
+| **ROUNDING** | Amount rounding | Rare | Round to 1000 VND |
+
+### Business Value
+CalculationRule cho phép centralize statutory compliance, track version history, và apply consistently across payroll.
 
 ## Attributes Guide
 
-### Rule Categories
+### Core Identity
+- **code**: Mã duy nhất. Format: VN_PIT_2025, VN_BHXH_2025
+- **name**: Tên hiển thị. VD: "Vietnam PIT Progressive Tax 2025"
+- **ruleCategory**: Category (TAX, SOCIAL_INSURANCE, etc.)
+- **ruleType**: Logic type (PROGRESSIVE, RATE_TABLE, etc.)
 
-| Category | Description | Example |
-|----------|-------------|---------|
-| TAX | Income tax rules | VN_PIT_2025 |
-| SOCIAL_INSURANCE | SI contribution rates | VN_BHXH_2025 |
-| OVERTIME | OT multipliers | VN_OT_2019 |
-| PRORATION | Partial period calculation | PRORATE_CALENDAR |
-| ROUNDING | Amount rounding rules | ROUND_VND_1000 |
+### Scope
+- **countryCode**: ISO 3166-1 code (VN, SG, US)
+- **jurisdiction**: State/Province nếu applicable
+- **legalReference**: Citation. VD: "Điều 23, Luật TNCN 2007"
 
-### Vietnam Examples
+### Formula Definition (formulaJson)
+JSON structure tùy thuộc vào ruleType:
 
-**VN_PIT_2025** (Progressive Tax):
+**PROGRESSIVE (Tax Brackets):**
 ```json
 {
   "brackets": [
     {"from": 0, "to": 5000000, "rate": 0.05},
-    {"from": 5000000, "to": 10000000, "rate": 0.10},
-    {"from": 10000000, "to": 18000000, "rate": 0.15},
-    {"from": 18000000, "to": 32000000, "rate": 0.20},
-    {"from": 32000000, "to": 52000000, "rate": 0.25},
-    {"from": 52000000, "to": 80000000, "rate": 0.30},
-    {"from": 80000000, "to": null, "rate": 0.35}
+    {"from": 5000000, "to": 10000000, "rate": 0.10}
   ],
   "personalDeduction": 11000000,
   "dependentDeduction": 4400000
 }
 ```
 
-**VN_BHXH_2025** (Social Insurance):
+**RATE_TABLE (SI Rates):**
 ```json
 {
-  "employee": {
-    "bhxh": 0.08, "bhyt": 0.015, "bhtn": 0.01
-  },
-  "employer": {
-    "bhxh": 0.175, "bhyt": 0.03, "bhtn": 0.01
-  },
+  "employee": {"bhxh": 0.08, "bhyt": 0.015, "bhtn": 0.01},
+  "employer": {"bhxh": 0.175, "bhyt": 0.03, "bhtn": 0.01},
   "ceiling": 36000000
 }
 ```
+
+## Relationships Explained
+
+```mermaid
+erDiagram
+    CALCULATION_RULE ||--o{ COMPONENT_RULE_BINDING : "appliedToComponents"
+    CALCULATION_RULE ||--o{ BASIS_RULE_BINDING : "appliedToBases"
+    CALCULATION_RULE }o--|| COUNTRY_CONFIG : "belongsToCountry"
+    PAY_COMPONENT ||--o{ COMPONENT_RULE_BINDING : "hasRules"
+```
+
+### ComponentRuleBinding
+- **appliedToComponents** → ComponentRuleBinding: Link rule to specific [[PayComponent]]
+
+### CountryConfig
+- **belongsToCountry** → [[CountryConfig]]: Country settings
 
 ## Lifecycle & Workflows
 
@@ -250,13 +268,101 @@ stateDiagram-v2
     expired --> [*]
 ```
 
-## Relationships Explained
+| State | Meaning |
+|-------|---------|
+| **draft** | Đang prepare |
+| **active** | Đang sử dụng |
+| **superseded** | Replaced by newer version |
+| **expired** | No longer applicable |
+
+### Version Update Flow
 
 ```mermaid
-erDiagram
-    CALCULATION_RULE ||--o{ COMPONENT_RULE_BINDING : "appliedToComponents"
-    CALCULATION_RULE ||--o{ BASIS_RULE_BINDING : "appliedToBases"
-    CALCULATION_RULE }o--|| COUNTRY_CONFIG : "belongsToCountry"
+flowchart LR
+    A[Law Change] --> B[Create New Version]
+    B --> C[Set effectiveStartDate]
+    C --> D[Publish]
+    D --> E[Old Version Superseded]
+```
+
+## Actions & Operations
+
+### create
+**Who**: Compliance Team  
+**Required**: code, name, ruleCategory, ruleType, formulaJson, effectiveStartDate
+
+### publish
+**Who**: Compliance Team  
+**When**: Ready for use in payroll
+
+### createNewVersion
+**Who**: Compliance Team  
+**When**: Law change, rate update  
+**Required**: formulaJson, effectiveStartDate
+
+## Business Rules
+
+#### Unique Current Code (uniqueCurrentCode)
+**Rule**: Code unique among current versions.
+
+#### Valid Formula (validFormula)
+**Rule**: formulaJson must be valid calculation definition.
+
+## Examples
+
+### Example 1: Vietnam PIT 2025 (Progressive Tax)
+```yaml
+code: VN_PIT_2025
+name: "Vietnam PIT Progressive Tax 2025"
+ruleCategory: TAX
+ruleType: PROGRESSIVE
+countryCode: VN
+legalReference: "Luật thuế TNCN 2007, sửa đổi 2012"
+formulaJson:
+  brackets:
+    - { from: 0, to: 5000000, rate: 0.05 }
+    - { from: 5000000, to: 10000000, rate: 0.10 }
+    - { from: 10000000, to: 18000000, rate: 0.15 }
+    - { from: 18000000, to: 32000000, rate: 0.20 }
+    - { from: 32000000, to: 52000000, rate: 0.25 }
+    - { from: 52000000, to: 80000000, rate: 0.30 }
+    - { from: 80000000, to: null, rate: 0.35 }
+  personalDeduction: 11000000
+  dependentDeduction: 4400000
+effectiveStartDate: "2025-01-01"
+```
+
+### Example 2: Vietnam Social Insurance 2025
+```yaml
+code: VN_BHXH_2025
+name: "Vietnam Social Insurance 2025"
+ruleCategory: SOCIAL_INSURANCE
+ruleType: RATE_TABLE
+countryCode: VN
+legalReference: "Luật BHXH 2014"
+formulaJson:
+  employee:
+    bhxh: 0.08
+    bhyt: 0.015
+    bhtn: 0.01
+  employer:
+    bhxh: 0.175
+    bhyt: 0.03
+    bhtn: 0.01
+  ceiling: 36000000
+effectiveStartDate: "2025-01-01"
+```
+
+### Example 3: Proration Rule (Calendar Days)
+```yaml
+code: PRORATE_CALENDAR_DAYS
+name: "Proration by Calendar Days"
+ruleCategory: PRORATION
+ruleType: FORMULA
+formulaJson:
+  formula: "monthlyAmount * (workingDays / totalDaysInMonth)"
+  description: "Pro-rate based on calendar days worked"
+effectiveStartDate: "2020-01-01"
 ```
 
 ## Related Entities

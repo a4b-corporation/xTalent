@@ -124,6 +124,8 @@ policies:
 
 ## Overview
 
+**SalaryBasis** định nghĩa cách tính lương cơ bản cho nhân viên - theo giờ, tháng, hoặc năm. Là AGGREGATE_ROOT của compensation structure, mỗi basis chứa các [[PayComponent]] và calculation rules.
+
 ```mermaid
 mindmap
   root((SalaryBasis))
@@ -135,12 +137,10 @@ mindmap
       VND
       USD
       SGD
-    Components
+    Contains
       PayComponents
       CalculationRules
 ```
-
-**SalaryBasis** định nghĩa cách tính lương cơ bản cho nhân viên - theo giờ, tháng, hoặc năm. Mỗi basis chứa các pay components và rules tính toán.
 
 ## Business Context
 
@@ -148,23 +148,60 @@ mindmap
 - **Compensation Team**: Define và maintain salary structures
 - **HR Admin**: Assign basis to employees
 - **Payroll**: Use for calculation
+- **Finance**: Budget planning
 
-### Business Processes
-- **New Hire Setup**: Assign salary basis
-- **Compensation Planning**: Define structures
-- **Payroll Processing**: Calculate based on basis
+### Pay Frequency Explained
+
+| Frequency | Description | Use Case |
+|-----------|-------------|----------|
+| **HOURLY** | Tính theo giờ | Factory workers, part-time |
+| **DAILY** | Tính theo ngày | Contractors, seasonal |
+| **WEEKLY** | Trả hàng tuần | Some US companies |
+| **BIWEEKLY** | Trả 2 tuần/lần | US standard |
+| **SEMIMONTHLY** | Trả 2 lần/tháng | 15th và 30th |
+| **MONTHLY** | Trả hàng tháng | VN standard |
+| **ANNUAL** | Lương năm | Executive packages |
+
+### Business Value
+SalaryBasis cho phép định nghĩa cấu trúc lương chuẩn, reuse cho nhiều employees, và maintain version history.
 
 ## Attributes Guide
 
-### Frequency
-- **HOURLY**: Tính lương theo giờ làm việc
-- **MONTHLY**: Lương cố định hàng tháng (phổ biến tại VN)
-- **ANNUAL**: Lương theo năm (thường chia 12)
+### Core Identity
+- **code**: Mã duy nhất. Format: LUONG_THANG_VN, HOURLY_US
+- **name**: Tên hiển thị. VD: "Lương tháng chuẩn Việt Nam"
+
+### Pay Configuration
+- **frequency**: Chu kỳ trả lương
+- **currency**: Mã tiền tệ (VND, USD, SGD)
+- **allowComponents**: Có cho phép thêm components không?
+
+### Metadata (JSON)
+Extended configuration:
+```json
+{
+  "prorationMethod": "CALENDAR_DAYS",
+  "workingDaysPerMonth": 22,
+  "standardHoursPerDay": 8,
+  "overtimeEnabled": true
+}
+```
 
 ## Relationships Explained
 
-- **hasComponents** → [[CompensationStructure]]: Links to pay components included in this basis
-- **hasBasisRules** → [[BasisRuleBinding]]: Calculation rules (tax, SI, proration)
+```mermaid
+erDiagram
+    SALARY_BASIS ||--o{ COMPENSATION_STRUCTURE : "hasComponents"
+    COMPENSATION_STRUCTURE }o--|| PAY_COMPONENT : "references"
+    SALARY_BASIS ||--o{ BASIS_RULE_BINDING : "hasBasisRules"
+    BASIS_RULE_BINDING }o--|| CALCULATION_RULE : "uses"
+```
+
+### CompensationStructure
+- **hasComponents** → CompensationStructure: Links to pay components. VD: Lương cơ bản + Phụ cấp
+
+### BasisRuleBinding
+- **hasBasisRules** → BasisRuleBinding: Calculation rules (tax, SI, proration)
 
 ## Lifecycle & Workflows
 
@@ -176,25 +213,88 @@ stateDiagram-v2
     deprecated --> [*]
 ```
 
+| State | Meaning |
+|-------|---------|
+| **draft** | Đang setup, chưa assign được |
+| **active** | Có thể assign cho employees |
+| **deprecated** | Không dùng cho new assignments |
+
+### Assignment Flow
+
+```mermaid
+flowchart LR
+    A[Create Basis] --> B[Add Components]
+    B --> C[Add Rules]
+    C --> D[Activate]
+    D --> E[Assign to Employees]
+```
+
+## Actions & Operations
+
+### create
+**Who**: Compensation Team  
+**Required**: code, name, frequency, currency, effectiveStartDate
+
+### activate
+**Who**: Compensation Team  
+**When**: Ready for use
+
+### addComponent
+**Who**: Compensation Team  
+**Purpose**: Thêm pay component vào basis  
+**Required**: componentId
+
+## Business Rules
+
+#### Unique Code (uniqueCode)
+**Rule**: Salary basis code phải duy nhất.
+
+#### Valid Currency (validCurrency)
+**Rule**: Currency phải là ISO 4217 code hợp lệ.
+
+#### Edit Access (editAccess)
+**Rule**: Chỉ Compensation Admin được edit.
+
 ## Examples
 
 ### Example 1: Vietnam Monthly Salary
-- **code**: LUONG_THANG_VN
-- **name**: Lương tháng chuẩn Việt Nam
-- **frequency**: MONTHLY
-- **currency**: VND
-- **allowComponents**: true
+```yaml
+code: LUONG_THANG_VN
+name: "Lương tháng chuẩn Việt Nam"
+frequency: MONTHLY
+currency: VND
+allowComponents: true
+metadata:
+  prorationMethod: WORKING_DAYS
+  workingDaysPerMonth: 22
+  standardHoursPerDay: 8
+```
 
-### Example 2: US Hourly
-- **code**: HOURLY_US
-- **name**: US Hourly Rate
-- **frequency**: HOURLY
-- **currency**: USD
+### Example 2: US Hourly Rate
+```yaml
+code: HOURLY_US
+name: "US Hourly Rate"
+frequency: HOURLY
+currency: USD
+allowComponents: false  # Simple hourly, no extras
+metadata:
+  overtimeEnabled: true
+  overtimeThreshold: 40  # hours/week
+```
+
+### Example 3: Singapore Monthly
+```yaml
+code: MONTHLY_SG
+name: "Singapore Monthly Salary"
+frequency: MONTHLY
+currency: SGD
+allowComponents: true
+```
 
 ## Related Entities
 
 | Entity | Relationship | Description |
 |--------|--------------|-------------|
 | [[PayComponent]] | via CompensationStructure | Components in this basis |
-| [[BasisRuleBinding]] | hasBasisRules | Calculation rules |
 | [[CalculationRule]] | via BasisRuleBinding | Global rules applied |
+| [[Employee]] | indirect | Employees using this basis |

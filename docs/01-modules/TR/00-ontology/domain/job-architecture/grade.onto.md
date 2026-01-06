@@ -127,10 +127,12 @@ policies:
 
 ## Overview
 
+**Grade** đại diện cho cấp bậc trong tổ chức. Là AGGREGATE_ROOT của job architecture, mỗi grade có [[PayRange]] và có thể thuộc nhiều [[GradeLadder]]. Sử dụng SCD-2 để track history.
+
 ```mermaid
 mindmap
   root((Grade))
-    Identification
+    Identity
       gradeCode
       name
       jobLevel
@@ -143,32 +145,41 @@ mindmap
       GradeLadder
 ```
 
-**Grade** đại diện cho cấp bậc trong tổ chức. Mỗi grade có pay range và có thể thuộc nhiều career ladders. Sử dụng SCD-2 để track history.
-
 ## Business Context
 
 ### Key Stakeholders
 - **Compensation Team**: Define grade structure
 - **HR Business Partner**: Job evaluation, grading decisions
 - **Managers**: Understand team levels
+- **Employees**: Career progression visibility
 
-### Business Processes
-- **Job Evaluation**: Assign grade to positions
-- **Compensation Planning**: Define pay ranges per grade
-- **Career Pathing**: Map progression through grades
+### Job Level Tiers
+
+| Level | Tier | Description | Example Grades |
+|-------|------|-------------|----------------|
+| 1-3 | Entry/Junior | New hires, learning | G1, G2, G3 |
+| 4-6 | Mid/Senior | Experienced, independent | G4, G5, G6 |
+| 7-8 | Lead/Principal | Expert, leads work | G7, G8 |
+| 9-10 | Director/Executive | Leadership, strategy | M4, M5, E1 |
+
+### Business Value
+Grade là foundation của compensation structure - định nghĩa level hierarchy, link với pay ranges, và enable career pathing.
 
 ## Attributes Guide
 
-### Job Level
-- Level 1-3: Entry/Junior
-- Level 4-6: Mid-level/Senior
-- Level 7-8: Lead/Principal
-- Level 9-10: Director/Executive
+### Core Identity
+- **gradeCode**: Mã duy nhất. Format: G1, G2, M1, M2
+- **name**: Tên hiển thị. VD: "Senior Engineer"
+- **description**: Mô tả chi tiết responsibilities
+- **jobLevel**: Số thứ tự hierarchy (1-10)
+- **sortOrder**: Thứ tự hiển thị
 
 ### SCD-2 Versioning
-- **versionNumber**: Increments với mỗi version mới
-- **previousVersionId**: Link đến version trước
+Grade sử dụng SCD-2 để track history:
+- **versionNumber**: Tăng với mỗi version mới
+- **effectiveStartDate / effectiveEndDate**: Khoảng thời gian hiệu lực
 - **isCurrentVersion**: True cho version active
+- **previousVersionId**: Link đến version trước
 
 ## Relationships Explained
 
@@ -177,7 +188,17 @@ erDiagram
     GRADE ||--o{ PAY_RANGE : "hasPayRanges"
     GRADE }o--o{ GRADE_LADDER : "inLadders"
     GRADE }o--o| GRADE : "previousVersion"
+    POSITION }o--|| GRADE : "hasGrade"
 ```
+
+### PayRange
+- **hasPayRanges** → [[PayRange]]: Khung lương cho grade này, có thể có nhiều ranges theo scope (legal entity, location)
+
+### GradeLadder
+- **inLadders** → [[GradeLadder]]: Career ladders chứa grade này (technical, management, etc.)
+
+### Version Chain
+- **previousVersion** → Grade: Link đến version trước (SCD-2)
 
 ## Lifecycle & Workflows
 
@@ -189,9 +210,48 @@ stateDiagram-v2
     active --> archived: archive
 ```
 
+| State | Meaning |
+|-------|---------|
+| **draft** | Đang setup, chưa sử dụng |
+| **active** | Đang sử dụng |
+| **archived** | Đã superseded bởi version mới |
+
+### Version Flow
+
+```mermaid
+flowchart LR
+    A[Grade v1] -->|createNewVersion| B[Grade v2]
+    B --> C[v1.isCurrentVersion = false]
+    B --> D[v2.isCurrentVersion = true]
+```
+
+## Actions & Operations
+
+### create
+**Who**: Compensation Team  
+**Required**: gradeCode, name, effectiveStartDate
+
+### publish
+**Who**: Compensation Team  
+**When**: Ready for use
+
+### createNewVersion
+**Who**: Compensation Team  
+**When**: Pay range changes, restructuring  
+**Required**: effectiveStartDate  
+**Effect**: Current version archived, new version active
+
+## Business Rules
+
+#### Unique Current Code (uniqueCurrentCode)
+**Rule**: Grade code unique among current versions.
+
+#### Version Chain (versionChain)
+**Rule**: New version's effectiveStartDate must be after previous version.
+
 ## Examples
 
-### Example 1: Software Engineer Grades
+### Example 1: Software Engineering Grades
 | Grade | Name | Job Level |
 |-------|------|-----------|
 | G1 | Junior Engineer | 1 |
@@ -208,10 +268,28 @@ stateDiagram-v2
 | M3 | Senior Manager | 8 |
 | M4 | Director | 9 |
 
+### Example 3: Grade with Pay Range
+```yaml
+gradeCode: G3
+name: "Senior Engineer"
+jobLevel: 4
+payRanges:
+  - scope: VNG-VN
+    currency: VND
+    min: 25000000
+    mid: 35000000
+    max: 45000000
+  - scope: VNG-SG
+    currency: SGD
+    min: 6000
+    mid: 8000
+    max: 10000
+```
+
 ## Related Entities
 
 | Entity | Relationship | Description |
 |--------|--------------|-------------|
 | [[PayRange]] | hasPayRanges | Salary ranges |
 | [[GradeLadder]] | inLadders | Career paths |
-| [[GradeStep]] | via ladder | Steps within grade |
+| [[Position]] | indirect | Positions at this grade |
