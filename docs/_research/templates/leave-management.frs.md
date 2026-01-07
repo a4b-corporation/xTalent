@@ -89,28 +89,28 @@ mindmap
 requirementDiagram
     requirement LeaveCapability {
         id: REQ_TA_LEAVE_001
-        text: Manage Employee Time Off
+        text: "Manage Employee Time Off"
         risk: high
         verifymethod: demonstration
     }
 
     functionalRequirement SubmitReq {
         id: FR_TA_001
-        text: Submit Leave Request
+        text: "Submit Leave Request"
         risk: high
         verifymethod: test
     }
 
     functionalRequirement BalanceVal {
         id: FR_TA_002
-        text: Validate Balance
+        text: "Validate Balance"
         risk: high
         verifymethod: test
     }
 
     functionalRequirement HolidayCalc {
         id: FR_TA_005
-        text: Exclude Holidays
+        text: "Exclude Holidays"
         risk: medium
         verifymethod: analysis
     }

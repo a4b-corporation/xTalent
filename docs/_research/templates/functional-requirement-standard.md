@@ -91,21 +91,21 @@ requirementDiagram
 
     requirement LeaveManagement {
         id: FRS_TA
-        text: Overall Leave Management Capabilty
+        text: "Overall Leave Management Capability"
         risk: high
         verifymethod: test
     }
 
     functionalRequirement BalanceCheck {
         id: FR_TA_002
-        text: System must validate available balance
+        text: "System must validate available balance"
         risk: high
         verifymethod: test
     }
 
     functionalRequirement ProbationRule {
         id: FR_TA_005
-        text: Probation employees cannot take annual leave
+        text: "Probation employees cannot take annual leave"
         risk: medium
         verifymethod: test
     }
@@ -174,14 +174,14 @@ mindmap
 requirementDiagram
     requirement Epic {
         id: EPIC_01
-        text: Description
+        text: "Description"
         risk: medium
         verifymethod: analysis
     }
 
     functionalRequirement FR001 {
         id: FR_XX_001
-        text: Title
+        text: "Title"
         risk: low
         verifymethod: test
     }
