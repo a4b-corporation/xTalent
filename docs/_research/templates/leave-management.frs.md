@@ -122,7 +122,7 @@ requirementDiagram
 
     LeaveCapability - contains -> SubmitReq
     SubmitReq - satisfies -> LeaveCapability
-    SubmitReq - requires -> BalanceVal
-    SubmitReq - requires -> HolidayCalc
+    SubmitReq - traces -> BalanceVal
+    SubmitReq - traces -> HolidayCalc
     SubmitReq - traces -> LeaveRequests
 ```
