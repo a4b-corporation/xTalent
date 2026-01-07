@@ -88,29 +88,36 @@ mindmap
 ```mermaid
 requirementDiagram
     requirement LeaveCapability {
-        id: REQ-TA-LEAVE-001
+        id: REQ_TA_LEAVE_001
         text: Manage Employee Time Off
-        type: capability
+        risk: high
+        verifymethod: demonstration
     }
 
     functionalRequirement SubmitReq {
-        id: FR-TA-001
+        id: FR_TA_001
         text: Submit Leave Request
+        risk: high
+        verifymethod: test
     }
 
     functionalRequirement BalanceVal {
-        id: FR-TA-002
+        id: FR_TA_002
         text: Validate Balance
+        risk: high
+        verifymethod: test
     }
 
     functionalRequirement HolidayCalc {
-        id: FR-TA-005
+        id: FR_TA_005
         text: Exclude Holidays
+        risk: medium
+        verifymethod: analysis
     }
 
     element LeaveRequests {
         type: Entity
-        docref: "[[LeaveRequest]]"
+        docRef: "[[LeaveRequest]]"
     }
 
     LeaveCapability - contains -> SubmitReq

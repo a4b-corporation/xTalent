@@ -90,21 +90,21 @@ mindmap
 requirementDiagram
 
     requirement LeaveManagement {
-        id: FRS-TA
+        id: FRS_TA
         text: Overall Leave Management Capabilty
         risk: high
         verifymethod: test
     }
 
     functionalRequirement BalanceCheck {
-        id: FR-TA-002
+        id: FR_TA_002
         text: System must validate available balance
         risk: high
         verifymethod: test
     }
 
     functionalRequirement ProbationRule {
-        id: FR-TA-005
+        id: FR_TA_005
         text: Probation employees cannot take annual leave
         risk: medium
         verifymethod: test
@@ -112,7 +112,7 @@ requirementDiagram
 
     element BalanceEntity {
         type: Entity
-        docref: "[[LeaveBalance]]"
+        docRef: "[[LeaveBalance]]"
     }
 
     LeaveManagement - contains -> BalanceCheck
@@ -173,14 +173,17 @@ mindmap
 ```mermaid
 requirementDiagram
     requirement Epic {
-        id: EPIC-01
+        id: EPIC_01
         text: Description
-        type: epic
+        risk: medium
+        verifymethod: analysis
     }
 
     functionalRequirement FR001 {
-        id: FR-XX-001
+        id: FR_XX_001
         text: Title
+        risk: low
+        verifymethod: test
     }
 
     Epic - contains -> FR001
