@@ -9,20 +9,20 @@ status: ACTIVE
 
 # Tóm tắt Features
 summary:
-  total: 20
+  total: 21
   by_phase:
     phase_0_foundation: 1
-    phase_1_core_employment: 7
+    phase_1_core_employment: 8
     phase_2_organization_jobs: 6
     phase_3_skills_advanced: 4
     phase_4_eligibility: 2
   by_priority:
     CRITICAL: 1
-    HIGH: 5
+    HIGH: 6
     MEDIUM: 10
     LOW: 4
   by_status:
-    PLANNED: 20
+    PLANNED: 21
     IN_PROGRESS: 0
     COMPLETED: 0
 
@@ -253,6 +253,18 @@ features:
       brs_refs: ["BR-WRK-005", "BR-WRK-010"]
       entities: ["Document", "Worker", "Contract", "Employee"]
       note: "Centralized document search and management for super users"
+      
+    - id: FEAT-CO-018
+      name: global-search
+      title: "Global Search (Tìm Kiếm Toàn Cục)"
+      priority: HIGH
+      phase: 1
+      status: PLANNED
+      file: 05-master-data/global-search.feat.md
+      frs_refs: ["FR-NAV-001", "FR-WRK-020"]
+      brs_refs: ["BR-SEC-001"]
+      entities: ["Worker", "Employee"]
+      note: "Quick navigation + People finder; complex queries handoff to Ask AI"
 
   # ─────────────────────────────────────────────────────────────────
   # 06-ELIGIBILITY: Eligibility Management
@@ -301,7 +313,7 @@ deprecated:
 
 ## Tổng quan
 
-Module Core chứa **20 features** được phân chia theo 5 phases:
+Module Core chứa **21 features** được phân chia theo 5 phases:
 
 ```mermaid
 mindmap
@@ -328,6 +340,7 @@ mindmap
       FEAT-CO-032 Career Path
       FEAT-CO-040 Skill Catalog
       FEAT-CO-017 Document Repo
+      FEAT-CO-018 Global Search
     Phase 4 - Eligibility
       FEAT-CO-050 Create Profile
       FEAT-CO-051 Evaluate
@@ -377,6 +390,7 @@ mindmap
 | FEAT-CO-015 | [Code List Management](05-master-data/manage-code-list.feat.md) | **CRITICAL** | 0 | PLANNED |
 | FEAT-CO-040 | [Skill Catalog Management](05-master-data/manage-skill-catalog.feat.md) | LOW | 3 | PLANNED |
 | FEAT-CO-017 | [Document Repository](05-master-data/document-repository.feat.md) | MEDIUM | 2 | PLANNED |
+| FEAT-CO-018 | [Global Search](05-master-data/global-search.feat.md) | HIGH | 1 | PLANNED |
 
 ### 06-ELIGIBILITY: Eligibility Management
 
