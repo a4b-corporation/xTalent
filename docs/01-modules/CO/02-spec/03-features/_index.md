@@ -9,20 +9,20 @@ status: ACTIVE
 
 # Tóm tắt Features
 summary:
-  total: 21
+  total: 22
   by_phase:
     phase_0_foundation: 1
     phase_1_core_employment: 8
-    phase_2_organization_jobs: 6
+    phase_2_organization_jobs: 7
     phase_3_skills_advanced: 4
     phase_4_eligibility: 2
   by_priority:
     CRITICAL: 1
     HIGH: 6
-    MEDIUM: 10
+    MEDIUM: 11
     LOW: 4
   by_status:
-    PLANNED: 21
+    PLANNED: 22
     IN_PROGRESS: 0
     COMPLETED: 0
 
@@ -266,6 +266,18 @@ features:
       entities: ["Worker", "Employee"]
       note: "Quick navigation + People finder; complex queries handoff to Ask AI"
 
+    - id: FEAT-CO-019
+      name: competency-framework
+      title: "Competency Framework Management (Quản Lý Khung Năng Lực)"
+      priority: MEDIUM
+      phase: 2
+      status: PLANNED
+      file: 05-master-data/competency-framework.feat.md
+      frs_refs: ["FR-SKL-010", "FR-SKL-015", "FR-PRF-020"]
+      brs_refs: ["BR-SKL-001", "BR-SKL-003"]
+      entities: ["CompetencyMaster", "CompetencyCategory", "WorkerCompetency", "JobProfile"]
+      note: "Competency library, behavioral indicators, job mapping, gap analysis"
+
   # ─────────────────────────────────────────────────────────────────
   # 06-ELIGIBILITY: Eligibility Management
   # ─────────────────────────────────────────────────────────────────
@@ -313,7 +325,7 @@ deprecated:
 
 ## Tổng quan
 
-Module Core chứa **21 features** được phân chia theo 5 phases:
+Module Core chứa **22 features** được phân chia theo 5 phases:
 
 ```mermaid
 mindmap
@@ -341,6 +353,7 @@ mindmap
       FEAT-CO-040 Skill Catalog
       FEAT-CO-017 Document Repo
       FEAT-CO-018 Global Search
+      FEAT-CO-019 Competency Framework
     Phase 4 - Eligibility
       FEAT-CO-050 Create Profile
       FEAT-CO-051 Evaluate
@@ -391,6 +404,7 @@ mindmap
 | FEAT-CO-040 | [Skill Catalog Management](05-master-data/manage-skill-catalog.feat.md) | LOW | 3 | PLANNED |
 | FEAT-CO-017 | [Document Repository](05-master-data/document-repository.feat.md) | MEDIUM | 2 | PLANNED |
 | FEAT-CO-018 | [Global Search](05-master-data/global-search.feat.md) | HIGH | 1 | PLANNED |
+| FEAT-CO-019 | [Competency Framework](05-master-data/competency-framework.feat.md) | MEDIUM | 2 | PLANNED |
 
 ### 06-ELIGIBILITY: Eligibility Management
 
