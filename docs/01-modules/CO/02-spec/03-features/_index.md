@@ -9,20 +9,20 @@ status: ACTIVE
 
 # Tóm tắt Features
 summary:
-  total: 18
+  total: 20
   by_phase:
     phase_0_foundation: 1
-    phase_1_core_employment: 6
-    phase_2_organization_jobs: 5
+    phase_1_core_employment: 7
+    phase_2_organization_jobs: 6
     phase_3_skills_advanced: 4
     phase_4_eligibility: 2
   by_priority:
     CRITICAL: 1
-    HIGH: 4
-    MEDIUM: 9
+    HIGH: 5
+    MEDIUM: 10
     LOW: 4
   by_status:
-    PLANNED: 18
+    PLANNED: 20
     IN_PROGRESS: 0
     COMPLETED: 0
 
@@ -128,6 +128,18 @@ features:
       frs_refs: ["FR-EMP-020", "FR-ASG-025"]
       brs_refs: []
       entities: ["Employee", "Assignment", "Contract", "WorkRelationship"]
+      
+    - id: FEAT-CO-016
+      name: employee-360-view
+      title: "Employee 360 View (Hồ Sơ Nhân Viên Toàn Diện)"
+      priority: HIGH
+      phase: 1
+      status: PLANNED
+      file: 02-employment/employee-360-view.feat.md
+      frs_refs: ["FR-WRK-001", "FR-WRK-002", "FR-EMP-001", "FR-EMP-030"]
+      brs_refs: ["BR-WRK-001", "BR-EMP-001", "BR-WR-001"]
+      entities: ["Worker", "Employee", "WorkRelationship", "Assignment", "Contract", "Position", "BusinessUnit"]
+      note: "Comprehensive 360-degree employee profile view"
 
   # ─────────────────────────────────────────────────────────────────
   # 03-ORGANIZATION: Organization Structure
@@ -229,6 +241,18 @@ features:
       frs_refs: ["FR-SKL-001", "FR-SKL-002", "FR-SKL-003"]
       brs_refs: ["BR-SKL-001", "BR-SKL-002"]
       entities: ["SkillMaster", "SkillCategory", "CompetencyMaster"]
+      
+    - id: FEAT-CO-017
+      name: document-repository
+      title: "Document Repository (Kho Tài Liệu)"
+      priority: MEDIUM
+      phase: 2
+      status: PLANNED
+      file: 05-master-data/document-repository.feat.md
+      frs_refs: ["FR-WRK-010", "FR-WRK-015", "FR-CTR-010"]
+      brs_refs: ["BR-WRK-005", "BR-WRK-010"]
+      entities: ["Document", "Worker", "Contract", "Employee"]
+      note: "Centralized document search and management for super users"
 
   # ─────────────────────────────────────────────────────────────────
   # 06-ELIGIBILITY: Eligibility Management
@@ -277,7 +301,7 @@ deprecated:
 
 ## Tổng quan
 
-Module Core chứa **18 features** được phân chia theo 5 phases:
+Module Core chứa **20 features** được phân chia theo 5 phases:
 
 ```mermaid
 mindmap
@@ -293,6 +317,7 @@ mindmap
       FEAT-CO-012 Transfer
       FEAT-CO-013 Terminate
       FEAT-CO-014 Working Records
+      FEAT-CO-016 Employee 360
     Phase 2 - Organization
       FEAT-CO-020 Legal Entity
       FEAT-CO-021 Business Unit
@@ -302,6 +327,7 @@ mindmap
     Phase 3 - Skills
       FEAT-CO-032 Career Path
       FEAT-CO-040 Skill Catalog
+      FEAT-CO-017 Document Repo
     Phase 4 - Eligibility
       FEAT-CO-050 Create Profile
       FEAT-CO-051 Evaluate
@@ -326,6 +352,7 @@ mindmap
 | FEAT-CO-012 | [Transfer Employee](02-employment/transfer-employee.feat.md) | MEDIUM | 1 | PLANNED |
 | FEAT-CO-013 | [Terminate Employment](02-employment/terminate-employment.feat.md) | HIGH | 1 | PLANNED |
 | FEAT-CO-014 | [View Working Records](02-employment/view-working-records.feat.md) | MEDIUM | 1 | PLANNED |
+| FEAT-CO-016 | [Employee 360 View](02-employment/employee-360-view.feat.md) | HIGH | 1 | PLANNED |
 
 ### 03-ORGANIZATION: Organization Structure
 
@@ -349,6 +376,7 @@ mindmap
 |----|---------|----------|-------|--------|
 | FEAT-CO-015 | [Code List Management](05-master-data/manage-code-list.feat.md) | **CRITICAL** | 0 | PLANNED |
 | FEAT-CO-040 | [Skill Catalog Management](05-master-data/manage-skill-catalog.feat.md) | LOW | 3 | PLANNED |
+| FEAT-CO-017 | [Document Repository](05-master-data/document-repository.feat.md) | MEDIUM | 2 | PLANNED |
 
 ### 06-ELIGIBILITY: Eligibility Management
 
