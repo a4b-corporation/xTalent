@@ -116,14 +116,22 @@ Axiom Codex organizes knowledge as an **interconnected graph**:
 
 ```mermaid
 graph LR
-    F[LeaveRequest.feat.md] --> O[LeaveRequest.onto.md]
-    F --> B[LeavePolicy.brs.md]
-    O --> E[Employee.onto.md]
-    O --> LP[LeavePolicy.onto.md]
-    FL[SubmitLeave.flow.md] --> O
-    FL --> B
-    FL --> E
-    API[submitLeaveRequest.api.md] --> FL
+    F[LeaveRequest.feat.md]
+    O[LeaveRequest.onto.md]
+    B[LeavePolicy.brs.md]
+    E[Employee.onto.md]
+    LP[LeavePolicy.onto.md]
+    FL[SubmitLeave.flow.md]
+    API[submitLeaveRequest.api.md]
+    
+    O -->|Implements| F
+    B -->|Governs| F
+    O -->|Relates to| E
+    O -->|Relates to| LP
+    FL -->|Uses| O
+    FL -->|Checks| B
+    FL -->|Realizes| F
+    API -->|Executes| FL
     
     style F fill:#E8F4F8
     style O fill:#E8F8E8

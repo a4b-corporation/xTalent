@@ -62,10 +62,13 @@ Create a **Feature Specification** (`*.feat.md`) that captures:
 - **Context & Goal**: Why does this feature exist?
 - **User Stories**: Who benefits and how?
 - **Success Metrics**: How do we measure success?
-- **Ontology Mapping**: What entities and rules are involved?
+- **Scope**: What entities and capabilities will be needed? (conceptual, marked TBD initially)
+
+> [!NOTE]
+> At this stage, feat.md lists required entities **conceptually** (they don't exist yet). Links to onto/brs/flow files will be added later as files are created.
 
 ### Output
-- `*.feat.md` file approved by product and engineering teams
+- `*.feat.md` file approved by product and engineering teams (with TBD placeholders for technical implementation)
 
 ### AI Assistance
 AI can:
@@ -76,16 +79,16 @@ AI can:
 ### Checkpoint Criteria
 ✅ Business goal is clear and measurable  
 ✅ User stories cover all personas  
-✅ Required entities are identified (even if not yet defined)  
+✅ Required entities are identified conceptually (even if not yet defined)  
 ✅ Success metrics are defined  
 
 **Example:**
 ```
-leave-request.feat.md
+leave-request.feat.md (Initial version - Stage 1)
 ├─ Goal: Enable employees to request time off digitally
 ├─ User Story: "As an employee, I want to submit leave requests..."
 ├─ Metrics: 90% adoption within 3 months
-└─ Requires: Employee.onto, LeaveRequest.onto, LeavePolicy.brs
+└─ Scope (TBD): Will need entities for Employee, Leave Request, Leave Policy
 ```
 
 ---

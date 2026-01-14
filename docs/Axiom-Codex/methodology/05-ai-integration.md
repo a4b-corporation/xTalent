@@ -85,19 +85,20 @@ AI Search:
 **Process:**
 1. Parse YAML frontmatter from all documents
 2. Extract relationships:
-   - `feat.md` → requires → `onto.md`, `brs.md`, `flow.md`
-   - `onto.md` → links to → other `onto.md` entities
-   - `flow.md` → uses → `onto.md`, checks → `brs.md`
+   - `onto.md`, `brs.md`, `flow.md` → supports/implements → `feat.md`
+   - `onto.md` → links to → other `onto.md` entities  
+   - `flow.md` → uses → `onto.md`, checks → `brs.md`, realizes → `feat.md`
    - `api.md` → executes → `flow.md`
 3. Build a knowledge graph (e.g., Neo4j, NetworkX)
 4. Store as RDF triples or property graph
 
 **Graph Structure:**
 ```
-(LeaveRequest.feat.md)-[:REQUIRES]->(LeaveRequest.onto.md)
-(LeaveRequest.feat.md)-[:GOVERNED_BY]->(LeavePolicy.brs.md)
+(LeaveRequest.onto.md)-[:IMPLEMENTS]->(LeaveRequest.feat.md)
+(LeavePolicy.brs.md)-[:GOVERNS]->(LeaveRequest.feat.md)
 (SubmitLeave.flow.md)-[:USES]->(LeaveRequest.onto.md)
 (SubmitLeave.flow.md)-[:CHECKS]->(LeavePolicy.brs.md)
+(SubmitLeave.flow.md)-[:REALIZES]->(LeaveRequest.feat.md)
 (submitLeaveRequest.api.md)-[:EXECUTES]->(SubmitLeave.flow.md)
 ```
 
@@ -140,9 +141,10 @@ When AI receives a query about "submitting leave," it:
    - Vector search → `LeaveRequest.feat.md`
 
 2. **Traverses graph:**
-   - `feat.md` → requires → `LeaveRequest.onto.md`
-   - `feat.md` → governed by → `LeavePolicy.brs.md`
-   - Follows links → `SubmitLeave.flow.md`
+   - `LeaveRequest.onto.md` → implements → `feat.md`
+   - `LeavePolicy.brs.md` → governs → `feat.md`
+   - `SubmitLeave.flow.md` → realizes → `feat.md` (via backlinks)
+   - Follows links → connected entities
 
 3. **Builds context:**
    - Ontology: What is a LeaveRequest (structure, states)

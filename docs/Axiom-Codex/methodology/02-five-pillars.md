@@ -19,8 +19,9 @@ graph TB
         A[api.md<br/>Execution Layer<br/>Tech Bridge]
     end
     
-    F -->|Requires| O
-    F -->|Governed by| B
+    O -->|Implements| F
+    B -->|Governs| F
+    FL -->|Realizes| F
     O -->|Transformed by| FL
     B -->|Constrains| FL
     FL -->|Executed via| A
@@ -36,41 +37,97 @@ graph TB
 
 ## Pillar 1: Feature Specification (`*.feat.md`)
 
-### Role: Intent Layer - The Root Node
+### Role: Intent Layer - The Root Node & Living Dashboard
 
 Feature Specifications define **WHY** we're building something and **WHAT** it should accomplish.
 
 **Key Characteristics:**
-- Acts as the **entry point** for understanding a capability
-- Written by: Product Managers, Business Analysts
+- Acts as the **entry point** and **dashboard** for a capability
+- **Created first, completed last** - evolves through the development lifecycle
+- A **Living Document** that updates as the feature progresses
+- Written by: Product Managers (initially), then updated by Architects, Designers, Developers
 - Read by: All team members, AI agents
 
 **Purpose:**
 - Capture business goals and success metrics
 - Define user stories and acceptance criteria
-- Map to required ontologies, policies, and flows
-- Provide context for AI agents
+- Track technical implementation status
+- Serve as a single-page overview linking to all related documents
+
+### The Living Document: 3 Evolution Stages
+
+> [!IMPORTANT]
+> **feat.md is NOT write-once!** It evolves through 3 stages as the feature develops:
+
+#### Stage 1: Inception (by Product Manager)
+**When:** Beginning of feature planning  
+**Status:** Many sections marked `TBD` (To Be Determined)
+
+```markdown
+# Feature: Leave Request System
+
+## Context & Goal
+Enable employees to request time off digitally...
+
+## User Stories
+- As an employee, I want to submit leave requests...
+
+## Technical Implementation
+- Ontologies: TBD
+- Policies: TBD  
+- Flows: TBD
+- APIs: TBD
+```
+
+#### Stage 2: Design & Analysis (by Architect/Designer)
+**When:** After requirements analysis  
+**Status:** Technical planning filled in
+
+```markdown
+## Technical Implementation
+- Ontologies: Will use Employee.onto, create new LeaveRequest.onto
+- Policies: Create LeavePolicy.brs for validation rules
+- Flows: Create SubmitLeave.flow, ApproveLeave.flow
+- APIs: TBD (waiting for flow completion)
+
+## Design
+- Figma: [link to mockups]
+```
+
+#### Stage 3: Implementation (by Developer/AI Agent)
+**When:** As files are created  
+**Status:** All links populated
+
+```markdown
+## Technical Implementation
+- Ontologies: 
+  - Employee.onto.md ✅
+  - LeaveRequest.onto.md ✅
+- Policies: LeavePolicy.brs.md ✅
+- Flows:
+  - SubmitLeave.flow.md ✅
+  - ApproveLeave.flow.md ✅
+- APIs:
+  - submitLeaveRequest.api.md ✅
+  - approveLeaveRequest.api.md ✅
+```
+
+> [!NOTE]
+> **Linking Direction:** feat.md starts WITHOUT links (they don't exist yet). As onto/brs/flow/api files are created, they link back to feat.md, and feat.md gets updated to link forward to them. AI agents can automate this bidirectional linking.
 
 **Required Sections:**
-- Context & Goal
-- User Stories
-- Experience (UX flow, UI behavior)
-- Ontology Mapping (links to related `onto`, `brs`, `flow` files)
+- **Context & Goal:** Business objectives and success criteria
+- **User Stories:** Who needs what
+- **Acceptance Criteria:** Definition of done
+- **Technical Implementation:** Links to onto/brs/flow/api (filled in over time)
 
 **Optional Sections:**
-- Design mockups or references
+- Design references (Figma, wireframes)
+- Success metrics and KPIs
 - Performance requirements
 - Analytics tracking
 
-**Example Scenario:**
-```
-leave-request.feat.md
-├─ Goal: Enable employees to request time off
-├─ User Story: "As an employee, I want to request leave..."
-├─ Maps to: Employee.onto.md, LeaveRequest.onto.md
-├─ Governed by: LeavePolicy.brs.md
-└─ Implemented in: SubmitLeave.flow.md
-```
+
 
 ---
 
@@ -94,6 +151,7 @@ Ontology Models define **entities** and their **relationships** - the building b
 **Required Sections:**
 1. **YAML Frontmatter:**
    - `id`: Unique entity identifier
+   - `feature`: Reference to the feature this entity supports (if applicable)
    - `relations`: Links to other entities
    - `states`: Valid status values (for entities with lifecycles)
 
@@ -106,10 +164,13 @@ Ontology Models define **entities** and their **relationships** - the building b
 **Example Scenario:**
 ```
 LeaveRequest.onto.md
+YAML Frontmatter:
+  feature: leave-request.feat.md  ← Links back to feature
+
 ├─ Attributes: startDate, endDate, reason, status
 ├─ Relationships: requester → Employee, approver → Manager
 ├─ States: DRAFT → SUBMITTED → APPROVED/REJECTED
-└─ Rules: Cannot overlap with existing approved leaves
+└─ Business Context: Represents an employee's request for time off
 ```
 
 **Impact:**
@@ -149,6 +210,9 @@ Business Policies define **invariants**, **permissions**, and **validation logic
 **Example Scenario:**
 ```
 LeavePolicy.brs.md
+YAML Frontmatter:
+  feature: leave-request.feat.md  ← Links back to feature
+  
 ├─ Invariants:
 │  └─ "Employee cannot have overlapping leave periods"
 ├─ Permissions:
@@ -196,6 +260,11 @@ Controller Flows define **workflows** and **state transitions** - how the system
 **Example Scenario:**
 ```
 SubmitLeave.flow.md
+YAML Frontmatter:
+  feature: leave-request.feat.md  ← Links back to feature
+  uses: [LeaveRequest.onto.md, Employee.onto.md]
+  checks: [LeavePolicy.brs.md]
+  
 ├─ Trigger: User clicks "Submit Leave Request"
 ├─ Steps:
 │  1. Validate dates (check LeavePolicy.brs.md)
@@ -215,49 +284,98 @@ SubmitLeave.flow.md
 
 ## Pillar 5: Interface Specification (`*.api.md`)
 
-### Role: Execution Layer - The Tech Bridge
+### Role: Execution Layer - Interface Requirements (Not Generated Spec)
 
-Interface Specifications define **API contracts** - how external systems interact with flows.
+Interface Specifications define **interface requirements** - the contract that APIs must fulfill to execute flows.
+
+> [!IMPORTANT]
+> **api.md is NOT the OpenAPI/Swagger JSON/YAML file!**  
+> It is a **requirements document** written BEFORE code, defining what the interface needs to do.
 
 **Key Characteristics:**
-- Defines the technical execution layer
-- Written by: Developers
-- Read by: Frontend developers, API consumers, AI agents
+- Defines the **semantic requirements** for interfaces
+- Written **before implementation** - not auto-generated after
+- Written by: Solution Architects, Backend Leads
+- Read by: Developers, Frontend teams, AI code generators
 
 **Purpose:**
-- Document API endpoints (RESTful, GraphQL, gRPC, etc.)
-- Map endpoints to flows
-- Define request/response schemas
-- Specify error codes and handling
+- Define what interfaces are needed to execute flows
+- Specify non-functional requirements (performance, security, idempotency)
+- Map interface inputs/outputs to ontology entities
+- Document expected behaviors and error scenarios
+
+**The Distinction:**
+
+| `*.api.md` (This file) | OpenAPI Spec (Generated) |
+|------------------------|--------------------------|
+| Interface **requirements** | Technical **implementation** |
+| Written **before** code | Generated **from** code |
+| Focuses on **semantics** | Focuses on **syntax** |
+| "What must this API do?" | "How does this API work?" |
 
 **Required Sections:**
-- **Endpoint Definition:** URL, HTTP method, authentication
-- **Flow Mapping:** Which flow this API executes (via `x-flow-ref`)
-- **Request Schema:** Input parameters
-- **Response Schema:** Output structure
-- **Error Codes:** Possible failures
+- **Purpose:** Which flow step does this interface execute?
+- **Data Mapping:** What ontology entities are inputs/outputs?
+- **Method:** HTTP verb (POST/GET/PUT/DELETE) and why
+- **Success Scenarios:** What constitutes a successful execution
+- **Error Scenarios:** What can go wrong and how to handle it
+- **Non-Functional Requirements:** Performance, security, idempotency
 
 **Optional Sections:**
-- Rate limiting
+- Rate limiting requirements
 - Caching strategy
-- Deprecation notices
+- Versioning approach
+- Deprecation timeline
 
-**Example Scenario:**
-```
-submitLeaveRequest.api.md
-├─ Endpoint: POST /api/leave-requests
-├─ Flow Ref: SubmitLeave.flow.md
-├─ Request:
-│  └─ { startDate, endDate, reason }
-├─ Response:
-│  └─ { leaveRequestId, status }
-└─ Errors: 400 (invalid dates), 409 (overlap detected)
+**Example:**
+```markdown
+# API: Submit Leave Request
+
+## Purpose
+Executes Step 3 of SubmitLeave.flow.md: "Create leave request entity"
+
+## Data Mapping
+- **Input:** LeaveRequest entity (startDate, endDate, reason)
+  - Maps to: LeaveRequest.onto.md attributes
+  - Requester: Employee entity (from auth token)
+  
+- **Output:** LeaveRequest ID + status
+  - Initial status: DRAFT (per LeaveRequest.onto.md state machine)
+
+## Method
+POST (creates new resource, changes system state)
+
+## Non-Functional Requirements
+- **Performance:** Response within 200ms
+- **Security:** Requires JWT token, validate requester = authenticated user
+- **Idempotency:** Duplicate requests within 5min return same LeaveRequest ID
+
+## Success Scenarios
+1. Valid dates, no overlaps → 201 Created
+2. Returns: { leaveRequestId: "uuid", status: "DRAFT" }
+
+## Error Scenarios
+1. StartDate < Today → 400 Bad Request
+   - Error code: INVALID_DATE_RANGE
+2. Overlap detected → 409 Conflict
+   - Error code: LEAVE_OVERLAP
+   - Include conflicting leave ID in response
+3. Insufficient balance → 400 Bad Request
+   - Error code: INSUFFICIENT_BALANCE
+
+## Validation Checklist
+- [ ] Validates dates per LeavePolicy.brs.md
+- [ ] Checks overlaps per LeavePolicy.brs.md
+- [ ] Uses correct initial state from LeaveRequest.onto.md
+- [ ] Returns error codes (not generic 500)
 ```
 
 **Impact:**
-- Frontend teams know exact contract
-- API documentation is auto-generated
-- AI agents know which API to call for specific actions
+- Developers know WHAT to build before writing code
+- Frontend teams know exact contract before backend is ready
+- AI code generators have clear requirements
+- Generated OpenAPI spec (from code) can be validated against this
+
 
 ---
 
@@ -278,13 +396,14 @@ graph TD
     
     A[submitLeaveRequest.api.md<br/>POST /api/leave-requests]
     
-    F -->|Requires| O1
-    F -->|Requires| O2
-    F -->|Governed by| B
+    O1 -->|Supports| F
+    O2 -->|Implements| F
+    B -->|Governs| F
     
     FL -->|Uses| O1
     FL -->|Creates| O2
     FL -->|Checks| B
+    FL -->|Realizes| F
     
     A -->|Executes| FL
     
@@ -297,13 +416,45 @@ graph TD
 ```
 
 **The Flow:**
-1. **Product defines intent** (`feat.md`) - "Why do we need leave requests?"
-2. **Architect models data** (`onto.md`) - "What is a LeaveRequest? What are its states?"
-3. **Business defines rules** (`brs.md`) - "What constraints govern leave requests?"
-4. **Engineer designs workflow** (`flow.md`) - "How does a leave request get submitted?"
-5. **Developer creates API** (`api.md`) - "How do clients trigger this workflow?"
+1. **Product defines intent** (`feat.md`) - "Why do we need leave requests?" [Created FIRST]
+2. **Architect models data** (`onto.md`) - "What is a LeaveRequest? What are its states?" [Links back to feat]
+3. **Business defines rules** (`brs.md`) - "What constraints govern leave requests?" [Links back to feat]
+4. **Engineer designs workflow** (`flow.md`) - "How does a leave request get submitted?" [Links to onto, brs, and feat]
+5. **Developer creates API** (`api.md`) - "How do clients trigger this workflow?" [Links to flow]
 
 ---
+
+## The Lifecycle Metaphor: "Created First, Completed Last"
+
+Understanding **when** each document is created vs **when** it's completed is crucial:
+
+```mermaid
+graph LR
+    T1[Time: Start] --> F[feat.md Created<br/>Status: TBD placeholders]
+    F --> O[onto/brs Created<br/>Status: Complete]
+    O --> FL[flow Created<br/>Status: Complete]
+    FL --> A[api Created<br/>Status: Complete]
+    A --> F2[feat.md Updated<br/>Status: All links filled] --> T2[Time: End]
+    
+    style F fill:#E8F4F8,stroke-dasharray: 5 5
+    style F2 fill:#E8F4F8
+```
+
+**Kitchen Metaphor:**
+
+| Document | Metaphor | Created When | Completed When |
+|----------|----------|--------------|----------------|
+| `feat.md` | **The Menu** | Start (with TBD items) | End (with all dish links) |
+| `onto.md` | **The Ingredients** | After menu planning | When ingredients defined |
+| `brs.md` | **Food Safety Rules** | After ingredients chosen | When rules documented |
+| `flow.md` | **The Recipe** | After ingredients + rules | When steps written |
+| `api.md` | **Cooking Instructions** | After recipe designed | When instructions written |
+
+> [!IMPORTANT]
+> **feat.md is hierarchically first but chronologically last to complete.**  
+> It starts as the "goal statement" and becomes the "table of contents" linking to all implementation.
+
+----
 
 ## Roles and Responsibilities
 
