@@ -10,24 +10,53 @@ The Axiom Codex pipeline reverses traditional development flow. Instead of start
 ## The Reverse Waterfall Approach
 
 ```mermaid
-graph LR
+graph TB
     subgraph "Traditional Waterfall"
-        T1[Requirements] --> T2[DB Design]
-        T2 --> T3[Backend]
-        T3 --> T4[Frontend]
+        T1[Requirements<br/>📄 Word/PDF]
+        T2[Database Design<br/>🗄️ Schema First]
+        T3[Backend Code<br/>⚙️ Implementation]
+        T4[API/Frontend<br/>🌐 Last]
+        
+        T1 --> T2
+        T2 --> T3
+        T3 --> T4
     end
     
     subgraph "Axiom Codex Reverse Waterfall"
-        A1[WHY<br/>Intent] --> A2[WHAT<br/>Data + Rules]
-        A2 --> A3[HOW<br/>Behavior]
-        A3 --> A4[TECH<br/>Interface]
+        A1[WHY: Intent<br/>🎯 feat.md]
+        A2[WHAT: Data + Rules<br/>📊 onto.md + brs.md]
+        A3[HOW: Behavior<br/>🔄 flow.md]
+        A4[TECH: Interface<br/>🔌 api.md]
+        
+        A1 --> A2
+        A2 --> A3
+        A3 --> A4
     end
+    
+    T1 -.->|vs| A1
+    T2 -.->|vs| A2
+    T3 -.->|vs| A3
+    T4 -.->|vs| A4
+    
+    style T1 fill:#FFE6E6
+    style T2 fill:#FFE6E6
+    style T3 fill:#FFE6E6
+    style T4 fill:#FFE6E6
     
     style A1 fill:#E8F4F8
     style A2 fill:#E8F8E8
     style A3 fill:#FFF4E6
     style A4 fill:#FFE6F0
 ```
+
+**Key Differences:**
+
+| Stage | Traditional | Axiom Codex | Why Reverse? |
+|-------|-------------|-------------|--------------|
+| **1** | Requirements (informal) | Intent Definition (formal, validated) | Start with WHY instead of jumping to HOW |
+| **2** | Database Design (tech-first) | Data + Rules (semantic-first) | Define meaning before structure |
+| **3** | Backend Code (implementation) | Behavior (design, validated) | Design workflows before coding |
+| **4** | API/Frontend (afterthought) | Interface Requirements (contract) | Define contracts before implementation |
 
 **Why "Reverse"?**
 - Traditional development jumps to **technical solutions** too quickly
@@ -248,42 +277,58 @@ submitLeaveRequest.api.md
 
 ```mermaid
 graph TD
-    Start([Product Idea]) --> S1
+
+
+    Start([Product Idea])
     
-    subgraph "Step 1: Intent Definition"
-        S1[Write feat.md]
-        S1 --> V1{Valid?}
+    Start --> Step1
+    
+    subgraph Step1["🎯 Step 1: Intent Definition"]
+        direction LR
+        S1[Write feat.md] --> V1{Valid?}
         V1 -->|No| S1
-        V1 -->|Yes| S2
+        V1 -->|Yes| Next1[✓]
     end
     
-    subgraph "Step 2: World Building"
-        S2[Write onto.md<br/>Write brs.md]
-        S2 --> V2{Graph Valid?}
+    Step1 --> Step2
+    
+    subgraph Step2["📊 Step 2: World Building"]
+        direction LR
+        S2[Write onto.md + brs.md] --> V2{Graph Valid?}
         V2 -->|No| S2
-        V2 -->|Yes| S3
+        V2 -->|Yes| Next2[✓]
     end
     
-    subgraph "Step 3: Kinetic Design"
-        S3[Write flow.md]
-        S3 --> V3{Flow Valid?}
+    Step2 --> Step3
+    
+    subgraph Step3["🔄 Step 3: Kinetic Design"]
+        direction LR
+        S3[Write flow.md] --> V3{Flow Valid?}
         V3 -->|No| S3
-        V3 -->|Yes| S4
+        V3 -->|Yes| Next3[✓]
     end
     
-    subgraph "Step 4: Execution"
-        S4[Write api.md]
-        S4 --> V4{API Valid?}
+    Step3 --> Step4
+    
+    subgraph Step4["🔌 Step 4: Execution"]
+        direction LR
+        S4[Write api.md] --> V4{API Valid?}
         V4 -->|No| S4
-        V4 -->|Yes| Done
+        V4 -->|Yes| Next4[✓]
     end
     
-    Done([Ready for Implementation])
+    Step4 --> Done([✅ Ready for Implementation])
     
     style S1 fill:#E8F4F8
     style S2 fill:#E8F8E8
     style S3 fill:#FFF4E6
     style S4 fill:#FFE6F0
+    style Start fill:#E0E0E0
+    style Done fill:#90EE90
+    style Next1 fill:#90EE90
+    style Next2 fill:#90EE90
+    style Next3 fill:#90EE90
+    style Next4 fill:#90EE90
 ```
 
 ---
