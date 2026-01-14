@@ -196,8 +196,8 @@ graph TB
 
 1. **Intent Layer** (`feat.md`) - Define the business goal and user needs
 2. **Data Layer** (`onto.md` + `brs.md`) - Model entities and establish constraints
-3. **Behavior Layer** (`flow.md`) - Design state transitions and workflows
-4. **Execution Layer** (`api.md`) - Create technical contracts
+3. **Behavior Layer** (`flow.md`) - Orchestrate atomic APIs into workflows
+4. **Execution Layer** (`api.md`) - Define atomic functions
 
 Each layer **validates against** the previous layer - ensuring alignment from intent to implementation.
 

@@ -180,7 +180,7 @@ LeavePolicy.brs.md
 ## Step 3: Kinetic Design
 
 ### Goal
-Define **how the system behaves** - the workflows and state transitions.
+Design **business workflows** by orchestrating atomic APIs to achieve business objectives.
 
 ### Input
 - Approved ontologies (`*.onto.md`)
@@ -189,40 +189,53 @@ Define **how the system behaves** - the workflows and state transitions.
 
 ### Process
 Create **Controller Flows** (`*.flow.md`) that:
-- Define triggers (what starts the workflow)
-- Specify steps (sequential logic)
-- Reference state transitions from ontologies
+- Define business goal and trigger
+- Identify which atomic APIs are needed
+- Specify orchestration logic (which API to call when)
+- Map state transitions from ontologies
 - Check business rules from policies
-- Document side effects (emails, notifications, integrations)
+- Document decision points and error handling
+
+> [!NOTE]
+> At this stage, you're designing the **"recipe"** - not the individual ingredients (APIs). You're defining WHAT needs to happen and in WHAT order.
 
 ### Output
-- Complete workflow definitions
-- State transition diagrams
+- Complete orchestration definitions
+- List of required atomic APIs (may not exist yet)
+- Decision tree for conditional logic
 
 ### AI Assistance
 AI can:
+- Suggest which atomic APIs to create
 - Validate that state transitions match ontology state machines
 - Check that all business rules are enforced
-- Identify missing error handling branches
-- Suggest optimization opportunities
+- Identify reusable APIs from other flows
+- Generate API requirement stubs
 
 ### Checkpoint Criteria
-✅ Flow references valid states from ontology  
-✅ All business rules are checked  
-✅ Error cases are handled  
-✅ Side effects are documented  
-✅ No infinite loops or dead ends  
+✅ Flow has clear business goal  
+✅ All required APIs are identified  
+✅ State transitions reference valid ontology states  
+✅ All business rules are checked at appropriate steps  
+✅ Error paths are handled  
+✅ No infinite loops or unreachable states  
 
 **Example:**
-```
+```markdown
 SubmitLeave.flow.md
-├─ Trigger: User clicks "Submit"
-├─ Steps:
-│  1. Validate dates (LeavePolicy.brs)
-│  2. Check for overlaps
-│  3. Create LeaveRequest (state: DRAFT → SUBMITTED)
-│  4. Notify manager
-└─ Side Effects: Email notification, calendar block
+├─ Goal: Submit leave request with validation
+├─ Trigger: User clicks "Submit Leave Request"
+├─ Required APIs:
+│  • validateDates.api.md (may need to create)
+│  • checkOverlap.api.md (may need to create)
+│  • createLeaveRequest.api.md (may need to create)
+│  • notifyManager.api.md (reuse existing)
+├─ Orchestration:
+│  Step 1: Call validateDates → Check LeavePolicy.brs
+│  Step 2: Call checkOverlap → Query existing leaves
+│  Step 3: Call createLeaveRequest → Transition to SUBMITTED
+│  Step 4: Call notifyManager → Send email
+└─ Exposure: Recommend composite API
 ```
 
 ---
@@ -230,45 +243,69 @@ SubmitLeave.flow.md
 ## Step 4: Execution Implementation
 
 ### Goal
-Create **technical interfaces** that enable the workflows to be executed.
+Define **atomic functions** identified by flows - the individual capabilities the system must provide.
 
 ### Input
-- Approved flows (`*.flow.md`)
+- Approved flows (`*.flow.md`) - shows which APIs are needed
 - Ontology schemas (`*.onto.md`)
-- System architecture requirements
+- Business policies (`*.brs.md`)
 
 ### Process
-Create **API Specifications** (`*.api.md`) that:
-- Define endpoints (REST, GraphQL, gRPC)
-- Map to specific flows (via `x-flow-ref`)
-- Specify request/response schemas
-- Document error codes
+Create **API Specifications** (`*.api.md`) for each atomic function:
+- One `api.md` per function (single responsibility)
+- Define what ONE thing this function does
+- Specify inputs, outputs, errors
+- Document side effects and constraints
+- May be internal-only or publicly exposed
+
+> [!IMPORTANT]
+> Each API should be **atomic and reusable**. Don't create composite APIs that wrap entire flows - that's a deployment decision, not a design decision.
 
 ### Output
-- Complete API contracts
-- Implementation-ready specifications
+- Set of atomic API specifications
+- Each API is independently implementable and testable
 
 ### AI Assistance
 AI can:
-- Generate API specs from flow definitions
-- Ensure request schemas include all required flow inputs
-- Validate response schemas match flow outputs
-- Generate OpenAPI documentation
+- Generate API stubs from flow requirements
+- Ensure inputs align with ontology schemas
+- Suggest appropriate error codes
+- Identify opportunities to reuse existing APIs
+- Validate that APIs compose correctly
 
 ### Checkpoint Criteria
-✅ API provides all inputs required by flow  
-✅ Response schema matches flow output  
-✅ Error codes are defined for all failure cases  
-✅ Authentication/authorization is specified  
+✅ Each API does ONE thing well  
+✅ Input/output schemas reference ontology entities  
+✅ Error codes cover all failure scenarios from policies  
+✅ Side effects are documented  
+✅ APIs can be composed to fulfill flows  
 
 **Example:**
-```
-submitLeaveRequest.api.md
-├─ Endpoint: POST /api/leave-requests
-├─ Flow: SubmitLeave.flow.md
-├─ Request: { startDate, endDate, reason }
-├─ Response: { leaveRequestId, status }
-└─ Errors: 400 (invalid), 409 (overlap)
+```markdown
+# Created 4 atomic APIs for SubmitLeave.flow.md:
+
+validateDates.api.md
+├─ Function: Check if dates are valid per policy
+├─ Input: { startDate, endDate, employeeId }
+├─ Output: { valid: boolean, errors: [] }
+└─ Checks: LeavePolicy.brs "advance notice" rule
+
+checkOverlap.api.md
+├─ Function: Find conflicting leave requests
+├─ Input: { employeeId, startDate, endDate }
+├─ Output: { hasOverlap: boolean, conflicts: [] }
+└─ Reads: LeaveRequest.onto.md
+
+createLeaveRequest.api.md
+├─ Function: Create new leave request entity
+├─ Input: { employeeId, startDate, endDate, reason }
+├─ Output: { leaveRequestId, status: "SUBMITTED" }
+└─ Creates: LeaveRequest.onto.md entity
+
+notifyManager.api.md (existing - reused)
+├─ Function: Send notification to approver
+├─ Input: { leaveRequestId, managerId }
+└─ Side Effect: Email sent
 ```
 
 ---
@@ -380,21 +417,29 @@ graph LR
 ### Example 1: New Feature from Scratch
 1. Write `leave-request.feat.md` → approved
 2. Create `LeaveRequest.onto.md` and `LeavePolicy.brs.md` → validated
-3. Design `SubmitLeave.flow.md` → checks pass
-4. Define `submitLeaveRequest.api.md` → ready for dev
+3. Design `SubmitLeave.flow.md` → identifies 4 required APIs
+4. Create 4 atomic APIs:
+   - `validateDates.api.md`
+   - `checkOverlap.api.md`
+   - `createLeaveRequest.api.md`
+   - `notifyManager.api.md` (reused existing)
+5. **Deployment decision:** Wrap flow in composite API or let frontend orchestrate
 
 ### Example 2: Extending Existing Feature
-1. Update `leave-request.feat.md` with new requirement
-2. Realize `LeaveRequest.onto` needs new attribute → add it
-3. Update `SubmitLeave.flow.md` to use new attribute
-4. Update `submitLeaveRequest.api.md` request schema
+1. Update `leave-request.feat.md` with new requirement (cancellation)
+2. Realize `LeaveRequest.onto` needs new state `CANCELLED` → add it
+3. Design new `CancelLeave.flow.md` → identifies 3 APIs needed
+4. Reuse existing APIs + create 1 new:
+   - Reuse: `validateCancellation.api.md` (create new)
+   - Reuse: `updateLeaveStatus.api.md` (create new)
+   - Reuse: `notifyManager.api.md` (existing)
 
 ### Example 3: Bug Fix in Production
 1. Trace bug to missing validation in `LeavePolicy.brs.md`
-2. Add validation rule to policy
-3. Update `SubmitLeave.flow.md` to check new rule
-4. Re-validate `api.md` (no changes needed)
-5. Automated tests generated from flow catch the bug
+2. Add validation rule to policy  
+3. Update `SubmitLeave.flow.md` to call validation API at step 1
+4. Create new atomic API: `validateAdvanceNotice.api.md`
+5. Update composite API (if using) to call new function
 
 ---
 

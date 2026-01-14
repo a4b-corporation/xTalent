@@ -63,8 +63,8 @@ Axiom Codex organizes system knowledge into **5 file types**, each serving a dis
 | **Feature Specification** | `*.feat.md` | Intent | Defines WHY and WHAT |
 | **Ontology Model** | `*.onto.md` | Data | Entities and relationships |
 | **Business Policy** | `*.brs.md` | Guard | Rules and constraints |
-| **Controller Flow** | `*.flow.md` | Behavior | State transitions and logic |
-| **Interface Specification** | `*.api.md` | Execution | Technical contracts |
+| **Controller Flow** | `*.flow.md` | Behavior | Orchestrates atomic APIs |
+| **Interface Specification** | `*.api.md` | Execution | Atomic functions/micro-units |
 
 **Learn more**: [The 5 Pillars →](02-five-pillars.md)
 

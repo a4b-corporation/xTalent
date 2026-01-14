@@ -231,150 +231,223 @@ YAML Frontmatter:
 
 ## Pillar 4: Controller Flow (`*.flow.md`)
 
-### Role: Behavior Layer - The Verbs
+### Role: Behavior Layer - The Orchestration Script
 
-Controller Flows define **workflows** and **state transitions** - how the system behaves.
+Controller Flows define **business workflows** - the orchestration of atomic functions to achieve business goals.
+
+> [!NOTE]
+> **flow.md is the "recipe" or "instruction manual"** - it doesn't do the work itself, it coordinates atomic APIs (`api.md`) to accomplish business objectives.
 
 **Key Characteristics:**
-- Defines how entities change over time
-- Written by: Solution Architects, Backend Leads
-- Read by: Developers, AI agents
+- Defines **how to orchestrate** atomic capabilities into workflows
+- Acts as the **"Lego instruction manual"** (APIs are the Lego blocks)
+- Written by: Solution Architects, Business Analysts
+- Read by: Developers, AI agents, QA teams
 
 **Purpose:**
-- Document step-by-step workflows
-- Define state transitions (referencing ontology state machines)
-- Specify side effects (notifications, logs, integrations)
-- Connect data (ontologies) with rules (policies)
+- Document step-by-step business workflows
+- Define which APIs to call and in what order
+- Specify state transitions (referencing ontology state machines)
+- Connect business rules (policies) with execution (APIs)
+- Provide context for composite API design OR client-side orchestration
+
+**Exposure Options:**
+
+Developers have **2 choices** for how to expose a flow:
+
+| Option | Description | When to Use |
+|--------|-------------|-------------|
+| **Composite API** | Wrap the entire flow in one API endpoint | Simple flows, better UX, atomic transactions needed |
+| **Client-Side Orchestration** | Frontend calls APIs step-by-step following the flow | Complex UI interactions, partial completion allowed, offline support |
 
 **Required Sections:**
+- **Goal:** What business outcome does this flow achieve?
 - **Trigger:** Event that initiates the flow
-- **Steps:** Sequence of logic operations
-- **Transitions:** State changes (must align with ontology state diagrams)
-- **Side Effects:** External actions (emails, webhooks, logs)
+- **Orchestration Steps:** Sequence of API calls with business logic
+- **State Transitions:** How entity states change (must align with ontology)
+- **Decision Points:** Conditional logic based on business rules
 
 **Optional Sections:**
-- Error handling branches
-- Retry logic
+- Error handling and compensation logic
+- Retry strategies
 - Performance considerations
+- Rollback procedures
 
 **Example Scenario:**
-```
-SubmitLeave.flow.md
+```markdown
+# Flow: Submit Leave Request
+
 YAML Frontmatter:
-  feature: leave-request.feat.md  ← Links back to feature
-  uses: [LeaveRequest.onto.md, Employee.onto.md]
-  checks: [LeavePolicy.brs.md]
-  
-├─ Trigger: User clicks "Submit Leave Request"
-├─ Steps:
-│  1. Validate dates (check LeavePolicy.brs.md)
-│  2. Check for overlaps (query existing leaves)
-│  3. Create LeaveRequest entity
-│  4. Transition: DRAFT → SUBMITTED
-│  5. Notify manager
-└─ Side Effects: Email to manager, calendar hold
+  feature: leave-request.feat.md
+  uses_apis: [validateDates.api.md, checkOverlap.api.md, createLeaveRequest.api.md, notifyManager.api.md]
+  uses_entities: [LeaveRequest.onto.md, Employee.onto.md]
+  checks_policies: [LeavePolicy.brs.md]
+
+## Goal
+Enable employee to submit a leave request with validation and approval routing.
+
+## Trigger
+User clicks "Submit Leave Request" button
+
+## Orchestration Steps
+
+**Step 1: Validate Request Dates**
+- **API Call:** `validateDates.api.md`
+- **Input:** `{ startDate, endDate, employeeId }`
+- **Business Rule:** Check LeavePolicy.brs.md "advance notice" rule
+- **On Failure:** Return error to user, stop flow
+
+**Step 2: Check for Overlaps**
+- **API Call:** `checkOverlap.api.md`  
+- **Input:** `{ employeeId, startDate, endDate }`
+- **Business Rule:** Check LeavePolicy.brs.md "no overlap" invariant
+- **On Conflict:** Return conflicting leave IDs, stop flow
+
+**Step 3: Create Leave Request**
+- **API Call:** `createLeaveRequest.api.md`
+- **Input:** `{ employeeId, startDate, endDate, reason }`
+- **State Transition:** null → DRAFT (per LeaveRequest.onto.md)
+
+**Step 4: Notify Approver**
+- **API Call:** `notifyManager.api.md`
+- **Input:** `{ leaveRequestId, managerId }`
+- **Side Effect:** Email notification sent
+
+## Exposure Decision
+
+**Option A (Recommended):** Create composite API
+- Endpoint: `POST /api/leave-requests` 
+- Wraps all 4 steps in one transaction
+- Better UX: single network call
+- Easier error handling
+
+**Option B:** Client-side orchestration  
+- Frontend calls APIs sequentially
+- Allows partial saves (e.g., save draft before validation)
+- More complex error handling
 ```
 
 **Impact:**
-- Backend logic is scaffolded from flow definitions
-- AI agents can trace decision paths
-- QA can validate all branches are tested
+- Developers understand the **business logic** before coding
+- Can be implemented as composite API OR client-side orchestration
+- AI agents can execute flows by calling APIs in sequence
+- QA can generate test scenarios for each path through the flow
 
 ---
 
 ## Pillar 5: Interface Specification (`*.api.md`)
 
-### Role: Execution Layer - Interface Requirements (Not Generated Spec)
+### Role: Execution Layer - Atomic Functions / Micro-Units
 
-Interface Specifications define **interface requirements** - the contract that APIs must fulfill to execute flows.
+Interface Specifications define **atomic capabilities** - individual functions that the system can perform.
 
 > [!IMPORTANT]
-> **api.md is NOT the OpenAPI/Swagger JSON/YAML file!**  
-> It is a **requirements document** written BEFORE code, defining what the interface needs to do.
+> **api.md represents a SINGLE function/micro-unit** (like a Lego block), NOT a composite API for an entire flow. Flows orchestrate multiple APIs.
 
 **Key Characteristics:**
-- Defines the **semantic requirements** for interfaces
-- Written **before implementation** - not auto-generated after
-- Written by: Solution Architects, Backend Leads
-- Read by: Developers, Frontend teams, AI code generators
+- Defines **one atomic capability** (single-purpose function)
+- Acts as the **"toolbox"** - individual tools that can be composed
+- Written BEFORE implementation - not auto-generated
+- Written by: Backend Developers, API Architects  
+- Read by: Frontend teams, AI agents, other services
 
 **Purpose:**
-- Define what interfaces are needed to execute flows
-- Specify non-functional requirements (performance, security, idempotency)
-- Map interface inputs/outputs to ontology entities
-- Document expected behaviors and error scenarios
+- Document what ONE specific function does
+- Define inputs/outputs for that function
+- Specify behavior, errors, and constraints
+- Enable composition into larger workflows (via flows)
 
-**The Distinction:**
+**The "Lego Architecture":**
 
-| `*.api.md` (This file) | OpenAPI Spec (Generated) |
-|------------------------|--------------------------|
-| Interface **requirements** | Technical **implementation** |
-| Written **before** code | Generated **from** code |
-| Focuses on **semantics** | Focuses on **syntax** |
-| "What must this API do?" | "How does this API work?" |
+| Concept | What It Is | Example |
+|---------|------------|---------|
+| **`api.md`** | Lego block (atomic tool) | `calculateTax.api.md`, `sendEmail.api.md` |
+| **`flow.md`** | Lego instruction (orchestration) | Uses 5 different apis to complete checkout |
+| **Composite API** | Pre-built Lego set (optional) | Wraps entire flow in one endpoint |
 
 **Required Sections:**
-- **Purpose:** Which flow step does this interface execute?
-- **Data Mapping:** What ontology entities are inputs/outputs?
-- **Method:** HTTP verb (POST/GET/PUT/DELETE) and why
-- **Success Scenarios:** What constitutes a successful execution
-- **Error Scenarios:** What can go wrong and how to handle it
-- **Non-Functional Requirements:** Performance, security, idempotency
+- **Function ID:** Unique identifier for this capability
+- **Purpose:** What does this ONE function do?
+- **Interface:** Endpoint, method, authentication
+- **Input Contract:** Required and optional parameters
+- **Output Contract:** Success response structure
+- **Error Scenarios:** Failure cases and error codes
+- **Side Effects:** What changes in the system (if any)
 
 **Optional Sections:**
-- Rate limiting requirements
-- Caching strategy
-- Versioning approach
-- Deprecation timeline
+- Performance characteristics (SLA, timeout)
+- Caching behavior
+- Idempotency guarantees
+- Rate limiting
 
 **Example:**
 ```markdown
-# API: Submit Leave Request
+# API: Calculate Tax (Atomic Function)
+
+**Function ID:** `func_calculate_tax_v1`
 
 ## Purpose
-Executes Step 3 of SubmitLeave.flow.md: "Create leave request entity"
+Calculate tax amount for a given price and region. Read-only operation.
 
-## Data Mapping
-- **Input:** LeaveRequest entity (startDate, endDate, reason)
-  - Maps to: LeaveRequest.onto.md attributes
-  - Requester: Employee entity (from auth token)
-  
-- **Output:** LeaveRequest ID + status
-  - Initial status: DRAFT (per LeaveRequest.onto.md state machine)
+## Interface
+- **Endpoint:** `POST /internal/tax/calculate`
+- **Auth:** Internal service token required
+- **Method:** POST (despite being read-only, uses POST for request body)
 
-## Method
-POST (creates new resource, changes system state)
-
-## Non-Functional Requirements
-- **Performance:** Response within 200ms
-- **Security:** Requires JWT token, validate requester = authenticated user
-- **Idempotency:** Duplicate requests within 5min return same LeaveRequest ID
-
-## Success Scenarios
-1. Valid dates, no overlaps → 201 Created
-2. Returns: { leaveRequestId: "uuid", status: "DRAFT" }
-
-## Error Scenarios
-1. StartDate < Today → 400 Bad Request
-   - Error code: INVALID_DATE_RANGE
-2. Overlap detected → 409 Conflict
-   - Error code: LEAVE_OVERLAP
-   - Include conflicting leave ID in response
-3. Insufficient balance → 400 Bad Request
-   - Error code: INSUFFICIENT_BALANCE
-
-## Validation Checklist
-- [ ] Validates dates per LeavePolicy.brs.md
-- [ ] Checks overlaps per LeavePolicy.brs.md
-- [ ] Uses correct initial state from LeaveRequest.onto.md
-- [ ] Returns error codes (not generic 500)
+## Input Contract
+```json
+{
+  "amount": 1000.00,      // Required: Base amount
+  "region": "VN",         // Required: Tax region code
+  "category": "goods"     // Optional: Product category
+}
 ```
 
+## Output Contract
+```json
+{
+  "tax_amount": 100.00,
+  "tax_rate": 0.10,
+  "total": 1100.00
+}
+```
+
+## Business Logic
+- VN region: Apply 10% VAT
+- US region: Apply 0% (handled by state-specific rules)
+- Reads from TaxRate.onto.md entity
+
+## Error Scenarios
+1. Invalid region → 400 `INVALID_REGION`
+2. Negative amount → 400 `INVALID_AMOUNT`
+3. Tax rate not configured → 500 `TAX_CONFIG_MISSING`
+
+## Side Effects
+None (read-only calculation)
+
+## Performance
+- SLA: < 50ms
+- Cacheable: Yes (by region + category, TTL 1hr)
+```
+
+**Example: How APIs Compose into Flows**
+
+A flow like `checkout.flow.md` might orchestrate 5 atomic APIs:
+1. `validateStock.api.md` - Check inventory
+2. `calculateTax.api.md` - Calculate tax
+3. `calculateShipping.api.md` - Calculate shipping
+4. `chargePayment.api.md` - Process payment
+5. `createOrder.api.md` - Create order record
+
+Each API is **independently testable** and **reusable** in other flows.
+
 **Impact:**
-- Developers know WHAT to build before writing code
-- Frontend teams know exact contract before backend is ready
-- AI code generators have clear requirements
-- Generated OpenAPI spec (from code) can be validated against this
+- Creates a **repository of atomic capabilities**
+- Enables **composability** - mix and match APIs in different flows
+- AI agents can discover and call individual functions
+- Developers can expose flows as composite APIs OR let clients orchestrate
+- Microservices architecture: each API could be a separate service
+
 
 
 ---
@@ -392,9 +465,12 @@ graph TD
     
     B[LeavePolicy.brs.md<br/>Rules: No overlaps, advance notice]
     
-    FL[SubmitLeave.flow.md<br/>Workflow: Submit request]
+    FL[SubmitLeave.flow.md<br/>Orchestration: 4-step workflow]
     
-    A[submitLeaveRequest.api.md<br/>POST /api/leave-requests]
+    A1[validateDates.api.md<br/>Function: Check dates]
+    A2[checkOverlap.api.md<br/>Function: Find conflicts]
+    A3[createLeaveRequest.api.md<br/>Function: Create entity]
+    A4[notifyManager.api.md<br/>Function: Send notification]
     
     O1 -->|Supports| F
     O2 -->|Implements| F
@@ -405,22 +481,36 @@ graph TD
     FL -->|Checks| B
     FL -->|Realizes| F
     
-    A -->|Executes| FL
+    FL -->|Calls| A1
+    FL -->|Calls| A2
+    FL -->|Calls| A3
+    FL -->|Calls| A4
+    
+    A1 -->|Checks| B
+    A2 -->|Reads| O2
+    A3 -->|Creates| O2
     
     style F fill:#E8F4F8
     style O1 fill:#E8F8E8
     style O2 fill:#E8F8E8
     style B fill:#FFE6E6
     style FL fill:#FFF4E6
-    style A fill:#FFE6F0
+    style A1 fill:#FFE6F0
+    style A2 fill:#FFE6F0
+    style A3 fill:#FFE6F0
+    style A4 fill:#FFE6F0
 ```
 
 **The Flow:**
 1. **Product defines intent** (`feat.md`) - "Why do we need leave requests?" [Created FIRST]
 2. **Architect models data** (`onto.md`) - "What is a LeaveRequest? What are its states?" [Links back to feat]
 3. **Business defines rules** (`brs.md`) - "What constraints govern leave requests?" [Links back to feat]
-4. **Engineer designs workflow** (`flow.md`) - "How does a leave request get submitted?" [Links to onto, brs, and feat]
-5. **Developer creates API** (`api.md`) - "How do clients trigger this workflow?" [Links to flow]
+4. **Engineer designs workflow** (`flow.md`) - "How to orchestrate APIs to submit a request?" [Links to onto, brs, feat, and APIs]
+5. **Developer creates atomic APIs** (`api.md` × 4) - "What atomic functions are needed?" [Each API does ONE thing]
+
+**Key Insight:** The flow orchestrates 4 atomic APIs to achieve the business goal. Developers can then:
+- **Option A:** Expose flow as composite API (`POST /api/leave-requests`)
+- **Option B:** Let frontend call APIs step-by-step
 
 ---
 
@@ -448,7 +538,7 @@ graph LR
 | `onto.md` | **The Ingredients** | After menu planning | When ingredients defined |
 | `brs.md` | **Food Safety Rules** | After ingredients chosen | When rules documented |
 | `flow.md` | **The Recipe** | After ingredients + rules | When steps written |
-| `api.md` | **Cooking Instructions** | After recipe designed | When instructions written |
+| `api.md` | **Kitchen Tools** | During recipe design | When each tool documented |
 
 > [!IMPORTANT]
 > **feat.md is hierarchically first but chronologically last to complete.**  
