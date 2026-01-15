@@ -6,13 +6,13 @@ version: "1.0.0"
 status: draft
 owner: "Core HR Team"
 tags:
-  - core
+  - work-relationship
   - employee
-  - workforce
+  - core
 
 classification:
   type: AGGREGATE_ROOT
-  category: Master
+  category: work-relationship
 
 # === ATTRIBUTES ===
 attributes:
@@ -22,166 +22,106 @@ attributes:
     unique: true
     description: "System-generated UUID"
 
+  - name: workerId
+    type: string
+    required: true
+    description: "FK to Worker (person identity)"
+
+  - name: legalEntityCode
+    type: string
+    required: true
+    description: "Legal Entity code (employer)"
+
   - name: employeeCode
     type: string
     required: true
-    unique: true
-    description: "Public identifier (e.g., EMP-0042). Unique within organization."
+    description: "Employee code (unique per Legal Entity)"
     format: "EMP-XXXX"
 
-  - name: personId
-    type: string
-    required: true
-    description: "FK to Person entity for personal data"
+  - name: workerCategoryCode
+    type: enum
+    required: false
+    values: [EXECUTIVE, STAFF, WORKER]
+    description: "Worker category classification"
 
-  - name: organizationId
-    type: string
+  - name: employeeClassCode
+    type: enum
     required: true
-    description: "FK to Organization (Legal Entity)"
+    values: [PERMANENT, PROBATION, FIXED_TERM, SEASONAL, PART_TIME, INTERN]
+    description: "Employee classification for benefits/payroll"
+
+  - name: statusCode
+    type: enum
+    required: true
+    values: [ACTIVE, ON_LEAVE, SUSPENDED, TERMINATED]
+    description: "Employment status"
 
   - name: hireDate
     type: date
     required: true
-    description: "Official start of employment"
+    description: "Hire date (start of employment)"
 
   - name: terminationDate
     type: date
     required: false
-    description: "End of employment (set when terminated)"
-
-  - name: originalHireDate
-    type: date
-    required: false
-    description: "First hire date (preserved for rehires)"
-
-  - name: seniority
-    type: date
-    required: false
-    description: "Seniority date for benefits/tenure calculations"
-
-  - name: employmentTypeCode
-    type: string
-    required: true
-    description: "Full-time, Part-time, Contractor, etc."
-
-  - name: employeeStatusCode
-    type: enum
-    required: true
-    values: [PRE_HIRE, ONBOARDING, PROBATION, ACTIVE, ON_LEAVE, SUSPENDED, OFFBOARDING, TERMINATED]
-    description: "Current lifecycle status"
-
-  - name: probationEndDate
-    type: date
-    required: false
-    description: "Expected end of probation period"
+    description: "Termination date (set when terminated)"
 
   - name: terminationReasonCode
     type: string
     required: false
     description: "Reason for termination"
 
-  - name: terminationType
-    type: enum
-    required: false
-    values: [VOLUNTARY, INVOLUNTARY, RETIREMENT, DEATH]
-    description: "Category of termination"
-
-  - name: rehireEligibility
-    type: enum
-    required: false
-    values: [ELIGIBLE, NOT_ELIGIBLE, CONDITIONAL]
-    description: "Eligibility for future rehire"
-
-  - name: noticeStartDate
+  - name: originalHireDate
     type: date
     required: false
-    description: "Start of notice period"
+    description: "Original hire date (for rehires)"
 
-  - name: lastWorkingDate
+  - name: seniorityDate
     type: date
     required: false
-    description: "Last day of actual work"
+    description: "Seniority date for tenure calculations"
 
-  - name: createdAt
-    type: datetime
-    required: true
-    description: "Record creation timestamp"
-
-  - name: updatedAt
-    type: datetime
-    required: true
-    description: "Last update timestamp"
+  - name: probationEndDate
+    type: date
+    required: false
+    description: "Expected end of probation (hireDate + 60 days Vietnam)"
 
 # === RELATIONSHIPS ===
 relationships:
-  - name: isPerson
-    target: Person
+  - name: isWorker
+    target: Worker
     cardinality: many-to-one
     required: true
     inverse: hasEmployments
-    description: "Personal data of the employee"
+    description: "The person (lifetime identity)"
 
-  - name: employedBy
-    target: Organization
+  - name: employedByEntity
+    target: LegalEntity
     cardinality: many-to-one
     required: true
     inverse: hasEmployees
-    description: "Legal entity employing this person"
-
-  - name: hasAssignments
-    target: Assignment
-    cardinality: one-to-many
-    required: false
-    inverse: assignedTo
-    description: "Position assignments (one primary, may have secondary)"
+    description: "Employing legal entity"
 
   - name: hasContracts
     target: Contract
     cardinality: one-to-many
     required: false
-    inverse: signedBy
+    inverse: belongsToEmployee
     description: "Employment contracts"
 
-  - name: reportsTo
-    target: Employee
-    cardinality: many-to-one
-    required: false
-    inverse: hasDirectReports
-    description: "Direct supervisor/manager"
-
-  - name: hasDirectReports
-    target: Employee
+  - name: hasAssignments
+    target: Assignment
     cardinality: one-to-many
     required: false
-    inverse: reportsTo
-    description: "Employees reporting to this manager"
+    inverse: assignedToEmployee
+    description: "Position assignments"
 
 # === LIFECYCLE ===
 lifecycle:
-  states: [PRE_HIRE, ONBOARDING, PROBATION, ACTIVE, ON_LEAVE, SUSPENDED, OFFBOARDING, TERMINATED]
-  initial: PRE_HIRE
+  states: [ACTIVE, ON_LEAVE, SUSPENDED, TERMINATED]
+  initial: ACTIVE
   terminal: [TERMINATED]
   transitions:
-    - from: PRE_HIRE
-      to: ONBOARDING
-      trigger: startOnboarding
-      guard: "All required documents collected"
-
-    - from: ONBOARDING
-      to: PROBATION
-      trigger: completeOnboarding
-      guard: "Onboarding tasks completed"
-
-    - from: PROBATION
-      to: ACTIVE
-      trigger: confirmPermanent
-      guard: "Probation period passed, performance OK"
-
-    - from: PROBATION
-      to: TERMINATED
-      trigger: terminateProbation
-      guard: "Probation failed or voluntary"
-
     - from: ACTIVE
       to: ON_LEAVE
       trigger: startLeave
@@ -194,51 +134,41 @@ lifecycle:
     - from: ACTIVE
       to: SUSPENDED
       trigger: suspend
-      guard: "Disciplinary action"
+      guard: "Disciplinary action or investigation"
 
     - from: SUSPENDED
       to: ACTIVE
       trigger: reinstate
 
     - from: [ACTIVE, ON_LEAVE, SUSPENDED]
-      to: OFFBOARDING
-      trigger: initiateTermination
-      guard: "Termination approved"
-
-    - from: OFFBOARDING
       to: TERMINATED
-      trigger: completeOffboarding
-      guard: "Exit tasks completed, final pay processed"
+      trigger: terminate
+      guard: "Termination approved"
 
 # === POLICIES ===
 policies:
-  - name: uniqueEmployeeCode
+  - name: uniqueCodePerEntity
     type: validation
-    rule: "Employee code must be unique within organization"
-    expression: "UNIQUE(organizationId, employeeCode)"
+    rule: "Employee code must be unique within Legal Entity"
+    expression: "UNIQUE(legalEntityCode, employeeCode)"
+
+  - name: validWorker
+    type: validation
+    rule: "Worker must exist and be active"
 
   - name: hireDateNotFuture
     type: validation
     rule: "Hire date cannot be in the future"
     expression: "hireDate <= TODAY()"
 
-  - name: terminationRequiresReason
-    type: validation
-    rule: "Termination must have a reason code"
-    expression: "IF status = TERMINATED THEN terminationReasonCode IS NOT NULL"
-
   - name: probationPeriod
     type: business
-    rule: "Probation period is typically 60 days for Vietnam"
+    rule: "Probation period is 60 days maximum per Vietnam Labor Code"
     expression: "probationEndDate = hireDate + 60 days"
 
   - name: dataRetention
     type: retention
-    rule: "Terminated employee records retained for 10 years per Vietnam Labor Code"
-
-  - name: salaryAccess
-    type: access
-    rule: "Compensation details visible only to HR, Finance, and direct management chain"
+    rule: "Terminated employee records retained for 7 years per labor law compliance"
 ---
 
 # Entity: Employee
@@ -247,40 +177,43 @@ policies:
 
 ### Business Context
 
-An **Employee** represents a person who has an employment relationship with the organization. This entity is the **core of HR operations** - from hiring and payroll to performance management and offboarding. 
+An **Employee** represents a person who has an employment relationship with a specific [[LegalEntity]]. This entity is the core of HR operations - from hiring and payroll to performance management and offboarding.
 
-The Employee entity links personal data ([[Person]]) to organizational placement ([[Assignment]], [[Position]]), forming the foundation for all HR processes.
+**Key Design Decision**: One [[Worker]] can have multiple Employee records across different Legal Entities (concurrent employment in group) or over time (rehires).
 
 ### Purpose
 
-- Central source of truth for "who works here"
-- Enables accurate headcount, labor cost, and compliance reporting
-- Drives access control, payroll processing, and benefits eligibility
+- Central source of truth for employment within a specific legal entity
+- Links person identity ([[Worker]]) to organizational placement ([[Assignment]])
+- Drives payroll, benefits, access control, and compliance reporting
 
 ```mermaid
 mindmap
   root((Employee))
     Identity
       employeeCode
-      personId
-      organizationId
-    Employment
-      hireDate
-      employmentType
-      status
-    Lifecycle
-      PRE_HIRE
-      ONBOARDING
-      PROBATION
+      workerId
+      legalEntityCode
+    Classification
+      workerCategory
+        EXECUTIVE
+        STAFF
+        WORKER
+      employeeClass
+        PERMANENT
+        PROBATION
+        FIXED_TERM
+        SEASONAL
+    Status
       ACTIVE
       ON_LEAVE
+      SUSPENDED
       TERMINATED
     Relationships
-      Person
-      Organization
-      Assignment
+      Worker
+      LegalEntity
       Contract
-      Manager
+      Assignment
 ```
 
 ## 2. Attributes
@@ -288,73 +221,77 @@ mindmap
 | Attribute | Type | Required | PII | Description |
 |-----------|------|----------|-----|-------------|
 | id | UUID | Yes | No | System-generated unique identifier |
-| employeeCode | String | Yes | No | Public identifier (EMP-XXXX) |
-| personId | UUID | Yes | Yes | Link to Person for personal data |
-| organizationId | UUID | Yes | No | Employing legal entity |
+| workerId | UUID | Yes | Yes | FK to Worker for person identity |
+| legalEntityCode | String | Yes | No | Employing legal entity |
+| employeeCode | String | Yes | No | Public identifier (EMP-XXXX), unique per LE |
+| workerCategoryCode | Enum | No | No | EXECUTIVE, STAFF, WORKER |
+| employeeClassCode | Enum | Yes | No | PERMANENT, PROBATION, FIXED_TERM, etc. |
+| statusCode | Enum | Yes | No | Current lifecycle status |
 | hireDate | Date | Yes | No | Start of employment |
 | terminationDate | Date | No | No | End of employment |
-| originalHireDate | Date | No | No | First hire (for rehires) |
-| seniority | Date | No | No | Tenure calculation date |
-| employmentTypeCode | String | Yes | No | Full-time, Part-time, etc. |
-| employeeStatusCode | Enum | Yes | No | Current lifecycle status |
-| probationEndDate | Date | No | No | Probation end date |
 | terminationReasonCode | String | No | No | Reason for exit |
-| terminationType | Enum | No | No | Voluntary/Involuntary category |
-| rehireEligibility | Enum | No | No | Future rehire eligibility |
-| noticeStartDate | Date | No | No | Notice period start |
-| lastWorkingDate | Date | No | No | Last day of work |
-| createdAt | Datetime | Yes | No | Record creation time |
-| updatedAt | Datetime | Yes | No | Last update time |
+| originalHireDate | Date | No | No | First hire (for rehires) |
+| seniorityDate | Date | No | No | Tenure calculation date |
+| probationEndDate | Date | No | No | Probation end (hireDate + 60 days) |
 
 ### Attribute Notes
 
-- **PII Classification**: `personId` links to Person entity containing all PII data
-- **employeeCode**: Public identifier, never changes even after termination
-- **Status values**: See Lifecycle section for state machine
+#### Classification Hierarchy
+
+| workerCategoryCode | employeeClassCode | Description | BHXH | Vietnam Example |
+|--------------------|-------------------|-------------|------|-----------------|
+| EXECUTIVE | PERMANENT | Senior leadership | ✅ | CEO, CFO |
+| STAFF | PERMANENT | Chính thức - full benefits | ✅ | NV văn phòng |
+| STAFF | PROBATION | Thử việc - 60 ngày | ✅ | NV mới |
+| STAFF | FIXED_TERM | Có thời hạn 12-36 tháng | ✅ | HĐ xác định |
+| WORKER | SEASONAL | Thời vụ < 12 tháng | ✅ | Công nhân vụ mùa |
+| STAFF | PART_TIME | < 8h/ngày hoặc < 40h/tuần | ✅ | Part-timer |
+| STAFF | INTERN | Thực tập có lương | ✅ | Có HĐTT |
 
 ## 3. Relationships
 
 ```mermaid
 erDiagram
-    EMPLOYEE }o--|| PERSON : "isPerson"
-    EMPLOYEE }o--|| ORGANIZATION : "employedBy"
-    EMPLOYEE ||--o{ ASSIGNMENT : "hasAssignments"
+    EMPLOYEE }o--|| WORKER : "isWorker"
+    EMPLOYEE }o--|| LEGAL_ENTITY : "employedByEntity"
     EMPLOYEE ||--o{ CONTRACT : "hasContracts"
-    EMPLOYEE }o--o| EMPLOYEE : "reportsTo"
+    EMPLOYEE ||--o{ ASSIGNMENT : "hasAssignments"
 ```
 
 ### Related Entities
 
 | Entity | Relationship | Cardinality | Description |
 |--------|--------------|-------------|-------------|
-| [[Person]] | isPerson | n-1 | Personal data (name, DOB, contacts) |
-| [[Organization]] | employedBy | n-1 | Employing legal entity |
-| [[Assignment]] | hasAssignments | 1-n | Position placements |
-| [[Contract]] | hasContracts | 1-n | Employment agreements |
-| [[Employee]] | reportsTo | n-1 | Direct supervisor |
+| [[Worker]] | isWorker | n-1 | Person identity (name, DOB, nationality) |
+| [[LegalEntity]] | employedByEntity | n-1 | Employing company |
+| [[Contract]] | hasContracts | 1-n | Employment contracts/amendments |
+| [[Assignment]] | hasAssignments | 1-n | Position assignments |
 
 ### Relationship Details
 
-#### isPerson → [[Person]]
-- **Purpose**: Separates personal data from employment data
-- **Why**: Same Person can have multiple Employee records (different organizations, rehires)
-- **Navigation**: `Employee.isPerson -> Person`
-- **Cascade**: ON DELETE RESTRICT
+#### isWorker → [[Worker]]
+- **Purpose**: Links to person identity (lifetime data)
+- **Why**: Separates person data from employment data. Same person can have multiple Employee records.
+- **Navigation**: `Employee.isWorker -> Worker`
+- **Cascade**: ON DELETE RESTRICT (cannot delete worker with active employment)
 
-#### employedBy → [[Organization]]
-- **Purpose**: Links to employing legal entity
+#### employedByEntity → [[LegalEntity]]
+- **Purpose**: The company that employs this person
 - **Why**: Determines tax jurisdiction, labor law, payroll processing
-- **Navigation**: `Employee.employedBy -> Organization`
+- **Navigation**: `Employee.employedByEntity -> LegalEntity`
+- **Note**: Transfer between entities creates NEW Employee record
+
+#### hasContracts → [[Contract]]
+- **Purpose**: Employment contracts linked to this employee
+- **Why**: Track HĐLĐ, HĐTT, amendments, renewals
+- **Navigation**: `Employee.hasContracts -> Contract[]`
+- **Business Rule**: Employee should have at least one active contract
 
 #### hasAssignments → [[Assignment]]
-- **Purpose**: Links to position/job assignments
-- **Why**: Employee may have multiple assignments (primary + secondary)
+- **Purpose**: Position placements
+- **Why**: Employee can have multiple assignments (1 primary + secondary/project)
 - **Navigation**: `Employee.hasAssignments -> Assignment[]`
-
-#### reportsTo → [[Employee]]
-- **Purpose**: Defines management hierarchy
-- **Why**: Drives approval workflows, org chart, span of control
-- **Self-reference**: CEO/Founders have null supervisor
+- **Business Rule**: Active employee should have primary assignment
 
 ## 4. Lifecycle
 
@@ -362,13 +299,7 @@ erDiagram
 
 ```mermaid
 stateDiagram-v2
-    [*] --> PRE_HIRE: create
-    
-    PRE_HIRE --> ONBOARDING: startOnboarding
-    ONBOARDING --> PROBATION: completeOnboarding
-    
-    PROBATION --> ACTIVE: confirmPermanent
-    PROBATION --> TERMINATED: terminateProbation
+    [*] --> ACTIVE: hire
     
     ACTIVE --> ON_LEAVE: startLeave
     ON_LEAVE --> ACTIVE: returnFromLeave
@@ -376,11 +307,9 @@ stateDiagram-v2
     ACTIVE --> SUSPENDED: suspend
     SUSPENDED --> ACTIVE: reinstate
     
-    ACTIVE --> OFFBOARDING: initiateTermination
-    ON_LEAVE --> OFFBOARDING: initiateTermination
-    SUSPENDED --> OFFBOARDING: initiateTermination
-    
-    OFFBOARDING --> TERMINATED: completeOffboarding
+    ACTIVE --> TERMINATED: terminate
+    ON_LEAVE --> TERMINATED: terminate
+    SUSPENDED --> TERMINATED: terminate
     
     TERMINATED --> [*]
 ```
@@ -389,45 +318,58 @@ stateDiagram-v2
 
 | State | Business Meaning | System Impact |
 |-------|------------------|---------------|
-| **PRE_HIRE** | Accepted offer, not yet started | No system access, not in headcount |
-| **ONBOARDING** | First days, completing setup | Limited access, training tasks |
-| **PROBATION** | Trial period (60 days Vietnam) | Full access, interim review required |
-| **ACTIVE** | Normal working status | Full access, included in all reports |
-| **ON_LEAVE** | Approved temporary absence | Access may suspend, excluded from assignments |
-| **SUSPENDED** | Disciplinary/investigation | Access suspended, payroll may pause |
-| **OFFBOARDING** | Separation in progress | Access being revoked, exit tasks |
-| **TERMINATED** | Employment ended | No access, retained for compliance |
+| **ACTIVE** | Currently employed and working | Full access, included in headcount, payroll active |
+| **ON_LEAVE** | Approved temporary absence (LOA, maternity) | Access may suspend, excluded from assignments |
+| **SUSPENDED** | Disciplinary or investigation | Access suspended, payroll may pause |
+| **TERMINATED** | Employment ended | No access, final pay processed, archived |
 
 ### Transition Rules
 
-| From | To | Trigger | Guard | Actor |
-|------|-----|---------|-------|-------|
-| PRE_HIRE | ONBOARDING | startOnboarding | All documents collected | HR |
-| ONBOARDING | PROBATION | completeOnboarding | Onboarding tasks done | HR |
-| PROBATION | ACTIVE | confirmPermanent | Probation passed | HR+Manager |
-| PROBATION | TERMINATED | terminateProbation | Probation failed | HR |
-| ACTIVE | ON_LEAVE | startLeave | Leave approved | System |
-| ON_LEAVE | ACTIVE | returnFromLeave | Leave ended | System |
-| ACTIVE | OFFBOARDING | initiateTermination | Termination approved | HR |
-| OFFBOARDING | TERMINATED | completeOffboarding | Exit tasks done | HR |
+| From State | To State | Trigger | Guard | Actor |
+|------------|----------|---------|-------|-------|
+| ACTIVE | ON_LEAVE | startLeave | Leave approved | System/HR |
+| ON_LEAVE | ACTIVE | returnFromLeave | Leave ended | System/HR |
+| ACTIVE | SUSPENDED | suspend | Disciplinary action | HR |
+| SUSPENDED | ACTIVE | reinstate | Investigation complete | HR |
+| * | TERMINATED | terminate | Termination approved | HR |
+
+### Mapping to WorkRelationship
+
+Employee status maps to [[WorkRelationship]] status:
+
+| Employee Status | WorkRelationship Status | Notes |
+|-----------------|------------------------|-------|
+| ACTIVE | ACTIVE | Normal working |
+| ON_LEAVE | ACTIVE | Still has relationship, just on leave |
+| SUSPENDED | SUSPENDED | Relationship suspended |
+| TERMINATED | TERMINATED | Relationship ended |
 
 ## 5. Business Rules Reference
 
 This entity is governed by:
 
-| Rule ID | Policy | Description |
-|---------|--------|-------------|
-| BR-CO-001 | [[employee-lifecycle.brs.md]] | Employee status transition rules |
-| BR-CO-002 | [[probation-rules.brs.md]] | Probation period requirements (60 days Vietnam) |
-| BR-CO-003 | [[termination-rules.brs.md]] | Termination notice, reasons, eligibility |
-| BR-CO-010 | [[data-retention.brs.md]] | 10-year retention for terminated records |
+| Rule Area | Reference | Description |
+|-----------|-----------|-------------|
+| Validation | [[employee-validation.brs.md]] | Code uniqueness, date validation |
+| Vietnam Labor Code | [[vietnam-labor.brs.md]] | Probation 60 days, contract types |
+| Termination | [[termination-rules.brs.md]] | Notice period, reasons, rehire eligibility |
+| Data Retention | [[data-retention.brs.md]] | 7 years for terminated records |
 
 ### Key Validation Rules
 
-- **uniqueEmployeeCode**: Employee code unique within organization
-- **hireDateNotFuture**: Cannot hire with future date
-- **terminationRequiresReason**: Must specify reason code when terminating
-- **probationPeriod**: Default 60 days per Vietnam Labor Code
+#### uniqueCodePerEntity
+**Rule**: Employee code must be unique within Legal Entity.
+**Reason**: Prevents confusion in payroll, reporting, integrations.
+**Violation**: System prevents save; HR must choose different code.
+
+#### hireDateNotFuture
+**Rule**: Hire date cannot be in the future.
+**Reason**: Prevents premature access. Future hires stay in recruiting system.
+**Violation**: System prevents save.
+
+#### probationPeriod
+**Rule**: Probation max 60 days for senior roles per Vietnam Labor Code.
+**Implementation**: `probationEndDate = hireDate + 60 days` (or less based on contract type).
 
 ---
 
@@ -436,35 +378,36 @@ This entity is governed by:
 ### Example 1: Standard Full-Time Employee
 
 ```yaml
-employeeCode: EMP-0042
-personId: "uuid-person-123"
-organizationId: "uuid-vng-corp"
+id: "emp-uuid-001"
+workerId: "wrk-00042"
+legalEntityCode: "VNG_CORP"
+employeeCode: "EMP-0042"
+workerCategoryCode: "STAFF"
+employeeClassCode: "PERMANENT"
+statusCode: "ACTIVE"
 hireDate: "2023-01-15"
-employmentTypeCode: "FULL_TIME"
-employeeStatusCode: "ACTIVE"
-probationEndDate: "2023-03-15"  # hireDate + 60 days
+terminationDate: null
+probationEndDate: "2023-03-15"
 ```
 
 ### Example 2: Employee on Maternity Leave
 
 ```yaml
-employeeCode: EMP-0108
-employeeStatusCode: "ON_LEAVE"
+employeeCode: "EMP-0108"
+statusCode: "ON_LEAVE"
+employeeClassCode: "PERMANENT"
 hireDate: "2020-06-01"
-# Leave type tracked in TimeOff module, not Employee entity
+# Leave details tracked in TimeOff module, not Employee entity
 ```
 
-### Example 3: Terminated Employee
+### Example 3: Probation Employee
 
 ```yaml
-employeeCode: EMP-0033
-employeeStatusCode: "TERMINATED"
-hireDate: "2018-03-01"
-terminationDate: "2024-12-31"
-terminationReasonCode: "RESIGNATION"
-terminationType: "VOLUNTARY"
-rehireEligibility: "ELIGIBLE"
-lastWorkingDate: "2024-12-31"
+employeeCode: "EMP-0200"
+employeeClassCode: "PROBATION"
+statusCode: "ACTIVE"
+hireDate: "2024-06-01"
+probationEndDate: "2024-08-01"  # hireDate + 60 days
 ```
 
 ---
@@ -474,21 +417,21 @@ lastWorkingDate: "2024-12-31"
 ### Rehires
 
 When a terminated employee is rehired:
-- Create **new** Employee record with new employeeCode
+- Create **NEW** Employee record with new employeeCode
 - Set `originalHireDate` to first employment date
-- Use `seniority` date per policy (may bridge service)
-- Link via Person entity (same personId)
+- Use `seniorityDate` per company policy (may bridge service)
+- Link via same Worker (same workerId)
 
 ### Concurrent Employment
 
-Same person working for multiple legal entities:
+Same person working for multiple legal entities in group:
+- Same `workerId`, different `legalEntityCode`
 - Each entity has separate Employee record
-- Same `personId`, different `organizationId`
-- Different `employeeCode` per organization
+- Different `employeeCode` per entity
 
 ### Transfer Between Entities
 
-When employee transfers to different legal entity:
-1. Terminate current Employee record (TRANSFERRED reason)
+When employee transfers to different Legal Entity:
+1. Terminate current Employee record (terminationReasonCode = TRANSFER)
 2. Create new Employee in target entity
-3. May preserve `seniority` date if same company group
+3. May preserve `seniorityDate` if same company group
