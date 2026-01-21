@@ -1,11 +1,11 @@
 # Axiom Codex: Technical Standards
 
-> **Technical Specification for the 5 Document Types**  
+> **Technical Specification for the 6 Document Types**  
 > *Machine-Readable & Human-Readable Documentation Standards*
 
 ## Purpose
 
-This document defines the **technical specifications** for all 5 document types in the Axiom Codex system. These standards ensure:
+This document defines the **technical specifications** for all 6 document types in the Axiom Codex system. These standards ensure:
 
 1. **Consistency**: All team members write documents following the same structure
 2. **Machine-Readability**: AI agents can parse documents to build knowledge graphs and generate code
@@ -66,9 +66,10 @@ graph LR
 |------|-----------|-------|------|
 | [Feature Specification](#1-feature-specification-featmd) | `*.feat.md` | Intent | Root node & dashboard |
 | [Ontology Model](#2-ontology-model-ontomd) | `*.onto.md` | Data | Entities & knowledge graph |
-| [Business Policy](#3-business-policy-brsmd) | `*.brs.md` | Guard | Rules & constraints |
-| [Controller Flow](#4-controller-flow-flowmd) | `*.flow.md` | Behavior | Orchestration scripts |
+| [Link Model](#3-link-model-linkmd) | `*.link.md` | Data | Relationships as first-class |
+| [Business Policy](#4-business-policy-brsmd) | `*.brs.md` | Guard | Rules & constraints |
 | [Interface Unit](#5-interface-unit-apimd) | `*.api.md` | Execution | Atomic functions |
+| [Controller Flow](#6-controller-flow-flowmd) | `*.flow.md` | Behavior | Orchestration scripts |
 
 ---
 
@@ -446,31 +447,10 @@ lifecycle:
       trigger: cancel
       guard: "Before approval"
 
-# === ACTIONS ===
-actions:
-  - name: submit
-    description: "Submit leave request for approval"
-    requiredFields: [employeeId, startDate, endDate, leaveType]
-    affectsAttributes: [status, updatedAt]
-    triggersTransition: "DRAFT -> SUBMITTED"
-  
-  - name: approve
-    description: "Approve the leave request"
-    requiredFields: [approverId]
-    affectsAttributes: [status, updatedAt]
-    affectsRelationships: [affectsBalance]
-    triggersTransition: "SUBMITTED -> APPROVED"
-  
-  - name: reject
-    description: "Reject the leave request"
-    requiredFields: [approverId]
-    affectsAttributes: [status, updatedAt]
-    triggersTransition: "SUBMITTED -> REJECTED"
-  
-  - name: cancel
-    description: "Cancel the leave request"
-    affectsAttributes: [status, updatedAt]
-    triggersTransition: "DRAFT|SUBMITTED -> CANCELLED"
+# === NOTE: ACTIONS ===
+# Actions are NOT defined in onto.md. They belong in *.flow.md (Behavior Layer).
+# onto.md is Data Layer - defines entity structure and lifecycle states only.
+# See Controller Flow section for action definitions.
 
 # === POLICIES ===
 policies:
@@ -579,7 +559,260 @@ This entity is governed by:
 
 ---
 
-## 3. Business Policy (`*.brs.md`)
+## 3. Link Model (`*.link.md`)
+
+### Role
+**Relationship Layer** - Defines connections between entities as first-class citizens. Equivalent to Palantir's Link Types.
+
+### File Naming
+```
+<Source>-<relationship>-<Target>.link.md
+```
+Examples: `Employee-manages-Employee.link.md`, `LeaveRequest-belongsTo-Employee.link.md`, `Contract-assignedTo-Worker.link.md`
+
+### When to Use Link Model
+
+Use `*.link.md` when:
+- Relationship has its own properties (e.g., `effectiveDate`, `isPrimary`)
+- Relationship needs complex constraints/rules
+- Many-to-many associations requiring junction semantics
+- Bidirectional navigation is critical
+- Cascade behavior must be explicitly controlled
+
+For simple relationships without properties, embedding in `onto.md` → `relationships:` is sufficient.
+
+### Required Sections
+
+| Section | Content | AI/Automation Purpose |
+|---------|---------|----------------------|
+| **YAML Header** | `link`, `source`, `target`, `properties`, `cascade`, `constraints` | Graph construction, navigation, cascade enforcement |
+| **1. Overview** | What this relationship represents | Context for AI understanding |
+| **2. Navigation** | Forward/inverse accessors | Query generation, traversal |
+| **3. Cascade Behavior** | Delete/update propagation | Data integrity enforcement |
+| **4. Constraints** | Validation rules | Guard logic |
+
+### YAML Frontmatter Schema
+
+```yaml
+---
+# === HEADER ===
+link: manages                          # Relationship name (camelCase)
+domain: organization                   # Domain area
+version: "1.0.0"                       # Semantic version
+status: approved                       # draft | review | approved
+owner: "HR Product Team"
+tags:
+  - hierarchy
+  - reporting-structure
+
+# === SOURCE ENTITY ===
+source:
+  entity: Employee                     # Source entity name (PascalCase)
+  cardinality: one                     # one | many
+  required: true                       # Is relationship mandatory?
+  role: "manager"                      # Optional role name for context
+  constraint: "Employee.status = 'ACTIVE'"  # Optional filter
+
+# === TARGET ENTITY ===
+target:
+  entity: Employee                     # Target entity name (PascalCase)
+  cardinality: many                    # one | many
+  required: false
+  role: "directReports"
+  constraint: "Employee.status IN ('ACTIVE', 'PROBATION')"
+
+# === RELATIONSHIP PROPERTIES (Optional) ===
+# Properties that exist ON the relationship itself
+properties:
+  - name: effectiveDate
+    type: date
+    required: true
+    description: "When this reporting relationship became active"
+  
+  - name: isPrimary
+    type: boolean
+    required: false
+    default: true
+    description: "Is this the primary (vs dotted-line) reporting relationship"
+  
+  - name: delegationLevel
+    type: enum
+    values: [NONE, PARTIAL, FULL]
+    required: false
+    description: "Level of authority delegation to manager"
+
+# === NAVIGATION ===
+navigation:
+  forward: "manages"                   # Source -> Target accessor
+  inverse: "reportsTo"                 # Target -> Source accessor
+  bidirectional: true                  # Both directions navigable
+
+# === CASCADE RULES ===
+cascade:
+  onSourceDelete: restrict             # restrict | cascade | setNull | noAction
+  onTargetDelete: setNull              # What happens when target is deleted
+  orphanRemoval: false                 # Auto-delete orphaned targets
+
+# === CONSTRAINTS ===
+constraints:
+  - id: CON-001
+    rule: "Manager must be in same or higher org level"
+    type: validation
+    expression: "source.orgLevel <= target.orgLevel"
+    errorCode: "ERR_INVALID_ORG_HIERARCHY"
+  
+  - id: CON-002
+    rule: "Cannot manage self"
+    type: invariant
+    expression: "source.id != target.id"
+    errorCode: "ERR_SELF_REFERENCE"
+  
+  - id: CON-003
+    rule: "Maximum 10 direct reports per manager"
+    type: cardinality
+    expression: "COUNT(target) <= 10"
+    errorCode: "ERR_EXCEEDS_SPAN_OF_CONTROL"
+
+# === POLICIES ===
+policies:
+  - "[[BR-ORG-001]]"                   # References to business rules
+  - "[[BR-ORG-002]]"
+---
+```
+
+> **Important**: YAML frontmatter contains ALL relationship data. Markdown provides visualization and human context.
+
+### Markdown Body Template
+
+```markdown
+# Link: [Source] → [relationship] → [Target]
+
+## 1. Overview
+
+### Relationship Context
+
+\\`\\`\\`mermaid
+mindmap
+  root((manages))
+    Source
+      Employee as Manager
+      Must be ACTIVE
+    Target
+      Employee as Direct Report
+      One or more reports
+    Properties
+      effectiveDate
+      isPrimary
+      delegationLevel
+    Constraints
+      Same/higher org level
+      No self-reference
+      Max 10 reports
+\\`\\`\\`
+
+### Business Purpose
+[What this relationship represents in the real world]
+
+### Use Cases
+- Primary reporting structure for approvals
+- Performance review assignments
+- Team capacity planning
+
+## 2. Navigation
+
+### Forward Navigation (Source → Target)
+
+**Accessor**: `employee.manages`
+
+\\`\\`\\`typescript
+// Get all direct reports of a manager
+const directReports = await employee.manages.getAll();
+\\`\\`\\`
+
+### Inverse Navigation (Target → Source)
+
+**Accessor**: `employee.reportsTo`
+
+\\`\\`\\`typescript
+// Get manager of an employee
+const manager = await employee.reportsTo.get();
+\\`\\`\\`
+
+### ER Diagram
+
+\\`\\`\\`mermaid
+erDiagram
+    EMPLOYEE ||--o{ EMPLOYEE : manages
+    EMPLOYEE }o--|| EMPLOYEE : reportsTo
+\\`\\`\\`
+
+## 3. Relationship Properties
+
+| Property | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| effectiveDate | Date | Yes | - | When relationship became active |
+| isPrimary | Boolean | No | true | Primary or dotted-line |
+| delegationLevel | Enum | No | NONE | Authority delegation level |
+
+### Property Notes
+- `effectiveDate` enables historical queries ("Who was my manager on date X?")
+- `isPrimary` distinguishes matrix vs direct reporting
+
+## 4. Cascade Behavior
+
+### On Source Delete
+**Rule**: RESTRICT
+- Cannot delete a manager who has direct reports
+- Must reassign reports first
+
+### On Target Delete
+**Rule**: SET NULL
+- If employee leaves, manager's direct report list updates automatically
+
+### Referential Integrity
+- Orphan removal: **Disabled** (reports are not deleted when manager changes)
+
+## 5. Constraints
+
+### CON-001: Org Level Hierarchy
+**Rule**: Manager must be in same or higher org level than direct report.
+
+**Validation**: `source.orgLevel <= target.orgLevel`
+
+**Error**: `ERR_INVALID_ORG_HIERARCHY`
+
+### CON-002: No Self-Reference
+**Invariant**: Employee cannot manage themselves.
+
+**Validation**: `source.id != target.id`
+
+**Error**: `ERR_SELF_REFERENCE`
+
+### CON-003: Span of Control
+**Cardinality**: Maximum 10 direct reports per manager.
+
+**Validation**: `COUNT(target) <= 10`
+
+**Error**: `ERR_EXCEEDS_SPAN_OF_CONTROL`
+
+## 6. Related Documents
+
+- **Source Entity**: [Employee.onto.md](../ontology/Employee.onto.md)
+- **Target Entity**: [Employee.onto.md](../ontology/Employee.onto.md)
+- **Business Rules**: [OrganizationPolicy.brs.md](../policies/OrganizationPolicy.brs.md)
+```
+
+### Markdown Visualization Requirements
+
+| Diagram Type | Section | Purpose | Required |
+|--------------|---------|---------|----------|
+| `mindmap` | Overview | Relationship context breakdown | ✅ Yes |
+| `erDiagram` | Navigation | Cardinality visualization | ✅ Yes |
+| `flowchart` | Cascade Behavior | Delete/update propagation | Optional |
+
+---
+
+## 4. Business Policy (`*.brs.md`)
 
 ### Role
 **Guard Layer** - Defines invariants, permissions, and validation logic that protect system integrity.
@@ -818,7 +1051,7 @@ def get_approver(employee_id):
 
 ---
 
-## 4. Controller Flow (`*.flow.md`)
+## 6. Controller Flow (`*.flow.md`)
 
 ### Role
 **Behavior Layer** - Defines orchestration of atomic APIs to achieve business workflows.
@@ -1427,35 +1660,42 @@ if (result.valid) {
 
 ## Relationship Summary
 
-### How the 5 Types Connect
+### How the 6 Types Connect
 
 ```mermaid
 graph TD
     F[feat.md<br>Dashboard] --> O[onto.md<br>Data]
+    F --> L[link.md<br>Relationships]
     F --> B[brs.md<br>Rules]
+    F --> A[api.md<br>Atomic Functions]
     F --> FL[flow.md<br>Orchestration]
     
+    O -.-> L
+    L -.-> O
+    
+    FL --> A
     FL --> O
     FL --> B
-    FL --> A[api.md<br>Atomic Functions]
     
     A --> O
     A --> B
     
     style F fill:#E8F4F8
     style O fill:#E8F8E8
+    style L fill:#E8E8F8
     style B fill:#FFE6E6
-    style FL fill:#FFF4E6
     style A fill:#FFE6F0
+    style FL fill:#FFF4E6
 ```
 
 ### Document Lifecycle Summary
 
-1. **`feat.md`** (Dashboard): *"I want feature A, using data `onto` B, following rules `brs` C."*
-2. **`onto.md`** (Map): *"I am data B, with this structure and relationships."*
-3. **`brs.md`** (Rule): *"I forbid action X on data B."*
-4. **`flow.md`** (Script): *"To achieve feature A, Step 1 calls `api` X, Step 2 calls `api` Y."*
-5. **`api.md`** (Tool): *"I am tool X, give me input A, I return output B."*
+1. **`feat.md`** (Dashboard): *"I want feature A, using data `onto` B, linked via `link` C, following rules `brs` D."*
+2. **`onto.md`** (Entity): *"I am data B, with this structure and attributes."*
+3. **`link.md`** (Relationship): *"I connect entity B to entity C with these properties and cascade rules."*
+4. **`brs.md`** (Rules): *"I forbid action X on data B."*
+5. **`api.md`** (Tool): *"I am atomic function X, give me input A, I return output B."*
+6. **`flow.md`** (Script): *"To achieve feature A, Step 1 calls `api` X, Step 2 calls `api` Y."*
 
 ---
 
@@ -1467,9 +1707,10 @@ graph TD
 |------|---------|---------|
 | Feature | `<feature-name>.feat.md` | `leave-request.feat.md` |
 | Ontology | `<EntityName>.onto.md` | `LeaveRequest.onto.md` |
+| Link | `<Source>-<relationship>-<Target>.link.md` | `Employee-manages-Employee.link.md` |
 | Policy | `<PolicyArea>.brs.md` | `LeavePolicy.brs.md` |
-| Flow | `<WorkflowName>.flow.md` | `SubmitLeaveRequest.flow.md` |
 | API | `<functionName>.api.md` | `validateDates.api.md` |
+| Flow | `<WorkflowName>.flow.md` | `SubmitLeaveRequest.flow.md` |
 
 ### ID Convention
 
@@ -1490,9 +1731,10 @@ Examples: `leave-request-feature`, `employee-entity`, `payroll-calculation-polic
 |---------------|------------------|-------------------|
 | `*.feat.md` | `mindmap` (feature relationships) | `sequenceDiagram` (user flow) |
 | `*.onto.md` | `mindmap` (concept breakdown)<br>`stateDiagram-v2` (lifecycle)<br>`erDiagram` (relationships) | `flowchart` (processes)<br>`sequenceDiagram` (workflows) |
+| `*.link.md` | `mindmap` (relationship context)<br>`erDiagram` (cardinality) | `flowchart` (cascade behavior) |
 | `*.brs.md` | `mindmap` (rule scope) | `flowchart` (decision logic) |
-| `*.flow.md` | `sequenceDiagram` OR `flowchart` (step flow) | `flowchart` (exception handling) |
 | `*.api.md` | None (JSON schemas sufficient) | `flowchart` (complex algorithms) |
+| `*.flow.md` | `sequenceDiagram` OR `flowchart` (step flow) | `flowchart` (exception handling) |
 
 ### Diagram Best Practices
 
@@ -1684,10 +1926,11 @@ Each document type provides structured data for AI agents:
 | Document | AI Use Case |
 |----------|-------------|
 | `feat.md` | Entry point for context retrieval, scope understanding, acceptance criteria extraction |
-| `onto.md` | Schema generation, relationship traversal, state validation, action triggering |
+| `onto.md` | Schema generation, entity modeling, state validation, action triggering |
+| `link.md` | Relationship traversal, graph construction, cascade validation, navigation path finding |
 | `brs.md` | Guardrail enforcement, error generation, validation logic, compliance checking |
-| `flow.md` | Workflow execution, API orchestration, transaction design, step-by-step processing |
 | `api.md` | Tool selection (ReAct), code generation, testing, contract validation |
+| `flow.md` | Workflow execution, API orchestration, transaction design, step-by-step processing |
 
 ### Graph Database Integration
 
