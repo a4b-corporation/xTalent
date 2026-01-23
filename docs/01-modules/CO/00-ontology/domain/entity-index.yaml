@@ -255,6 +255,31 @@ entities:
     parent_aggregate: EligibilityProfile
     status: planned
     
+  # Privacy & Compliance sub-module (Phase 3) - NEW
+  - entity: Consent
+    file: 08-privacy/consent.entity.yaml
+    parent_aggregate: Worker
+    status: planned
+    note: "Track data consent for PDPA/GDPR compliance"
+    
+  - entity: DataSubjectRequest
+    file: 08-privacy/data-subject-request.entity.yaml
+    parent_aggregate: null
+    status: planned
+    note: "Handle DSAR requests (access, rectification, erasure)"
+    
+  - entity: AuditLog
+    file: 08-privacy/audit-log.entity.yaml
+    parent_aggregate: null
+    status: planned
+    note: "Compliance audit trail for data access/changes"
+    
+  - entity: DataBreachLog
+    file: 08-privacy/data-breach-log.entity.yaml
+    parent_aggregate: null
+    status: planned
+    note: "Track data breach incidents"
+    
   # Tax (Phase 4)
   - entity: DependentRegistration
     file: 05-master-data/dependent-registration.entity.yaml
@@ -359,19 +384,19 @@ value_objects:
 # ═══════════════════════════════════════════════════════════════════
 statistics:
   aggregate_roots: 12
-  entities: 40
+  entities: 44  # +4 privacy entities
   reference_data: 18
   value_objects: 2
-  total: 70
+  total: 74
   
   # By status
   completed: 23  # Phase 1: Worker + child entities + master data
-  planned: 47
+  planned: 51    # +4 privacy entities
   
   # By phase
   phase_1: 23  # Worker + child entities + master data (COMPLETE)
   phase_2: 17  # Employment + Org Structure
-  phase_3: 20  # Job-Position + Facility
+  phase_3: 24  # Job-Position + Facility + Privacy (+4)
   phase_4: 10  # TalentMarket + Eligibility
 
 # Naming Convention (see ENTITY-NAMING-CONVENTION.md):

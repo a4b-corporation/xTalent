@@ -1566,37 +1566,422 @@ features:
     estimated_effort: "13 story points"
     status: "PLANNED"
 
+  # ---------------------------------------------------------------------------
+  # Feature 016: Contract Management
+  # ---------------------------------------------------------------------------
+  - id: "016"
+    name: "contract-management"
+    title: "Contract Management"
+    priority: HIGH
+    epic: "Core Employment"
+    phase: 1
+    
+    description: |
+      Manage employment contracts including contract creation, templates,
+      amendments, and compliance with Vietnam Labor Code 2019.
+      Supports contract types: Permanent, Fixed-term, Probation, Seasonal.
+    
+    user_stories:
+      - "As an HR Admin, I want to create employment contracts so that legal requirements are met"
+      - "As an HR Admin, I want to use contract templates so that contracts are standardized"
+      - "As an HR Admin, I want to track contract expiry so that renewals are timely"
+      - "As an Employee, I want to view my contract so that I know my terms"
+      - "As an HR Admin, I want to create contract amendments so that changes are documented"
+    
+    sources:
+      concept_guides:
+        - "01-concept/01-employment-lifecycle-guide.md#contracts"
+      
+      ontology:
+        entities:
+          - "Contract"
+          - "ContractTemplate"
+          - "ContractType"
+        glossary: "00-ontology/glossary-employment.md"
+      
+      functional_requirements:
+        range: "FR-CTR-001 to FR-CTR-025"
+        key_requirements:
+          - "FR-CTR-001: Create employment contract"
+          - "FR-CTR-002: Use contract template"
+          - "FR-CTR-003: Track contract dates"
+          - "FR-CTR-005: Create contract amendment"
+          - "FR-CTR-010: Contract expiry notification"
+          - "FR-CTR-015: Generate contract document"
+      
+      business_rules:
+        range: "BR-CTR-001 to BR-CTR-015"
+        key_rules:
+          - "BR-CTR-001: Contract required for all EMPLOYEE type relationships"
+          - "BR-CTR-002: Contract type must match Vietnam Labor Code"
+          - "BR-CTR-003: Probation max 60 days (skilled), 30 days (others)"
+          - "BR-CTR-004: Fixed-term max 36 months"
+          - "BR-CTR-005: Written contract within 30 days of hire"
+          - "BR-CTR-010: Amendment must reference original contract"
+      
+      apis:
+        - "POST /api/v1/contracts"
+        - "GET /api/v1/contracts/{id}"
+        - "PUT /api/v1/contracts/{id}"
+        - "GET /api/v1/employees/{employeeId}/contracts"
+        - "POST /api/v1/contracts/{id}/amendments"
+        - "GET /api/v1/contracts/expiring"
+        - "POST /api/v1/contract-templates"
+        - "GET /api/v1/contract-templates"
+        - "POST /api/v1/contracts/{id}/generate-document"
+      
+      scenarios:
+        - "New hire contract creation"
+        - "Contract from template"
+        - "Fixed-term to permanent conversion"
+        - "Contract expiry notification"
+        - "Contract amendment for salary change"
+    
+    spec_kit_outputs:
+      - "spec.md"
+      - "data-model.md"
+      - "contracts/api-spec.yaml"
+      - "tasks.md"
+    
+    technical_notes:
+      - "Link contract to Employee and WorkRelationship"
+      - "SCD Type 2 for contract changes"
+      - "Document generation with templates"
+      - "Expiry notification scheduler"
+      - "Vietnam Labor Code compliance validation"
+    
+    acceptance_criteria:
+      - "Contract created with required fields"
+      - "Contract template used correctly"
+      - "Expiry dates calculated and notified"
+      - "Amendment linked to original"
+      - "Contract document generated"
+      - "Vietnam Labor Code rules enforced"
+    
+    dependencies:
+      - "002-work-relationship"
+      - "003-employee-management"
+    
+    estimated_effort: "8 story points"
+    status: "PLANNED"
+
+  # ---------------------------------------------------------------------------
+  # Feature 017: Legal Entity Management
+  # ---------------------------------------------------------------------------
+  - id: "017"
+    name: "legal-entity"
+    title: "Legal Entity Management"
+    priority: HIGH
+    epic: "Organization Structure"
+    phase: 1
+    
+    description: |
+      Manage legal entities (companies) including registration info, licenses,
+      bank accounts, and representatives. Foundation for multi-company support.
+    
+    user_stories:
+      - "As a System Admin, I want to create legal entities so that we can support multi-company"
+      - "As a System Admin, I want to manage entity licenses so that compliance is tracked"
+      - "As an HR Admin, I want to view legal entity details so that I know company info"
+      - "As a Payroll Admin, I want to access entity bank accounts so that payroll is configured"
+    
+    sources:
+      concept_guides:
+        - "01-concept/02-organization-structure-guide.md#legal-entity"
+      
+      ontology:
+        entities:
+          - "LegalEntity"
+          - "EntityProfile"
+          - "EntityLicense"
+          - "EntityBankAccount"
+          - "EntityRepresentative"
+        glossary: "00-ontology/glossary-org-relation.md"
+      
+      functional_requirements:
+        range: "FR-LE-001 to FR-LE-020"
+        key_requirements:
+          - "FR-LE-001: Create legal entity"
+          - "FR-LE-002: Update legal entity"
+          - "FR-LE-003: Manage entity profile"
+          - "FR-LE-005: Manage entity licenses"
+          - "FR-LE-010: Manage entity bank accounts"
+          - "FR-LE-015: Manage entity representatives"
+      
+      business_rules:
+        range: "BR-LE-001 to BR-LE-012"
+        key_rules:
+          - "BR-LE-001: Tax ID must be unique"
+          - "BR-LE-002: Entity code must be unique"
+          - "BR-LE-003: Base currency required"
+          - "BR-LE-004: Country required"
+          - "BR-LE-005: Cannot delete if employees exist"
+          - "BR-LE-010: At least one bank account required for payroll"
+      
+      apis:
+        - "POST /api/v1/legal-entities"
+        - "GET /api/v1/legal-entities/{id}"
+        - "PUT /api/v1/legal-entities/{id}"
+        - "GET /api/v1/legal-entities"
+        - "POST /api/v1/legal-entities/{id}/profiles"
+        - "POST /api/v1/legal-entities/{id}/licenses"
+        - "POST /api/v1/legal-entities/{id}/bank-accounts"
+        - "POST /api/v1/legal-entities/{id}/representatives"
+      
+      scenarios:
+        - "Create parent company"
+        - "Create subsidiary"
+        - "Add business license"
+        - "Configure payroll bank account"
+        - "Assign legal representative"
+    
+    spec_kit_outputs:
+      - "spec.md"
+      - "data-model.md"
+      - "contracts/api-spec.yaml"
+      - "tasks.md"
+    
+    technical_notes:
+      - "Foundation for multi-company HR"
+      - "Link to BusinessUnit, WorkRelationship"
+      - "Support parent-child entity relationships"
+      - "Integration with payroll for bank accounts"
+    
+    acceptance_criteria:
+      - "Legal entity created with tax ID"
+      - "Entity profile managed"
+      - "Licenses tracked with expiry"
+      - "Bank accounts configured"
+      - "Representatives assigned"
+      - "Cannot delete entity with employees"
+    
+    dependencies:
+      - "015-code-list-configuration"
+    
+    estimated_effort: "6 story points"
+    status: "PLANNED"
+
+  # ---------------------------------------------------------------------------
+  # Feature 018: Location Management
+  # ---------------------------------------------------------------------------
+  - id: "018"
+    name: "location-management"
+    title: "Location Management"
+    priority: MEDIUM
+    epic: "Organization Structure"
+    phase: 2
+    
+    description: |
+      Manage physical locations including places, offices, and work locations.
+      Supports remote work tracking and location-based reporting.
+    
+    user_stories:
+      - "As an HR Admin, I want to create locations so that offices are registered"
+      - "As an HR Admin, I want to assign work locations so that employee work site is tracked"
+      - "As a Manager, I want to view team locations so that I know where my team works"
+      - "As an Employee, I want to update my work location so that WFH is tracked"
+    
+    sources:
+      concept_guides:
+        - "01-concept/02-organization-structure-guide.md#locations"
+      
+      ontology:
+        entities:
+          - "Place"
+          - "Location"
+          - "WorkLocation"
+        glossary: "00-ontology/glossary-org-relation.md"
+      
+      functional_requirements:
+        range: "FR-LOC-001 to FR-LOC-020"
+        key_requirements:
+          - "FR-LOC-001: Create place (physical address)"
+          - "FR-LOC-002: Create location (office)"
+          - "FR-LOC-003: Assign work location to employee"
+          - "FR-LOC-005: Track remote work locations"
+          - "FR-LOC-010: Location-based reporting"
+      
+      business_rules:
+        range: "BR-LOC-001 to BR-LOC-010"
+        key_rules:
+          - "BR-LOC-001: Location must have address"
+          - "BR-LOC-002: Location type required (office, warehouse, remote)"
+          - "BR-LOC-003: Timezone required for scheduling"
+          - "BR-LOC-004: Primary work location required per assignment"
+      
+      apis:
+        - "POST /api/v1/places"
+        - "GET /api/v1/places/{id}"
+        - "POST /api/v1/locations"
+        - "GET /api/v1/locations/{id}"
+        - "GET /api/v1/locations"
+        - "POST /api/v1/work-locations"
+        - "GET /api/v1/employees/{employeeId}/work-locations"
+        - "GET /api/v1/reports/headcount-by-location"
+      
+      scenarios:
+        - "Create office location"
+        - "Assign employee to office"
+        - "Track remote work location"
+        - "View headcount by location"
+    
+    spec_kit_outputs:
+      - "spec.md"
+      - "data-model.md"
+      - "contracts/api-spec.yaml"
+      - "tasks.md"
+    
+    technical_notes:
+      - "Place = physical address, Location = office/site"
+      - "WorkLocation = employee's current work location"
+      - "Support WFH/Remote tracking"
+      - "Used for time attendance integration"
+    
+    acceptance_criteria:
+      - "Place created with address"
+      - "Location created with type"
+      - "Work location assigned"
+      - "Remote work tracked"
+      - "Headcount by location works"
+    
+    dependencies:
+      - "006-business-unit"
+    
+    estimated_effort: "5 story points"
+    status: "PLANNED"
+
+  # ---------------------------------------------------------------------------
+  # Feature 019: Self-Service Portal
+  # ---------------------------------------------------------------------------
+  - id: "019"
+    name: "self-service"
+    title: "Employee Self-Service Portal"
+    priority: HIGH
+    epic: "Employee Experience"
+    phase: 2
+    
+    description: |
+      Provide employee and manager self-service capabilities including
+      profile management, org chart viewing, and request submission.
+    
+    user_stories:
+      - "As an Employee, I want to view my profile so that I can see my information"
+      - "As an Employee, I want to update my contact info so that records are current"
+      - "As an Employee, I want to view org chart so that I understand structure"
+      - "As an Employee, I want to view my pay slips so that I can track compensation"
+      - "As a Manager, I want to view my team so that I can manage direct reports"
+      - "As a Manager, I want to approve requests so that team actions are processed"
+    
+    sources:
+      concept_guides:
+        - "01-concept/01-employment-lifecycle-guide.md#self-service"
+      
+      ontology:
+        entities:
+          - "Worker"
+          - "Employee"
+          - "Assignment"
+        glossary: "Multiple glossaries"
+      
+      functional_requirements:
+        range: "FR-ESS-001 to FR-ESS-030"
+        key_requirements:
+          - "FR-ESS-001: View my profile"
+          - "FR-ESS-002: Update contact information"
+          - "FR-ESS-003: View my employment details"
+          - "FR-ESS-005: View organization chart"
+          - "FR-ESS-010: View my team (manager)"
+          - "FR-ESS-015: Submit information change request"
+          - "FR-ESS-020: View my documents"
+          - "FR-ESS-025: Mobile responsive UI"
+      
+      business_rules:
+        range: "BR-ESS-001 to BR-ESS-012"
+        key_rules:
+          - "BR-ESS-001: Only view own data (except manager)"
+          - "BR-ESS-002: Some updates require approval"
+          - "BR-ESS-003: Manager sees direct reports only"
+          - "BR-ESS-004: RESTRICTED data hidden from org chart"
+          - "BR-ESS-005: Audit log for all self-service changes"
+      
+      apis:
+        - "GET /api/v1/me/profile"
+        - "PUT /api/v1/me/profile"
+        - "GET /api/v1/me/employment"
+        - "GET /api/v1/me/team"
+        - "GET /api/v1/me/documents"
+        - "GET /api/v1/org-chart"
+        - "POST /api/v1/me/change-requests"
+        - "GET /api/v1/me/pending-approvals"
+      
+      scenarios:
+        - "View my profile"
+        - "Update phone number"
+        - "View team as manager"
+        - "Navigate org chart"
+        - "View pay slip (link to payroll)"
+    
+    spec_kit_outputs:
+      - "spec.md"
+      - "data-model.md"
+      - "contracts/api-spec.yaml"
+      - "tasks.md"
+    
+    technical_notes:
+      - "Responsive UI (mobile + desktop)"
+      - "Role-based data access"
+      - "Approval workflow for sensitive changes"
+      - "Integration with other modules (Payroll, Time)"
+      - "Single sign-on required"
+    
+    acceptance_criteria:
+      - "Employee views own profile"
+      - "Contact update with approval"
+      - "Manager views team"
+      - "Org chart navigation works"
+      - "Mobile responsive"
+      - "Audit logging active"
+    
+    dependencies:
+      - "001-worker-management"
+      - "003-employee-management"
+      - "004-assignment-management"
+    
+    estimated_effort: "10 story points"
+    status: "PLANNED"
+
 # =============================================================================
 # FEATURE SUMMARY
 # =============================================================================
 
 summary:
-  total_features: 15
+  total_features: 19
   
   by_phase:
     phase_0: 1  # Foundation (Code Lists)
-    phase_1: 5  # Core Employment
-    phase_2: 5  # Organization & Jobs
+    phase_1: 7  # Core Employment + Legal Entity + Contract
+    phase_2: 7  # Organization & Jobs + Location + Self-Service
     phase_3: 4  # Skills & Advanced
   
   by_priority:
     CRITICAL: 1 # 015 (Code Lists - must be first)
-    HIGH: 4     # 001-004
-    MEDIUM: 6   # 005-006, 009-010, 014
+    HIGH: 7     # 001-004, 016-017, 019
+    MEDIUM: 7   # 005-006, 009-010, 014, 018
     LOW: 4      # 011-013
   
   by_epic:
     "Foundation": 1
-    "Core Employment": 5
-    "Organization Structure": 2
+    "Core Employment": 6
+    "Organization Structure": 3
     "Job & Position": 4
     "Skill Management": 3
     "Data Security": 1
+    "Employee Experience": 1
   
-  total_estimated_effort: "137 story points"
+  total_estimated_effort: "166 story points"
   
   by_status:
-    PLANNED: 15
+    PLANNED: 19
     IN_PROGRESS: 0
     COMPLETED: 0
 
@@ -1617,17 +2002,23 @@ roadmap:
     
   phase_1:
     name: "Core Employment"
-    duration: "8 weeks"
-    features: ["001", "002", "003", "004", "005"]
-    estimated_effort: "42 story points"
+    duration: "10 weeks"
+    features: ["001", "002", "003", "004", "005", "016", "017"]
+    estimated_effort: "56 story points"
     dependencies: ["phase_0"]
+    notes:
+      - "Added: Contract Management (016)"
+      - "Added: Legal Entity Management (017)"
     
   phase_2:
     name: "Organization & Jobs"
-    duration: "8 weeks"
-    features: ["006", "007", "008", "009", "010"]
-    estimated_effort: "44 story points"
+    duration: "10 weeks"
+    features: ["006", "007", "008", "009", "010", "018", "019"]
+    estimated_effort: "59 story points"
     dependencies: ["phase_0", "phase_1"]
+    notes:
+      - "Added: Location Management (018)"
+      - "Added: Self-Service Portal (019)"
     
   phase_3:
     name: "Skills & Advanced"
@@ -1636,7 +2027,7 @@ roadmap:
     estimated_effort: "41 story points"
     dependencies: ["phase_0", "phase_1", "phase_2"]
   
-  total_duration: "26 weeks (6.5 months)"
+  total_duration: "30 weeks (7.5 months)"
 
 # =============================================================================
 # NOTES
@@ -1649,6 +2040,7 @@ notes:
   - "Dependencies must be completed before dependent features"
   - "Priorities may change based on business needs"
   - "Each feature generates 4 Spec-Kit documents (spec, data-model, api-spec, tasks)"
-  - "Total 60 Spec-Kit documents will be generated (15 features × 4 docs)"
+  - "Total 76 Spec-Kit documents will be generated (19 features × 4 docs)"
   - "Code lists are managed as ONE feature (not separate features per code group)"
   - "All code list groups share the same table and logic"
+  - "New features 016-019 added based on gap analysis (2026-01-23)"
