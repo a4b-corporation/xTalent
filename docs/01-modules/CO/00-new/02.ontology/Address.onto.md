@@ -87,9 +87,15 @@ attributes:
   - name: provinceCode
     type: string
     required: false
-    description: Province/State code (Tỉnh/Thành phố - reference to Province master)
+    description: Province/State code (Tỉnh/Thành phố - legacy field, prefer adminAreaId)
     constraints:
       maxLength: 20
+  
+  # === ADMIN AREA REFERENCE (NEW - Unified Hierarchy) ===
+  - name: adminAreaId
+    type: string
+    required: false
+    description: "FK → AdminArea.id. Reference to lowest-level admin area (e.g., Ward for VN). Enables hierarchy traversal. Preferred over flat string fields."
   
   - name: postalCode
     type: string
@@ -194,14 +200,14 @@ relationships:
     cardinality: many-to-one
     required: true
     inverse: hasAddresses
-    description: Country where address is located. INVERSE - Country.hasAddresses must reference this Address.
+    description: Country where address is located.
   
-  - name: locatedInProvince
-    target: Province
+  - name: locatedInAdminArea
+    target: AdminArea
     cardinality: many-to-one
     required: false
     inverse: hasAddresses
-    description: Province/State where address is located. INVERSE - Province.hasAddresses must reference this Address.
+    description: "Administrative area (lowest level, e.g., Ward for VN). Enables hierarchy traversal to get district, province automatically."
 
 lifecycle:
   states: [ACTIVE, INACTIVE]
@@ -235,6 +241,11 @@ policies:
     type: business
     rule: For VN addresses, ward/district/province should follow VN administrative structure
     severity: INFO
+  
+  - name: AdminAreaConsistency
+    type: validation
+    rule: "If adminAreaId is set, flat fields (ward, district, city) should match the hierarchy path from AdminArea"
+    severity: WARNING
   
   - name: GeolocationValidation
     type: validation
@@ -276,6 +287,7 @@ mindmap
       provinceCode
       postalCode
       countryCode
+      adminAreaId (NEW)
     Building Details
       buildingName
       floorNumber
@@ -289,7 +301,7 @@ mindmap
       effectiveEndDate
     Relationships
       locatedInCountry
-      locatedInProvince
+      locatedInAdminArea
     Lifecycle
       ACTIVE
       INACTIVE
@@ -298,7 +310,7 @@ mindmap
 **Design Rationale**:
 - **Polymorphic Owner**: Same entity for Worker, Employee, LegalEntity, BusinessUnit addresses
 - **VN Compliance**: PERMANENT (hộ khẩu thường trú) + TEMPORARY (địa chỉ tạm trú) support
-- **Administrative Hierarchy**: Ward → District → City → Province (VN structure)
+- **Administrative Hierarchy**: adminAreaId → AdminArea (N-level). Flat fields (ward, district) for convenience.
 - **Geolocation**: Optional lat/long for mapping services
 
 ---
@@ -383,7 +395,7 @@ mindmap
 ```mermaid
 erDiagram
     Country ||--o{ Address : hasAddresses
-    Province ||--o{ Address : hasAddresses
+    AdminArea ||--o{ Address : hasAddresses
     Worker ||--o{ Address : "hasAddresses (polymorphic)"
     Employee ||--o{ Address : "hasAddresses (polymorphic)"
     LegalEntity ||--o{ Address : "hasAddresses (polymorphic)"
@@ -397,10 +409,17 @@ erDiagram
         string addressLine1
         string ward
         string district
-        string city
-        string provinceCode FK
+        string adminAreaId FK
         string countryCode FK
         boolean isPrimary
+    }
+    
+    AdminArea {
+        string id PK
+        string code
+        string name
+        enum levelCode
+        string parentId FK
     }
 ```
 
@@ -409,7 +428,7 @@ erDiagram
 | Entity | Relationship | Cardinality | Description |
 |--------|--------------|-------------|-------------|
 | [[Country]] | locatedInCountry | N:1 | Country where address is located |
-| [[Province]] | locatedInProvince | N:1 | Province/State |
+| [[AdminArea]] | locatedInAdminArea | N:1 | Administrative area (Ward → District → Province hierarchy) |
 
 ---
 
