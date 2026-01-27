@@ -472,6 +472,34 @@ relationships:
     required: false
     inverse: belongsToWorker
     description: "Job application records. INVERSE: Application.belongsToWorker must reference this Worker."
+  
+  - name: hasQualifications
+    target: WorkerQualification
+    cardinality: one-to-many
+    required: false
+    inverse: belongsToWorker
+    description: "Education, certifications, licenses held by this worker."
+  
+  - name: hasRelationships
+    target: WorkerRelationship
+    cardinality: one-to-many
+    required: false
+    inverse: belongsToWorker
+    description: "Family members, dependents, emergency contacts, beneficiaries."
+  
+  - name: hasSkills
+    target: WorkerSkill
+    cardinality: one-to-many
+    required: false
+    inverse: belongsToWorker
+    description: "Skills possessed by this worker."
+  
+  - name: hasCompetencyAssessments
+    target: WorkerCompetency
+    cardinality: one-to-many
+    required: false
+    inverse: belongsToWorker
+    description: "Competency assessments for this worker."
 
 lifecycle:
   states: [ACTIVE, INACTIVE, DECEASED, MERGED]
