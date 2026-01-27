@@ -34,6 +34,14 @@ attributes:
     type: boolean
     required: true
     description: "true = current version, false = historical"
+  
+  # --- Primary Classification ---
+  - name: isPrimary
+    type: boolean
+    required: false
+    default: false
+    description: "Primary classification for this taxonomy dimension. One job should have only one isPrimary=true per taxonomyDimension."
+    # Use case: Job "Frontend Developer" maps to multiple families, but one is primary for reporting
 
 relationships:
   - name: belongsToJob

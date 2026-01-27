@@ -45,10 +45,27 @@ attributes:
     # TRACK = Career path (e.g., "Individual Contributor", "Management")
     # GROUP = Other logical grouping (extensible)
   
+  - name: taxonomyDimension
+    type: enum
+    required: false
+    description: "Classification dimension purpose (helps AI/rule engines understand semantic meaning)"
+    values: [FUNCTIONAL, CAREER, REPORTING, OTHER]
+    # FUNCTIONAL = What the job does (Engineering, Finance, HR)
+    # CAREER = Career progression path (IC Track, Management Track)
+    # REPORTING = Organizational reporting structure
+    # OTHER = Custom/tenant-specific dimension
+  
   - name: parentId
     type: string
     required: false
     description: "FK → self (JobTaxonomy.id) for parent-child hierarchy"
+  
+  - name: levelOrder
+    type: integer
+    required: false
+    description: "Sort order within parent node (for UI rendering and dropdowns)"
+    constraints:
+      min: 0
   
   # --- Ownership & Inheritance ---
   - name: ownerScope
@@ -93,7 +110,25 @@ attributes:
   - name: metadata
     type: object
     required: false
-    description: "Extended attributes (competencies, skills, etc.)"
+    description: "Extended attributes (competencies, skills hints, etc.)"
+  
+  # --- OPTIONAL: Job Reference Node (JobDef Pattern) ---
+  # NOTE: This is an ALTERNATIVE pattern for tenants who prefer NOT to use JobTaxonomyMap.
+  # RECOMMENDED approach is to use JobTaxonomyMap for Job <-> Taxonomy mapping.
+  # JobDef pattern allows creating "virtual nodes" that link directly to Job entities.
+  - name: nodeType
+    type: enum
+    required: false
+    description: "Node type - CATEGORY (default) or JOB_REFERENCE (virtual node pointing to Job)"
+    values: [CATEGORY, JOB_REFERENCE]
+    default: CATEGORY
+    # CATEGORY = Normal classification node (default)
+    # JOB_REFERENCE = Virtual node that links to a Job entity (alternative to JobTaxonomyMap)
+  
+  - name: linkedJobId
+    type: string
+    required: false
+    description: "FK → Job.id. ONLY used when nodeType = JOB_REFERENCE. Alternative to JobTaxonomyMap."
   
   # --- SCD Type-2 (History) ---
   - name: effectiveStartDate

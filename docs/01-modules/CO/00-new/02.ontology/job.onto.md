@@ -37,6 +37,12 @@ attributes:
     constraints:
       maxLength: 200
   
+  # === JOB HIERARCHY (Role Specialization) ===
+  - name: parentJobId
+    type: string
+    required: false
+    description: FK → Job.id for role specialization hierarchy (e.g., "Frontend Developer" is child of "Software Developer")
+  
   # === EFFECTIVE DATING (SCD Type-2) ===
   - name: effectiveStartDate
     type: date
@@ -110,7 +116,7 @@ attributes:
         PRODUCTION: Sản xuất
         OTHER: Khác
   
-  # === DESCRIPTION ===
+  # === DESCRIPTION (AI-Ready Structured) ===
   - name: summaryDescription
     type: string
     required: false
@@ -125,19 +131,17 @@ attributes:
     constraints:
       maxLength: 10000
   
-  - name: dutiesResponsibilities
-    type: string
+  - name: responsibilities
+    type: json
     required: false
-    description: Key duties and responsibilities
-    constraints:
-      maxLength: 5000
+    description: Array of key responsibilities (AI-ready structured format)
+    example: '["Design and implement software", "Review code", "Mentor junior developers"]'
   
-  - name: qualificationRequirements
-    type: string
+  - name: qualifications
+    type: json
     required: false
-    description: Education and experience requirements
-    constraints:
-      maxLength: 3000
+    description: Array of qualification requirements (AI-ready structured format)
+    example: '["Bachelor in CS or related", "3+ years experience", "Strong Java skills"]'
   
   - name: minEducationLevelCode
     type: enum
@@ -152,6 +156,13 @@ attributes:
     constraints:
       min: 0
       max: 50
+  
+  # === QUICK FLAGS ===
+  - name: isManagerial
+    type: boolean
+    required: false
+    default: false
+    description: Quick flag - does this job manage people? (Useful for filtering)
   
   # === COMPENSATION DEFAULTS ===
   - name: payRateTypeCode
@@ -270,6 +281,27 @@ relationships:
     required: false
     inverse: belongsToJob
     description: Position instances of this job template. INVERSE - Position.belongsToJob.
+  
+  - name: hasProfiles
+    target: JobProfile
+    cardinality: one-to-many
+    required: false
+    inverse: belongsToJob
+    description: Locale-variant job profiles (descriptions, skills). INVERSE - JobProfile.belongsToJob.
+  
+  - name: parentJob
+    target: Job
+    cardinality: many-to-one
+    required: false
+    inverse: childJobs
+    description: Parent job for role specialization (e.g., "Software Developer" is parent of "Frontend Developer").
+  
+  - name: childJobs
+    target: Job
+    cardinality: one-to-many
+    required: false
+    inverse: parentJob
+    description: Child jobs that specialize this job (e.g., "Frontend Dev", "Backend Dev" are children of "Software Developer").
   
   - name: previousVersion
     target: Job

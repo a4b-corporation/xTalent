@@ -162,6 +162,13 @@ relationships:
     required: false
     inverse: primaryWorkLocation
     description: Employee assignments placed at this work location.
+  
+  - name: hasPositions
+    target: Position
+    cardinality: one-to-many
+    required: false
+    inverse: locatedAtWorkLocation
+    description: Positions primarily located at this work location.
 
 lifecycle:
   states: [ACTIVE, INACTIVE, CLOSED]
