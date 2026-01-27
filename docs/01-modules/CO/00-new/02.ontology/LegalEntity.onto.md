@@ -285,6 +285,13 @@ relationships:
     required: false
     inverse: representsLegalEntity
     description: Legal representatives authorized to sign contracts on behalf of this entity. INVERSE - LegalRepresentative.representsLegalEntity must reference this LegalEntity.
+  
+  - name: hasWorkLocations
+    target: WorkLocation
+    cardinality: one-to-many
+    required: false
+    inverse: ownedByLegalEntity
+    description: Work locations owned/operated by this legal entity. INVERSE - WorkLocation.ownedByLegalEntity.
 
 lifecycle:
   states: [PENDING, ACTIVE, INACTIVE, DISSOLVED, MERGED]

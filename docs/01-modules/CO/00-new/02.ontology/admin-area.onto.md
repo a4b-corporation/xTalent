@@ -146,6 +146,13 @@ relationships:
     required: false
     inverse: locatedInAdminArea
     description: Addresses located in this admin area.
+  
+  - name: hasPlaces
+    target: Place
+    cardinality: one-to-many
+    required: false
+    inverse: locatedInAdminArea
+    description: Physical places (buildings, campuses) located in this admin area.
 
 lifecycle:
   states: [ACTIVE, INACTIVE, DEPRECATED]

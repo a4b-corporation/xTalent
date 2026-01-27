@@ -345,16 +345,17 @@ mindmap
 | addressLine2 | string | | Address line 2 |
 | addressLine3 | string | | Address line 3 |
 
-### 2.5 VN Administrative Hierarchy
+### 2.5 Administrative Hierarchy (VN & Generic)
 
 | Attribute | Type | Required | Description |
 |-----------|------|----------|-------------|
-| ward | string | | Phường/Xã/Thị trấn (VN) |
-| district | string | | Quận/Huyện (VN) |
+| ward | string | | Phường/Xã/Thị trấn (VN) - flat field for search |
+| district | string | | Quận/Huyện (VN) - flat field for search |
 | city | string | | Thành phố/Thị xã |
-| provinceCode | string | | Tỉnh/Thành phố code |
+| provinceCode | string | | Tỉnh/Thành phố code (legacy - prefer adminAreaId) |
 | postalCode | string | | Postal/ZIP code |
 | countryCode | string | ✓ | Country code (ISO 3166-1) |
+| **adminAreaId** | string | | **FK → [[AdminArea]]** (preferred). Links to lowest-level admin area (e.g., Ward). Enables hierarchy traversal. |
 
 ### 2.6 Building Details
 
@@ -474,6 +475,7 @@ stateDiagram-v2
 - **OnePrimaryAddressPerTypePerOwner**: At most ONE primary address of each type per owner (WARNING)
 - **EffectiveDateConsistency**: effectiveStartDate < effectiveEndDate (if set)
 - **GeolocationValidation**: Latitude (-90 to 90), Longitude (-180 to 180)
+- **AdminAreaConsistency**: If adminAreaId is set, flat fields (ward, district, city) should match hierarchy path (WARNING)
 
 ### Business Constraints
 - **VNPermanentAddressRequired**: VN Workers need PERMANENT address for labor contract (WARNING)
@@ -527,12 +529,15 @@ Address:
   addressTypeCode: "PERMANENT"
   isPrimary: true
   addressLine1: "123 Nguyễn Huệ"
-  ward: "Phường Bến Nghé"
-  district: "Quận 1"
+  ward: "Phường Bến Nghé"           # Flat field (for search)
+  district: "Quận 1"                # Flat field (for search)
   city: "TP. Hồ Chí Minh"
-  provinceCode: "VN-SG"
+  adminAreaId: "26734"              # NEW: FK → AdminArea (Ward level)
   countryCode: "VN"
   
+# Hierarchy traversal from adminAreaId:
+# Ward(26734) → District(760) → Province(VN-SG) → Country(VN)
+
 # Labor Contract Text:
 # "Hộ khẩu thường trú: 123 Nguyễn Huệ, Phường Bến Nghé, Quận 1, TP.HCM"
 ```

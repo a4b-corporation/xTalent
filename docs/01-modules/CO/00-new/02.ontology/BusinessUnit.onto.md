@@ -218,6 +218,13 @@ relationships:
     required: false
     inverse: ownerBusinessUnit
     description: Jobs owned by this business unit. INVERSE - Job.ownerBusinessUnit.
+  
+  - name: hasWorkLocations
+    target: WorkLocation
+    cardinality: one-to-many
+    required: false
+    inverse: defaultForBusinessUnit
+    description: Work locations where this BU operates. INVERSE - WorkLocation.defaultForBusinessUnit.
 
 lifecycle:
   states: [PLANNED, ACTIVE, INACTIVE, CLOSED]
