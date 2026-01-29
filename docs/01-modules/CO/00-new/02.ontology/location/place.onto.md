@@ -288,47 +288,47 @@ mindmap
 
 ### 2.1 Identity
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| id | string | ✓ | Unique identifier (UUID) |
-| code | string | ✓ | Business code (e.g., QT_SOFTWARE_CITY) |
-| name | string | ✓ | Display name |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| id | string | ✓ | Unique identifier (UUID) | facility.place.id |
+| code | string | ✓ | Business code (e.g., QT_SOFTWARE_CITY) | facility.place.code |
+| name | string | ✓ | Display name | facility.place.name |
 
 ### 2.2 Classification
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| placeTypeCode | enum | ✓ | CAMPUS, OFFICE_PARK, BUILDING, INDUSTRIAL_ZONE, FACTORY, WAREHOUSE, DATA_CENTER, RETAIL_COMPLEX, etc. |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| placeTypeCode | enum | ✓ | CAMPUS, OFFICE_PARK, BUILDING, INDUSTRIAL_ZONE, FACTORY, WAREHOUSE, DATA_CENTER, RETAIL_COMPLEX, etc. | facility.place.place_type_code → common.code_list(PLACE_TYPE) |
 
 ### 2.3 Hierarchy
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| parentId | string | | FK → Place. Parent place (Campus contains Buildings) |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| parentId | string | | FK → Place. Parent place (Campus contains Buildings) | facility.place.parent_id → facility.place.id |
 
 ### 2.4 Geographic Context
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| adminAreaId | string | | FK → [[AdminArea]]. Administrative area |
-| addressId | string | | FK → [[Address]]. Street address |
-| timeZoneCode | string | | IANA timezone (Asia/Ho_Chi_Minh) |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| adminAreaId | string | | FK → [[AdminArea]]. Administrative area | facility.place.admin_area_id → geo.admin_area.id |
+| addressId | string | | FK → [[Address]]. Street address | (facility.place.metadata.address_id) |
+| timeZoneCode | string | | IANA timezone (Asia/Ho_Chi_Minh) | (facility.place.metadata.time_zone_code) |
 
 ### 2.5 Geolocation
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| latitude | decimal | | Latitude (-90 to 90) |
-| longitude | decimal | | Longitude (-180 to 180) |
-| mapsUrl | string | | Google Maps link |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| latitude | decimal | | Latitude (-90 to 90) | (facility.place.metadata.latitude) |
+| longitude | decimal | | Longitude (-180 to 180) | (facility.place.metadata.longitude) |
+| mapsUrl | string | | Google Maps link | (facility.place.metadata.maps_url) |
 
 ### 2.6 Contact
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| primaryContactWorkerId | string | | FK → [[Worker]]. Site manager |
-| contactPhone | string | | Main phone |
-| contactEmail | string | | Main email |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| primaryContactWorkerId | string | | FK → [[Worker]]. Site manager | (facility.place.metadata.primary_contact_worker_id) |
+| contactPhone | string | | Main phone | (facility.place.metadata.contact_phone) |
+| contactEmail | string | | Main email | (facility.place.metadata.contact_email) |
 
 ---
 

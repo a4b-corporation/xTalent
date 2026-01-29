@@ -473,96 +473,96 @@ mindmap
 
 ### 2.1 Identity Attributes
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| id | string | ✓ | Unique internal identifier (UUID) |
-| relationshipNumber | string | | Human-readable ID (WR-2026-001) |
-| statusCode | enum | ✓ | PENDING, ACTIVE, SUSPENDED, TERMINATED |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| id | string | ✓ | Unique internal identifier (UUID) | employment.work_relationship.id |
+| relationshipNumber | string | | Human-readable ID (WR-2026-001) | <<employment.work_relationship.relationship_number>> |
+| statusCode | enum | ✓ | PENDING, ACTIVE, SUSPENDED, TERMINATED | employment.work_relationship.status_code → common.code_list(WR_STATUS) |
 
 ### 2.2 Worker & Employer Attributes
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| workerId | string | ✓ | Reference to Worker entity |
-| legalEmployerId | string | ✓ | Reference to Legal Entity |
-| relationshipTypeCode | enum | ✓ | EMPLOYEE, CONTINGENT, CONTRACTOR, INTERN, NON_WORKER |
-| employmentIntent | enum | | PERMANENT, FIXED_TERM, SEASONAL, PROJECT_BASED |
-| isPrimary | boolean | ✓ | Primary employment? (for multi-job) |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| workerId | string | ✓ | Reference to Worker entity | employment.work_relationship.worker_id → person.worker.id |
+| legalEmployerId | string | ✓ | Reference to Legal Entity | employment.work_relationship.legal_employer_id → org_legal.entity.id |
+| relationshipTypeCode | enum | ✓ | EMPLOYEE, CONTINGENT, CONTRACTOR, INTERN, NON_WORKER | employment.work_relationship.relationship_type_code → common.code_list(RELATIONSHIP_TYPE) |
+| employmentIntent | enum | | PERMANENT, FIXED_TERM, SEASONAL, PROJECT_BASED | (employment.work_relationship.metadata.employment_intent) |
+| isPrimary | boolean | ✓ | Primary employment? (for multi-job) | employment.work_relationship.primary_flag |
 
 ### 2.3 Dates - Hire & Start
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| startDate | date | ✓ | Hire date (Ngày bắt đầu làm việc) |
-| originalHireDate | date | | First hire date (for re-hires) |
-| seniorityDate | date | | Date for seniority calculation |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| startDate | date | ✓ | Hire date (Ngày bắt đầu làm việc) | employment.work_relationship.start_date |
+| originalHireDate | date | | First hire date (for re-hires) | employment.work_relationship.original_hire_date |
+| seniorityDate | date | | Date for seniority calculation | (employment.work_relationship.metadata.seniority_date) |
 
 ### 2.4 Probation Attributes
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| probationEndDate | date | | Expected end of probation |
-| probationResult | enum | | PASSED, FAILED, EXTENDED, IN_PROGRESS |
-| probationExtensionReason | string | | Reason for extension |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| probationEndDate | date | | Expected end of probation | (employment.work_relationship.metadata.probation_end_date) |
+| probationResult | enum | | PASSED, FAILED, EXTENDED, IN_PROGRESS | (employment.work_relationship.metadata.probation_result) |
+| probationExtensionReason | string | | Reason for extension | (employment.work_relationship.metadata.probation_extension_reason) |
 
 ### 2.5 Labor Contract Attributes
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| currentLaborContractId | string | | Currently active contract |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| currentLaborContractId | string | | Currently active contract | (employment.work_relationship.metadata.current_labor_contract_id) → employment.contract.id |
 
 ### 2.6 Suspension Attributes (VN Specific)
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| suspensionStartDate | date | | Start of suspension (Hoãn HĐLĐ) |
-| suspensionEndDate | date | | Expected end of suspension |
-| suspensionReason | string | | Maternity, Military, Unpaid Leave |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| suspensionStartDate | date | | Start of suspension (Hoãn HĐLĐ) | (employment.work_relationship.metadata.suspension_start_date) |
+| suspensionEndDate | date | | Expected end of suspension | (employment.work_relationship.metadata.suspension_end_date) |
+| suspensionReason | string | | Maternity, Military, Unpaid Leave | (employment.work_relationship.metadata.suspension_reason) |
 
 ### 2.7 Termination Attributes
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| terminationDate | date | | Official end date (Ngày chấm dứt) |
-| lastWorkingDate | date | | Last day actually worked |
-| notificationDate | date | | Date termination was notified |
-| resignationDate | date | | Date employee resigned (if voluntary) |
-| terminationReasonCode | string | | Reference code to TerminationReason |
-| terminationInitiatedBy | enum | | EMPLOYEE, EMPLOYER, MUTUAL, AUTOMATIC |
-| noticePeriod | number | | Required notice period (days) |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| terminationDate | date | | Official end date (Ngày chấm dứt) | employment.work_relationship.termination_date |
+| lastWorkingDate | date | | Last day actually worked | (employment.work_relationship.metadata.last_working_date) |
+| notificationDate | date | | Date termination was notified | (employment.work_relationship.metadata.notification_date) |
+| resignationDate | date | | Date employee resigned (if voluntary) | (employment.work_relationship.metadata.resignation_date) |
+| terminationReasonCode | string | | Reference code to TerminationReason | employment.work_relationship.termination_reason_code → common.code_list(TERMINATION_REASON) |
+| terminationInitiatedBy | enum | | EMPLOYEE, EMPLOYER, MUTUAL, AUTOMATIC | (employment.work_relationship.metadata.termination_initiated_by) |
+| noticePeriod | number | | Required notice period (days) | (employment.work_relationship.metadata.notice_period) |
 
 ### 2.8 Re-hire Attributes
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| eligibleForRehire | boolean | | Can be re-hired? (false if fired) |
-| regretTermination | boolean | | Regret losing this employee? |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| eligibleForRehire | boolean | | Can be re-hired? (false if fired) | (employment.work_relationship.metadata.eligible_for_rehire) |
+| regretTermination | boolean | | Regret losing this employee? | (employment.work_relationship.metadata.regret_termination) |
 
 ### 2.9 VN Labor Law Compliance Attributes
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| terminationDecisionNumber | string | | Số quyết định thôi việc |
-| terminationDecisionDate | date | | Ngày ký quyết định |
-| laborBookStatus | enum | | Status of Sổ lao động return |
-| socialInsuranceCloseDate | date | | Ngày chốt sổ BHXH |
-| severanceAllowanceStatus | enum | | Trợ cấp thôi việc status |
-| unemploymentInsuranceStatus | enum | | Sổ BHTN status |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| terminationDecisionNumber | string | | Số quyết định thôi việc | (employment.work_relationship.metadata.termination_decision_number) |
+| terminationDecisionDate | date | | Ngày ký quyết định | (employment.work_relationship.metadata.termination_decision_date) |
+| laborBookStatus | enum | | Status of Sổ lao động return | (employment.work_relationship.metadata.labor_book_status) |
+| socialInsuranceCloseDate | date | | Ngày chốt sổ BHXH | (employment.work_relationship.metadata.social_insurance_close_date) |
+| severanceAllowanceStatus | enum | | Trợ cấp thôi việc status | (employment.work_relationship.metadata.severance_allowance_status) |
+| unemploymentInsuranceStatus | enum | | Sổ BHTN status | (employment.work_relationship.metadata.unemployment_insurance_status) |
 
 ### 2.10 Projected Dates
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| projectedTerminationDate | date | | Expected end (fixed-term contracts) |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| projectedTerminationDate | date | | Expected end (fixed-term contracts) | (employment.work_relationship.metadata.projected_termination_date) |
 
 ### 2.11 Audit Attributes
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| createdAt | datetime | ✓ | Record creation timestamp |
-| updatedAt | datetime | ✓ | Last modification timestamp |
-| createdBy | string | ✓ | User who created record |
-| updatedBy | string | ✓ | User who last modified |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| createdAt | datetime | ✓ | Record creation timestamp | employment.work_relationship.created_at |
+| updatedAt | datetime | ✓ | Last modification timestamp | employment.work_relationship.updated_at |
+| createdBy | string | ✓ | User who created record | <<employment.work_relationship.created_by>> |
+| updatedBy | string | ✓ | User who last modified | <<employment.work_relationship.updated_by>> |
 
 ---
 

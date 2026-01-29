@@ -738,96 +738,96 @@ mindmap
 
 ### 2.1 Identity Attributes
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| id | string | ✓ | Unique internal identifier (UUID) |
-| workerNumber | string | | Human-readable worker ID (e.g., W001234) |
-| status | enum | ✓ | Record status: ACTIVE, INACTIVE, DECEASED, MERGED |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| id | string | ✓ | Unique internal identifier (UUID) | person.worker.id |
+| workerNumber | string | | Human-readable worker ID (e.g., W001234) | <<person.worker.worker_number>> |
+| status | enum | ✓ | Record status: ACTIVE, INACTIVE, DECEASED, MERGED | <<person.worker.status_code>> |
 
 ### 2.2 Biographical Attributes
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| dateOfBirth | date | | Date of birth (Ngày sinh) |
-| gender | enum | | MALE, FEMALE, OTHER, UNDISCLOSED |
-| maritalStatus | enum | | SINGLE, MARRIED, DIVORCED, WIDOWED, SEPARATED |
-| maritalStatusDate | date | | When marital status last changed |
-| primaryNationality | string | | Primary citizenship (Country reference) |
-| additionalNationalities | array | | Secondary citizenships |
-| countryOfBirth | string | | Birth country (Country reference) |
-| regionOfBirth | string | | Birth region/province |
-| cityOfBirth | string | | Birth city/town |
-| dateOfDeath | date | | Date of death if applicable |
-| correspondenceLanguage | string | | Preferred communication language |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| dateOfBirth | date | | Date of birth (Ngày sinh) | person.worker.date_of_birth |
+| gender | enum | | MALE, FEMALE, OTHER, UNDISCLOSED | person.worker.gender_code → common.code_list(GENDER) |
+| maritalStatus | enum | | SINGLE, MARRIED, DIVORCED, WIDOWED, SEPARATED | person.worker.marital_status_code → common.code_list(MARITAL_STATUS) |
+| maritalStatusDate | date | | When marital status last changed | (person.worker.metadata.marital_status_date) |
+| primaryNationality | string | | Primary citizenship (Country reference) | person.worker.nationality_code → geo.country.code_alpha2 |
+| additionalNationalities | array | | Secondary citizenships | (person.worker.metadata.additional_nationalities[]) |
+| countryOfBirth | string | | Birth country (Country reference) | (person.worker.metadata.country_of_birth) |
+| regionOfBirth | string | | Birth region/province | (person.worker.metadata.region_of_birth) |
+| cityOfBirth | string | | Birth city/town | (person.worker.metadata.city_of_birth) |
+| dateOfDeath | date | | Date of death if applicable | <<person.worker.date_of_death>> |
+| correspondenceLanguage | string | | Preferred communication language | (person.worker.metadata.correspondence_language) |
 
 ### 2.3 Health & Diversity Attributes (Optional)
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| bloodType | enum | | A+, A-, B+, B-, O+, O-, AB+, AB- |
-| religion | string | | Religious affiliation (voluntary) |
-| ethnicity | string | | Ethnic group (VN: 54 official groups) |
-| disabilityStatus | enum | | NONE, DISCLOSED, PREFER_NOT_TO_SAY |
-| veteranStatus | enum | | Military veteran status |
-| usesTobacco | boolean | | Tobacco use indicator |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| bloodType | enum | | A+, A-, B+, B-, O+, O-, AB+, AB- | (person.worker.metadata.blood_type) |
+| religion | string | | Religious affiliation (voluntary) | (person.worker.metadata.religion) |
+| ethnicity | string | | Ethnic group (VN: 54 official groups) | (person.worker.metadata.ethnicity) |
+| disabilityStatus | enum | | NONE, DISCLOSED, PREFER_NOT_TO_SAY | (person.worker.metadata.disability_status) |
+| veteranStatus | enum | | Military veteran status | (person.worker.metadata.veteran_status) |
+| usesTobacco | boolean | | Tobacco use indicator | (person.worker.metadata.uses_tobacco) |
 
 ### 2.4 Vietnam-Specific Attributes
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| hometownProvince | string | | Ancestral hometown (Quê quán) |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| hometownProvince | string | | Ancestral hometown (Quê quán) | (person.worker.metadata.hometown_province) |
 
 ### 2.5 Identity & Display Attributes (Performance Optimization)
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| preferredName | string | | Informal name for UI ("Tony" vs "Anthony") |
-| photoUrl | string | | Avatar URL (denormalized for performance) |
-| salutation | enum | | MR, MS, MRS, DR, PROF, OTHER |
-| preferredPronouns | enum | | HE_HIM, SHE_HER, THEY_THEM, OTHER |
-| universalId | string | | External SSO ID (Azure AD, Okta) |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| preferredName | string | | Informal name for UI ("Tony" vs "Anthony") | person.worker.preferred_name |
+| photoUrl | string | | Avatar URL (denormalized for performance) | person.photo.file_url |
+| salutation | enum | | MR, MS, MRS, DR, PROF, OTHER | (person.worker.metadata.salutation) |
+| preferredPronouns | enum | | HE_HIM, SHE_HER, THEY_THEM, OTHER | (person.worker.metadata.preferred_pronouns) |
+| universalId | string | | External SSO ID (Azure AD, Okta) | <<person.worker.universal_id>> |
 
 ### 2.6 Legal & Compliance Attributes (Decree 13 & Global)
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| privacyConsentStatus | enum | ✓ | PENDING, GRANTED, PARTIAL, DENIED, REVOKED |
-| privacyConsentDate | datetime | | When consent was granted/modified |
-| taxResidenceCountry | string | | Tax residence (may differ from nationality) |
-| backgroundCheckStatus | enum | | NOT_REQUIRED, PENDING, CLEARED, FAILED, EXPIRED |
-| backgroundCheckDate | date | | Most recent background check date |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| privacyConsentStatus | enum | ✓ | PENDING, GRANTED, PARTIAL, DENIED, REVOKED | <<person.worker.privacy_consent_status>> |
+| privacyConsentDate | datetime | | When consent was granted/modified | <<person.worker.privacy_consent_date>> |
+| taxResidenceCountry | string | | Tax residence (may differ from nationality) | (person.worker.metadata.tax_residence_country) |
+| backgroundCheckStatus | enum | | NOT_REQUIRED, PENDING, CLEARED, FAILED, EXPIRED | <<person.worker.background_check_status>> |
+| backgroundCheckDate | date | | Most recent background check date | <<person.worker.background_check_date>> |
 
 ### 2.7 Health & Safety Attributes
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| biometricHash | string | | Hashed biometric for time attendance |
-| uniformInfo | object | | Sizes: {shirt, shoes, hat, type} |
-| dietaryPreference | enum | | VEGETARIAN, VEGAN, HALAL, KOSHER, etc. |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| biometricHash | string | | Hashed biometric for time attendance | <<person.worker.biometric_hash>> |
+| uniformInfo | object | | Sizes: {shirt, shoes, hat, type} | (person.worker.metadata.uniform_info) |
+| dietaryPreference | enum | | VEGETARIAN, VEGAN, HALAL, KOSHER, etc. | (person.worker.metadata.dietary_preference) |
 
 ### 2.8 Talent Summary Attributes (Denormalized)
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| highestEducationLevel | enum | | PRIMARY to POST_DOCTORATE |
-| totalYearsOfExperience | number | | Total professional experience (years) |
-| lastActivityDate | datetime | | Last system interaction |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| highestEducationLevel | enum | | PRIMARY to POST_DOCTORATE | (person.worker.metadata.highest_education_level) |
+| totalYearsOfExperience | number | | Total professional experience (years) | (person.worker.metadata.total_years_of_experience) |
+| lastActivityDate | datetime | | Last system interaction | (person.worker.metadata.last_activity_date) |
 
 ### 2.9 Personalization Attributes
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| timeZone | string | | IANA time zone (Asia/Ho_Chi_Minh) |
-| locale | string | | UI locale (vi-VN, en-US) |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| timeZone | string | | IANA time zone (Asia/Ho_Chi_Minh) | (person.worker.metadata.time_zone) |
+| locale | string | | UI locale (vi-VN, en-US) | (person.worker.metadata.locale) |
 
 ### 2.10 Audit Attributes
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| createdAt | datetime | ✓ | Record creation timestamp |
-| updatedAt | datetime | ✓ | Last modification timestamp |
-| createdBy | string | ✓ | User who created record |
-| updatedBy | string | ✓ | User who last modified |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| createdAt | datetime | ✓ | Record creation timestamp | person.worker.created_at |
+| updatedAt | datetime | ✓ | Last modification timestamp | person.worker.updated_at |
+| createdBy | string | ✓ | User who created record | <<person.worker.created_by>> |
+| updatedBy | string | ✓ | User who last modified | <<person.worker.updated_by>> |
 
 ---
 

@@ -266,43 +266,43 @@ mindmap
 
 ### 2.1 Identity Attributes
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| id | string | ✓ | Unique internal identifier (UUID) |
-| code | string | ✓ | Administrative code (unique per country+level) |
-| name | string | ✓ | English/International name |
-| nativeName | string | | Local language name (Tên tiếng Việt) |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| id | string | ✓ | Unique internal identifier (UUID) | geo.admin_area.id |
+| code | string | ✓ | Administrative code (unique per country+level) | geo.admin_area.code |
+| name | string | ✓ | English/International name | geo.admin_area.name_en |
+| nativeName | string | | Local language name (Tên tiếng Việt) | geo.admin_area.native_name |
 
 ### 2.2 Hierarchy Attributes
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| parentId | string | | FK → self. Null = top level within country |
-| countryCode | string | ✓ | FK → Country (ISO 3166-1 alpha-2) |
-| levelCode | enum | ✓ | PROVINCE, STATE, DISTRICT, WARD, etc. |
-| levelOrder | integer | ✓ | Numeric level (1 = highest, 2, 3...) |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| parentId | string | | FK → self. Null = top level within country | geo.admin_area.parent_id → geo.admin_area.id |
+| countryCode | string | ✓ | FK → Country (ISO 3166-1 alpha-2) | geo.admin_area.country_id → geo.country.id |
+| levelCode | enum | ✓ | PROVINCE, STATE, DISTRICT, WARD, etc. | (geo.admin_area.metadata.level_code) |
+| levelOrder | integer | ✓ | Numeric level (1 = highest, 2, 3...) | geo.admin_area.level |
 
 ### 2.3 Geolocation
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| latitude | decimal | | Center point latitude (-90 to 90) |
-| longitude | decimal | | Center point longitude (-180 to 180) |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| latitude | decimal | | Center point latitude (-90 to 90) | geo.admin_area.latitude |
+| longitude | decimal | | Center point longitude (-180 to 180) | geo.admin_area.longitude |
 
 ### 2.4 Metadata
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| population | integer | | Population count |
-| metadata | json | | Extended data (area_km2, timezone, etc.) |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| population | integer | | Population count | (geo.admin_area.metadata.population) |
+| metadata | json | | Extended data (area_km2, timezone, etc.) | geo.admin_area.metadata |
 
 ### 2.5 SCD Type-2 (History)
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| effectiveStartDate | date | ✓ | Version start date |
-| effectiveEndDate | date | | Version end date (null = current) |
-| isCurrent | boolean | ✓ | Current version flag |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| effectiveStartDate | date | ✓ | Version start date | geo.admin_area.effective_start_date |
+| effectiveEndDate | date | | Version end date (null = current) | geo.admin_area.effective_end_date |
+| isCurrent | boolean | ✓ | Current version flag | geo.admin_area.is_current_flag |
 
 ---
 

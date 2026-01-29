@@ -231,60 +231,60 @@ mindmap
 
 ### 2.1 Identity Attributes
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| id | string | ✓ | Unique internal identifier (UUID) |
-| code | string | ✓ | Template code (unique) |
-| name | string | ✓ | Template name |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| id | string | ✓ | Unique internal identifier (UUID) | employment.contract_template.id |
+| code | string | ✓ | Template code (unique) | employment.contract_template.code |
+| name | string | ✓ | Template name | employment.contract_template.name |
 
 ### 2.2 Document Type
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| documentTypeCode | enum | ✓ | OFFER, CONTRACT, ADDENDUM, TERMINATION, AMENDMENT |
-| categoryCode | enum | | PROBATION, OFFICIAL, INTERN, SEASONAL |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| documentTypeCode | enum | ✓ | OFFER, CONTRACT, ADDENDUM, TERMINATION, AMENDMENT | employment.contract_template.document_type_code → common.code_list(DOC_TYPE) |
+| categoryCode | enum | | PROBATION, OFFICIAL, INTERN, SEASONAL | employment.contract_template.category_code → common.code_list(CONTRACT_CATEGORY) |
 
 ### 2.3 Content
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| content | string | ✓ | Template body (HTML/RTF with placeholders) |
-| contentFormat | enum | ✓ | HTML, RTF, MARKDOWN |
-| placeholders | json | | List of required placeholders |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| content | string | ✓ | Template body (HTML/RTF with placeholders) | employment.contract_template.content |
+| contentFormat | enum | ✓ | HTML, RTF, MARKDOWN | employment.contract_template.format → common.code_list(DOC_FORMAT) |
+| placeholders | json | | List of required placeholders | employment.contract_template.placeholders |
 
 ### 2.4 Language
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| languageCode | string | ✓ | Language (vi, en) |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| languageCode | string | ✓ | Language (vi, en) | employment.contract_template.lang_code |
 
 ### 2.5 Version
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| version | string | ✓ | Template version number |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| version | string | ✓ | Template version number | employment.contract_template.version |
 
 ### 2.6 Effective Dates
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| effectiveStartDate | date | ✓ | Template becomes effective |
-| effectiveEndDate | date | | Template expires |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| effectiveStartDate | date | ✓ | Template becomes effective | employment.contract_template.effective_start_date |
+| effectiveEndDate | date | | Template expires | employment.contract_template.effective_end_date |
 
 ### 2.7 Status
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| isActive | boolean | ✓ | Currently active? |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| isActive | boolean | ✓ | Currently active? | employment.contract_template.is_active |
 
 ### 2.8 Audit Attributes
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| createdAt | datetime | ✓ | Record creation timestamp |
-| updatedAt | datetime | ✓ | Last modification timestamp |
-| createdBy | string | ✓ | User who created record |
-| updatedBy | string | ✓ | User who last modified |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| createdAt | datetime | ✓ | Record creation timestamp | employment.contract_template.created_at |
+| updatedAt | datetime | ✓ | Last modification timestamp | employment.contract_template.updated_at |
+| createdBy | string | ✓ | User who created record | <<employment.contract_template.created_by>> |
+| updatedBy | string | ✓ | User who last modified | <<employment.contract_template.updated_by>> |
 
 ---
 

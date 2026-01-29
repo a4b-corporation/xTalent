@@ -120,18 +120,18 @@ mindmap
 
 ### Primary Key (Composite)
 
-| Attribute | Type | Req | Description |
-|-----------|------|-----|-------------|
-| `jobId` | uuid | Y | FK → [[Job]] |
-| `taxonomyId` | uuid | Y | FK → [[JobTaxonomy]] |
-| `effectiveStartDate` | date | Y | Start of mapping |
+| Attribute | Type | Req | Description | DB Column |
+|-----------|------|-----|-------------|----------|
+| `jobId` | uuid | Y | FK → [[Job]] | jobpos.job_mapping.job_id → jobpos.job.id |
+| `taxonomyId` | uuid | Y | FK → [[JobTaxonomy]] | jobpos.job_mapping.taxonomy_id → jobpos.taxonomy_node.id |
+| `effectiveStartDate` | date | Y | Start of mapping | jobpos.job_mapping.effective_start_date |
 
 ### SCD Type-2
 
-| Attribute | Type | Req | Description |
-|-----------|------|-----|-------------|
-| `effectiveEndDate` | date | N | End of mapping (null = current) |
-| `isCurrentFlag` | boolean | Y | Current version indicator |
+| Attribute | Type | Req | Description | DB Column |
+|-----------|------|-----|-------------|----------|
+| `effectiveEndDate` | date | N | End of mapping (null = current) | jobpos.job_mapping.effective_end_date |
+| `isCurrentFlag` | boolean | Y | Current version indicator | jobpos.job_mapping.is_current_flag |
 
 ---
 

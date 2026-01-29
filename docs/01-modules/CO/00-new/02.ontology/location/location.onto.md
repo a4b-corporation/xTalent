@@ -287,46 +287,46 @@ mindmap
 
 ### 2.1 Identity
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| id | string | ✓ | Unique identifier (UUID) |
-| code | string | ✓ | Business code (e.g., ETOWN_F5_R501) |
-| name | string | ✓ | Display name |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| id | string | ✓ | Unique identifier (UUID) | facility.location.id |
+| code | string | ✓ | Business code (e.g., ETOWN_F5_R501) | facility.location.code |
+| name | string | ✓ | Display name | facility.location.name |
 
 ### 2.2 Classification
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| locationTypeCode | enum | ✓ | FLOOR, WING, ZONE, ROOM, OFFICE, MEETING_ROOM, LAB, DESK, WORKSTATION, PARKING, CAFETERIA, etc. |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| locationTypeCode | enum | ✓ | FLOOR, WING, ZONE, ROOM, OFFICE, MEETING_ROOM, LAB, DESK, WORKSTATION, PARKING, CAFETERIA, etc. | facility.location.location_type_code → common.code_list(LOC_TYPE) |
 
 ### 2.3 Place Reference
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| **placeId** | string | ✓ | FK → [[Place]]. Required - every location belongs to a place |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| **placeId** | string | ✓ | FK → [[Place]]. Required - every location belongs to a place | facility.location.place_id → facility.place.id |
 
 ### 2.4 Hierarchy
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| parentId | string | | FK → Location. Parent location (self-ref) |
-| levelOrder | integer | | Level in hierarchy (1 = highest) |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| parentId | string | | FK → Location. Parent location (self-ref) | facility.location.parent_id → facility.location.id |
+| levelOrder | integer | | Level in hierarchy (1 = highest) | (facility.location.metadata.level_order) |
 
 ### 2.5 Geolocation (Internal)
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| latitude | decimal | | Precise latitude (indoor GPS) |
-| longitude | decimal | | Precise longitude (indoor GPS) |
-| floorPlanUrl | string | | Link to floor plan document |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| latitude | decimal | | Precise latitude (indoor GPS) | facility.location.latitude |
+| longitude | decimal | | Precise longitude (indoor GPS) | facility.location.longitude |
+| floorPlanUrl | string | | Link to floor plan document | (facility.location.metadata.floor_plan_url) |
 
 ### 2.6 Capacity & Features
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| capacity | integer | | Maximum occupancy |
-| features | json | | Room features (VIDEO_CONF, WHITEBOARD, etc.) |
-| isBookable | boolean | ✓ | Can be booked (meeting rooms)? |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| capacity | integer | | Maximum occupancy | (facility.location.metadata.capacity) |
+| features | json | | Room features (VIDEO_CONF, WHITEBOARD, etc.) | (facility.location.metadata.features) |
+| isBookable | boolean | ✓ | Can be booked (meeting rooms)? | (facility.location.metadata.is_bookable) |
 
 ---
 

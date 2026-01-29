@@ -152,26 +152,26 @@ mindmap
 
 ### Identifiers
 
-| Attribute | Type | Req | Description |
-|-----------|------|-----|-------------|
-| `id` | uuid | Y | Primary key |
-| `treeCode` | string(50) | Y | Unique tree code (UPPER_SNAKE_CASE) |
-| `treeName` | string(255) | Y | Display name |
+| Attribute | Type | Req | Description | DB Column |
+|-----------|------|-----|-------------|----------|
+| `id` | uuid | Y | Primary key | jobpos.taxonomy_tree.id |
+| `treeCode` | string(50) | Y | Unique tree code (UPPER_SNAKE_CASE) | jobpos.taxonomy_tree.tree_code |
+| `treeName` | string(255) | Y | Display name | jobpos.taxonomy_tree.tree_name |
 
 ### Ownership
 
-| Attribute | Type | Req | Description |
-|-----------|------|-----|-------------|
-| `ownerScope` | enum | Y | CORP \| LE \| BU |
-| `ownerUnitId` | uuid | N | FK → [[BusinessUnit]] (required for LE/BU) |
+| Attribute | Type | Req | Description | DB Column |
+|-----------|------|-----|-------------|----------|
+| `ownerScope` | enum | Y | CORP \| LE \| BU | jobpos.taxonomy_tree.owner_scope → common.code_list(OWNER_SCOPE) |
+| `ownerUnitId` | uuid | N | FK → [[BusinessUnit]] (required for LE/BU) | jobpos.taxonomy_tree.owner_unit_id → org_bu.unit.id |
 
 ### Metadata
 
-| Attribute | Type | Req | Description |
-|-----------|------|-----|-------------|
-| `description` | text | N | Tree purpose description |
-| `createdAt` | datetime | Y | Creation timestamp |
-| `updatedAt` | datetime | N | Last update |
+| Attribute | Type | Req | Description | DB Column |
+|-----------|------|-----|-------------|----------|
+| `description` | text | N | Tree purpose description | jobpos.taxonomy_tree.description |
+| `createdAt` | datetime | Y | Creation timestamp | jobpos.taxonomy_tree.created_at |
+| `updatedAt` | datetime | N | Last update | jobpos.taxonomy_tree.updated_at |
 
 ---
 

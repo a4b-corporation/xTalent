@@ -426,65 +426,65 @@ mindmap
 
 ### 2.1 Identity Attributes
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| id | string | ✓ | Unique internal identifier (UUID) |
-| employeeCode | string | ✓ | Business identifier (unique within legal entity) |
-| statusCode | enum | ✓ | ACTIVE, ON_LEAVE, SUSPENDED, TERMINATED, RETIRED |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| id | string | ✓ | Unique internal identifier (UUID) | employment.employee.id |
+| employeeCode | string | ✓ | Business identifier (unique within legal entity) | employment.employee.employee_code |
+| statusCode | enum | ✓ | ACTIVE, ON_LEAVE, SUSPENDED, TERMINATED, RETIRED | employment.employee.status_code → common.code_list(EMP_STATUS) |
 
 ### 2.2 Reference Attributes
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| workerId | string | ✓ | Reference to Worker (person) |
-| workRelationshipId | string | ✓ | Reference to WorkRelationship |
-| legalEntityCode | string | ✓ | Legal entity code (org_legal.entity.code) |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| workerId | string | ✓ | Reference to Worker (person) | employment.employee.worker_id → person.worker.id |
+| workRelationshipId | string | ✓ | Reference to WorkRelationship | <<employment.employee.work_relationship_id>> → employment.work_relationship.id |
+| legalEntityCode | string | ✓ | Legal entity code (org_legal.entity.code) | employment.employee.legal_entity_code → org_legal.entity.code |
 
 ### 2.3 Classification Attributes
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| workerCategoryCode | string | | Workforce category (CORE, SUPPORT, LEADERSHIP) |
-| employeeClassCode | string | | HR classification (REGULAR, PROBATION, INTERN) |
-| employmentIntent | enum | | PERMANENT, FIXED_TERM, SEASONAL, PROJECT_BASED |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| workerCategoryCode | string | | Workforce category (CORE, SUPPORT, LEADERSHIP) | employment.employee.worker_category_code → common.code_list(WORKER_CATEGORY) |
+| employeeClassCode | string | | HR classification (REGULAR, PROBATION, INTERN) | employment.employee.employee_class_code → common.code_list(EMPLOYEE_CLASS) |
+| employmentIntent | enum | | PERMANENT, FIXED_TERM, SEASONAL, PROJECT_BASED | (employment.employee.metadata.employment_intent) |
 
 ### 2.4 Employment Date Attributes
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| hireDate | date | ✓ | Start date with legal entity |
-| originalHireDate | date | | First hire date (for re-hires) |
-| seniorityDate | date | | Date for seniority calculation |
-| seniorityAdjustmentDate | date | | Adjusted seniority (after unpaid leave) |
-| terminationDate | date | | Employment end date |
-| lastWorkingDate | date | | Last day actually worked |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| hireDate | date | ✓ | Start date with legal entity | employment.employee.hire_date |
+| originalHireDate | date | | First hire date (for re-hires) | (employment.employee.metadata.original_hire_date) |
+| seniorityDate | date | | Date for seniority calculation | (employment.employee.metadata.seniority_date) |
+| seniorityAdjustmentDate | date | | Adjusted seniority (after unpaid leave) | (employment.employee.metadata.seniority_adjustment_date) |
+| terminationDate | date | | Employment end date | employment.employee.termination_date |
+| lastWorkingDate | date | | Last day actually worked | (employment.employee.metadata.last_working_date) |
 
 ### 2.5 Probation Attributes
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| probationEndDate | date | | Expected end of probation |
-| probationResult | enum | | PASSED, FAILED, EXTENDED, IN_PROGRESS |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| probationEndDate | date | | Expected end of probation | (employment.employee.metadata.probation_end_date) |
+| probationResult | enum | | PASSED, FAILED, EXTENDED, IN_PROGRESS | (employment.employee.metadata.probation_result) |
 
 ### 2.6 VN Labor Law Compliance Attributes
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| laborContractId | string | | Reference to active Labor Contract |
-| socialInsuranceNumber | string | | Mã số BHXH (10 digits) |
-| taxCode | string | | Mã số thuế cá nhân |
-| laborBookNumber | string | | Số sổ lao động |
-| healthInsuranceNumber | string | | Mã số BHYT |
-| unionMember | boolean | | Đoàn viên công đoàn? |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| laborContractId | string | | Reference to active Labor Contract | (employment.employee.metadata.labor_contract_id) → employment.contract.id |
+| socialInsuranceNumber | string | | Mã số BHXH (10 digits) | <<employment.employee.social_insurance_number>> |
+| taxCode | string | | Mã số thuế cá nhân | <<employment.employee.tax_code>> |
+| laborBookNumber | string | | Số sổ lao động | (employment.employee.metadata.labor_book_number) |
+| healthInsuranceNumber | string | | Mã số BHYT | <<employment.employee.health_insurance_number>> |
+| unionMember | boolean | | Đoàn viên công đoàn? | (employment.employee.metadata.union_member) |
 
 ### 2.7 Audit Attributes
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| createdAt | datetime | ✓ | Record creation timestamp |
-| updatedAt | datetime | ✓ | Last modification timestamp |
-| createdBy | string | ✓ | User who created record |
-| updatedBy | string | ✓ | User who last modified |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| createdAt | datetime | ✓ | Record creation timestamp | employment.employee.created_at |
+| updatedAt | datetime | ✓ | Last modification timestamp | employment.employee.updated_at |
+| createdBy | string | ✓ | User who created record | <<employment.employee.created_by>> |
+| updatedBy | string | ✓ | User who last modified | <<employment.employee.updated_by>> |
 
 ---
 

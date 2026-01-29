@@ -255,28 +255,28 @@ mindmap
 
 ### 2.1 Identity
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| id | string | ✓ | Unique identifier (UUID) |
-| jobId | string | ✓ | FK → [[Job]] |
-| localeCode | string | ✓ | Locale code (en-US, vi-VN) |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| id | string | ✓ | Unique identifier (UUID) | jobpos.job_profile.id |
+| jobId | string | ✓ | FK → [[Job]] | jobpos.job_profile.job_id → jobpos.job.id |
+| localeCode | string | ✓ | Locale code (en-US, vi-VN) | jobpos.job_profile.locale_code |
 
 ### 2.2 Localized Content
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| jobTitle | string | ✓ | Localized job title |
-| summary | string | | Brief overview |
-| responsibilities | json | | Array of duties (AI-ready) |
-| qualifications | json | | Array of requirements (AI-ready) |
-| preferredQualifications | json | | Nice-to-have skills |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| jobTitle | string | ✓ | Localized job title | jobpos.job_profile.job_title |
+| summary | string | | Brief overview | jobpos.job_profile.summary |
+| responsibilities | json | | Array of duties (AI-ready) | (jobpos.job_profile.metadata.responsibilities) |
+| qualifications | json | | Array of requirements (AI-ready) | (jobpos.job_profile.metadata.qualifications) |
+| preferredQualifications | json | | Nice-to-have skills | (jobpos.job_profile.metadata.preferred_qualifications) |
 
 ### 2.3 Skills & Competencies
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| skillsJson | json | | Structured skills with proficiency |
-| competenciesJson | json | | Behavioral competencies |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| skillsJson | json | | Structured skills with proficiency | (jobpos.job_profile.metadata.skills_json) |
+| competenciesJson | json | | Behavioral competencies | (jobpos.job_profile.metadata.competencies_json) |
 
 **Skills Format**:
 ```json

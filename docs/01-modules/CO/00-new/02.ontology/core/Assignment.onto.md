@@ -423,76 +423,76 @@ mindmap
 
 ### 2.1 Identity Attributes
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| id | string | ✓ | Unique internal identifier (UUID) |
-| assignmentNumber | string | | Human-readable ID (ASG-2026-001) |
-| statusCode | enum | ✓ | ACTIVE, SUSPENDED, TERMINATED |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| id | string | ✓ | Unique internal identifier (UUID) | employment.assignment.id |
+| assignmentNumber | string | | Human-readable ID (ASG-2026-001) | <<employment.assignment.assignment_number>> |
+| statusCode | enum | ✓ | ACTIVE, SUSPENDED, TERMINATED | employment.assignment.status_code → common.code_list(ASSIGNMENT_STATUS) |
 
 ### 2.2 Employee Reference Attributes
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| employeeId | string | ✓ | Reference to Employee |
-| isPrimary | boolean | ✓ | Primary assignment flag (for multi-job) |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| employeeId | string | ✓ | Reference to Employee | employment.assignment.employee_id → employment.employee.id |
+| isPrimary | boolean | ✓ | Primary assignment flag (for multi-job) | <<employment.assignment.is_primary>> |
 
 ### 2.3 Date Effectiveness Attributes
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| effectiveStartDate | date | ✓ | Record becomes effective |
-| effectiveEndDate | date | | Record expires (null = current) |
-| isCurrent | boolean | ✓ | Current effective record flag |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| effectiveStartDate | date | ✓ | Record becomes effective | employment.assignment.start_date |
+| effectiveEndDate | date | | Record expires (null = current) | employment.assignment.end_date |
+| isCurrent | boolean | ✓ | Current effective record flag | <<employment.assignment.is_current_flag>> |
 
 ### 2.4 Organizational Structure Attributes
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| positionId | string | | Position being occupied |
-| jobId | string | | Job profile/role |
-| departmentId | string | ✓ | Department/Business Unit |
-| legalEntityCode | string | ✓ | Legal entity (must match Employee) |
-| locationId | string | | Work location |
-| costCenterId | string | | Cost center (if different from dept) |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| positionId | string | | Position being occupied | employment.assignment.position_id → jobpos.position.id |
+| jobId | string | | Job profile/role | <<employment.assignment.job_id>> → jobpos.job.id |
+| departmentId | string | ✓ | Department/Business Unit | employment.assignment.business_unit_id → org_bu.unit.id |
+| legalEntityCode | string | ✓ | Legal entity (must match Employee) | <<employment.assignment.legal_entity_code>> → org_legal.entity.code |
+| locationId | string | | Work location | employment.assignment.primary_location_id → facility.work_location.id |
+| costCenterId | string | | Cost center (if different from dept) | (employment.assignment.metadata.cost_center_id) |
 
 ### 2.5 Employment Classification Attributes
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| employeeClassCode | string | | WHITE_COLLAR, BLUE_COLLAR, EXECUTIVE |
-| employmentTypeCode | string | | REGULAR, INTERN, CONTRACTOR |
-| fte | decimal | | Full-Time Equivalent (0.0-1.0) |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| employeeClassCode | string | | WHITE_COLLAR, BLUE_COLLAR, EXECUTIVE | (employment.assignment.metadata.employee_class_code) |
+| employmentTypeCode | string | | REGULAR, INTERN, CONTRACTOR | (employment.assignment.metadata.employment_type_code) |
+| fte | decimal | | Full-Time Equivalent (0.0-1.0) | employment.assignment.fte |
 
 ### 2.6 Manager Relationship Attributes (Matrix Org)
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| reportsToEmployeeId | string | | Manager's Employee record |
-| reportsToAssignmentId | string | | Manager's Assignment record |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| reportsToEmployeeId | string | | Manager's Employee record | <<employment.assignment.supervisor_employee_id>> → employment.employee.id |
+| reportsToAssignmentId | string | | Manager's Assignment record | employment.assignment.supervisor_assignment_id → employment.assignment.id |
 
 ### 2.7 Assignment Event Attributes
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| assignmentReasonCode | string | | HIRE, PROMOTION, TRANSFER, DATA_CHANGE |
-| assignmentEventDate | date | | Date event occurred |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| assignmentReasonCode | string | | HIRE, PROMOTION, TRANSFER, DATA_CHANGE | employment.assignment.reason_code → common.code_list(ASSIGN_CHANGE_REASON) |
+| assignmentEventDate | date | | Date event occurred | (employment.assignment.metadata.assignment_event_date) |
 
 ### 2.8 Work Details Attributes
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| probationEndDate | date | | Probation end for this assignment |
-| workScheduleId | string | | Work schedule/pattern |
-| noticePeriodDays | integer | | Notice period (days) |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| probationEndDate | date | | Probation end for this assignment | (employment.assignment.metadata.probation_end_date) |
+| workScheduleId | string | | Work schedule/pattern | employment.assignment.work_pattern_code → time_attendance.work_pattern.code |
+| noticePeriodDays | integer | | Notice period (days) | (employment.assignment.metadata.notice_period_days) |
 
 ### 2.9 Audit Attributes
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| createdAt | datetime | ✓ | Record creation timestamp |
-| updatedAt | datetime | ✓ | Last modification timestamp |
-| createdBy | string | ✓ | User who created record |
-| updatedBy | string | ✓ | User who last modified |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| createdAt | datetime | ✓ | Record creation timestamp | employment.assignment.created_at |
+| updatedAt | datetime | ✓ | Last modification timestamp | employment.assignment.updated_at |
+| createdBy | string | ✓ | User who created record | <<employment.assignment.created_by>> |
+| updatedBy | string | ✓ | User who last modified | <<employment.assignment.updated_by>> |
 
 ---
 

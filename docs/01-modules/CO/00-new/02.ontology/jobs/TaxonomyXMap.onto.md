@@ -150,38 +150,38 @@ mindmap
 
 ### Identifiers & Links
 
-| Attribute | Type | Req | Description |
-|-----------|------|-----|-------------|
-| `id` | uuid | Y | Primary key |
-| `srcNodeId` | uuid | Y | FK → [[JobTaxonomy]] (source, typically BU) |
-| `targetNodeId` | uuid | Y | FK → [[JobTaxonomy]] (target, typically Corp) |
+| Attribute | Type | Req | Description | DB Column |
+|-----------|------|-----|-------------|----------|
+| `id` | uuid | Y | Primary key | jobpos.taxonomy_xmap.id |
+| `srcNodeId` | uuid | Y | FK → [[JobTaxonomy]] (source, typically BU) | jobpos.taxonomy_xmap.src_node_id → jobpos.job_taxonomy.id |
+| `targetNodeId` | uuid | Y | FK → [[JobTaxonomy]] (target, typically Corp) | jobpos.taxonomy_xmap.target_node_id → jobpos.job_taxonomy.id |
 
 ### Mapping Type
 
-| Attribute | Type | Req | Values | Description |
-|-----------|------|-----|--------|-------------|
-| `mapTypeCode` | enum | Y | REPORT_TO, ALIGN_WITH, DUPLICATE_OF | Relationship type |
+| Attribute | Type | Req | Values | Description | DB Column |
+|-----------|------|-----|--------|-------------|----------|
+| `mapTypeCode` | enum | Y | REPORT_TO, ALIGN_WITH, DUPLICATE_OF | Relationship type | jobpos.taxonomy_xmap.map_type_code → common.code_list(XMAP_TYPE) |
 
 ### Metadata
 
-| Attribute | Type | Req | Description |
-|-----------|------|-----|-------------|
-| `comment` | text | N | Mapping rationale |
+| Attribute | Type | Req | Description | DB Column |
+|-----------|------|-----|-------------|----------|
+| `comment` | text | N | Mapping rationale | jobpos.taxonomy_xmap.comment |
 
 ### SCD Type-2
 
-| Attribute | Type | Req | Description |
-|-----------|------|-----|-------------|
-| `effectiveStartDate` | date | Y | Start of validity |
-| `effectiveEndDate` | date | N | End of validity |
-| `isCurrentFlag` | boolean | Y | Current version |
+| Attribute | Type | Req | Description | DB Column |
+|-----------|------|-----|-------------|----------|
+| `effectiveStartDate` | date | Y | Start of validity | jobpos.taxonomy_xmap.effective_start_date |
+| `effectiveEndDate` | date | N | End of validity | jobpos.taxonomy_xmap.effective_end_date |
+| `isCurrentFlag` | boolean | Y | Current version | jobpos.taxonomy_xmap.is_current_flag |
 
 ### Audit
 
-| Attribute | Type | Req | Description |
-|-----------|------|-----|-------------|
-| `createdAt` | datetime | Y | Creation timestamp |
-| `updatedAt` | datetime | N | Last update |
+| Attribute | Type | Req | Description | DB Column |
+|-----------|------|-----|-------------|----------|
+| `createdAt` | datetime | Y | Creation timestamp | jobpos.taxonomy_xmap.created_at |
+| `updatedAt` | datetime | N | Last update | jobpos.taxonomy_xmap.updated_at |
 
 ---
 

@@ -464,29 +464,29 @@ mindmap
 
 ### 2.1 Identity
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| id | string | ✓ | Unique identifier (UUID) |
-| code | string | ✓ | Unique Job Code (e.g., JOB-DEV-001) |
-| title | string | ✓ | Job Title in English |
-| titleVn | string | | Official Vietnamese title for labor contracts |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| id | string | ✓ | Unique identifier (UUID) | jobpos.job.id |
+| code | string | ✓ | Unique Job Code (e.g., JOB-DEV-001) | jobpos.job.job_code |
+| title | string | ✓ | Job Title in English | jobpos.job.job_title |
+| titleVn | string | | Official Vietnamese title for labor contracts | (jobpos.job.metadata.title_vn) |
 
 ### 2.2 Effective Dating (SCD Type-2)
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| effectiveStartDate | date | ✓ | When this job version becomes effective |
-| effectiveEndDate | date | | When this job version ends |
-| isCurrent | boolean | ✓ | Is this the current version |
-| previousVersionId | string | | Link to previous version |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| effectiveStartDate | date | ✓ | When this job version becomes effective | jobpos.job.effective_start_date |
+| effectiveEndDate | date | | When this job version ends | jobpos.job.effective_end_date |
+| isCurrent | boolean | ✓ | Is this the current version | jobpos.job.is_current_flag |
+| previousVersionId | string | | Link to previous version | <<jobpos.job.previous_version_id>> → jobpos.job.id |
 
 ### 2.3 Classification
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| primaryTaxonomyNodeId | string | | Primary taxonomy node pointer |
-| managementLevelCode | enum | | IC / LEAD / MANAGER / DIRECTOR / VP / C_LEVEL |
-| jobFunction | string | | Functional area (legacy) |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| primaryTaxonomyNodeId | string | | Primary taxonomy node pointer | (jobpos.job.metadata.primary_taxonomy_node_id) → jobpos.taxonomy_node.id |
+| managementLevelCode | enum | | IC / LEAD / MANAGER / DIRECTOR / VP / C_LEVEL | (jobpos.job.metadata.management_level_code) → common.code_list(MGMT_LEVEL) |
+| jobFunction | string | | Functional area (legacy) | (jobpos.job.metadata.job_function) |
 
 **Management Level Codes**:
 | Code | Name | Description |
@@ -502,54 +502,54 @@ mindmap
 
 ### 2.4 VN Compliance
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| occupationalCodeVn | string | | VN Occupational Classification (Thông tư 17/2018/TT-BLĐTBXH) |
-| laborCategoryVn | enum | | MANAGEMENT / TECHNICAL / CLERICAL / SERVICE / PRODUCTION |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| occupationalCodeVn | string | | VN Occupational Classification (Thông tư 17/2018/TT-BLĐTBXH) | (jobpos.job.metadata.occupational_code_vn) |
+| laborCategoryVn | enum | | MANAGEMENT / TECHNICAL / CLERICAL / SERVICE / PRODUCTION | (jobpos.job.metadata.labor_category_vn) |
 
 ### 2.5 Description
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| summaryDescription | string | | Short summary (≤500 chars) |
-| detailedDescription | string | | Full job description |
-| dutiesResponsibilities | string | | Key duties |
-| qualificationRequirements | string | | Education/Experience requirements |
-| minEducationLevelCode | enum | | HIGH_SCHOOL / BACHELOR / MASTER / DOCTORATE |
-| minYearsExperience | integer | | Minimum years required |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| summaryDescription | string | | Short summary (≤500 chars) | jobpos.job.description |
+| detailedDescription | string | | Full job description | (jobpos.job.metadata.detailed_description) |
+| dutiesResponsibilities | string | | Key duties | (jobpos.job.metadata.duties_responsibilities) |
+| qualificationRequirements | string | | Education/Experience requirements | (jobpos.job.metadata.qualification_requirements) |
+| minEducationLevelCode | enum | | HIGH_SCHOOL / BACHELOR / MASTER / DOCTORATE | (jobpos.job.metadata.min_education_level_code) |
+| minYearsExperience | integer | | Minimum years required | (jobpos.job.metadata.min_years_experience) |
 
 ### 2.6 Compensation Defaults
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| payRateTypeCode | enum | | SALARY / HOURLY / DAILY |
-| defaultGradeId | string | | Default pay grade reference |
-| standardHoursPerWeek | number | | Standard working hours |
-| flsaStatusCode | enum | | EXEMPT / NON_EXEMPT (US only) |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| payRateTypeCode | enum | | SALARY / HOURLY / DAILY | (jobpos.job.metadata.pay_rate_type_code) |
+| defaultGradeId | string | | Default pay grade reference | jobpos.job.grade_code → TR.grade.grade_code |
+| standardHoursPerWeek | number | | Standard working hours | (jobpos.job.metadata.standard_hours_per_week) |
+| flsaStatusCode | enum | | EXEMPT / NON_EXEMPT (US only) | (jobpos.job.metadata.flsa_status_code) |
 
 ### 2.7 Benchmarking
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| isBenchmark | boolean | | Market pricing benchmark job |
-| benchmarkCode | string | | External benchmark reference |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| isBenchmark | boolean | | Market pricing benchmark job | (jobpos.job.metadata.is_benchmark) |
+| benchmarkCode | string | | External benchmark reference | (jobpos.job.metadata.benchmark_code) |
 
 ### 2.8 Ownership
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| ownerBusinessUnitId | string | | Business unit owner |
-| isGlobalJob | boolean | | Global vs local job definition |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| ownerBusinessUnitId | string | | Business unit owner | jobpos.job.owner_unit_id → org_bu.unit.id |
+| isGlobalJob | boolean | | Global vs local job definition | (jobpos.job.metadata.is_global_job) |
 
 ### 2.9 Status & Audit
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| statusCode | enum | ✓ | DRAFT / ACTIVE / INACTIVE / ARCHIVED |
-| createdAt | datetime | ✓ | Creation timestamp |
-| updatedAt | datetime | ✓ | Last modification |
-| createdBy | string | ✓ | Creator |
-| updatedBy | string | ✓ | Last modifier |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| statusCode | enum | ✓ | DRAFT / ACTIVE / INACTIVE / ARCHIVED | <<jobpos.job.status_code>> → common.code_list(JOB_STATUS) |
+| createdAt | datetime | ✓ | Creation timestamp | jobpos.job.created_at |
+| updatedAt | datetime | ✓ | Last modification | jobpos.job.updated_at |
+| createdBy | string | ✓ | Creator | <<jobpos.job.created_by>> |
+| updatedBy | string | ✓ | Last modifier | <<jobpos.job.updated_by>> |
 
 ---
 

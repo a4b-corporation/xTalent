@@ -295,58 +295,58 @@ mindmap
 
 ### 2.1 Identity
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| id | string | ✓ | Unique identifier (UUID) |
-| code | string | ✓ | Business code (e.g., WL_ETOWN_F5_HR) |
-| name | string | ✓ | Display name |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| id | string | ✓ | Unique identifier (UUID) | facility.work_location.id |
+| code | string | ✓ | Business code (e.g., WL_ETOWN_F5_HR) | facility.work_location.code |
+| name | string | ✓ | Display name | facility.work_location.name |
 
 ### 2.2 Classification
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| workLocTypeCode | enum | ✓ | OFFICE, REMOTE, HYBRID, HOME, CLIENT_SITE, FIELD, FACTORY_FLOOR, WAREHOUSE, RETAIL_STORE, MOBILE |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| workLocTypeCode | enum | ✓ | OFFICE, REMOTE, HYBRID, HOME, CLIENT_SITE, FIELD, FACTORY_FLOOR, WAREHOUSE, RETAIL_STORE, MOBILE | facility.work_location.work_loc_type_code → common.code_list(WORK_LOC_TYPE) |
 
 ### 2.3 Location Reference
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| locationId | string | | FK → [[Location]]. Physical location (null for REMOTE/HOME) |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| locationId | string | | FK → [[Location]]. Physical location (null for REMOTE/HOME) | facility.work_location.location_id → facility.location.id |
 
 ### 2.4 Organizational Context
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| legalEntityId | string | | FK → [[LegalEntity]]. Owner/operator |
-| defaultBusinessUnitId | string | | FK → [[BusinessUnit]]. Default BU |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| legalEntityId | string | | FK → [[LegalEntity]]. Owner/operator | facility.work_location.legal_entity_id → org_legal.entity.id |
+| defaultBusinessUnitId | string | | FK → [[BusinessUnit]]. Default BU | (facility.work_location.metadata.default_business_unit_id) |
 
 ### 2.5 Payroll & Compliance
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| geoZoneCode | string | | Geographic zone for geo-pay differentials |
-| taxLocationCode | string | | Tax jurisdiction code (Cục Thuế for VN) |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| geoZoneCode | string | | Geographic zone for geo-pay differentials | (facility.work_location.metadata.geo_zone_code) |
+| taxLocationCode | string | | Tax jurisdiction code (Cục Thuế for VN) | (facility.work_location.metadata.tax_location_code) |
 
 ### 2.6 Work Schedule
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| timeProfileCode | string | | Default work schedule code |
-| standardWeeklyHours | decimal | | Standard hours (40.0, 44.0, etc.) |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| timeProfileCode | string | | Default work schedule code | (facility.work_location.metadata.time_profile_code) |
+| standardWeeklyHours | decimal | | Standard hours (40.0, 44.0, etc.) | (facility.work_location.metadata.standard_weekly_hours) |
 
 ### 2.7 Capacity
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| capacity | integer | | Maximum headcount |
-| currentHeadcount | integer | | Current assigned employees (derived) |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| capacity | integer | | Maximum headcount | facility.work_location.capacity |
+| currentHeadcount | integer | | Current assigned employees (derived) | (facility.work_location.metadata.current_headcount) |
 
 ### 2.8 Status
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| isActive | boolean | ✓ | Is active? |
-| isPrimary | boolean | ✓ | Primary for the BU? |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| isActive | boolean | ✓ | Is active? | facility.work_location.is_active |
+| isPrimary | boolean | ✓ | Primary for the BU? | (facility.work_location.metadata.is_primary) |
 
 ---
 

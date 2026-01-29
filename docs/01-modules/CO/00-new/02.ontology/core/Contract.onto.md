@@ -607,62 +607,62 @@ mindmap
 
 ### 2.1 Identity Attributes
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| id | string | ✓ | Unique internal identifier (UUID) |
-| contractNumber | string | ✓ | Business contract number (Số hợp đồng) |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| id | string | ✓ | Unique internal identifier (UUID) | employment.contract.id |
+| contractNumber | string | ✓ | Business contract number (Số hợp đồng) | employment.contract.contract_number |
 
 ### 2.2 Parties
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| employeeId | string | ✓ | Contracted employee |
-| legalEntityCode | string | ✓ | Legal entity (employer) |
-| legalRepresentativeId | string | | Legal representative who signed |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| employeeId | string | ✓ | Contracted employee | employment.contract.employee_id → employment.employee.id |
+| legalEntityCode | string | ✓ | Legal entity (employer) | employment.contract.legal_entity_code → org_legal.entity.code |
+| legalRepresentativeId | string | | Legal representative who signed | <<employment.contract.legal_representative_id>> |
 
 ### 2.3 Contract Type
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| contractTypeCode | enum | ✓ | INDEFINITE, DEFINITE, SEASONAL, TRIAL |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| contractTypeCode | enum | ✓ | INDEFINITE, DEFINITE, SEASONAL, TRIAL | employment.contract.contract_type_code → common.code_list(CONTRACT_TYPE) |
 
 ### 2.4 Dates
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| signDate | date | ✓ | Date contract signed |
-| startDate | date | ✓ | Contract effective start |
-| endDate | date | | Contract end (required for DEFINITE/SEASONAL) |
-| duration | integer | | Duration (number of units) |
-| durationUnitCode | enum | | DAYS, MONTHS, YEARS |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| signDate | date | ✓ | Date contract signed | employment.contract.signed_date |
+| startDate | date | ✓ | Contract effective start | employment.contract.start_date |
+| endDate | date | | Contract end (required for DEFINITE/SEASONAL) | employment.contract.end_date |
+| duration | integer | | Duration (number of units) | (employment.contract.metadata.duration) |
+| durationUnitCode | enum | | DAYS, MONTHS, YEARS | (employment.contract.metadata.duration_unit_code) |
 
 ### 2.5 Probation
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| probationStartDate | date | | Probation start |
-| probationEndDate | date | | Probation end |
-| probationDays | integer | | Probation length (max 180) |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| probationStartDate | date | | Probation start | (employment.contract.metadata.probation_start_date) |
+| probationEndDate | date | | Probation end | (employment.contract.metadata.probation_end_date) |
+| probationDays | integer | | Probation length (max 180) | (employment.contract.metadata.probation_days) |
 
 ### 2.6 Notice Period
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| noticePeriod | integer | | Employee notice period |
-| noticePeriodUnitCode | enum | | DAYS, WEEKS, MONTHS |
-| employerNoticePeriod | integer | | Employer notice (if different) |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| noticePeriod | integer | | Employee notice period | (employment.contract.metadata.notice_period) |
+| noticePeriodUnitCode | enum | | DAYS, WEEKS, MONTHS | (employment.contract.metadata.notice_period_unit_code) |
+| employerNoticePeriod | integer | | Employer notice (if different) | (employment.contract.metadata.employer_notice_period) |
 
 ### 2.7 Compensation Method (VN Labor Code Điều 96)
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| payMethodCode | enum | ✓ | TIME_BASED, PRODUCT_BASED, TASK_BASED, HYBRID |
-| baseSalary | decimal | ✓ | Mức lương căn cứ BHXH |
-| baseSalaryCurrencyCode | string | ✓ | Currency (ISO 4217, default: VND) |
-| salaryPayFrequencyCode | enum | ✓ | MONTHLY, BI_WEEKLY, WEEKLY, DAILY, HOURLY |
-| pieceRateAmount | decimal | | Đơn giá sản phẩm cố định |
-| pieceRateUnitCode | string | | Đơn vị tính (Cái, Kg, Mét, HĐ) |
-| pieceRateReference | string | | Dẫn chiếu bảng đơn giá |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| payMethodCode | enum | ✓ | TIME_BASED, PRODUCT_BASED, TASK_BASED, HYBRID | <<employment.contract.pay_method_code>> |
+| baseSalary | decimal | ✓ | Mức lương căn cứ BHXH | employment.contract.salary_amount |
+| baseSalaryCurrencyCode | string | ✓ | Currency (ISO 4217, default: VND) | employment.contract.salary_currency → common.currency.code |
+| salaryPayFrequencyCode | enum | ✓ | MONTHLY, BI_WEEKLY, WEEKLY, DAILY, HOURLY | <<employment.contract.salary_pay_frequency_code>> |
+| pieceRateAmount | decimal | | Đơn giá sản phẩm cố định | (employment.contract.metadata.piece_rate_amount) |
+| pieceRateUnitCode | string | | Đơn vị tính (Cái, Kg, Mét, HĐ) | (employment.contract.metadata.piece_rate_unit_code) |
+| pieceRateReference | string | | Dẫn chiếu bảng đơn giá | (employment.contract.metadata.piece_rate_reference) |
 
 **Pay Method Types**:
 | Code | VN Name | Description | Use Case |
@@ -674,63 +674,63 @@ mindmap
 
 ### 2.8 Work Details (VN Law Requirements)
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| workContent | string | | Work content/job description |
-| workLocationId | string | | Primary work location |
-| positionId | string | | Contracted position |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| workContent | string | | Work content/job description | (employment.contract.metadata.work_content) |
+| workLocationId | string | | Primary work location | <<employment.contract.work_location_id>> → facility.work_location.id |
+| positionId | string | | Contracted position | (employment.contract.metadata.position_id) → jobpos.position.id |
 
 ### 2.9 Renewal Tracking
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| renewalCount | integer | ✓ | Number of renewals (0 = original) |
-| previousContractId | string | | Previous contract (renewal chain) |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| renewalCount | integer | ✓ | Number of renewals (0 = original) | <<employment.contract.renewal_count>> |
+| previousContractId | string | | Previous contract (renewal chain) | <<employment.contract.previous_contract_id>> → employment.contract.id |
 
 ### 2.10 Seniority
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| seniorityDate | date | | Date for seniority calculation |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| seniorityDate | date | | Date for seniority calculation | (employment.contract.metadata.seniority_date) |
 
 ### 2.11 Termination
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| terminationDate | date | | Actual last working day |
-| terminationReasonCode | string | | Termination reason |
-| okToRehire | boolean | | Eligible for rehire? |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| terminationDate | date | | Actual last working day | <<employment.contract.termination_date>> |
+| terminationReasonCode | string | | Termination reason | <<employment.contract.termination_reason_code>> |
+| okToRehire | boolean | | Eligible for rehire? | (employment.contract.metadata.ok_to_rehire) |
 
 ### 2.12 Document References
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| templateId | string | | ContractTemplate used |
-| documentUrl | string | | URL to signed PDF |
-| signatureDate | date | | Employee signature date |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| templateId | string | | ContractTemplate used | employment.contract.template_id → employment.contract_template.id |
+| documentUrl | string | | URL to signed PDF | (employment.contract.metadata.document_url) |
+| signatureDate | date | | Employee signature date | (employment.contract.metadata.signature_date) |
 
 ### 2.13 VN Specific
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| laborBookNumber | string | | Số sổ lao động |
-| socialInsuranceStartDate | date | | BHXH start date |
-| unionContribution | boolean | | Union fees? |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| laborBookNumber | string | | Số sổ lao động | (employment.contract.metadata.labor_book_number) |
+| socialInsuranceStartDate | date | | BHXH start date | (employment.contract.metadata.social_insurance_start_date) |
+| unionContribution | boolean | | Union fees? | (employment.contract.metadata.union_contribution) |
 
 ### 2.14 Status
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| statusCode | enum | ✓ | DRAFT, PENDING_SIGNATURE, ACTIVE, EXPIRED, TERMINATED, RENEWED, CANCELLED |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| statusCode | enum | ✓ | DRAFT, PENDING_SIGNATURE, ACTIVE, EXPIRED, TERMINATED, RENEWED, CANCELLED | employment.contract.status_code → common.code_list(CONTRACT_STATUS) |
 
 ### 2.15 Audit Attributes
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| createdAt | datetime | ✓ | Record creation timestamp |
-| updatedAt | datetime | ✓ | Last modification timestamp |
-| createdBy | string | ✓ | User who created record |
-| updatedBy | string | ✓ | User who last modified |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| createdAt | datetime | ✓ | Record creation timestamp | employment.contract.created_at |
+| updatedAt | datetime | ✓ | Last modification timestamp | employment.contract.updated_at |
+| createdBy | string | ✓ | User who created record | <<employment.contract.created_by>> |
+| updatedBy | string | ✓ | User who last modified | <<employment.contract.updated_by>> |
 
 ---
 

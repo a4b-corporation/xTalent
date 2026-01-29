@@ -298,57 +298,57 @@ mindmap
 
 ### Identifiers
 
-| Attribute | Type | Req | Description |
-|-----------|------|-----|-------------|
-| `id` | uuid | Y | Primary key |
-| `treeId` | uuid | Y | FK → [[TaxonomyTree]] |
-| `taxonomyCode` | string(50) | Y | Unique code within tree+type |
-| `taxonomyName` | string(255) | Y | Display name |
+| Attribute | Type | Req | Description | DB Column |
+|-----------|------|-----|-------------|----------|
+| `id` | uuid | Y | Primary key | jobpos.taxonomy_node.id |
+| `treeId` | uuid | Y | FK → [[TaxonomyTree]] | jobpos.taxonomy_node.tree_id → jobpos.taxonomy_tree.id |
+| `taxonomyCode` | string(50) | Y | Unique code within tree+type | jobpos.taxonomy_node.node_code |
+| `taxonomyName` | string(255) | Y | Display name | jobpos.taxonomy_node.node_name |
 
 ### Classification
 
-| Attribute | Type | Req | Values | Description |
-|-----------|------|-----|--------|-------------|
-| `taxonomyType` | enum | Y | FAMILY_GROUP, FAMILY, TRACK, GROUP | Node type |
-| `parentId` | uuid | N | - | FK → self for hierarchy |
+| Attribute | Type | Req | Values | Description | DB Column |
+|-----------|------|-----|--------|-------------|----------|
+| `taxonomyType` | enum | Y | FAMILY_GROUP, FAMILY, TRACK, GROUP | Node type | jobpos.taxonomy_node.node_type → common.code_list(TAX_NODE_TYPE) |
+| `parentId` | uuid | N | - | FK → self for hierarchy | jobpos.taxonomy_node.parent_id → jobpos.taxonomy_node.id |
 
 ### Ownership & Inheritance
 
-| Attribute | Type | Req | Description |
-|-----------|------|-----|-------------|
-| `ownerScope` | enum | Y | CORP \| LE \| BU |
-| `ownerUnitId` | uuid | N | FK → [[BusinessUnit]] |
-| `inheritFlag` | boolean | Y | true = inherit from parent tree |
-| `overrideName` | string | N | Local name override |
-| `visibility` | enum | N | PUBLIC \| PRIVATE \| RESTRICTED |
+| Attribute | Type | Req | Description | DB Column |
+|-----------|------|-----|-------------|----------|
+| `ownerScope` | enum | Y | CORP \| LE \| BU | (jobpos.taxonomy_node.metadata.owner_scope) |
+| `ownerUnitId` | uuid | N | FK → [[BusinessUnit]] | (jobpos.taxonomy_node.metadata.owner_unit_id) → org_bu.unit.id |
+| `inheritFlag` | boolean | Y | true = inherit from parent tree | (jobpos.taxonomy_node.metadata.inherit_flag) |
+| `overrideName` | string | N | Local name override | (jobpos.taxonomy_node.metadata.override_name) |
+| `visibility` | enum | N | PUBLIC \| PRIVATE \| RESTRICTED | (jobpos.taxonomy_node.metadata.visibility) |
 
 ### Status
 
-| Attribute | Type | Req | Description |
-|-----------|------|-----|-------------|
-| `isActive` | boolean | Y | Active status |
+| Attribute | Type | Req | Description | DB Column |
+|-----------|------|-----|-------------|----------|
+| `isActive` | boolean | Y | Active status | (jobpos.taxonomy_node.metadata.is_active) |
 
 ### Metadata
 
-| Attribute | Type | Req | Description |
-|-----------|------|-----|-------------|
-| `description` | text | N | Node description |
-| `metadata` | jsonb | N | Extended attributes (competencies, skills) |
+| Attribute | Type | Req | Description | DB Column |
+|-----------|------|-----|-------------|----------|
+| `description` | text | N | Node description | jobpos.taxonomy_node.description |
+| `metadata` | jsonb | N | Extended attributes (competencies, skills) | jobpos.taxonomy_node.metadata |
 
 ### SCD Type-2 (History)
 
-| Attribute | Type | Req | Description |
-|-----------|------|-----|-------------|
-| `effectiveStartDate` | date | Y | Start of validity |
-| `effectiveEndDate` | date | N | End of validity (null = current) |
-| `isCurrentFlag` | boolean | Y | Current version indicator |
+| Attribute | Type | Req | Description | DB Column |
+|-----------|------|-----|-------------|----------|
+| `effectiveStartDate` | date | Y | Start of validity | jobpos.taxonomy_node.effective_start_date |
+| `effectiveEndDate` | date | N | End of validity (null = current) | jobpos.taxonomy_node.effective_end_date |
+| `isCurrentFlag` | boolean | Y | Current version indicator | jobpos.taxonomy_node.is_current_flag |
 
 ### Audit
 
-| Attribute | Type | Req | Description |
-|-----------|------|-----|-------------|
-| `createdAt` | datetime | Y | Creation timestamp |
-| `updatedAt` | datetime | N | Last update |
+| Attribute | Type | Req | Description | DB Column |
+|-----------|------|-----|-------------|----------|
+| `createdAt` | datetime | Y | Creation timestamp | jobpos.taxonomy_node.created_at |
+| `updatedAt` | datetime | N | Last update | jobpos.taxonomy_node.updated_at |
 
 ---
 

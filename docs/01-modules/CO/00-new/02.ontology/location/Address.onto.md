@@ -319,75 +319,75 @@ mindmap
 
 ### 2.1 Identity Attributes
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| id | string | ✓ | Unique internal identifier (UUID) |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| id | string | ✓ | Unique internal identifier (UUID) | person.address.id |
 
 ### 2.2 Owner Reference (Polymorphic)
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| ownerType | enum | ✓ | WORKER, EMPLOYEE, LEGAL_ENTITY, BUSINESS_UNIT |
-| ownerId | string | ✓ | Reference to owner entity |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| ownerType | enum | ✓ | WORKER, EMPLOYEE, LEGAL_ENTITY, BUSINESS_UNIT | (person.address.metadata.owner_type) |
+| ownerId | string | ✓ | Reference to owner entity | person.address.worker_id → person.worker.id |
 
 ### 2.3 Address Type
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| addressTypeCode | enum | ✓ | PERMANENT, TEMPORARY, HOME, WORK, MAILING, EMERGENCY |
-| isPrimary | boolean | ✓ | Primary address flag |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| addressTypeCode | enum | ✓ | PERMANENT, TEMPORARY, HOME, WORK, MAILING, EMERGENCY | person.address.address_type_code → common.code_list(ADDRESS_TYPE) |
+| isPrimary | boolean | ✓ | Primary address flag | person.address.is_primary |
 
 ### 2.4 Address Lines
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| addressLine1 | string | ✓ | Street address line 1 (Số nhà, Đường) |
-| addressLine2 | string | | Address line 2 |
-| addressLine3 | string | | Address line 3 |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| addressLine1 | string | ✓ | Street address line 1 (Số nhà, Đường) | person.address.street_line |
+| addressLine2 | string | | Address line 2 | (person.address.metadata.address_line2) |
+| addressLine3 | string | | Address line 3 | (person.address.metadata.address_line3) |
 
 ### 2.5 Administrative Hierarchy (VN & Generic)
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| ward | string | | Phường/Xã/Thị trấn (VN) - flat field for search |
-| district | string | | Quận/Huyện (VN) - flat field for search |
-| city | string | | Thành phố/Thị xã |
-| provinceCode | string | | Tỉnh/Thành phố code (legacy - prefer adminAreaId) |
-| postalCode | string | | Postal/ZIP code |
-| countryCode | string | ✓ | Country code (ISO 3166-1) |
-| **adminAreaId** | string | | **FK → [[AdminArea]]** (preferred). Links to lowest-level admin area (e.g., Ward). Enables hierarchy traversal. |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| ward | string | | Phường/Xã/Thị trấn (VN) - flat field for search | (person.address.metadata.ward) |
+| district | string | | Quận/Huyện (VN) - flat field for search | (person.address.metadata.district) |
+| city | string | | Thành phố/Thị xã | (person.address.metadata.city) |
+| provinceCode | string | | Tỉnh/Thành phố code (legacy - prefer adminAreaId) | (person.address.metadata.province_code) |
+| postalCode | string | | Postal/ZIP code | person.address.postal_code |
+| countryCode | string | ✓ | Country code (ISO 3166-1) | (person.address.metadata.country_code) |
+| **adminAreaId** | string | | **FK → [[AdminArea]]** (preferred). Links to lowest-level admin area (e.g., Ward). Enables hierarchy traversal. | person.address.admin_area_id → geo.admin_area.id |
 
 ### 2.6 Building Details
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| buildingName | string | | Building/complex name |
-| floorNumber | string | | Floor number |
-| unitNumber | string | | Unit/apartment number |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| buildingName | string | | Building/complex name | (person.address.metadata.building_name) |
+| floorNumber | string | | Floor number | (person.address.metadata.floor_number) |
+| unitNumber | string | | Unit/apartment number | (person.address.metadata.unit_number) |
 
 ### 2.7 Geolocation
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| latitude | decimal | | Latitude (-90 to 90) |
-| longitude | decimal | | Longitude (-180 to 180) |
-| isVerified | boolean | ✓ | Address verified? |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| latitude | decimal | | Latitude (-90 to 90) | (person.address.metadata.latitude) |
+| longitude | decimal | | Longitude (-180 to 180) | (person.address.metadata.longitude) |
+| isVerified | boolean | ✓ | Address verified? | (person.address.metadata.is_verified) |
 
 ### 2.8 Date Effectiveness
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| effectiveStartDate | date | | Address becomes effective |
-| effectiveEndDate | date | | Address expires |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| effectiveStartDate | date | | Address becomes effective | person.address.effective_start_date |
+| effectiveEndDate | date | | Address expires | person.address.effective_end_date |
 
 ### 2.9 Audit Attributes
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| createdAt | datetime | ✓ | Record creation timestamp |
-| updatedAt | datetime | ✓ | Last modification timestamp |
-| createdBy | string | ✓ | User who created record |
-| updatedBy | string | ✓ | User who last modified |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| createdAt | datetime | ✓ | Record creation timestamp | person.address.created_at |
+| updatedAt | datetime | ✓ | Last modification timestamp | person.address.updated_at |
+| createdBy | string | ✓ | User who created record | <<person.address.created_by>> |
+| updatedBy | string | ✓ | User who last modified | <<person.address.updated_by>> |
 
 ---
 

@@ -222,32 +222,32 @@ mindmap
 
 ### 2.1 Identity
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| id | string | ✓ | Unique identifier (UUID) |
-| code | string | ✓ | Level code (L1, JUNIOR, etc.) |
-| name | string | ✓ | Display name |
-| nameVn | string | | Vietnamese name |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| id | string | ✓ | Unique identifier (UUID) | jobpos.job_level.id |
+| code | string | ✓ | Level code (L1, JUNIOR, etc.) | jobpos.job_level.level_code |
+| name | string | ✓ | Display name | jobpos.job_level.name |
+| nameVn | string | | Vietnamese name | (jobpos.job_level.metadata.name_vn) |
 
 ### 2.2 Ranking
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| rankOrder | integer | ✓ | Numeric order for sorting (1=lowest) |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| rankOrder | integer | ✓ | Numeric order for sorting (1=lowest) | jobpos.job_level.rank_order |
 
 ### 2.3 Guidance
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| minExperienceYears | integer | | Suggested min experience |
-| typicalGradeRange | string | | Pay grade hint (e.g., "G8-G10") |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| minExperienceYears | integer | | Suggested min experience | (jobpos.job_level.metadata.min_experience_years) |
+| typicalGradeRange | string | | Pay grade hint (e.g., "G8-G10") | (jobpos.job_level.metadata.typical_grade_range) |
 
 ### 2.4 Ownership
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| ownerScope | enum | ✓ | CORP (global), LE (legal entity), BU (business unit) |
-| ownerUnitId | string | | FK → [[BusinessUnit]] if scope is LE/BU |
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|----------|
+| ownerScope | enum | ✓ | CORP (global), LE (legal entity), BU (business unit) | (jobpos.job_level.metadata.owner_scope) |
+| ownerUnitId | string | | FK → [[BusinessUnit]] if scope is LE/BU | (jobpos.job_level.metadata.owner_unit_id) → org_bu.unit.id |
 
 ---
 
