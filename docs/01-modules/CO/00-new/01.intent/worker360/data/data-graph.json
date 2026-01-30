@@ -1,0 +1,634 @@
+{
+  "workers": {
+    "W-001": {
+      "id": "W-001",
+      "name": "Nguyễn Văn A",
+      "nameEn": "Nguyen Van A",
+      "dob": "1990-03-15",
+      "gender": "Male",
+      "nationality": "Vietnamese",
+      "maritalStatus": "Married",
+      "email": "nguyenvana90@gmail.com",
+      "phone": "+84 912 345 678",
+      "address": "123 Nguyen Hue, District 1, Ho Chi Minh City",
+      "skills": [
+        {"name": "Python", "level": 90, "category": "Technical"},
+        {"name": "AWS", "level": 85, "category": "Technical"},
+        {"name": "React", "level": 80, "category": "Technical"},
+        {"name": "System Design", "level": 85, "category": "Technical"},
+        {"name": "Kubernetes", "level": 70, "category": "Technical"},
+        {"name": "Leadership", "level": 75, "category": "Soft Skills"},
+        {"name": "Communication", "level": 80, "category": "Soft Skills"}
+      ],
+      "certifications": [
+        {"name": "AWS Solutions Architect Professional", "issuer": "Amazon", "date": "2023-06-15"},
+        {"name": "Certified Kubernetes Administrator", "issuer": "CNCF", "date": "2022-09-20"},
+        {"name": "PMP", "issuer": "PMI", "date": "2021-03-10"}
+      ],
+      "languages": [
+        {"language": "Vietnamese", "proficiency": "Native"},
+        {"language": "English", "proficiency": "Fluent"},
+        {"language": "Japanese", "proficiency": "Basic"}
+      ],
+      "emergencyContacts": [
+        {"name": "Nguyễn Thị B", "relationship": "Spouse", "phone": "+84 909 111 222"}
+      ],
+      "workingRelationships": ["WR-001", "WR-002", "WR-003"]
+    },
+    "W-002": {
+      "id": "W-002",
+      "name": "Trần Thị Minh",
+      "nameEn": "Tran Thi Minh",
+      "dob": "1995-07-22",
+      "gender": "Female",
+      "nationality": "Vietnamese",
+      "maritalStatus": "Single",
+      "email": "tranthiminh95@gmail.com",
+      "phone": "+84 903 456 789",
+      "address": "789 Tran Hung Dao, District 5, Ho Chi Minh City",
+      "skills": [
+        {"name": "Java", "level": 85, "category": "Technical"},
+        {"name": "Spring Boot", "level": 80, "category": "Technical"},
+        {"name": "Microservices", "level": 75, "category": "Technical"},
+        {"name": "Docker", "level": 70, "category": "Technical"}
+      ],
+      "certifications": [
+        {"name": "Oracle Certified Professional Java SE", "issuer": "Oracle", "date": "2023-01-10"}
+      ],
+      "languages": [
+        {"language": "Vietnamese", "proficiency": "Native"},
+        {"language": "English", "proficiency": "Fluent"}
+      ],
+      "emergencyContacts": [
+        {"name": "Trần Văn D", "relationship": "Father", "phone": "+84 905 555 666"}
+      ],
+      "workingRelationships": ["WR-004"]
+    },
+    "W-003": {
+      "id": "W-003",
+      "name": "John Smith",
+      "nameEn": "John Smith",
+      "dob": "1985-11-08",
+      "gender": "Male",
+      "nationality": "American",
+      "maritalStatus": "Married",
+      "email": "john.smith@gmail.com",
+      "phone": "+1 415 555 1234",
+      "address": "456 Market St, San Francisco, CA 94103",
+      "skills": [
+        {"name": "Solution Architecture", "level": 95, "category": "Technical"},
+        {"name": "Cloud Architecture", "level": 90, "category": "Technical"},
+        {"name": "Enterprise Integration", "level": 85, "category": "Technical"},
+        {"name": "Technical Leadership", "level": 90, "category": "Soft Skills"}
+      ],
+      "certifications": [
+        {"name": "AWS Solutions Architect Professional", "issuer": "Amazon", "date": "2022-08-10"},
+        {"name": "TOGAF 9 Certified", "issuer": "The Open Group", "date": "2021-04-20"}
+      ],
+      "languages": [
+        {"language": "English", "proficiency": "Native"}
+      ],
+      "emergencyContacts": [
+        {"name": "Jane Smith", "relationship": "Spouse", "phone": "+1 415 555 5678"}
+      ],
+      "workingRelationships": ["WR-005"]
+    },
+    "W-004": {
+      "id": "W-004",
+      "name": "Lê Hoàng Anh",
+      "nameEn": "Le Hoang Anh",
+      "dob": "2001-09-12",
+      "gender": "Male",
+      "nationality": "Vietnamese",
+      "maritalStatus": "Single",
+      "email": "lehoanganh2001@gmail.com",
+      "phone": "+84 976 543 210",
+      "address": "321 Pham Van Dong, Thu Duc City, Ho Chi Minh City",
+      "skills": [
+        {"name": "JavaScript", "level": 60, "category": "Technical"},
+        {"name": "React", "level": 55, "category": "Technical"},
+        {"name": "Node.js", "level": 50, "category": "Technical"},
+        {"name": "Git", "level": 65, "category": "Technical"}
+      ],
+      "certifications": [],
+      "languages": [
+        {"language": "Vietnamese", "proficiency": "Native"},
+        {"language": "English", "proficiency": "Intermediate"}
+      ],
+      "emergencyContacts": [
+        {"name": "Lê Văn E", "relationship": "Father", "phone": "+84 908 777 888"}
+      ],
+      "workingRelationships": ["WR-006"]
+    },
+    "W-005": {
+      "id": "W-005",
+      "name": "Maria Garcia",
+      "nameEn": "Maria Garcia",
+      "dob": "1992-04-18",
+      "gender": "Female",
+      "nationality": "Filipino",
+      "maritalStatus": "Single",
+      "email": "maria.garcia92@gmail.com",
+      "phone": "+63 917 123 4567",
+      "address": "123 Makati Ave, Makati City, Philippines",
+      "skills": [
+        {"name": "Data Analysis", "level": 80, "category": "Technical"},
+        {"name": "SQL", "level": 85, "category": "Technical"},
+        {"name": "Python", "level": 70, "category": "Technical"},
+        {"name": "Tableau", "level": 75, "category": "Technical"}
+      ],
+      "certifications": [
+        {"name": "Google Data Analytics Professional", "issuer": "Google", "date": "2023-03-15"}
+      ],
+      "languages": [
+        {"language": "Filipino", "proficiency": "Native"},
+        {"language": "English", "proficiency": "Fluent"}
+      ],
+      "emergencyContacts": [
+        {"name": "Ana Garcia", "relationship": "Mother", "phone": "+63 917 987 6543"}
+      ],
+      "workingRelationships": ["WR-007"]
+    }
+  },
+  "legalEntities": {
+    "LE-001": {
+      "id": "LE-001",
+      "name": "ABC Corporation Vietnam",
+      "code": "ABC-VN",
+      "country": "Vietnam",
+      "address": "100 Nguyen Hue, District 1, Ho Chi Minh City"
+    },
+    "LE-002": {
+      "id": "LE-002",
+      "name": "ABC Corporation Singapore",
+      "code": "ABC-SG",
+      "country": "Singapore",
+      "address": "1 Raffles Place, Singapore 048616"
+    },
+    "LE-003": {
+      "id": "LE-003",
+      "name": "XYZ Consulting",
+      "code": "XYZ",
+      "country": "Vietnam",
+      "address": "200 Le Loi, District 1, Ho Chi Minh City"
+    },
+    "LE-004": {
+      "id": "LE-004",
+      "name": "TechStaff Agency",
+      "code": "TSA",
+      "country": "Philippines",
+      "address": "789 EDSA, Makati City, Philippines"
+    }
+  },
+  "workingRelationships": {
+    "WR-001": {
+      "id": "WR-001",
+      "workerId": "W-001",
+      "leId": "LE-001",
+      "type": "employment",
+      "subType": "full-time",
+      "status": "active",
+      "isPrimary": true,
+      "startDate": "2020-01-15",
+      "endDate": null,
+      "contractType": "Indefinite",
+      "workLocation": "HCM Office",
+      "workSchedule": "Mon-Fri, 8:30-17:30",
+      "noticePeriod": "30 days",
+      "probationCompleted": true,
+      "workEmail": "nguyen.a@abccorp.com.vn",
+      "workPhone": "+84 28 1234 5678 ext 1234",
+      "assignmentId": "EMP-001"
+    },
+    "WR-002": {
+      "id": "WR-002",
+      "workerId": "W-001",
+      "leId": "LE-002",
+      "type": "employment",
+      "subType": "secondment",
+      "status": "active",
+      "isPrimary": false,
+      "startDate": "2024-07-01",
+      "endDate": "2025-06-30",
+      "contractType": "Fixed Term (Secondment)",
+      "workLocation": "Singapore Office",
+      "workSchedule": "Standard",
+      "noticePeriod": "30 days",
+      "probationCompleted": true,
+      "workEmail": "nguyen.a@abccorp.com.sg",
+      "workPhone": "+65 6123 4567",
+      "assignmentId": "EMP-002"
+    },
+    "WR-003": {
+      "id": "WR-003",
+      "workerId": "W-001",
+      "leId": "LE-003",
+      "type": "contract",
+      "subType": "consultant",
+      "status": "completed",
+      "isPrimary": false,
+      "startDate": "2023-03-01",
+      "endDate": "2023-06-30",
+      "contractType": "Fixed Term",
+      "workLocation": "Remote",
+      "workSchedule": "Flexible",
+      "noticePeriod": "14 days",
+      "probationCompleted": null,
+      "workEmail": null,
+      "workPhone": null,
+      "assignmentId": "CON-001"
+    },
+    "WR-004": {
+      "id": "WR-004",
+      "workerId": "W-002",
+      "leId": "LE-001",
+      "type": "employment",
+      "subType": "full-time",
+      "status": "active",
+      "isPrimary": true,
+      "startDate": "2022-06-01",
+      "endDate": null,
+      "contractType": "Indefinite",
+      "workLocation": "HCM Office",
+      "workSchedule": "Mon-Fri, 8:30-17:30",
+      "noticePeriod": "30 days",
+      "probationCompleted": true,
+      "workEmail": "minh.t@abccorp.com.vn",
+      "workPhone": "+84 28 1234 5678 ext 2345",
+      "assignmentId": "EMP-003"
+    },
+    "WR-005": {
+      "id": "WR-005",
+      "workerId": "W-003",
+      "leId": "LE-001",
+      "type": "contract",
+      "subType": "independent-contractor",
+      "status": "active",
+      "isPrimary": true,
+      "startDate": "2025-01-15",
+      "endDate": "2025-06-30",
+      "contractType": "Fixed Term",
+      "workLocation": "Remote / On-site as needed",
+      "workSchedule": "Flexible",
+      "noticePeriod": "14 days",
+      "probationCompleted": null,
+      "workEmail": null,
+      "workPhone": null,
+      "assignmentId": "CON-002"
+    },
+    "WR-006": {
+      "id": "WR-006",
+      "workerId": "W-004",
+      "leId": "LE-001",
+      "type": "internship",
+      "subType": "student-intern",
+      "status": "active",
+      "isPrimary": true,
+      "startDate": "2024-09-01",
+      "endDate": "2025-02-28",
+      "contractType": "Internship Agreement",
+      "workLocation": "HCM Office",
+      "workSchedule": "Part-time (Mon-Wed-Fri)",
+      "noticePeriod": "7 days",
+      "probationCompleted": null,
+      "workEmail": "anh.l.intern@abccorp.com.vn",
+      "workPhone": null,
+      "assignmentId": "INT-001"
+    },
+    "WR-007": {
+      "id": "WR-007",
+      "workerId": "W-005",
+      "leId": "LE-001",
+      "type": "contingent",
+      "subType": "agency-worker",
+      "status": "active",
+      "isPrimary": true,
+      "startDate": "2024-10-01",
+      "endDate": "2025-03-31",
+      "contractType": "Agency Contract",
+      "workLocation": "Remote (Philippines)",
+      "workSchedule": "Standard (timezone adjusted)",
+      "noticePeriod": "14 days",
+      "probationCompleted": null,
+      "workEmail": null,
+      "workPhone": null,
+      "assignmentId": "CW-001",
+      "agencyInfo": {
+        "agencyName": "TechStaff Agency",
+        "agencyContact": "Ana Santos",
+        "agencyEmail": "placements@techstaff.ph"
+      }
+    }
+  },
+  "assignments": {
+    "employees": {
+      "EMP-001": {
+        "id": "EMP-001",
+        "wrId": "WR-001",
+        "employeeNumber": "EMP-VN-001",
+        "position": {
+          "title": "Senior Software Engineer",
+          "jobFamily": "Engineering > Software Development",
+          "jobLevel": "L5",
+          "grade": "Senior Individual Contributor"
+        },
+        "organization": {
+          "department": "Engineering",
+          "division": "Technology",
+          "team": "Platform Team",
+          "costCenter": "CC-ENG-001"
+        },
+        "manager": {
+          "name": "Trần Văn B",
+          "title": "Engineering Manager"
+        },
+        "directReports": [
+          {"name": "Ngô Văn D", "title": "Software Engineer"},
+          {"name": "Đinh Thị E", "title": "Software Engineer"},
+          {"name": "Vũ Văn F", "title": "Junior Engineer"},
+          {"name": "Phạm G", "title": "Junior Engineer"},
+          {"name": "Hoàng H", "title": "Junior Engineer"},
+          {"name": "Bùi I", "title": "Software Engineer"},
+          {"name": "Đỗ K", "title": "Software Engineer"},
+          {"name": "Nguyễn L", "title": "Junior Engineer"}
+        ],
+        "compensation": {
+          "baseSalary": {"amount": 45000000, "currency": "VND", "frequency": "monthly"},
+          "allowances": [
+            {"type": "Housing", "amount": 5000000},
+            {"type": "Transportation", "amount": 2000000},
+            {"type": "Phone", "amount": 500000}
+          ]
+        },
+        "timeAndAttendance": {
+          "leaveBalances": {
+            "annual": {"entitled": 15, "used": 3, "remaining": 12},
+            "sick": {"entitled": 10, "used": 5, "remaining": 5},
+            "personal": {"entitled": 3, "used": 1, "remaining": 2}
+          },
+          "thisMonth": {"workingDays": 20, "daysWorked": 17, "overtime": 8}
+        },
+        "performance": {
+          "currentRating": "Exceeds Expectations",
+          "ratingScore": 4.5,
+          "goals": [
+            {"title": "Lead Platform Migration", "progress": 85, "status": "on-track"},
+            {"title": "Mentor Junior Engineers", "progress": 100, "status": "completed"},
+            {"title": "Improve System Performance", "progress": 60, "status": "on-track"},
+            {"title": "Complete AWS Specialty Cert", "progress": 30, "status": "at-risk"}
+          ]
+        },
+        "history": [
+          {"event": "Promotion", "date": "2024-07-01", "from": "Software Engineer", "to": "Senior Software Engineer"},
+          {"event": "Promotion", "date": "2022-06-01", "from": "Junior Engineer", "to": "Software Engineer"},
+          {"event": "Hired", "date": "2020-01-15", "position": "Junior Engineer"}
+        ]
+      },
+      "EMP-002": {
+        "id": "EMP-002",
+        "wrId": "WR-002",
+        "employeeNumber": "EMP-SG-042",
+        "position": {
+          "title": "Tech Lead - Regional",
+          "jobFamily": "Engineering > Technical Leadership",
+          "jobLevel": "L6",
+          "grade": "Lead"
+        },
+        "organization": {
+          "department": "Regional Technology",
+          "division": "APAC Operations",
+          "team": "Platform Integration",
+          "costCenter": "CC-REG-APAC-001"
+        },
+        "manager": {
+          "name": "John Doe",
+          "title": "Director of Engineering APAC"
+        },
+        "directReports": [],
+        "compensation": {
+          "baseSalary": {"amount": 12000, "currency": "SGD", "frequency": "monthly"},
+          "allowances": [
+            {"type": "Housing", "amount": 3000},
+            {"type": "Relocation", "amount": 5000}
+          ]
+        },
+        "timeAndAttendance": {
+          "leaveBalances": {
+            "annual": {"entitled": 18, "used": 2, "remaining": 16},
+            "sick": {"entitled": 14, "used": 0, "remaining": 14}
+          },
+          "thisMonth": {"workingDays": 22, "daysWorked": 20, "overtime": 0}
+        },
+        "performance": {
+          "currentRating": "New Assignment",
+          "ratingScore": null,
+          "goals": [
+            {"title": "Setup Regional Platform", "progress": 40, "status": "on-track"},
+            {"title": "Knowledge Transfer", "progress": 60, "status": "on-track"}
+          ]
+        },
+        "history": [
+          {"event": "Secondment Start", "date": "2024-07-01", "details": "International assignment to Singapore"}
+        ]
+      },
+      "EMP-003": {
+        "id": "EMP-003",
+        "wrId": "WR-004",
+        "employeeNumber": "EMP-VN-042",
+        "position": {
+          "title": "Software Engineer",
+          "jobFamily": "Engineering > Software Development",
+          "jobLevel": "L4",
+          "grade": "Individual Contributor"
+        },
+        "organization": {
+          "department": "Engineering",
+          "division": "Technology",
+          "team": "Backend Team",
+          "costCenter": "CC-ENG-002"
+        },
+        "manager": {
+          "name": "Phạm Văn X",
+          "title": "Backend Lead"
+        },
+        "directReports": [],
+        "compensation": {
+          "baseSalary": {"amount": 28000000, "currency": "VND", "frequency": "monthly"}
+        },
+        "timeAndAttendance": {
+          "leaveBalances": {
+            "annual": {"entitled": 12, "used": 4, "remaining": 8},
+            "sick": {"entitled": 10, "used": 2, "remaining": 8}
+          },
+          "thisMonth": {"workingDays": 20, "daysWorked": 18, "overtime": 4}
+        },
+        "performance": {
+          "currentRating": "Meets Expectations",
+          "ratingScore": 3.5,
+          "goals": [
+            {"title": "Microservices Migration", "progress": 70, "status": "on-track"},
+            {"title": "API Documentation", "progress": 90, "status": "on-track"}
+          ]
+        },
+        "history": [
+          {"event": "Hired", "date": "2022-06-01", "position": "Software Engineer"}
+        ]
+      }
+    },
+    "contractors": {
+      "CON-001": {
+        "id": "CON-001",
+        "wrId": "WR-003",
+        "contractorNumber": "CON-XYZ-015",
+        "vendorCompany": "Self-employed",
+        "projectAssignment": {
+          "projectName": "Legacy System Assessment",
+          "role": "Technical Consultant",
+          "startDate": "2023-03-01",
+          "endDate": "2023-06-30"
+        },
+        "billing": {
+          "rateType": "Daily",
+          "rate": {"amount": 5000000, "currency": "VND"},
+          "totalDays": 60,
+          "totalBilled": 300000000
+        },
+        "deliverables": [
+          {"name": "System Assessment Report", "status": "completed", "dueDate": "2023-04-15"},
+          {"name": "Migration Strategy Document", "status": "completed", "dueDate": "2023-05-30"},
+          {"name": "Technical Recommendations", "status": "completed", "dueDate": "2023-06-30"}
+        ]
+      },
+      "CON-002": {
+        "id": "CON-002",
+        "wrId": "WR-005",
+        "contractorNumber": "CON-ABC-088",
+        "vendorCompany": "Smith Consulting LLC",
+        "projectAssignment": {
+          "projectName": "Platform Modernization",
+          "role": "Technical Architect",
+          "startDate": "2025-01-15",
+          "endDate": "2025-06-30"
+        },
+        "projectManager": {
+          "name": "Nguyễn Văn Y",
+          "title": "Project Manager"
+        },
+        "billing": {
+          "rateType": "Daily",
+          "rate": {"amount": 2500, "currency": "USD"},
+          "estimatedTotal": 275000
+        },
+        "deliverables": [
+          {"name": "Architecture Document", "status": "completed", "dueDate": "2025-02-15"},
+          {"name": "API Design Specification", "status": "in-progress", "dueDate": "2025-03-15", "progress": 60},
+          {"name": "Implementation Guide", "status": "pending", "dueDate": "2025-04-30"},
+          {"name": "Migration Playbook", "status": "pending", "dueDate": "2025-05-31"},
+          {"name": "Knowledge Transfer", "status": "pending", "dueDate": "2025-06-30"}
+        ]
+      }
+    },
+    "interns": {
+      "INT-001": {
+        "id": "INT-001",
+        "wrId": "WR-006",
+        "internNumber": "INT-2024-015",
+        "program": {
+          "name": "Software Engineering Internship 2024",
+          "cohort": "Fall 2024",
+          "duration": "6 months"
+        },
+        "university": "FPT University",
+        "expectedGraduation": "2024",
+        "position": {
+          "title": "Software Engineering Intern",
+          "team": "Frontend Team",
+          "department": "Engineering"
+        },
+        "mentor": {
+          "name": "Lê Văn M",
+          "title": "Senior Frontend Engineer"
+        },
+        "supervisor": {
+          "name": "Trần Thị N",
+          "title": "Frontend Lead"
+        },
+        "stipend": {
+          "amount": 6000000,
+          "currency": "VND",
+          "frequency": "monthly"
+        },
+        "learningGoals": [
+          {"title": "Master React Fundamentals", "progress": 75, "status": "on-track"},
+          {"title": "Complete 2 Feature Projects", "progress": 50, "status": "on-track"},
+          {"title": "Learn Testing Best Practices", "progress": 30, "status": "on-track"},
+          {"title": "Code Review Participation", "progress": 60, "status": "on-track"}
+        ],
+        "evaluations": [
+          {"period": "Month 1", "rating": "Good", "feedback": "Strong fundamentals, eager to learn", "date": "2024-09-30"},
+          {"period": "Month 2", "rating": "Very Good", "feedback": "Showing great improvement", "date": "2024-10-31"}
+        ]
+      }
+    },
+    "contingentWorkers": {
+      "CW-001": {
+        "id": "CW-001",
+        "wrId": "WR-007",
+        "cwNumber": "CW-TSA-042",
+        "agency": {
+          "name": "TechStaff Agency",
+          "contactPerson": "Ana Santos",
+          "contactEmail": "ana.santos@techstaff.ph"
+        },
+        "assignment": {
+          "title": "Data Analyst",
+          "team": "Business Intelligence",
+          "department": "Data & Analytics",
+          "startDate": "2024-10-01",
+          "endDate": "2025-03-31"
+        },
+        "supervisor": {
+          "name": "Võ Văn P",
+          "title": "BI Manager"
+        },
+        "billing": {
+          "rateType": "Monthly",
+          "rate": {"amount": 3500, "currency": "USD"},
+          "billedTo": "Agency",
+          "markup": "30%"
+        },
+        "currentTasks": [
+          {"name": "Sales Dashboard Development", "status": "in-progress", "priority": "High"},
+          {"name": "Customer Segmentation Analysis", "status": "pending", "priority": "Medium"},
+          {"name": "Data Quality Assessment", "status": "completed", "priority": "High"}
+        ],
+        "accessSystems": ["Tableau", "BigQuery", "Slack", "Jira"]
+      }
+    }
+  },
+  "activities": {
+    "W-001": [
+      {"type": "leave", "action": "Submitted leave request", "details": "Annual Leave: Jan 2-6, 2025", "time": "2 hours ago", "icon": "calendar"},
+      {"type": "training", "action": "Completed training", "details": "Advanced AWS Architecture", "time": "Yesterday", "icon": "graduation-cap"},
+      {"type": "feedback", "action": "Received feedback", "details": "From Trần Văn B: Excellent work on API project", "time": "2 days ago", "icon": "comment"},
+      {"type": "goal", "action": "Updated goal progress", "details": "Platform Migration: 85% complete", "time": "3 days ago", "icon": "bullseye"},
+      {"type": "skill", "action": "Added skill", "details": "Kubernetes", "time": "1 week ago", "icon": "code"}
+    ],
+    "W-002": [
+      {"type": "timesheet", "action": "Submitted timesheet", "details": "Week 52, 2024", "time": "1 day ago", "icon": "clock"},
+      {"type": "training", "action": "Enrolled in course", "details": "Microservices Architecture", "time": "3 days ago", "icon": "book"}
+    ],
+    "W-003": [
+      {"type": "deliverable", "action": "Submitted deliverable", "details": "Architecture Document", "time": "1 week ago", "icon": "file-alt"},
+      {"type": "meeting", "action": "Scheduled meeting", "details": "Technical Review with Platform Team", "time": "2 weeks ago", "icon": "users"}
+    ],
+    "W-004": [
+      {"type": "evaluation", "action": "Received evaluation", "details": "Month 2: Very Good", "time": "1 week ago", "icon": "star"},
+      {"type": "task", "action": "Completed task", "details": "React Component Library PR merged", "time": "3 days ago", "icon": "check"}
+    ],
+    "W-005": [
+      {"type": "task", "action": "Completed task", "details": "Data Quality Assessment", "time": "2 days ago", "icon": "check-circle"},
+      {"type": "assignment", "action": "Started task", "details": "Sales Dashboard Development", "time": "1 week ago", "icon": "play"}
+    ]
+  }
+}
