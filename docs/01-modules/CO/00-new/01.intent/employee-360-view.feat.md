@@ -838,112 +838,129 @@ sequenceDiagram
 > **Note**: Danh sách APIs từ module Core (CO) cần sử dụng cho Employee 360 View.  
 > APIs đánh dấu `(*)` = chưa có trong Core API Catalogue, cần bổ sung hoặc thuộc module khác.
 
+#### API Type Legend
+
+| Type | Icon | Description |
+|------|------|-------------|
+| **CRUD** | 📋 | Basic Create/Read/Update/Delete operations on entity |
+| **Query** | 🔍 | Search, filter, navigation operations |
+| **Action** | ⚡ | Business action/workflow operations |
+
 ### 11.1 Main API Endpoint
 
-| Method | Path | Description | Source |
-|--------|------|-------------|--------|
-| `GET` | `/api/v1/employees/360/{id}` | **Composite API** - Orchestrate data from all layers | Cần tạo mới (*) |
+| Method | Path | Type | Description | Source |
+|--------|------|------|-------------|--------|
+| `GET` | `/api/v1/employees/360/{id}` | 🔍 Query | **Composite API** - Orchestrate data from all layers | Cần tạo mới (*) |
 
 ### 11.2 Worker Layer APIs
 
-| # | Method | Path | Purpose | API Catalog |
-|---|--------|------|---------|-------------|
-| 1 | `GET` | `/workers/{id}` | Get worker profile (name, DOB, gender, nationality) | core-hr-api-catalog.md |
-| 2 | `GET` | `/workers/{id}/employments` | Get all employment records | core-hr-api-catalog.md |
-| 3 | `GET` | `/contacts/query/by-owner` | Get contacts (phone, email) | person-position-api-catalog.md |
-| 4 | `GET` | `/contacts/query/emergency` | Get emergency contacts | person-position-api-catalog.md |
-| 5 | `GET` | `/addresses/query/by-owner` | Get all addresses | location-geography-api-catalog.md |
-| 6 | `GET` | `/documents/query/by-owner` | Get identity documents | person-position-api-catalog.md |
-| 7 | `GET` | `/worker-qualifications/query/by-worker/{workerId}` | Get education, certifications | person-position-api-catalog.md |
-| 8 | `GET` | `/worker-qualifications/query/education/{workerId}` | Get education records specifically | person-position-api-catalog.md |
-| 9 | `GET` | `/worker-qualifications/query/certifications/{workerId}` | Get certifications specifically | person-position-api-catalog.md |
-| 10 | `GET` | `/worker-relationships/query/emergency-contacts/{workerId}` | Get emergency contact relationships | person-position-api-catalog.md |
-| 11 | `GET` | `/skills/{id}/workers` | Workers possessing specific skill | skills-competencies-api-catalog.md |
+| # | Method | Path | Type | Purpose | API Catalog |
+|---|--------|------|------|---------|-------------|
+| 1 | `GET` | `/workers/{id}` | 📋 CRUD | Get worker profile (name, DOB, gender, nationality) | core-hr-api-catalog.md |
+| 2 | `GET` | `/workers/{id}/employments` | 🔍 Query | Get all employment records | core-hr-api-catalog.md |
+| 3 | `GET` | `/contacts/query/by-owner` | 🔍 Query | Get contacts (phone, email) | person-position-api-catalog.md |
+| 4 | `GET` | `/contacts/query/emergency` | 🔍 Query | Get emergency contacts | person-position-api-catalog.md |
+| 5 | `GET` | `/addresses/query/by-owner` | 🔍 Query | Get all addresses | location-geography-api-catalog.md |
+| 6 | `GET` | `/documents/query/by-owner` | 🔍 Query | Get identity documents | person-position-api-catalog.md |
+| 7 | `GET` | `/worker-qualifications/query/by-worker/{workerId}` | 🔍 Query | Get education, certifications | person-position-api-catalog.md |
+| 8 | `GET` | `/worker-qualifications/query/education/{workerId}` | 🔍 Query | Get education records specifically | person-position-api-catalog.md |
+| 9 | `GET` | `/worker-qualifications/query/certifications/{workerId}` | 🔍 Query | Get certifications specifically | person-position-api-catalog.md |
+| 10 | `GET` | `/worker-relationships/query/emergency-contacts/{workerId}` | 🔍 Query | Get emergency contact relationships | person-position-api-catalog.md |
+| 11 | `GET` | `/skills/{id}/workers` | 🔍 Query | Workers possessing specific skill | skills-competencies-api-catalog.md |
 
 ### 11.3 Working Relationship Layer APIs
 
-| # | Method | Path | Purpose | API Catalog |
-|---|--------|------|---------|-------------|
-| 12 | `GET` | `/work-relationships/{id}` | Get WR details | core-hr-api-catalog.md |
-| 13 | `GET` | `/work-relationships` | List all WRs for a worker (filter by workerId) | core-hr-api-catalog.md |
-| 14 | `GET` | `/legal-entities/{id}` | Get legal entity info | organization-structure-api-catalog.md |
-| 15 | `GET` | `/contracts/{id}` | Get contract details | core-hr-api-catalog.md |
-| 16 | `GET` | `/employees/{id}/contracts` | Get all contracts for employee | core-hr-api-catalog.md |
-| 17 | `GET` | `/work-locations/{id}` | Get work location details | location-geography-api-catalog.md |
+| # | Method | Path | Type | Purpose | API Catalog |
+|---|--------|------|------|---------|-------------|
+| 12 | `GET` | `/work-relationships/{id}` | 📋 CRUD | Get WR details | core-hr-api-catalog.md |
+| 13 | `GET` | `/work-relationships` | 📋 CRUD | List all WRs for a worker (filter by workerId) | core-hr-api-catalog.md |
+| 14 | `GET` | `/legal-entities/{id}` | 📋 CRUD | Get legal entity info | organization-structure-api-catalog.md |
+| 15 | `GET` | `/contracts/{id}` | 📋 CRUD | Get contract details | core-hr-api-catalog.md |
+| 16 | `GET` | `/employees/{id}/contracts` | 🔍 Query | Get all contracts for employee | core-hr-api-catalog.md |
+| 17 | `GET` | `/work-locations/{id}` | 📋 CRUD | Get work location details | location-geography-api-catalog.md |
 
 ### 11.4 Assignment Layer APIs
 
-| # | Method | Path | Purpose | API Catalog |
-|---|--------|------|---------|-------------|
-| 18 | `GET` | `/employees/{id}` | Get employee assignment details | core-hr-api-catalog.md |
-| 19 | `GET` | `/employees/{id}/assignments` | Get all assignments (current + historical) | core-hr-api-catalog.md |
-| 20 | `GET` | `/assignments/{id}` | Get assignment by ID | core-hr-api-catalog.md |
-| 21 | `GET` | `/assignments/{id}/history` | Get assignment history | core-hr-api-catalog.md |
-| 22 | `GET` | `/positions/{id}` | Get position details | person-position-api-catalog.md |
-| 23 | `GET` | `/positions/{id}/assignments` | Get current incumbents | person-position-api-catalog.md |
-| 24 | `GET` | `/jobs/{id}` | Get job template details | job-architecture-api-catalog.md |
-| 25 | `GET` | `/jobs/{id}/profiles` | Get job profiles (descriptions) | job-architecture-api-catalog.md |
-| 26 | `GET` | `/job-levels/{id}` | Get job level details | job-architecture-api-catalog.md |
-| 27 | `GET` | `/business-units/{id}` | Get department/division info | organization-structure-api-catalog.md |
-| 28 | `GET` | `/business-units/{id}/manager` | Get current BU manager | organization-structure-api-catalog.md |
-| 29 | `GET` | `/employees/{id}/directReports` | Get direct reports list | core-hr-api-catalog.md |
+| # | Method | Path | Type | Purpose | API Catalog |
+|---|--------|------|------|---------|-------------|
+| 18 | `GET` | `/employees/{id}` | 📋 CRUD | Get employee assignment details | core-hr-api-catalog.md |
+| 19 | `GET` | `/employees/{id}/assignments` | 🔍 Query | Get all assignments (current + historical) | core-hr-api-catalog.md |
+| 20 | `GET` | `/assignments/{id}` | 📋 CRUD | Get assignment by ID | core-hr-api-catalog.md |
+| 21 | `GET` | `/assignments/{id}/history` | 🔍 Query | Get assignment history | core-hr-api-catalog.md |
+| 22 | `GET` | `/positions/{id}` | 📋 CRUD | Get position details | person-position-api-catalog.md |
+| 23 | `GET` | `/positions/{id}/assignments` | 🔍 Query | Get current incumbents | person-position-api-catalog.md |
+| 24 | `GET` | `/jobs/{id}` | 📋 CRUD | Get job template details | job-architecture-api-catalog.md |
+| 25 | `GET` | `/jobs/{id}/profiles` | 🔍 Query | Get job profiles (descriptions) | job-architecture-api-catalog.md |
+| 26 | `GET` | `/job-levels/{id}` | 📋 CRUD | Get job level details | job-architecture-api-catalog.md |
+| 27 | `GET` | `/business-units/{id}` | 📋 CRUD | Get department/division info | organization-structure-api-catalog.md |
+| 28 | `GET` | `/business-units/{id}/manager` | 🔍 Query | Get current BU manager | organization-structure-api-catalog.md |
+| 29 | `GET` | `/employees/{id}/directReports` | 🔍 Query | Get direct reports list | core-hr-api-catalog.md |
 
 ### 11.5 Compensation APIs
 
-| # | Method | Path | Purpose | API Catalog |
-|---|--------|------|---------|-------------|
-| 30 | `GET` | `/compensation-bases/query/current/{wrId}` | Get current salary | compensation-basis-api-catalog.md |
-| 31 | `GET` | `/compensation-bases/query/by-work-relationship/{wrId}` | Get salary history | compensation-basis-api-catalog.md |
+| # | Method | Path | Type | Purpose | API Catalog |
+|---|--------|------|------|---------|-------------|
+| 30 | `GET` | `/compensation-bases/query/current/{wrId}` | 🔍 Query | Get current salary | compensation-basis-api-catalog.md |
+| 31 | `GET` | `/compensation-bases/query/by-work-relationship/{wrId}` | 🔍 Query | Get salary history | compensation-basis-api-catalog.md |
 
 ### 11.6 Related Data APIs (Thuộc Module Khác)
 
-| # | Method | Path | Purpose | Module | Status |
-|---|--------|------|---------|--------|--------|
-| 32 | `GET` | `/leave-balances/query/by-employee/{empId}` | Get leave balances | Time & Attendance (*) | Chưa có |
-| 33 | `GET` | `/attendance/query/monthly-summary/{empId}` | Get attendance this month | Time & Attendance (*) | Chưa có |
-| 34 | `GET` | `/performance-ratings/query/current/{empId}` | Get current performance rating | Performance Management (*) | Chưa có |
-| 35 | `GET` | `/goals/query/by-employee/{empId}` | Get goals progress | Performance Management (*) | Chưa có |
-| 36 | `GET` | `/benefit-enrollments/query/by-employee/{empId}` | Get benefit enrollments | Benefits (*) | Chưa có |
+| # | Method | Path | Type | Purpose | Module | Status |
+|---|--------|------|------|---------|--------|--------|
+| 32 | `GET` | `/leave-balances/query/by-employee/{empId}` | 🔍 Query | Get leave balances | Time & Attendance (*) | Chưa có |
+| 33 | `GET` | `/attendance/query/monthly-summary/{empId}` | 🔍 Query | Get attendance this month | Time & Attendance (*) | Chưa có |
+| 34 | `GET` | `/performance-ratings/query/current/{empId}` | 🔍 Query | Get current performance rating | Performance Management (*) | Chưa có |
+| 35 | `GET` | `/goals/query/by-employee/{empId}` | 🔍 Query | Get goals progress | Performance Management (*) | Chưa có |
+| 36 | `GET` | `/benefit-enrollments/query/by-employee/{empId}` | 🔍 Query | Get benefit enrollments | Benefits (*) | Chưa có |
 
 ### 11.7 Timeline APIs
 
-| # | Method | Path | Purpose | API Catalog |
-|---|--------|------|---------|-------------|
-| 37 | `GET` | `/employees/{id}/history` | Employment history timeline | core-hr-api-catalog.md |
-| 38 | `GET` | `/assignments/{id}/history` | Assignment change history | core-hr-api-catalog.md |
-| 39 | `GET` | `/compensation-bases/{id}/history` | Salary change history (SCD chain) | compensation-basis-api-catalog.md |
+| # | Method | Path | Type | Purpose | API Catalog |
+|---|--------|------|------|---------|-------------|
+| 37 | `GET` | `/employees/{id}/history` | 🔍 Query | Employment history timeline | core-hr-api-catalog.md |
+| 38 | `GET` | `/assignments/{id}/history` | 🔍 Query | Assignment change history | core-hr-api-catalog.md |
+| 39 | `GET` | `/compensation-bases/{id}/history` | 🔍 Query | Salary change history (SCD chain) | compensation-basis-api-catalog.md |
 
 ### 11.8 Permission APIs
 
-| # | Method | Path | Purpose | API Catalog |
-|---|--------|------|---------|-------------|
-| 40 | `GET` | `/permissions/check` | Check user permissions for target employee | Platform/Security (*) | Cần tạo |
+| # | Method | Path | Type | Purpose | API Catalog |
+|---|--------|------|------|---------|-------------|
+| 40 | `GET` | `/permissions/check` | 🔍 Query | Check user permissions for target employee | Platform/Security (*) | Cần tạo |
 
 ### 11.9 Quick Actions APIs
 
-| # | Action | Method | Path | API Catalog | Status |
-|---|--------|--------|------|-------------|--------|
-| 41 | Transfer | `POST` | `/assignments/{id}/actions/transfer` | core-hr-api-catalog.md | ✅ Available |
-| 42 | Promote | `POST` | `/assignments/{id}/actions/promote` | core-hr-api-catalog.md | ✅ Available |
-| 43 | Change Position | `POST` | `/assignments/{id}/actions/changePosition` | core-hr-api-catalog.md | ✅ Available |
-| 44 | Change Manager | `POST` | `/assignments/{id}/actions/changeManager` | core-hr-api-catalog.md | ✅ Available |
-| 45 | Adjust Compensation | `POST` | `/compensation-bases/{id}/actions/adjustSalary` | compensation-basis-api-catalog.md | ✅ Available |
-| 46 | Terminate | `POST` | `/employees/{id}/actions/terminate` | core-hr-api-catalog.md | ✅ Available |
-| 47 | Schedule Review | `POST` | `/performance-reviews/actions/schedule` | Performance Management (*) | Chưa có |
+| # | Action | Method | Path | Type | API Catalog | Status |
+|---|--------|--------|------|------|-------------|--------|
+| 41 | Transfer | `POST` | `/assignments/{id}/actions/transfer` | ⚡ Action | core-hr-api-catalog.md | ✅ Available |
+| 42 | Promote | `POST` | `/assignments/{id}/actions/promote` | ⚡ Action | core-hr-api-catalog.md | ✅ Available |
+| 43 | Change Position | `POST` | `/assignments/{id}/actions/changePosition` | ⚡ Action | core-hr-api-catalog.md | ✅ Available |
+| 44 | Change Manager | `POST` | `/assignments/{id}/actions/changeManager` | ⚡ Action | core-hr-api-catalog.md | ✅ Available |
+| 45 | Adjust Compensation | `POST` | `/compensation-bases/{id}/actions/adjustSalary` | ⚡ Action | compensation-basis-api-catalog.md | ✅ Available |
+| 46 | Terminate | `POST` | `/employees/{id}/actions/terminate` | ⚡ Action | core-hr-api-catalog.md | ✅ Available |
+| 47 | Schedule Review | `POST` | `/performance-reviews/actions/schedule` | ⚡ Action | Performance Management (*) | Chưa có |
 
 ### 11.10 Summary
 
+#### API Count by Type (Module Core Only)
+
+| Type | Icon | Count | Description |
+|------|------|-------|-------------|
+| CRUD | 📋 | 12 | Basic entity read operations |
+| Query | 🔍 | 21 | Search, filter, navigation |
+| Action | ⚡ | 7 | Business workflow operations |
+| **Total** | - | **40** | - |
+
 #### API Count by Category (Module Core Only)
 
-| Category | Available | Missing (*) | Total |
-|----------|-----------|-------------|-------|
-| Worker Layer | 11 | 0 | 11 |
-| Working Relationship Layer | 6 | 0 | 6 |
-| Assignment Layer | 12 | 0 | 12 |
-| Compensation | 2 | 0 | 2 |
-| Timeline | 3 | 0 | 3 |
-| Quick Actions | 6 | 0 | 6 |
-| **Sub-total Core** | **40** | **0** | **40** |
+| Category | 📋 CRUD | 🔍 Query | ⚡ Action | Total |
+|----------|---------|----------|----------|-------|
+| Worker Layer | 1 | 10 | 0 | 11 |
+| Working Relationship Layer | 5 | 1 | 0 | 6 |
+| Assignment Layer | 6 | 6 | 0 | 12 |
+| Compensation | 0 | 2 | 0 | 2 |
+| Timeline | 0 | 3 | 0 | 3 |
+| Quick Actions | 0 | 0 | 6 | 6 |
+| **Sub-total Core** | **12** | **22** | **6** | **40** |
 
 #### APIs Cần Bổ Sung (Không thuộc Core)
 
