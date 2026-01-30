@@ -1,10 +1,21 @@
 ---
 entity: Contact
-domain: common
-version: "1.0.0"
-status: approved
-owner: Common Domain Team
-tags: [contact, phone, email, emergency, communication]
+domain: person
+version: "2.0.0"
+status: draft
+owner: Core HR Team
+tags: [contact, phone, email, communication, pii]
+
+# =============================================================================
+# DESIGN PRINCIPLE: Contact stores communication methods for a Worker
+# 
+# - PHONE: Phone numbers (mobile, home, work)
+# - EMAIL: Email addresses (personal, work)
+# 
+# NOTE: Emergency contact is NOT a contact type.
+# Emergency contact is a FLAG on WorkerRelationship.
+# Contact info for emergency person is fetched from their Worker.Contact records.
+# =============================================================================
 
 attributes:
   # === IDENTITY ===
@@ -14,37 +25,33 @@ attributes:
     unique: true
     description: Unique internal identifier (UUID format)
   
-  # === OWNER REFERENCE (Polymorphic) ===
-  - name: ownerType
-    type: enum
-    required: true
-    description: Type of entity that owns this contact
-    values: [WORKER, EMPLOYEE, LEGAL_ENTITY, BUSINESS_UNIT]
-  
-  - name: ownerId
+  # === OWNER REFERENCE ===
+  - name: workerId
     type: string
     required: true
-    description: Reference to owner entity (polymorphic - Worker, Employee, LegalEntity, or BusinessUnit)
+    description: FK → Worker.id. The worker who owns this contact.
   
   # === CONTACT TYPE ===
   - name: contactTypeCode
     type: enum
     required: true
-    description: Type of contact information
-    values: [PHONE, EMAIL, EMERGENCY_CONTACT]
+    description: |
+      Type of contact method. References common.contact_type.code.
+      Only communication methods - NOT relationship types.
+    values: [PHONE, EMAIL]
   
   - name: isPrimary
     type: boolean
     required: true
     default: false
-    description: Is this the primary contact of this type for the owner?
+    description: Is this the primary contact of this type for the worker?
   
   # === PHONE ATTRIBUTES (when contactTypeCode = PHONE) ===
   - name: phoneTypeCode
     type: enum
     required: false
     description: Type of phone number (required if contactTypeCode = PHONE)
-    values: [HOME, MOBILE, WORK, FAX, OTHER]
+    values: [MOBILE, HOME, WORK, FAX, OTHER]
   
   - name: phoneNumber
     type: string
@@ -52,9 +59,7 @@ attributes:
     description: Complete phone number (required if contactTypeCode = PHONE)
     constraints:
       maxLength: 30
-    metadata:
-      pii: true
-      sensitivity: medium
+    pii: true
   
   - name: countryCode
     type: string
@@ -80,7 +85,7 @@ attributes:
   - name: deviceTypeCode
     type: enum
     required: false
-    description: Device type
+    description: Device type for phone
     values: [MOBILE, LANDLINE]
   
   # === EMAIL ATTRIBUTES (when contactTypeCode = EMAIL) ===
@@ -88,7 +93,7 @@ attributes:
     type: enum
     required: false
     description: Type of email (required if contactTypeCode = EMAIL)
-    values: [HOME, WORK, OTHER]
+    values: [PERSONAL, WORK, OTHER]
   
   - name: emailAddress
     type: string
@@ -97,71 +102,7 @@ attributes:
     constraints:
       maxLength: 254
       pattern: "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
-    metadata:
-      pii: true
-      sensitivity: medium
-  
-  # === EMERGENCY CONTACT ATTRIBUTES (when contactTypeCode = EMERGENCY_CONTACT) ===
-  - name: emergencyContactName
-    type: string
-    required: false
-    description: Emergency contact person name (required if contactTypeCode = EMERGENCY_CONTACT)
-    constraints:
-      maxLength: 200
-    metadata:
-      pii: true
-      sensitivity: medium
-  
-  - name: relationshipCode
-    type: enum
-    required: false
-    description: Relationship to owner (required if contactTypeCode = EMERGENCY_CONTACT)
-    values: [SPOUSE, PARENT, CHILD, SIBLING, FRIEND, OTHER]
-  
-  - name: emergencyPrimaryPhone
-    type: string
-    required: false
-    description: Primary phone for emergency contact (required if contactTypeCode = EMERGENCY_CONTACT)
-    constraints:
-      maxLength: 30
-    metadata:
-      pii: true
-      sensitivity: high
-  
-  - name: emergencyAlternatePhone
-    type: string
-    required: false
-    description: Alternate phone for emergency contact
-    constraints:
-      maxLength: 30
-    metadata:
-      pii: true
-      sensitivity: high
-  
-  - name: emergencyAddress
-    type: string
-    required: false
-    description: Address of emergency contact
-    constraints:
-      maxLength: 500
-    metadata:
-      pii: true
-      sensitivity: medium
-  
-  - name: emergencyPriority
-    type: integer
-    required: false
-    description: Contact priority (1 = first, 2 = second, etc.)
-    constraints:
-      min: 1
-      max: 10
-  
-  - name: emergencyNotes
-    type: string
-    required: false
-    description: Special instructions for emergency contact
-    constraints:
-      maxLength: 1000
+    pii: true
   
   # === VERIFICATION ===
   - name: isVerified
@@ -180,13 +121,30 @@ attributes:
     type: boolean
     required: true
     default: false
-    description: Is this contact publicly visible (directory, etc.)?
+    description: Is this contact publicly visible (company directory)?
   
   # === METADATA ===
   - name: metadata
     type: json
     required: false
     description: Additional flexible data
+  
+  # === SCD TYPE-2 ===
+  - name: effectiveStartDate
+    type: date
+    required: true
+    description: When this contact becomes effective
+  
+  - name: effectiveEndDate
+    type: date
+    required: false
+    description: When this contact ends (null = current)
+  
+  - name: isCurrentFlag
+    type: boolean
+    required: true
+    default: true
+    description: Is this the current/active version?
   
   # === AUDIT ===
   - name: createdAt
@@ -196,31 +154,18 @@ attributes:
   
   - name: updatedAt
     type: datetime
-    required: true
+    required: false
     description: Last modification timestamp
-  
-  - name: createdBy
-    type: string
-    required: true
-    description: User who created the record
-  
-  - name: updatedBy
-    type: string
-    required: true
-    description: User who last modified the record
 
 relationships:
-  - name: belongsToOwner
-    target: "[Worker|Employee|LegalEntity|BusinessUnit]"
+  - name: belongsToWorker
+    target: Worker
     cardinality: many-to-one
     required: true
-    polymorphic: true
-    description: "Polymorphic owner relationship. Resolved based on ownerType + ownerId. When ownerType=WORKER, inverse is Worker.hasContacts."
-    inverses:
-      WORKER: hasContacts
-      EMPLOYEE: hasContacts
-      LEGAL_ENTITY: hasContacts
-      BUSINESS_UNIT: hasContacts
+    inverse: hasContacts
+    description: |
+      The worker who owns this contact.
+      INVERSE: Worker.hasContacts lists all contact records.
 
 lifecycle:
   states: [ACTIVE, INACTIVE]
@@ -233,45 +178,51 @@ lifecycle:
       guard: Contact no longer valid
 
 policies:
-  - name: OnePrimaryContactPerTypePerOwner
+  # === PRIMARY UNIQUENESS ===
+  - name: OnePrimaryPerType
     type: validation
-    rule: Owner can have at most ONE primary contact of each type
-    expression: "COUNT(Contact WHERE ownerId = X AND ownerType = Y AND contactTypeCode = Z AND isPrimary = true) <= 1"
-    severity: WARNING
+    rule: Worker can have at most ONE primary contact per type
+    expression: "COUNT(Contact WHERE workerId = X AND contactTypeCode = Y AND isPrimary = true AND isCurrentFlag = true) <= 1"
+    severity: ERROR
   
+  # === PHONE VALIDATION ===
   - name: PhoneAttributesRequired
     type: validation
     rule: If contactTypeCode = PHONE, phoneTypeCode and phoneNumber are required
-    expression: "contactTypeCode != PHONE OR (phoneTypeCode IS NOT NULL AND phoneNumber IS NOT NULL)"
+    expression: "contactTypeCode != 'PHONE' OR (phoneTypeCode IS NOT NULL AND phoneNumber IS NOT NULL)"
     severity: ERROR
   
+  # === EMAIL VALIDATION ===
   - name: EmailAttributesRequired
     type: validation
     rule: If contactTypeCode = EMAIL, emailTypeCode and emailAddress are required
-    expression: "contactTypeCode != EMAIL OR (emailTypeCode IS NOT NULL AND emailAddress IS NOT NULL)"
-    severity: ERROR
-  
-  - name: EmergencyContactAttributesRequired
-    type: validation
-    rule: If contactTypeCode = EMERGENCY_CONTACT, emergencyContactName, relationshipCode, and emergencyPrimaryPhone are required
-    expression: "contactTypeCode != EMERGENCY_CONTACT OR (emergencyContactName IS NOT NULL AND relationshipCode IS NOT NULL AND emergencyPrimaryPhone IS NOT NULL)"
+    expression: "contactTypeCode != 'EMAIL' OR (emailTypeCode IS NOT NULL AND emailAddress IS NOT NULL)"
     severity: ERROR
   
   - name: EmailFormatValidation
     type: validation
     rule: Email address must be valid format
-    expression: "emailAddress IS NULL OR emailAddress MATCHES '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$'"
+    expression: "emailAddress IS NULL OR REGEXP_MATCH(emailAddress, '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$')"
     severity: ERROR
   
-  - name: VNPhoneFormatValidation
+  # === VN PHONE FORMAT ===
+  - name: VNMobileFormat
     type: business
-    rule: For VN phone numbers, mobile should be 10 digits (09x, 03x, 07x, 08x)
+    rule: VN mobile should be 10 digits starting with 09x, 03x, 07x, 08x
+    expression: "countryCode != '+84' OR deviceTypeCode != 'MOBILE' OR REGEXP_MATCH(phoneNumber, '^(09|03|07|08)[0-9]{8}$')"
     severity: WARNING
   
-  - name: WorkerEmergencyContactRequired
+  # === EMPLOYEE REQUIREMENTS ===
+  - name: EmployeeShouldHavePrimaryMobile
     type: business
-    rule: Worker should have at least one emergency contact
-    expression: "ownerType != WORKER OR EXISTS(Contact WHERE ownerId = X AND contactTypeCode = EMERGENCY_CONTACT)"
+    rule: Every active employee should have at least one primary mobile phone
+    expression: "Employee should have Contact with contactTypeCode = PHONE and phoneTypeCode = MOBILE and isPrimary = true"
+    severity: WARNING
+  
+  - name: EmployeeShouldHaveWorkEmail
+    type: business
+    rule: Active employee should have work email
+    expression: "Employee should have Contact with contactTypeCode = EMAIL and emailTypeCode = WORK"
     severity: WARNING
 ---
 
@@ -279,14 +230,19 @@ policies:
 
 ## 1. Overview
 
-The **Contact** entity stores communication information including phone numbers, email addresses, and emergency contacts. It is a **polymorphic entity** with **type-specific attributes** - different attributes are used depending on contactTypeCode (PHONE, EMAIL, or EMERGENCY_CONTACT).
+**Contact** entity stores communication methods for a Worker. It supports two contact types: **PHONE** and **EMAIL**.
 
-**Key Concept**:
+**Design Principle**:
 ```
-Contact = Polymorphic owner + Type-specific attributes
-- PHONE: phoneNumber, phoneTypeCode, deviceTypeCode
-- EMAIL: emailAddress, emailTypeCode
-- EMERGENCY_CONTACT: emergencyContactName, relationshipCode, emergencyPrimaryPhone
+Contact = Communication method for a Worker
+
+Contact Types:
+- PHONE: Phone numbers (mobile, home, work, fax)
+- EMAIL: Email addresses (personal, work)
+
+NOT a contact type (handled elsewhere):
+- EMERGENCY_CONTACT → This is a FLAG on WorkerRelationship
+  Emergency info is fetched from related Worker's Contact records
 ```
 
 ```mermaid
@@ -294,127 +250,117 @@ mindmap
   root((Contact))
     Identity
       id
-    Owner (Polymorphic)
-      ownerType
-      ownerId
+      workerId
     Contact Type
       contactTypeCode
+        PHONE
+        EMAIL
       isPrimary
     Phone Attributes
       phoneTypeCode
-      phoneNumber
+        MOBILE
+        HOME
+        WORK
+        FAX
+        OTHER
+      phoneNumber «PII»
       countryCode
       areaCode
       extension
       deviceTypeCode
     Email Attributes
       emailTypeCode
-      emailAddress
-    Emergency Contact
-      emergencyContactName
-      relationshipCode
-      emergencyPrimaryPhone
-      emergencyAlternatePhone
-      emergencyAddress
-      emergencyPriority
-      emergencyNotes
+        PERSONAL
+        WORK
+        OTHER
+      emailAddress «PII»
     Verification
       isVerified
       verifiedAt
     Visibility
       isPublic
+    SCD Type-2
+      effectiveStartDate
+      effectiveEndDate
+      isCurrentFlag
     Lifecycle
       ACTIVE
       INACTIVE
 ```
 
-**Design Rationale**:
-- **Polymorphic Owner**: Same entity for Worker, Employee, LegalEntity, BusinessUnit contacts
-- **Type-Specific Attributes**: Different attributes based on contactTypeCode
-- **VN Phone Format**: Support for VN mobile (10 digits) and landline formats
-- **Emergency Contact**: Full emergency contact info (name, relationship, phones, address)
+**Key Design Decision**:
+> Emergency Contact is NOT a contact type.
+> Emergency contact is a FLAG (`isEmergency`) on `WorkerRelationship`.
+> When you need emergency contact phone → Find relationship → Get related Worker → Get their Contact.
 
 ---
 
 ## 2. Attributes
 
-### 2.1 Identity Attributes
+### 2.1 Identity
+
+| Attribute | Type | Required | Description | DB Column |
+|-----------|------|----------|-------------|-----------|
+| id | UUID | ✓ | Unique identifier | person.contact.id |
+| workerId | UUID | ✓ | Owner worker | person.contact.worker_id |
+
+### 2.2 Contact Type
 
 | Attribute | Type | Required | Description |
 |-----------|------|----------|-------------|
-| id | string | ✓ | Unique internal identifier (UUID) |
+| contactTypeCode | enum | ✓ | PHONE or EMAIL |
+| isPrimary | boolean | ✓ | Is primary for this type? |
 
-### 2.2 Owner Reference (Polymorphic)
+### 2.3 Phone Attributes (when contactTypeCode = PHONE)
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| ownerType | enum | ✓ | WORKER, EMPLOYEE, LEGAL_ENTITY, BUSINESS_UNIT |
-| ownerId | string | ✓ | Reference to owner entity |
-
-### 2.3 Contact Type
-
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| contactTypeCode | enum | ✓ | PHONE, EMAIL, EMERGENCY_CONTACT |
-| isPrimary | boolean | ✓ | Primary contact flag |
-
-### 2.4 Phone Attributes (when contactTypeCode = PHONE)
-
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| phoneTypeCode | enum | ✓* | HOME, MOBILE, WORK, FAX, OTHER |
-| phoneNumber | string | ✓* | Complete phone number |
-| countryCode | string | | Country dialing code (+84) |
-| areaCode | string | | Area code (landlines) |
-| extension | string | | Phone extension |
-| deviceTypeCode | enum | | MOBILE, LANDLINE |
+| Attribute | Type | Required | Description | PII |
+|-----------|------|----------|-------------|-----|
+| phoneTypeCode | enum | ✓* | MOBILE, HOME, WORK, FAX, OTHER | |
+| phoneNumber | string | ✓* | Complete phone number | ✓ |
+| countryCode | string | | Country code (+84) | |
+| areaCode | string | | Area code | |
+| extension | string | | Extension | |
+| deviceTypeCode | enum | | MOBILE, LANDLINE | |
 
 *Required if contactTypeCode = PHONE
 
-### 2.5 Email Attributes (when contactTypeCode = EMAIL)
+**VN Phone Formats**:
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| emailTypeCode | enum | ✓* | HOME, WORK, OTHER |
-| emailAddress | string | ✓* | Email address |
+| Type | Format | Example |
+|------|--------|---------|
+| Mobile | 10 digits: 09x, 03x, 07x, 08x | 0901234567 |
+| Landline | Area code + number | 028-1234-5678 (HCM) |
+| Country code | +84 | +84901234567 |
+
+### 2.4 Email Attributes (when contactTypeCode = EMAIL)
+
+| Attribute | Type | Required | Description | PII |
+|-----------|------|----------|-------------|-----|
+| emailTypeCode | enum | ✓* | PERSONAL, WORK, OTHER | |
+| emailAddress | string | ✓* | Email address | ✓ |
 
 *Required if contactTypeCode = EMAIL
 
-### 2.6 Emergency Contact Attributes (when contactTypeCode = EMERGENCY_CONTACT)
+### 2.5 Verification
 
 | Attribute | Type | Required | Description |
 |-----------|------|----------|-------------|
-| emergencyContactName | string | ✓* | Contact person name |
-| relationshipCode | enum | ✓* | SPOUSE, PARENT, CHILD, SIBLING, FRIEND, OTHER |
-| emergencyPrimaryPhone | string | ✓* | Primary phone |
-| emergencyAlternatePhone | string | | Alternate phone |
-| emergencyAddress | string | | Contact address |
-| emergencyPriority | integer | | Priority (1, 2, 3...) |
-| emergencyNotes | string | | Special instructions |
-
-*Required if contactTypeCode = EMERGENCY_CONTACT
-
-### 2.7 Verification
-
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| isVerified | boolean | ✓ | Contact verified? |
+| isVerified | boolean | ✓ | Has been verified? |
 | verifiedAt | datetime | | Verification timestamp |
 
-### 2.8 Visibility
+### 2.6 Visibility
 
 | Attribute | Type | Required | Description |
 |-----------|------|----------|-------------|
-| isPublic | boolean | ✓ | Publicly visible? |
+| isPublic | boolean | ✓ | Visible in company directory? |
 
-### 2.9 Audit Attributes
+### 2.7 SCD Type-2
 
 | Attribute | Type | Required | Description |
 |-----------|------|----------|-------------|
-| createdAt | datetime | ✓ | Record creation timestamp |
-| updatedAt | datetime | ✓ | Last modification timestamp |
-| createdBy | string | ✓ | User who created record |
-| updatedBy | string | ✓ | User who last modified |
+| effectiveStartDate | date | ✓ | When contact becomes effective |
+| effectiveEndDate | date | | When contact ends |
+| isCurrentFlag | boolean | ✓ | Is current version? |
 
 ---
 
@@ -422,26 +368,32 @@ mindmap
 
 ```mermaid
 erDiagram
-    Worker ||--o{ Contact : "hasContacts (polymorphic)"
-    Employee ||--o{ Contact : "hasContacts (polymorphic)"
-    LegalEntity ||--o{ Contact : "hasContacts (polymorphic)"
-    BusinessUnit ||--o{ Contact : "hasContacts (polymorphic)"
+    Worker ||--o{ Contact : hasContacts
     
     Contact {
-        string id PK
-        enum ownerType
-        string ownerId FK
+        uuid id PK
+        uuid workerId FK
         enum contactTypeCode
+        enum phoneTypeCode
         string phoneNumber
+        enum emailTypeCode
         string emailAddress
-        string emergencyContactName
         boolean isPrimary
+        boolean isVerified
+    }
+    
+    Worker {
+        uuid id PK
+        string firstName
+        string lastName
     }
 ```
 
 ### Related Entities
 
-No explicit relationships defined (polymorphic owner handled via ownerType + ownerId).
+| Entity | Relationship | Cardinality | Description |
+|--------|--------------|-------------|-------------|
+| [[Worker]] | belongsToWorker | N:1 | Contact owner |
 
 ---
 
@@ -451,100 +403,31 @@ No explicit relationships defined (polymorphic owner handled via ownerType + own
 stateDiagram-v2
     [*] --> ACTIVE: Create Contact
     
-    ACTIVE --> INACTIVE: Deactivate (no longer valid)
+    ACTIVE --> INACTIVE: deactivate (no longer valid)
     
     INACTIVE --> [*]
     
     note right of ACTIVE
         Currently valid contact
-        Can be used for communication
-    end note
-    
-    note right of INACTIVE
-        No longer valid
-        Historical record
+        Used for communication
     end note
 ```
 
-### State Descriptions
-
 | State | Description | Allowed Operations |
 |-------|-------------|-------------------|
-| **ACTIVE** | Currently valid contact | Can deactivate |
+| **ACTIVE** | Currently valid | Can deactivate |
 | **INACTIVE** | No longer valid | Read-only, historical |
 
-### Transition Rules
-
-| From | To | Trigger | Guard Condition |
-|------|-----|---------|--------------------|
-| ACTIVE | INACTIVE | deactivate | Contact no longer valid |
-
 ---
 
-## 5. Business Rules Reference
+## 5. Use Cases
 
-### Validation Rules
-- **OnePrimaryContactPerTypePerOwner**: At most ONE primary contact of each type per owner (WARNING)
-- **PhoneAttributesRequired**: If PHONE, phoneTypeCode and phoneNumber required
-- **EmailAttributesRequired**: If EMAIL, emailTypeCode and emailAddress required
-- **EmergencyContactAttributesRequired**: If EMERGENCY_CONTACT, name/relationship/phone required
-- **EmailFormatValidation**: Email must be valid format
-
-### Business Constraints
-- **VNPhoneFormatValidation**: VN mobile should be 10 digits (09x, 03x, 07x, 08x) (WARNING)
-- **WorkerEmergencyContactRequired**: Worker should have emergency contact (WARNING)
-
-### Contact Types
-
-**Phone Types**:
-| Code | Description | VN Example |
-|------|-------------|------------|
-| HOME | Home phone | 028-1234-5678 (landline) |
-| MOBILE | Mobile/Cell | 0901234567 (10 digits) |
-| WORK | Work phone | 028-9876-5432 |
-| FAX | Fax number | 028-1111-2222 |
-| OTHER | Other | - |
-
-**Email Types**:
-| Code | Description |
-|------|-------------|
-| HOME | Personal email |
-| WORK | Work email |
-| OTHER | Other |
-
-**Relationship Types** (Emergency Contact):
-| Code | VN Name |
-|------|---------|
-| SPOUSE | Vợ/Chồng |
-| PARENT | Cha/Mẹ |
-| CHILD | Con |
-| SIBLING | Anh/Chị/Em |
-| FRIEND | Bạn bè |
-| OTHER | Khác |
-
-### VN Phone Format
-- **Country Code**: +84
-- **Mobile**: 09x, 03x, 07x, 08x (10 digits total)
-  - Example: 0901234567
-- **Landline**: Area code + number
-  - Example: 028-1234-5678 (TP.HCM)
-
-### Related Business Rules Documents
-- See `[[contact-management.brs.md]]` for complete business rules catalog
-- See `[[vn-phone-validation.brs.md]]` for VN phone format validation
-- See `[[emergency-contact-procedures.brs.md]]` for emergency contact procedures
-
----
-
-## 6. Use Cases
-
-### Use Case 1: Worker Mobile Phone (VN)
+### Use Case 1: Worker Mobile Phone
 
 ```yaml
 Contact:
   id: "contact-001"
-  ownerType: "WORKER"
-  ownerId: "worker-001"
+  workerId: "worker-001"
   contactTypeCode: "PHONE"
   isPrimary: true
   phoneTypeCode: "MOBILE"
@@ -552,65 +435,95 @@ Contact:
   countryCode: "+84"
   deviceTypeCode: "MOBILE"
   isVerified: true
+  isPublic: false
+  effectiveStartDate: "2024-01-01"
+  isCurrentFlag: true
 ```
 
-### Use Case 2: Employee Work Email
+### Use Case 2: Work Email
 
 ```yaml
 Contact:
   id: "contact-002"
-  ownerType: "EMPLOYEE"
-  ownerId: "emp-001"
+  workerId: "worker-001"
   contactTypeCode: "EMAIL"
   isPrimary: true
   emailTypeCode: "WORK"
   emailAddress: "nguyen.van.a@company.com"
   isVerified: true
-  isPublic: true  # Visible in company directory
+  isPublic: true  # Visible in directory
+  effectiveStartDate: "2024-01-01"
+  isCurrentFlag: true
 ```
 
-### Use Case 3: Emergency Contact
+### Use Case 3: Home Landline
 
 ```yaml
 Contact:
   id: "contact-003"
-  ownerType: "WORKER"
-  ownerId: "worker-001"
-  contactTypeCode: "EMERGENCY_CONTACT"
-  isPrimary: true
-  emergencyContactName: "Nguyễn Thị B"
-  relationshipCode: "SPOUSE"
-  emergencyPrimaryPhone: "0909876543"
-  emergencyAlternatePhone: "028-1234-5678"
-  emergencyAddress: "456 Lê Lợi, Quận 1, TP.HCM"
-  emergencyPriority: 1
-  emergencyNotes: "Gọi vào giờ hành chính"
-```
-
-### Use Case 4: Legal Entity Contact
-
-```yaml
-# Company Phone
-Contact_Phone:
-  ownerType: "LEGAL_ENTITY"
-  ownerId: "le-001"
+  workerId: "worker-001"
   contactTypeCode: "PHONE"
-  phoneTypeCode: "WORK"
+  isPrimary: false
+  phoneTypeCode: "HOME"
   phoneNumber: "028-1234-5678"
-  isPrimary: true
-
-# Company Email
-Contact_Email:
-  ownerType: "LEGAL_ENTITY"
-  ownerId: "le-001"
-  contactTypeCode: "EMAIL"
-  emailTypeCode: "WORK"
-  emailAddress: "info@company.com"
-  isPrimary: true
-  isPublic: true
+  countryCode: "+84"
+  areaCode: "028"
+  deviceTypeCode: "LANDLINE"
+  isVerified: false
+  isPublic: false
+  effectiveStartDate: "2024-01-01"
+  isCurrentFlag: true
 ```
 
 ---
 
-*Document Status: APPROVED - Based on Oracle HCM, SAP SuccessFactors, Workday patterns*  
-*VN Phone Format: Mobile 10 digits (09x, 03x, 07x, 08x)*
+## 6. Emergency Contact Pattern
+
+**Important**: Emergency contact is NOT a contact type. See [[WorkerRelationship.onto.md]].
+
+### How to Get Emergency Contact Phone
+
+```sql
+-- Get emergency contact phone for Worker A
+SELECT 
+    w_related.first_name || ' ' || w_related.last_name AS emergency_contact_name,
+    wr.relation_code,
+    c.phone_number AS emergency_phone,
+    wr.emergency_priority
+FROM person.worker_relationship wr
+JOIN person.worker w_related ON w_related.id = wr.related_worker_id
+LEFT JOIN person.contact c ON c.worker_id = w_related.id 
+    AND c.contact_type_code = 'PHONE'
+    AND c.phone_type_code = 'MOBILE'
+    AND c.is_primary = true
+    AND c.is_current_flag = true
+WHERE wr.worker_id = :worker_a_id
+  AND wr.is_emergency = true
+  AND wr.is_current_flag = true
+ORDER BY wr.emergency_priority;
+```
+
+---
+
+## 7. Business Rules Reference
+
+| Rule | Description |
+|------|-------------|
+| **OnePrimaryPerType** | Max 1 primary contact per type |
+| **PhoneAttributesRequired** | Phone type and number required for PHONE |
+| **EmailAttributesRequired** | Email type and address required for EMAIL |
+| **EmailFormatValidation** | Valid email format |
+| **VNMobileFormat** | VN mobile: 09x, 03x, 07x, 08x (10 digits) |
+| **EmployeeShouldHavePrimaryMobile** | Employee should have mobile |
+| **EmployeeShouldHaveWorkEmail** | Employee should have work email |
+
+### Related Documents
+
+- [[Worker.onto.md]] - Person information
+- [[WorkerRelationship.onto.md]] - Emergency contact flag
+
+---
+
+*Document Status: DRAFT v2.0.0*  
+*Refactored: Removed EMERGENCY_CONTACT type. Emergency is flag on WorkerRelationship.*  
+*References: DBML 1.Core.V4 lines 582-594*

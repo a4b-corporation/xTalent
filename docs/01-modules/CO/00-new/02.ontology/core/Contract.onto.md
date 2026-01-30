@@ -74,11 +74,11 @@ attributes:
     description: Duration unit (DAYS, MONTHS, YEARS)
     values: [DAYS, MONTHS, YEARS]
   
-  # === PROBATION ===
+  # === PROBATION (VN Labor Code 2019 Điều 25-27) ===
   - name: probationStartDate
     type: date
     required: false
-    description: Probation period start date
+    description: Probation period start date (Ngày bắt đầu thử việc)
   
   - name: probationEndDate
     type: date
@@ -88,10 +88,47 @@ attributes:
   - name: probationDays
     type: integer
     required: false
-    description: Probation length in days (max 180 for managers, 60 for specialists, 30 for skilled, 6 for general)
+    description: |
+      Probation length in days (VN Labor Code Điều 25):
+      - Max 180 days: Quản lý DN (Managers per Enterprise Law)
+      - Max 60 days: Chuyên môn cao đẳng+ (College+ professionals)
+      - Max 30 days: Trung cấp chuyên nghiệp (Intermediate vocational)
+      - Max 6 days: Công việc khác (Other work)
     constraints:
       min: 1
       max: 180
+  
+  - name: probationSalaryPercentage
+    type: decimal
+    required: false
+    description: |
+      Percentage of formal salary during probation (VN Labor Code Điều 26).
+      Minimum 85% by law. Example: 85 means probation salary = 85% of baseSalary.
+    default: 85
+    constraints:
+      min: 85
+      max: 100
+  
+  - name: probationEvaluationResult
+    type: enum
+    required: false
+    description: |
+      Final probation outcome. Recorded when probation ends.
+      - PASSED: Chuyển chính thức
+      - FAILED: Không đạt, chấm dứt HĐ
+      - EXTENDED: Gia hạn thử việc (hiếm)
+      - RESIGNED: NLĐ nghỉ việc trong thử việc
+    values: [PASSED, FAILED, EXTENDED, RESIGNED, PENDING]
+  
+  - name: probationEvaluationDate
+    type: date
+    required: false
+    description: Date when probation was evaluated
+  
+  - name: probationEvaluatedById
+    type: string
+    required: false
+    description: Reference to Employee who evaluated probation (manager)
   
   # === NOTICE PERIOD ===
   - name: noticePeriod
