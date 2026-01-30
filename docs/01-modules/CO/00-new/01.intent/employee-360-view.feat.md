@@ -840,11 +840,13 @@ sequenceDiagram
 
 #### API Type Legend
 
-| Type | Icon | Description |
-|------|------|-------------|
-| **CRUD** | 📋 | Basic Create/Read/Update/Delete operations on entity |
-| **Query** | 🔍 | Search, filter, navigation operations |
-| **Action** | ⚡ | Business action/workflow operations |
+> **Theo chuẩn API Catalogue** (core-hr-api-catalog.md và các catalogue khác)
+
+| Type | Icon | Pattern | Description |
+|------|------|---------|-------------|
+| **CRUD** | 📋 | `GET /entities/{id}` | Basic Read operations - đọc entity đơn lẻ |
+| **Query** | 🔍 | `GET /entities/query/{name}` hoặc `GET /entities/{id}/{sub}` | Search, filter, sub-resource navigation |
+| **Business Action** | ⚡ | `POST /entities/{id}/actions/{name}` | Workflow operations - thay đổi state |
 
 ### 11.1 Main API Endpoint
 
@@ -927,33 +929,33 @@ sequenceDiagram
 |---|--------|------|------|---------|-------------|
 | 40 | `GET` | `/permissions/check` | 🔍 Query | Check user permissions for target employee | Platform/Security (*) | Cần tạo |
 
-### 11.9 Quick Actions APIs
+### 11.9 Quick Actions APIs (Business Actions)
 
 | # | Action | Method | Path | Type | API Catalog | Status |
 |---|--------|--------|------|------|-------------|--------|
-| 41 | Transfer | `POST` | `/assignments/{id}/actions/transfer` | ⚡ Action | core-hr-api-catalog.md | ✅ Available |
-| 42 | Promote | `POST` | `/assignments/{id}/actions/promote` | ⚡ Action | core-hr-api-catalog.md | ✅ Available |
-| 43 | Change Position | `POST` | `/assignments/{id}/actions/changePosition` | ⚡ Action | core-hr-api-catalog.md | ✅ Available |
-| 44 | Change Manager | `POST` | `/assignments/{id}/actions/changeManager` | ⚡ Action | core-hr-api-catalog.md | ✅ Available |
-| 45 | Adjust Compensation | `POST` | `/compensation-bases/{id}/actions/adjustSalary` | ⚡ Action | compensation-basis-api-catalog.md | ✅ Available |
-| 46 | Terminate | `POST` | `/employees/{id}/actions/terminate` | ⚡ Action | core-hr-api-catalog.md | ✅ Available |
-| 47 | Schedule Review | `POST` | `/performance-reviews/actions/schedule` | ⚡ Action | Performance Management (*) | Chưa có |
+| 41 | Transfer | `POST` | `/assignments/{id}/actions/transfer` | ⚡ Business Action | core-hr-api-catalog.md | ✅ Available |
+| 42 | Promote | `POST` | `/assignments/{id}/actions/promote` | ⚡ Business Action | core-hr-api-catalog.md | ✅ Available |
+| 43 | Change Position | `POST` | `/assignments/{id}/actions/changePosition` | ⚡ Business Action | core-hr-api-catalog.md | ✅ Available |
+| 44 | Change Manager | `POST` | `/assignments/{id}/actions/changeManager` | ⚡ Business Action | core-hr-api-catalog.md | ✅ Available |
+| 45 | Adjust Compensation | `POST` | `/compensation-bases/{id}/actions/adjustSalary` | ⚡ Business Action | compensation-basis-api-catalog.md | ✅ Available |
+| 46 | Terminate | `POST` | `/employees/{id}/actions/terminate` | ⚡ Business Action | core-hr-api-catalog.md | ✅ Available |
+| 47 | Schedule Review | `POST` | `/performance-reviews/actions/schedule` | ⚡ Business Action | Performance Management (*) | Chưa có |
 
 ### 11.10 Summary
 
 #### API Count by Type (Module Core Only)
 
-| Type | Icon | Count | Description |
-|------|------|-------|-------------|
-| CRUD | 📋 | 12 | Basic entity read operations |
-| Query | 🔍 | 21 | Search, filter, navigation |
-| Action | ⚡ | 7 | Business workflow operations |
-| **Total** | - | **40** | - |
+| Type | Icon | Count | Pattern | Description |
+|------|------|-------|---------|-------------|
+| CRUD | 📋 | 12 | `GET /entities/{id}` | Basic entity read operations |
+| Query | 🔍 | 22 | `GET .../query/...` hoặc `GET .../{id}/{sub}` | Search, filter, sub-resources |
+| Business Action | ⚡ | 6 | `POST .../actions/...` | Workflow operations |
+| **Total** | - | **40** | - | - |
 
 #### API Count by Category (Module Core Only)
 
-| Category | 📋 CRUD | 🔍 Query | ⚡ Action | Total |
-|----------|---------|----------|----------|-------|
+| Category | 📋 CRUD | 🔍 Query | ⚡ Business Action | Total |
+|----------|---------|----------|-------------------|-------|
 | Worker Layer | 1 | 10 | 0 | 11 |
 | Working Relationship Layer | 5 | 1 | 0 | 6 |
 | Assignment Layer | 6 | 6 | 0 | 12 |
