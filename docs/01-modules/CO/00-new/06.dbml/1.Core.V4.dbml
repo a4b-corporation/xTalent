@@ -920,6 +920,7 @@ Table employment.assignment {                // thông tin bổ nhiệm (assignm
   id                   uuid       [pk, default: `gen_random_uuid()`]
   employee_id          uuid       [ref: > employment.employee.id]
   position_id          uuid       [ref: > jobpos.position.id, null]
+  job_id               uuid       [ref: > jobpos.job.id, null]  // NEW 06feb2026: support job-based staffing
   business_unit_id     uuid       [ref: > org_bu.unit.id]
   primary_location_id  uuid       [ref: > facility.work_location.id, null]
   status_code          varchar(50)                              // trạng thái: ACTIVE, SUSPENDED… (common.code_list(ASSIGNMENT_STATUS))
@@ -932,6 +933,61 @@ Table employment.assignment {                // thông tin bổ nhiệm (assignm
   metadata             jsonb                                    // thông tin khác (ví dụ: chi tiết pattern)
   created_at           timestamp  [default: `now()`]
   updated_at           timestamp  [null]
+  
+  Indexes {
+    (employee_id, start_date)
+    (position_id)
+    (job_id)                                                   // NEW 06feb2026: index for job-based queries
+    (business_unit_id)
+    (supervisor_assignment_id)
+  }
+  
+  Note: '''
+  STAFFING MODEL SUPPORT (added 06feb2026):
+  
+  Assignment now supports 3 staffing models based on LegalEntity.staffing_model_code:
+  
+  1. POSITION_BASED (default - strict headcount control):
+     - position_id: REQUIRED
+     - job_id: OPTIONAL (auto-derived from Position.job_id if null)
+     - Use case: Government, large corporations, formal position management
+     - Example:
+       INSERT INTO employment.assignment (employee_id, position_id, business_unit_id)
+       VALUES ('emp-001', 'pos-eng-001', 'bu-eng');
+       -- job_id auto-filled from position.job_id
+  
+  2. JOB_BASED (flexible - no pre-defined positions):
+     - position_id: OPTIONAL (can be null)
+     - job_id: REQUIRED (when position_id is null)
+     - Use case: Startups, consulting firms, agile organizations
+     - Example:
+       INSERT INTO employment.assignment (employee_id, job_id, business_unit_id)
+       VALUES ('emp-002', 'job-backend-senior', 'bu-eng');
+       -- No position needed
+  
+  3. HYBRID (mixed approach):
+     - position_id OR job_id: At least ONE required
+     - Use case: Different rules for different employee tiers
+     - Example (Executive - position-based):
+       INSERT INTO employment.assignment (employee_id, position_id, business_unit_id)
+       VALUES ('emp-003', 'pos-cto', 'bu-exec');
+     - Example (IC - job-based):
+       INSERT INTO employment.assignment (employee_id, job_id, business_unit_id)
+       VALUES ('emp-004', 'job-developer', 'bu-eng');
+  
+  VALIDATION RULES:
+  - At least one of position_id or job_id must be NOT NULL
+  - When position_id is provided and job_id is null, application auto-fills job_id from position.job_id
+  - Staffing model enforcement is done at application layer based on LegalEntity.staffing_model_code
+  
+  MIGRATION NOTES:
+  - Existing records: job_id backfilled from position.job_id
+  - New records: Validate based on legal entity's staffing model
+  - Check constraint: position_id IS NOT NULL OR job_id IS NOT NULL
+  
+  See: Assignment.onto.md for complete business rules
+  See: job-position-staffing-guide.md for usage patterns
+  '''
 }
 
 Table employment.employee_identifier {       // mã định danh khác của nhân viên (phục vụ tích hợp)

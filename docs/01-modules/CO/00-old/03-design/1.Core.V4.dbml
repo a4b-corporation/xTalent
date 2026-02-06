@@ -1,0 +1,1758 @@
+//////////////////////////////////////
+//  SCHEMA: common   –   Master Data
+//////////////////////////////////////
+
+Table common.code_list {                    // tra cứu đa mục đích
+  id              uuid         [pk, default: `gen_random_uuid()`]   // CHANGED from int
+  group_code      varchar(50)                                       // GENDER, MARITAL_STATUS...
+  code            varchar(50)                                       // M, F, SINGLE...
+  display_en      varchar(100)
+  display_local   varchar(100)
+  sort_order      int           [default: 0]
+
+  metadata        jsonb                                           // { "rhFactor":"+","degree":1 }
+  effective_start_date date
+  effective_end_date   date         [null]
+  is_current_flag      boolean      [default: true]               // NEW – cờ hiệu bản ghi hiện tại
+
+  Indexes {
+    (group_code, code) [unique]
+    (group_code, sort_order)
+  }
+}
+
+Table common.currency {                     // ISO-4217
+  id              uuid        [pk, default: `gen_random_uuid()`]    // CHANGED from int
+
+  code            char(3)     [unique]                             // USD, VND
+  name            varchar(100)
+  symbol          varchar(10)
+  decimal_digits  int
+
+  metadata        jsonb                                           // { "minor_unit":"cent","symbol_pos":"prefix" }
+  effective_start_date date
+  effective_end_date   date        [null]
+  is_current_flag      boolean     [default: true]
+}
+
+Table common.time_zone {                    // IANA TZ
+  id              uuid        [pk, default: `gen_random_uuid()`]   // CHANGED from int
+
+  tzid            varchar(100) [unique]                            // Asia/Ho_Chi_Minh
+  offset_hours    decimal(4,2)                                     // +07.00
+  abbreviation    varchar(10)                                      // ICT
+  metadata        jsonb                                           // { "dst":"none" }
+  effective_start_date date
+  effective_end_date   date        [null]
+  is_current_flag      boolean     [default: true]
+}
+
+Table common.industry {                     // ISIC / NAICS cây nhiều cấp
+  id              uuid        [pk, default: `gen_random_uuid()`]   // CHANGED from int
+
+  code            varchar(50)  [unique]
+  name            varchar(255)
+  parent_id       uuid         [ref: > common.industry.id, null]
+
+  metadata        jsonb                                           // { "sector_code":"B","level":2 }
+  effective_start_date date
+  effective_end_date   date        [null]
+  is_current_flag      boolean     [default: true]
+
+  Indexes {
+    (parent_id)
+  }
+}
+
+Table common.contact_type {                 // định nghĩa loại liên hệ
+  id                 uuid        [pk, default: `gen_random_uuid()`]  // CHANGED from int
+
+  code               varchar(50) [unique]                           // MOBILE, WORK_EMAIL...
+  name               varchar(100)
+  channel_category   varchar(20)                                    // PHONE | EMAIL | IM | SOCIAL
+  validation_regex   varchar(255) [null]
+  input_mask         varchar(50)  [null]
+  icon               varchar(50)  [null]
+  sort_order         int          [default: 0]
+
+  metadata           jsonb                                           // { "primary_allowed":true }
+  effective_start_date date
+  effective_end_date   date        [null]
+  is_current_flag      boolean     [default: true]
+
+  Indexes {
+    (channel_category, sort_order)
+  }
+}
+
+Table common.relationship_group {            // nhóm quan hệ
+  id          uuid        [pk, default: `gen_random_uuid()`]        // CHANGED from int
+
+  code        varchar(50)  [unique]                                // FAMILY, FIN_DEP, PROJECT
+  name        varchar(100)
+  description text         [null]
+}
+
+Table common.relationship_type {             // loại quan hệ
+  id                uuid        [pk, default: `gen_random_uuid()`]  // CHANGED from int
+
+  group_id          uuid        [ref: > common.relationship_group.id]   // nhóm quan hệ
+  code              varchar(50)  [unique]                             // FATHER, DAUGHTER...
+  name              varchar(100)
+  inverse_type_id   uuid        [ref: > common.relationship_type.id, null]
+  dependency_flag   boolean      [default: false]                     // true = phụ thuộc kinh tế
+  sort_order        int          [default: 0]
+
+  metadata          jsonb                                           // { "degree":1,"same_household":true }
+  effective_start_date date
+  effective_end_date   date        [null]
+  is_current_flag      boolean     [default: true]
+
+  Indexes {
+    (group_id, sort_order)
+  }
+}
+
+Table common.i18n_text {
+  entity_name    varchar(50)             // "CODE_LIST", "JOB_PROFILE", …
+  entity_id      varchar(50)             // changed 11dec2025: CHANGED from int to varchar(50) to support UUID and other ID types
+  lang_code      char(2)                 // ISO 639-1: "en","vi","fr",…
+  text           varchar(200)            // chuỗi đã dịch
+
+  primary key (entity_name, entity_id, lang_code)
+  Indexes { (entity_name, entity_id) }
+  Note: 'changed 11dec2025: entity_id now varchar(50) to support UUID PKs used throughout the system'
+}
+
+// NEW Jul 2025: Talent Market feature (quản lý Market/thị trường)
+Table common.talent_market {                 // danh mục thị trường (Market)
+  id                     uuid        [pk, default: `gen_random_uuid()`]
+  code                   varchar(50) [unique, not null]            // mã thị trường
+  name_vi                varchar(100) [not null]                   // Tên (tiếng Việt)
+  name_en                varchar(100) [not null]                   // Tên (tiếng Anh)
+  currency_code          char(3)     [ref: > common.currency.code, not null]   // tiền tệ áp dụng
+  parent_id              uuid        [ref: > common.talent_market.id, null]    // thị trường cha (phân cấp)
+  is_cumulative_seniority boolean    [default: false]              // gộp thâm niên liên tục?
+  status                 varchar(20) [default: 'ACTIVE']           // trạng thái (ACTIVE/INACTIVE)
+  effective_start_date   date        [not null]
+  effective_end_date     date        [null]
+  is_current_flag        boolean     [default: true]
+  created_at             timestamp   [default: `now()`]
+  updated_at             timestamp   [null]
+}
+
+Table common.talent_market_hierarchy {       // đóng gói cấu trúc cây thị trường nhiều cấp
+  ancestor_id    uuid [ref: > common.talent_market.id]
+  descendant_id  uuid [ref: > common.talent_market.id]
+  depth          int  [not null]
+
+  Indexes { (ancestor_id, descendant_id) [pk] }
+}
+
+Table common.talent_market_parameter {       // bộ tham số cấu hình theo thị trường
+  id                  uuid      [pk, default: `gen_random_uuid()`]
+  talent_market_id    uuid      [ref: > common.talent_market.id, not null]
+  param_key           varchar(100) [not null]                      // mã tham số
+  param_value         jsonb     [not null]                         // giá trị tham số (có thể phức tạp)
+  effective_start_date date     [not null]
+  effective_end_date   date     [null]
+  is_current_flag      boolean  [default: true]
+  created_at           timestamp [default: `now()`]
+  updated_at           timestamp [null]
+
+  Indexes { (talent_market_id, param_key, effective_start_date) [unique] }
+}
+
+Table common.talent_market_localization {    // cấu hình localization theo thị trường
+  id                   uuid      [pk, default: `gen_random_uuid()`]
+  talent_market_id     uuid      [ref: > common.talent_market.id, not null]
+  locale_code          varchar(10) [not null]                      // mã locale (en-US, vi-VN,…)
+  holiday_calendar     jsonb     [not null]                        // lịch ngày nghỉ lễ
+  date_format          varchar(20) [not null]
+  time_format          varchar(20) [not null]
+  effective_start_date date      [not null]
+  effective_end_date   date      [null]
+  is_current_flag      boolean   [default: true]
+  created_at           timestamp [default: `now()`]
+  updated_at           timestamp [null]
+
+  Indexes { (talent_market_id, locale_code, effective_start_date) [unique] }
+}
+////////////////////////////////////////////////////////////
+//  SCHEMA: talent_market – Cơ hội nội bộ / Gig / Mentoring
+////////////////////////////////////////////////////////////
+
+// Cơ hội (job mở nội bộ, project gig, nhiệm vụ ngắn hạn, mentoring slot...)
+Table talent_market.opportunity {
+  id              uuid        [pk, default: `gen_random_uuid()`]
+  opp_code        varchar(50) [unique]
+  opp_title       varchar(255)
+  opp_type_code   varchar(50)               // ROLE, PROJECT, GIG, MENTORING, SHADOW
+  owner_unit_id   uuid        [ref: > org_bu.unit.id, null]
+  target_job_id   uuid        [ref: > jobpos.job.id, null]      // nếu là role
+  target_position_id uuid     [ref: > jobpos.position.id, null] // nếu là slot thực
+  description     text        [null]
+  requirements    text        [null]
+  skill_require_json jsonb    [null]        // fallback if không dùng opp_skill
+  open_date       date
+  close_date      date        [null]
+  start_date      date        [null]
+  end_date        date        [null]
+  status_code     varchar(50)               // OPEN, CLOSED, FILLED, CANCELLED
+  metadata        jsonb       [null]
+  created_at      timestamp   [default: `now()`]
+  updated_at      timestamp   [null]
+}
+
+// Kỹ năng yêu cầu cho cơ hội (chi tiết thay cho JSON)
+Table talent_market.opportunity_skill {
+  id              uuid        [pk, default: `gen_random_uuid()`]
+  opportunity_id  uuid        [ref: > talent_market.opportunity.id]
+  skill_id        uuid        [ref: > common.skill_master.id]
+  proficiency_level int       [null]
+  years_required  decimal(4,1) [null]
+  mandatory_flag  boolean     [default: false]
+  
+  Indexes { (opportunity_id, skill_id) [unique] }
+}
+
+// Đăng ký tham gia / ứng tuyển nội bộ
+Table talent_market.opportunity_application {
+  id              uuid        [pk, default: `gen_random_uuid()`]
+  opportunity_id  uuid        [ref: > talent_market.opportunity.id]
+  worker_id       uuid        [ref: > person.worker.id]
+  employee_id     uuid        [ref: > employment.employee.id, null] // nếu worker đã là employee
+  apply_date      timestamp   [default: `now()`]
+  status_code     varchar(50) // APPLIED, SHORTLIST, SELECTED, REJECTED, WITHDRAWN
+  comments        text        [null]
+  metadata        jsonb       [null]
+  
+  Indexes { (opportunity_id, worker_id) [unique] }
+}
+
+
+//JUL 2025
+////////////////////////////////////////////////////////////
+//  SCHEMA: common – Skill & Competency Master Catalogs
+////////////////////////////////////////////////////////////
+
+// Skill category (optional hierarchy)
+Table common.skill_category {
+  id              uuid        [pk, default: `gen_random_uuid()`]
+  category_code   varchar(50) [unique]
+  category_name   varchar(255)
+  parent_id       uuid        [ref: > common.skill_category.id, null]
+  description     text        [null]
+  metadata        jsonb       [null]
+  is_active       boolean     [default: true]
+}
+
+// Skill master
+Table common.skill_master {
+  id              uuid        [pk, default: `gen_random_uuid()`]
+  skill_code      varchar(50) [unique]
+  skill_name      varchar(255)
+  category_id     uuid        [ref: > common.skill_category.id, null]
+  description     text        [null]
+  proficiency_scale_code varchar(50) [null]   // link code_list(SKILL_SCALE)
+  metadata        jsonb       [null]
+  is_active       boolean     [default: true]
+  effective_start_date date     [not null]
+  effective_end_date   date     [null]
+  is_current_flag      boolean  [default: true]
+}
+
+// Competency category
+Table common.competency_category {
+  id              uuid        [pk, default: `gen_random_uuid()`]
+  category_code   varchar(50) [unique]
+  category_name   varchar(255)
+  parent_id       uuid        [ref: > common.competency_category.id, null]
+  description     text        [null]
+  metadata        jsonb       [null]
+  is_active       boolean     [default: true]
+}
+
+// Competency master
+Table common.competency_master {
+  id              uuid        [pk, default: `gen_random_uuid()`]
+  competency_code varchar(50) [unique]
+  competency_name varchar(255)
+  category_id     uuid        [ref: > common.competency_category.id, null]
+  description     text        [null]
+  scale_code      varchar(50) [null]    // e.g. BEHAVIORAL_SCALE
+  metadata        jsonb       [null]
+  is_active       boolean     [default: true]
+}
+
+///////////////////////////////////////
+//  SCHEMA: geo   –   Geographic Master Data
+///////////////////////////////////////
+
+Table geo.country {                         // quốc gia (ISO-3166)
+  id              uuid      [pk, default: `gen_random_uuid()`]
+
+  code_alpha2     char(2)   [unique]                            // VN
+  name_en         varchar(255)                                  // Vietnam
+  native_name     varchar(255) [null]                           // Việt Nam
+
+  metadata        jsonb                                         // { "alpha3":"VNM","numeric":"704","region":"Asia","phone":"+84" }
+  effective_start_date date
+  effective_end_date   date    [null]
+  is_current_flag      boolean [default: true]
+}
+
+Table geo.admin_area {                       // đơn vị hành chính (tỉnh/thành, quận/huyện, phường/xã)
+  id              uuid      [pk, default: `gen_random_uuid()`]
+
+  parent_id       uuid      [ref: > geo.admin_area.id, null]    // null = cấp tỉnh (top level)
+  country_id      uuid      [ref: > geo.country.id]
+  level           smallint                                     // 1=Province/City, 2=District, 3=Ward
+  code            varchar(20)
+  name_en         varchar(255)
+  native_name     varchar(255) [null]
+  latitude        decimal(9,6) [null]
+  longitude       decimal(9,6) [null]
+
+  metadata        jsonb                                        // { "type":"City","population":9600000 }
+  effective_start_date date
+  effective_end_date   date    [null]
+  is_current_flag      boolean [default: true]
+
+  Indexes {
+    (country_id, level, code)
+  }
+}
+
+// ************************
+//  SCHEMA: org_legal   –   Pháp nhân (Legal Entity)
+// ************************
+
+Table org_legal.entity_type {
+  id              uuid       [pk, default: `gen_random_uuid()`]   // CHANGED from serial
+  code            varchar(50)                                    // COMPANY, BRANCH…
+  name            varchar(100)
+  level_order     smallint
+  metadata        jsonb                                          // { "allowed_parent":["COMPANY"] }
+  
+  effective_start_date  date
+  effective_end_date    date       [null]
+  is_current_flag       boolean    [default: true]
+  
+  Indexes { (code, effective_start_date) [unique] }
+}
+
+Table org_legal.entity {       // hồ sơ pháp nhân (công ty/chi nhánh)
+  id                    uuid       [pk, default: `gen_random_uuid()`]
+  code                  varchar(50)                                // mã pháp nhân (duy nhất trong hệ thống)
+  // name               varchar(150)                              // DEPRECATED – replaced by name_vi and name_en
+  name_vi               varchar(150)                               // Tên pháp nhân (tiếng Việt)
+  name_en               varchar(150) [null]                        // Tên pháp nhân (tiếng Anh)
+  type_id               uuid       [ref: > org_legal.entity_type.id]
+  parent_id             uuid       [ref: > org_legal.entity.id, null]   // pháp nhân cha (cây pháp nhân tập đoàn)
+  path                  varchar(255)                                   // path chuỗi cây: /<parent>/<child>/…
+  // country_code       char(2)    [ref: > geo.country.code_alpha2, null]  // changed 11dec2025: OPTIONAL - quốc gia đăng ký pháp lý (for legal jurisdiction)
+  // registration_num   varchar(100) [null]                         // MOVED to org_legal.entity_profile
+  // tax_id            varchar(50)  [null]                         // MOVED to org_legal.entity_profile
+  // metadata          jsonb                                       // MOVED to org_legal.entity_profile (thông tin mở rộng)
+  
+  // changed 06feb2026: ADDED - Staffing Model Configuration (from LegalEntity ontology)
+  // Determines how employee assignments link to organization structure
+  // Values: POSITION_BASED (default) | JOB_BASED | HYBRID
+  // - POSITION_BASED: positionId required for all assignments, jobId auto-derived from Position.jobId
+  // - JOB_BASED: jobId required (positionId optional for tracking)
+  // - HYBRID: Either positionId OR jobId must be provided
+  // Industry pattern: Oracle HCM (Position Management), Workday, SAP SuccessFactors
+  staffing_model_code   varchar(20) [null, default: 'POSITION_BASED']  // POSITION_BASED, JOB_BASED, HYBRID
+  
+  effective_start_date  date
+  effective_end_date    date       [null]
+  is_current_flag       boolean    [default: true]
+
+  Indexes { 
+    (parent_id, code) [unique],
+    (code, effective_start_date) [unique] 
+    // (country_code)                                             // changed 11dec2025: OPTIONAL index if country_code added
+  }
+  Note: '''
+    changed 11dec2025: OPTIONAL - Consider adding country_code for legal jurisdiction (per ontology), currently can be stored in entity_profile.address1_country_code
+    changed 06feb2026: ADDED staffing_model_code - Configures Position-based vs Job-based staffing model per legal entity. Enforces Assignment validation constraints. See LegalEntity.onto.md and Assignment.onto.md for business rules.
+  '''
+}
+
+// NEW: Extended Legal Entity Information (Profile)
+Table org_legal.entity_profile {    // thông tin chi tiết của pháp nhân
+  legal_entity_id       uuid       [pk, ref: > org_legal.entity.id]      // trỏ đến pháp nhân
+  logo_url              varchar(255) [null]                             // URL logo công ty
+  legal_name_local      varchar(255) [null]                             // Tên đầy đủ tiếng Việt (tên pháp lý)
+  legal_name_en         varchar(255) [null]                             // Tên đầy đủ tiếng Anh
+  group_name            varchar(255) [null]                             // Tên tập đoàn (nếu có)
+  address1_country_code char(2)    [ref: > geo.country.code_alpha2, null] // Quốc gia địa chỉ 1
+  address1_admin_area_id uuid      [ref: > geo.admin_area.id, null]       // Địa giới hành chính địa chỉ 1
+  address1_street       varchar(255) [null]                              // Địa chỉ 1 (số nhà, đường,...)
+  address1_postal_code  varchar(20)  [null]                              // Mã bưu chính địa chỉ 1
+  address2_country_code char(2)    [ref: > geo.country.code_alpha2, null] // Quốc gia địa chỉ 2
+  address2_admin_area_id uuid      [ref: > geo.admin_area.id, null]       // Địa giới hành chính địa chỉ 2
+  address2_street       varchar(255) [null]                              // Địa chỉ 2
+  address2_postal_code  varchar(20)  [null]
+  phone                 varchar(50)  [null]                              // Điện thoại
+  fax                   varchar(50)  [null]                              // Fax
+  email                 varchar(100) [null]                              // Email liên hệ
+  email_suffix          varchar(100) [null]                              // Hậu tố email (domain công ty)
+  website               varchar(255) [null]                              // Website
+  tagline               varchar(255) [null]                              // Khẩu hiệu (tagline)
+  is_head_office        boolean      [default: false]                    // true nếu là công ty đầu não (head office)
+  is_member             boolean      [default: true]                     // true nếu là công ty thành viên (trong tập đoàn)
+  ceo_worker_id         uuid        [ref: > person.worker.id, null]      // CEO (trỏ đến nhân sự nếu có trong hệ thống)
+  tax_id                varchar(50)  [null]                              // Mã số thuế
+  insurance_type_code   varchar(50)  [null]                              // Loại hình BH (common.code_list(INSURANCE_TYPE))
+  description           text         [null]                              // Mô tả khác
+  metadata              jsonb        [null]                              // Thông tin mở rộng khác
+  active                boolean      [default: true]                     // Trạng thái hoạt động
+}
+
+// NEW: Legal Entity Representatives (Legal Rep / Authorized Rep / CEO)
+Table org_legal.entity_representative {    // người đại diện pháp luật hoặc được uỷ quyền của pháp nhân
+  id                  uuid    [pk, default: `gen_random_uuid()`]
+  legal_entity_id     uuid    [ref: > org_legal.entity.id]               // pháp nhân
+  rep_type_code       varchar(50)                                       // loại đại diện: LEGAL_REP, AUTH_REP, CEO (common.code_list(ENTITY_REP_TYPE))
+  worker_id           uuid    [ref: > person.worker.id]                 // người đại diện (trỏ đến hồ sơ nhân sự)
+  document_id         uuid    [ref: > person.document.id, null]         // giấy tờ uỷ quyền (nếu có)
+  metadata            jsonb   [null]                                   // thông tin bổ sung (số quyết định, ghi chú,...)
+  effective_start_date date
+  effective_end_date   date   [null]
+  is_current_flag      boolean [default: true]
+
+  Indexes { (legal_entity_id, rep_type_code, effective_start_date) [unique] }
+}
+
+// NEW: Business License Information
+Table org_legal.entity_license {           // giấy phép đăng ký kinh doanh của pháp nhân
+  id               uuid    [pk, default: `gen_random_uuid()`]
+  legal_entity_id  uuid    [ref: > org_legal.entity.id]
+  license_number   varchar(100)                                   // Số giấy phép
+  issue_date       date                                           // Ngày cấp giấy phép
+  issued_by        varchar(255) [null]                            // Cơ quan cấp [tùy chọn]
+  metadata         jsonb    [null]                                // thông tin khác (file đính kèm...)
+  effective_start_date date
+  effective_end_date   date   [null]
+  is_current_flag      boolean [default: true]
+
+  Indexes { (legal_entity_id, license_number, effective_start_date) [unique] }
+}
+
+// NEW: Legal Entity Bank Accounts
+Table org_legal.entity_bank_account {      // tài khoản ngân hàng của pháp nhân
+  id               uuid       [pk, default: `gen_random_uuid()`]
+  legal_entity_id  uuid       [ref: > org_legal.entity.id]
+  bank_name        varchar(255)                                    // Tên ngân hàng
+  account_number   varchar(100)                                    // Số tài khoản
+  account_holder   varchar(255) [null]                             // Chủ tài khoản (nếu khác pháp nhân)
+  currency_code    char(3)    [ref: > common.currency.code]        // Loại tiền tệ
+  is_primary       boolean    [default: false]                     // có phải TK chính?
+  metadata         jsonb      [null]
+  created_at       timestamp  [default: `now()`]
+  updated_at       timestamp  [null]
+
+  Indexes { (legal_entity_id, account_number) [unique] }
+}
+
+// =============================================================
+//  SCHEMA: org_bu      –   Đơn vị vận hành (Business Unit)
+// =============================================================
+
+Table org_bu.type {
+  id              uuid       [pk, default: `gen_random_uuid()`]   // CHANGED from serial
+  code            varchar(50) [unique]                           // DIV, DEPT, TEAM…
+  name            varchar(100)
+  level_order     smallint
+  metadata        jsonb                                        // { "allowed_child":["TEAM"] }
+  effective_start_date date
+  effective_end_date   date    [null]
+  is_current_flag      boolean [default: true]
+}
+
+Table org_bu.unit {
+  id              uuid       [pk, default: `gen_random_uuid()`]
+  code            varchar(50) [unique]                           // mã đơn vị
+  name            varchar(150)
+  type_id         uuid       [ref: > org_bu.type.id]
+  parent_id       uuid       [ref: > org_bu.unit.id, null]       // đơn vị cha (cây đơn vị)
+  // legal_entity_id uuid    [ref: > org_legal.entity.id, null]   // REMOVED – use legal_entity_code
+  legal_entity_code varchar(50) [null]                           // mã pháp nhân liên kết (org_legal.entity.code)
+  path            varchar(255)
+  manager_employee_id uuid   [ref: > employment.employee.id, null]  // changed 11dec2025: ADDED - BU manager (must be Employee, not Worker)
+  status_code     varchar(50)                                    // trạng thái đơn vị (common.code_list(STATUS))
+  metadata        jsonb                                         // region, cost_center…
+  effective_start_date date
+  effective_end_date   date    [null]
+  is_current_flag      boolean [default: true]
+
+  Indexes {
+    (parent_id, code) [unique]    // bảo đảm code không trùng trong cùng cấp
+    (manager_employee_id)         // changed 11dec2025: ADDED index for manager lookups
+    // (parent_id, legal_entity_id)                         // removed index (not needed with code link)
+  }
+  Note: 'changed 11dec2025: Added manager_employee_id per ontology - manager must be active Employee with organizational authority'
+}
+
+// ----------  TAG & GROUP (linh hoạt cho BU) --------------------------
+Table org_bu.tag {
+  bu_id      uuid       [ref: > org_bu.unit.id]
+  tag_code   varchar(50)                                  // nhãn (common.code_list(BU_TAG))
+  assigned_at date       [default: `current_date`]
+
+  Indexes { (bu_id, tag_code) [unique] }
+}
+
+// =============================================================
+//  SCHEMA: org_relation –  Cấu trúc quan hệ động (tùy ý)
+// =============================================================
+
+Table org_relation.schema {                  // mô tả định nghĩa “cây” tùy chỉnh
+  id            uuid       [pk, default: `gen_random_uuid()`]   // CHANGED from serial
+  code          varchar(50) [unique]         // FIN_HIER, RISK_CHAIN…
+  name          varchar(150)
+  root_scope    varchar(20)                  // LE | BU (điểm xuất phát)
+  metadata      jsonb                        // rule bổ sung (maxDepth…)
+  is_active     boolean  [default: true]
+}
+
+Table org_relation.type {
+  id            uuid       [pk, default: `gen_random_uuid()`]   // CHANGED from serial
+  code          varchar(50) [unique]         // OWNERSHIP, REPORTING…
+  name          varchar(150)
+  metadata      jsonb
+  is_active     boolean [default: true]
+}
+
+Table org_relation.edge {                    // quan hệ động giữa các đơn vị/pháp nhân (đa đồ thị)
+  id              uuid       [pk, default: `gen_random_uuid()`]
+  schema_id       uuid       [ref: > org_relation.schema.id]
+  from_bu_id      uuid       [ref: > org_bu.unit.id, null]
+  to_bu_id        uuid       [ref: > org_bu.unit.id, null]
+  from_le_id      uuid       [ref: > org_legal.entity.id, null]
+  to_le_id        uuid       [ref: > org_legal.entity.id, null]
+  rel_type_id     uuid       [ref: > org_relation.type.id]
+  metadata        jsonb                                    // weight, percentage…
+  effective_start_date date
+  effective_end_date   date    [null]
+  is_current_flag      boolean [default: true]
+
+  Indexes { (schema_id, from_bu_id, to_bu_id, rel_type_id) [unique] }
+}
+
+// =============================================================
+//  SCHEMA: org_assignment –  Giao nhiệm vụ/ủy quyền (BU roles)
+// =============================================================
+
+Table org_assignment.unit_role {
+  id              uuid       [pk, default: `gen_random_uuid()`]
+  bu_id           uuid       [ref: > org_bu.unit.id]
+  assignee_kind   varchar(10)                                   // USER | BU
+  assignee_id     uuid
+  role_code       varchar(50)                                   // vai trò (common.code_list(BU_ROLE))
+  assigned_from   date
+  assigned_to     date       [null]
+  metadata        jsonb
+}
+
+// =============================================================
+//  SCHEMA: org_snapshot –  Lưu vết lịch sử cấu trúc (snapshot nhẹ)
+// =============================================================
+
+Table org_snapshot.unit {
+  bu_id        uuid [ref: > org_bu.unit.id]
+  snapshot_dt  date
+  data         jsonb
+}
+
+Table org_snapshot.entity {
+  entity_id    uuid [ref: > org_legal.entity.id]
+  snapshot_dt  date
+  data         jsonb
+}
+
+// ************************
+//  SCHEMA: person – Hồ sơ cá nhân (Worker)
+// ************************
+
+Table person.worker {                           // thông tin cơ bản người lao động
+  id                uuid       [pk, default: `gen_random_uuid()`]         // bất biến suốt đời
+  first_name        varchar(100) [not null]
+  middle_name       varchar(100) [null]
+  last_name         varchar(100) [not null]
+  preferred_name    varchar(100) [null]
+  date_of_birth     date
+  gender_code       varchar(50)                            // giới tính (common.code_list(GENDER))
+  nationality_code  char(2)                                // quốc tịch (ISO 3166-1 alpha-2)
+  marital_status_code varchar(50) [null]                   // tình trạng hôn nhân (common.code_list(MARITAL_STATUS))
+  metadata          jsonb                                  // ethnicity, religion, blood_type, avatar…
+  created_at        timestamp    [default: `now()`]
+  updated_at        timestamp    [null]
+}
+
+Table person.contact {                         // liên hệ của người lao động
+  id                uuid       [pk, default: `gen_random_uuid()`]
+  worker_id         uuid       [ref: > person.worker.id]
+  contact_type_code varchar(50)                           // loại liên hệ (common.contact_type.code)
+  contact_value     varchar(255)
+  is_primary        boolean    [default: false]
+  metadata          jsonb
+  effective_start_date date
+  effective_end_date   date       [null]
+  is_current_flag      boolean    [default: true]
+  created_at        timestamp  [default: `now()`]
+  updated_at        timestamp  [null]
+}
+
+Table person.address {                         // địa chỉ của người lao động
+  id                 uuid       [pk, default: `gen_random_uuid()`]
+  worker_id          uuid       [ref: > person.worker.id]
+  address_type_code  varchar(50)                            // loại địa chỉ (common.code_list(ADDRESS_TYPE))
+  admin_area_id      uuid       [ref: > geo.admin_area.id]   // đơn vị hành chính nhỏ nhất (Ward)
+  street_line        varchar(255)
+  postal_code        varchar(20) [null]
+  is_primary         boolean    [default: false]
+  metadata           jsonb
+  effective_start_date date
+  effective_end_date   date       [null]
+  is_current_flag      boolean    [default: true]
+  created_at         timestamp  [default: `now()`]
+  updated_at         timestamp  [null]
+}
+
+Table person.document {                        // tài liệu tùy thân (CMND/CCCD, Passport, ...)
+  id               uuid       [pk, default: `gen_random_uuid()`]
+  worker_id        uuid       [ref: > person.worker.id]
+  doc_type_code    varchar(50)                            // loại giấy tờ (common.code_list(DOCUMENT_TYPE))
+  doc_number       varchar(100)
+  issue_date       date       [null]
+  expiry_date      date       [null]
+  issuing_country  char(2)    [null]
+  is_primary       boolean    [default: false]
+  file_url         varchar(255) [null]
+  metadata         jsonb
+  created_at       timestamp  [default: `now()`]
+  updated_at       timestamp  [null]
+}
+
+Table person.bank_account {                    // tài khoản ngân hàng cá nhân
+  id               uuid       [pk, default: `gen_random_uuid()`]
+  worker_id        uuid       [ref: > person.worker.id]
+  bank_name        varchar(255)
+  account_number   varchar(100)
+  account_holder   varchar(255) [null]
+  currency_code    char(3)     // loại tiền tệ (common.currency.code)
+  is_primary       boolean     [default: false]
+  metadata         jsonb
+  created_at       timestamp   [default: `now()`]
+  updated_at       timestamp   [null]
+}
+
+Table person.worker_relationship {             // quan hệ của người lao động (thân nhân, người phụ thuộc,...)
+  id                 uuid       [pk, default: `gen_random_uuid()`]
+  worker_id          uuid       [ref: > person.worker.id]           // chủ thể (người lao động)
+  related_worker_id  uuid       [ref: > person.worker.id, null]     // nếu thân nhân cũng có hồ sơ trong hệ thống
+  full_name          varchar(255) [null]                           // tên đầy đủ (nếu không liên kết hồ sơ)
+  relation_code      varchar(50)                                   // quan hệ (common.relationship_type.code)
+  is_emergency       boolean    [default: false]                   // liên hệ khẩn cấp
+  dependency_flag    boolean    [default: false]                   // phụ thuộc kinh tế
+  beneficiary_flag   boolean    [default: false]                   // NEW – thụ hưởng (beneficiary)
+  visa_sponsor_flag  boolean    [default: false]                   // NEW – bảo lãnh visa/relocation
+  metadata           jsonb      // thông tin khác (ngày sinh, ghi chú…)
+  effective_start_date date
+  effective_end_date   date     [null]
+  is_current_flag      boolean  [default: true]
+  created_at         timestamp  [default: `now()`]
+  updated_at         timestamp  [null]
+}
+
+Table person.worker_relationship_contact {    // thông tin liên hệ của thân nhân
+  id                uuid       [pk, default: `gen_random_uuid()`]
+  relationship_id   uuid       [ref: > person.worker_relationship.id]
+  contact_type_code varchar(50)                           // loại liên hệ (common.contact_type.code)
+  contact_value     varchar(255)
+  is_primary        boolean    [default: false]
+  effective_start_date date
+  effective_end_date   date    [null]
+  is_current_flag      boolean [default: true]
+
+  Indexes { (relationship_id, contact_type_code, effective_start_date) [unique] }
+}
+
+Table person.worker_qualification {           // bằng cấp, chứng chỉ, kỹ năng của người lao động
+  id               uuid       [pk, default: `gen_random_uuid()`]
+  worker_id        uuid       [ref: > person.worker.id]
+  qual_type_code   varchar(50)                            // loại (common.code_list(QUAL_TYPE): EDU, CERT, LANG, SKILL…)
+  name             varchar(255)                           // tên văn bằng/chứng chỉ/kỹ năng
+  institution      varchar(255) [null]                    // nơi cấp
+  start_date       date       [null]
+  end_date         date       [null]
+  level_or_score   varchar(50) [null]                     // mức độ hoặc điểm số
+  metadata         jsonb      // field_of_study, grade, file_url…
+  effective_start_date  date
+  effective_end_date    date   [null]
+  is_current_flag       boolean [default: true]
+  created_at       timestamp  [default: `now()`]
+  updated_at       timestamp  [null]
+}
+
+Table person.photo {                           // ảnh đại diện của người lao động
+  worker_id        uuid       [pk, ref: > person.worker.id]
+  file_url         varchar(255)
+  uploaded_at      timestamp  [default: `now()`]
+}
+
+
+// JUL 2025
+
+////////////////////////////////////////////////////////////
+//  person.worker_skill – Hồ sơ kỹ năng thực tế của Worker
+////////////////////////////////////////////////////////////
+Table person.worker_skill {
+  id              uuid        [pk, default: `gen_random_uuid()`]
+  worker_id       uuid        [ref: > person.worker.id]
+  skill_id        uuid        [ref: > common.skill_master.id]
+  proficiency_level int       [null]          // 1..5 hoặc theo scale_code
+  years_experience decimal(4,1) [null]
+  last_used_date  date        [null]
+  source_code     varchar(50) [null]          // SELF, MANAGER, CERT, ASSESS
+  verified_flag   boolean     [default: false]
+  metadata        jsonb       [null]
+  effective_start_date date
+  effective_end_date   date    [null]
+  is_current_flag      boolean [default: true]
+  
+  Indexes { (worker_id, skill_id, effective_start_date) [unique] }
+}
+
+////////////////////////////////////////////////////////////
+//  person.worker_competency – Đánh giá năng lực / hành vi
+////////////////////////////////////////////////////////////
+Table person.worker_competency {
+  id              uuid        [pk, default: `gen_random_uuid()`]
+  worker_id       uuid        [ref: > person.worker.id]
+  competency_id   uuid        [ref: > common.competency_master.id]
+  rating_value    decimal(5,2) [null]        // số điểm
+  rating_scale_code varchar(50) [null]
+  assessed_date   date        [null]
+  assessed_by_worker_id uuid   [ref: > person.worker.id, null]   // ai đánh giá
+  source_code     varchar(50)  [null]       // SELF, MGR, 360, SURVEY
+  metadata        jsonb        [null]
+  effective_start_date date
+  effective_end_date   date    [null]
+  is_current_flag      boolean [default: true]
+  
+  Indexes { (worker_id, competency_id, effective_start_date) [unique] }
+}
+
+////////////////////////////////////////////////////////////
+//  person.worker_interest – Sở thích nghề nghiệp / định hướng
+////////////////////////////////////////////////////////////
+Table person.worker_interest {
+  id              uuid        [pk, default: `gen_random_uuid()`]
+  worker_id       uuid        [ref: > person.worker.id]
+  interest_type_code varchar(50)            // ROLE, LOCATION, SKILL, PROJECT...
+  interest_value  varchar(255)              // e.g. "Data Science", "Singapore"
+  priority_rank   smallint     [null]
+  metadata        jsonb        [null]
+  effective_start_date date
+  effective_end_date   date     [null]
+  is_current_flag      boolean  [default: true]
+  
+  Indexes { (worker_id, interest_type_code, interest_value, effective_start_date) [unique] }
+}
+
+//////////////////////////////////////////////////////////
+//  SCHEMA: employment – Quan hệ lao động & Assignment
+//////////////////////////////////////////////////////////
+
+// changed 11dec2025: ADDED - Work Relationship table from ontology (missing in v3)
+Table employment.work_relationship {          // quan hệ lao động (Work Relationship) - phân loại worker
+  id                uuid       [pk, default: `gen_random_uuid()`]
+  worker_id         uuid       [ref: > person.worker.id]          // người lao động
+  relationship_type_code varchar(50)                              // loại quan hệ: EMPLOYEE, CONTRACTOR, CANDIDATE, ALUMNI (common.code_list(WORK_REL_TYPE))
+  legal_entity_code varchar(50) [null]                            // pháp nhân liên quan (nếu có)
+  start_date        date                                          // ngày bắt đầu quan hệ
+  end_date          date       [null]                             // ngày kết thúc (nếu có)
+  status_code       varchar(50)                                   // trạng thái: ACTIVE, INACTIVE (common.code_list(WR_STATUS))
+  metadata          jsonb      [null]                             // thông tin bổ sung
+  effective_start_date date
+  effective_end_date   date    [null]
+  is_current_flag      boolean [default: true]
+  created_at        timestamp  [default: `now()`]
+  updated_at        timestamp  [null]
+
+  Indexes { 
+    (worker_id, relationship_type_code, effective_start_date) [unique],
+    (relationship_type_code, status_code)                         // for filtering by type and status
+  }
+  Note: 'changed 11dec2025: ADDED from ontology - tracks worker classification (Employee/Contractor/Candidate/Alumni)'
+}
+
+Table employment.employee {                   // thông tin Employment của Worker (trong một pháp nhân)
+  id                uuid       [pk, default: `gen_random_uuid()`]
+  worker_id         uuid       [ref: > person.worker.id]
+  // legal_entity_id uuid      [ref: > org_legal.entity.id]      // công ty ký HĐLĐ - REPLACED by legal_entity_code
+  legal_entity_code varchar(50)                                // mã pháp nhân ký HĐLĐ (org_legal.entity.code)
+  employee_code     varchar(50)                                // mã nhân viên (duy nhất trong pháp nhân)
+  // -- NEW 3-layer classification ----------
+  worker_category_code  varchar(50)                            // nhóm nhân sự (common.code_list(WORKER_CATEGORY))
+  employee_class_code   varchar(50)                            // phân lớp nhân sự (common.code_list(EMPLOYEE_CLASS))
+  // DEPRECATED – keep temporarily for migration, will be dropped later
+  employee_type_code    varchar(50)                            // loại nhân viên (common.code_list(EMPLOYEE_TYPE))
+
+  status_code       varchar(50)                                // trạng thái: ACTIVE, TERMINATED… (common.code_list(EMP_STATUS))
+  hire_date         date                                       // ngày bắt đầu
+  termination_date  date       [null]                          // ngày kết thúc (nếu có)
+  metadata          jsonb                                      // thông tin khác (probation, seniority_level…)
+  created_at        timestamp  [default: `now()`]
+  updated_at        timestamp  [null]
+
+  Indexes { (legal_entity_code, employee_code) [unique] }
+}
+
+// changed 11dec2025: ADDED - Contract Template table from ontology (missing in v3)
+// changed 24Dec2025: Enhanced scope hierarchy (country, BU) and clarified future features
+Table employment.contract_template {          // mẫu hợp đồng lao động
+  id                uuid       [pk, default: `gen_random_uuid()`]
+  template_code     varchar(50) [unique]                       // mã mẫu HĐ
+  template_name     varchar(255)                               // tên mẫu HĐ
+  contract_type_code varchar(50)                               // loại HĐ áp dụng (common.code_list(CONTRACT_TYPE))
+  
+  // --- Scope Hierarchy (most specific wins) ---
+  country_code      char(2)    [null]                          // changed 24Dec2025: quốc gia áp dụng (null = all countries)
+  legal_entity_code varchar(50) [null]                         // pháp nhân áp dụng (null = all entities)
+  business_unit_id  uuid       [ref: > org_bu.unit.id, null]   // changed 24Dec2025: đơn vị áp dụng (null = all BUs)
+  
+  // --- Document Generation (FUTURE FEATURE) ---
+  template_content  text       [null]                          // changed 24Dec2025: OPTIONAL - nội dung mẫu văn bản (future feature)
+  variables_json    jsonb      [null]                          // changed 24Dec2025: OPTIONAL - biến thay thế (future feature)
+  
+  // --- Template Settings ---
+  is_default        boolean    [default: false]                // mẫu mặc định cho loại HĐ này?
+  status_code       varchar(50) [default: 'ACTIVE']            // trạng thái: ACTIVE, INACTIVE, DRAFT
+  
+  // --- Business Rules & Metadata ---
+  metadata          jsonb      [null]                          // changed 24Dec2025: business rules defaults + thông tin bổ sung
+  // metadata example:
+  // {
+  //   "duration": { "default_months": 12, "min_months": 6, "max_months": 36 },
+  //   "probation": { "required": true, "duration_days": 60 },
+  //   "renewal": { "allowed": true, "max_count": 1, "notice_days": 30 },
+  //   "notice_period": { "default_days": 30 },
+  //   "compliance": { "max_consecutive_fixed_terms": 2 },
+  //   "version": "2025-01",
+  //   "approval_date": "2025-01-01"
+  // }
+  
+  effective_start_date date
+  effective_end_date   date    [null]
+  is_current_flag      boolean [default: true]
+  created_at        timestamp  [default: `now()`]
+  updated_at        timestamp  [null]
+
+  Indexes { 
+    (contract_type_code, country_code, legal_entity_code, business_unit_id, is_default),  // changed 24Dec2025: include all scope levels
+    (template_code, effective_start_date) [unique],
+    (country_code, legal_entity_code)                          // changed 24Dec2025: scope lookup
+  }
+  Note: '''
+  changed 11dec2025: ADDED from ontology - standardized contract templates for consistent contract generation
+  changed 24Dec2025: Enhanced with scope hierarchy and business rules in metadata
+  
+  Scope Priority (most specific wins):
+  1. Business Unit specific (business_unit_id matches)
+  2. Legal Entity specific (legal_entity_code matches)
+  3. Country specific (country_code matches)
+  4. Global (all null)
+  
+  Future Features:
+  - template_content: Document template with placeholders for PDF generation
+  - variables_json: Schema for placeholder variables (see separate JSON Schema document)
+  '''
+}
+
+Table employment.contract {                   // hợp đồng lao động
+  id                 uuid       [pk, default: `gen_random_uuid()`]
+  employee_id        uuid       [ref: > employment.employee.id]
+  contract_type_code varchar(50)                            // loại HĐ (common.code_list(CONTRACT_TYPE))
+  template_id        uuid       [ref: > employment.contract_template.id, null]  // changed 11dec2025: ADDED - link to template used
+  work_schedule_type_code  varchar(50)                      // hình thức làm việc (common.code_list(WORK_SCHEDULE_TYPE))
+  supplier_id        uuid       [ref: > vendor.company.id, null]   // NEW – công ty cung ứng (nếu lao động thuê ngoài)
+  primary_flag       boolean    [default: false]            // NEW – đánh dấu HĐ chính
+  parent_contract_id uuid       [ref: > employment.contract.id, null]  // NEW – HĐ cha (nếu là HĐ gia hạn/đi kèm)
+  parent_relationship_type varchar(50) [null]  // changed 19dec2025: ADDED - AMENDMENT, ADDENDUM, RENEWAL, SUPERSESSION
+  amendment_type_code varchar(50) [null]       // changed 19dec2025: ADDED - SIGNING_BONUS, STAFF_MOVEMENT, SALARY_CHANGE, etc.
+  document_id        uuid       [ref: > person.document.id, null]      // NEW – tài liệu đính kèm (file PDF HĐ)
+  is_main            boolean    [default: true]             // NEW – true nếu là HĐ chính (không có HĐ cha)
+
+  contract_number    varchar(100)                           // Số HĐ
+  start_date         date                                   // ngày hiệu lực HĐ
+  end_date           date       [null]
+  metadata           jsonb                                  // nội dung chi tiết, phụ lục…
+  created_at         timestamp  [default: `now()`]
+  updated_at         timestamp  [null]
+  
+  Note: '''
+  changed 11dec2025: Added template_id to link contracts to their templates
+  changed 19dec2025: Added parent_relationship_type and amendment_type_code for appendix categorization
+  
+  parent_relationship_type values:
+  - AMENDMENT: Modifies existing terms (salary, position, etc.)
+  - ADDENDUM: Adds new terms without changing existing
+  - RENEWAL: Extends contract duration
+  - SUPERSESSION: Replaces parent contract
+  
+  amendment_type_code values (for AMENDMENT/ADDENDUM):
+  - SIGNING_BONUS: Signing bonus appendix
+  - STAFF_MOVEMENT: Position/department change
+  - SALARY_CHANGE: Salary adjustment
+  - POSITION_CHANGE: Position change only
+  - BENEFITS_CHANGE: Benefits modification
+  - WORKING_HOURS_CHANGE: Working hours adjustment
+  - OTHER: Other amendments
+  '''
+}
+
+Table employment.assignment {                // thông tin bổ nhiệm (assignment) của nhân viên vào vị trí
+  id                   uuid       [pk, default: `gen_random_uuid()`]
+  employee_id          uuid       [ref: > employment.employee.id]
+  position_id          uuid       [ref: > jobpos.position.id, null]
+  job_id               uuid       [ref: > jobpos.job.id, null]  // NEW 06feb2026: support job-based staffing
+  business_unit_id     uuid       [ref: > org_bu.unit.id]
+  primary_location_id  uuid       [ref: > facility.work_location.id, null]
+  status_code          varchar(50)                              // trạng thái: ACTIVE, SUSPENDED… (common.code_list(ASSIGNMENT_STATUS))
+  fte                  decimal(4,2) [null]                      // quy đổi FTE
+  supervisor_assignment_id uuid [ref: > employment.assignment.id, null]   // cấp trên trực tiếp (assignment)
+  work_pattern_code    varchar(50) [null]                       // lịch làm việc (time_attendance.work_pattern.code)
+  reason_code          varchar(50) [null]                       // lý do thay đổi assignment (common.code_list(ASSIGN_CHANGE_REASON))
+  start_date           date                                     // ngày bắt đầu assignment
+  end_date             date       [null]                        // ngày kết thúc assignment
+  metadata             jsonb                                    // thông tin khác (ví dụ: chi tiết pattern)
+  created_at           timestamp  [default: `now()`]
+  updated_at           timestamp  [null]
+  
+  Indexes {
+    (employee_id, start_date)
+    (position_id)
+    (job_id)                                                   // NEW 06feb2026: index for job-based queries
+    (business_unit_id)
+    (supervisor_assignment_id)
+  }
+  
+  Note: '''
+  STAFFING MODEL SUPPORT (added 06feb2026):
+  
+  Assignment now supports 3 staffing models based on LegalEntity.staffing_model_code:
+  
+  1. POSITION_BASED (default - strict headcount control):
+     - position_id: REQUIRED
+     - job_id: OPTIONAL (auto-derived from Position.job_id if null)
+     - Use case: Government, large corporations, formal position management
+     - Example:
+       INSERT INTO employment.assignment (employee_id, position_id, business_unit_id)
+       VALUES ('emp-001', 'pos-eng-001', 'bu-eng');
+       -- job_id auto-filled from position.job_id
+  
+  2. JOB_BASED (flexible - no pre-defined positions):
+     - position_id: OPTIONAL (can be null)
+     - job_id: REQUIRED (when position_id is null)
+     - Use case: Startups, consulting firms, agile organizations
+     - Example:
+       INSERT INTO employment.assignment (employee_id, job_id, business_unit_id)
+       VALUES ('emp-002', 'job-backend-senior', 'bu-eng');
+       -- No position needed
+  
+  3. HYBRID (mixed approach):
+     - position_id OR job_id: At least ONE required
+     - Use case: Different rules for different employee tiers
+     - Example (Executive - position-based):
+       INSERT INTO employment.assignment (employee_id, position_id, business_unit_id)
+       VALUES ('emp-003', 'pos-cto', 'bu-exec');
+     - Example (IC - job-based):
+       INSERT INTO employment.assignment (employee_id, job_id, business_unit_id)
+       VALUES ('emp-004', 'job-developer', 'bu-eng');
+  
+  VALIDATION RULES:
+  - At least one of position_id or job_id must be NOT NULL
+  - When position_id is provided and job_id is null, application auto-fills job_id from position.job_id
+  - Staffing model enforcement is done at application layer based on LegalEntity.staffing_model_code
+  
+  MIGRATION NOTES:
+  - Existing records: job_id backfilled from position.job_id
+  - New records: Validate based on legal entity's staffing model
+  - Check constraint: position_id IS NOT NULL OR job_id IS NOT NULL
+  
+  See: Assignment.onto.md for complete business rules
+  See: job-position-staffing-guide.md for usage patterns
+  '''
+}
+
+Table employment.employee_identifier {       // mã định danh khác của nhân viên (phục vụ tích hợp)
+  id            uuid       [pk, default: `gen_random_uuid()`]
+  employee_id   uuid       [ref: > employment.employee.id]
+  id_type_code  varchar(50)                                 // loại ID: PAYROLL_ID, BADGE, LEGACY...
+  id_value      varchar(100)
+  is_primary    boolean    [default: false]
+  effective_start_date date
+  effective_end_date   date    [null]
+  is_current_flag      boolean [default: true]
+
+  Indexes { (employee_id, id_type_code, id_value) [unique] }
+}
+
+// NEW: Quản lý Global Assignment (điều chuyển quốc tế)
+Table employment.global_assignment {
+  id                     uuid       [pk, default: `gen_random_uuid()`]
+  employee_id            uuid       [ref: > employment.employee.id]   // nhân viên (ở công ty host)
+  home_entity_id         uuid       [ref: > org_legal.entity.id]      // pháp nhân gốc (home)
+  host_entity_id         uuid       [ref: > org_legal.entity.id]      // pháp nhân tiếp nhận (host)
+
+  assignment_type_code   varchar(30)   // loại điều chuyển: LONG_TERM, SHORT_TERM, ROTATION…
+  home_country_code      char(2)       // mã quốc gia home (VD: FR)
+  host_country_code      char(2)       // mã quốc gia host (VD: VN)
+  payroll_country_code   char(2)       // mã quốc gia trả lương (nơi xử lý payroll)
+  shadow_payroll_flag    boolean [default: false]   // có payroll song song?
+
+  housing_allowance_amt  numeric(14,2) [null]      // phụ cấp nhà ở
+  cola_factor            numeric(6,3)  [null]      // hệ số COLA (cost-of-living adjustment)
+  mobility_policy_code   varchar(30)   [null]      // chính sách mobility áp dụng
+
+  start_date             date
+  end_date               date       [null]
+
+  metadata               jsonb
+  effective_start_date   date
+  effective_end_date     date       [null]
+  is_current_flag        boolean    [default: true]
+}
+
+/////////////////////////////////////////////////////////////
+//  SCHEMA: jobpos – Job & Position Structures
+//   (Quản lý chức danh công việc và nhóm/taxonomy đa cấp)
+/////////////////////////////////////////////////////////////
+
+
+//   Các khái niệm và nguyên tắc:
+//   - Taxonomy (Job Family/Group/Track/…) là repo đa tầng, nhiều cấp, multi-scope (Corp, LE, BU), cho phép kế thừa (inherit) hoặc override.
+//   - Job thực tế cũng multi-layer, multi-owner (Corp, LE, BU), cho phép override và inherit.
+//   - Mapping giữa job với taxonomy (nhiều-nhiều).
+//   - Profile job chi tiết theo từng ngôn ngữ, phiên bản (SCD2).
+
+// NOTE: job_family & old job_profile tables have been deprecated in favor of taxonomy approach
+// Table jobpos.job_family { ... }    // DEPRECATED
+// Table jobpos.job_profile { ... }   // DEPRECATED
+
+/////// TAXONOMY TREE (Job Family/Group/Track/…) ///////
+// ------------------ TAXONOMY TREE REGISTRY ------------------
+Table jobpos.taxonomy_tree {
+  id                uuid      [pk, default: `gen_random_uuid()`]
+  tree_code         varchar(50)  [unique]    // CORP_TREE, BU_G01, ...
+  tree_name         varchar(255)
+  owner_scope       varchar(10)              // CORP | LE | BU
+  owner_unit_id     uuid       [ref: > org_bu.unit.id, null]
+  description       text       [null]
+  created_at        timestamp  [default: `now()`]
+  updated_at        timestamp  [null]
+  Note: 'Mỗi “cây” taxonomy độc lập – tập đoàn 1 cây, BU có thể clone cây riêng.'
+}
+
+// ------------------ TAXONOMY NODE ------------------
+Table jobpos.job_taxonomy {                     // CHANGED
+  id                uuid      [pk, default: `gen_random_uuid()`]
+  tree_id           uuid      [ref: > jobpos.taxonomy_tree.id]   // NEW – xác định cây
+  taxonomy_code     varchar(50)              // duy nhất trong tree + type
+  taxonomy_name     varchar(255)
+  taxonomy_type     varchar(20)              // FAMILY | GROUP | TRACK ...
+  parent_id         uuid      [ref: > jobpos.job_taxonomy.id, null]
+  //* —— Kế thừa & quyền —— */
+  owner_scope       varchar(10)              // CORP | LE | BU
+  owner_unit_id     uuid      [ref: > org_bu.unit.id, null]
+  inherit_flag      boolean   [default: true]
+  override_name     varchar(255)  [null]
+  visibility        varchar(20)   [null]     // PUBLIC | PRIVATE | RESTRICTED
+  is_active         boolean       [default: true]
+  //* —— Thông tin phụ —— */
+  description       text         [null]
+  metadata          jsonb        [null]
+  //* —— SCD Type-2 —— */
+  effective_start_date  date
+  effective_end_date    date      [null]
+  is_current_flag       boolean   [default: true]
+  //* Audit */
+  created_at        timestamp  [default: `now()`]
+  updated_at        timestamp  [null]
+
+  Indexes {
+    (tree_id, taxonomy_type, taxonomy_code, is_current_flag)
+  }
+  Note: 'Node taxonomy thuộc về một tree; vẫn hỗ trợ override/inherit.'
+}
+
+// -------------- CROSS-TREE NODE MAPPING ----------------
+Table jobpos.taxonomy_xmap {                   // NEW
+  id               uuid   [pk, default: `gen_random_uuid()`]
+  src_node_id      uuid   [ref: > jobpos.job_taxonomy.id]   // node ở cây BU
+  target_node_id   uuid   [ref: > jobpos.job_taxonomy.id]   // node tham chiếu ở cây CORP
+  map_type_code    varchar(20)               // REPORT_TO | ALIGN_WITH | DUPLICATE_OF
+  comment          text      [null]
+  //* SCD-2 để theo dõi thay đổi ánh xạ */
+  effective_start_date date
+  effective_end_date   date    [null]
+  is_current_flag      boolean [default: true]
+  created_at        timestamp [default: `now()`]
+  updated_at        timestamp [null]
+  Note: 'Liên kết 1-1 hoặc N-1 giữa node của 2 cây khác nhau để hợp nhất báo cáo.'
+}
+
+
+/////// Mapping Job với taxonomy node ///////
+Table jobpos.job_taxonomy_map {
+  job_id          uuid [ref: > jobpos.job.id]
+  taxonomy_id     uuid [ref: > jobpos.job_taxonomy.id]
+  effective_start_date date
+  effective_end_date   date [null]
+  is_current_flag      boolean [default: true]
+  Indexes { (job_id, taxonomy_id, effective_start_date) [pk] }
+  Note: 'Mapping job với taxonomy. Một job có thể thuộc nhiều nhóm Family/Group/Track.'
+}
+
+/////// JOB Repository (Multi-layer, multi-owner, override/inherit) ///////
+
+// ---------------- JOB TREE REGISTRY (mỗi cây Job) ---------------
+Table jobpos.job_tree {
+  id            uuid      [pk, default: `gen_random_uuid()`]
+  tree_code     varchar(50)  [unique]   // CORP_JOB, BU_GAME_JOB, ...
+  tree_name     varchar(255)
+  owner_scope   varchar(10)             // CORP | LE | BU
+  owner_unit_id uuid       [ref: > org_bu.unit.id, null]
+  description   text       [null]
+  created_at    timestamp  [default: `now()`]
+  updated_at    timestamp  [null]
+  Note: 'Mỗi cây Job độc lập: tập đoàn có CORP_JOB, BU có thể clone cây riêng.'
+}
+
+
+// ---------------- JOB NODE (đa cây, đa lớp) ----------------------
+Table jobpos.job {
+  id              uuid      [pk, default: `gen_random_uuid()`]
+  tree_id         uuid      [ref: > jobpos.job_tree.id]       // NEW – cây chứa Job
+  job_code        varchar(50)                                 // duy nhất trong tree
+  job_title       varchar(255)
+  parent_id       uuid      [ref: > jobpos.job.id, null]      // Quan hệ cha (trong cùng tree)
+  //* ---- override / sở hữu ---- */
+  owner_scope     varchar(10)             // CORP | LE | BU
+  owner_unit_id   uuid       [ref: > org_bu.unit.id, null]
+  inherit_flag    boolean    [default: true]   // true = kế thừa / mở rộng; false = override
+  override_title  varchar(255) [null]          // Tiêu đề local nếu override
+  visibility      varchar(20) [null]           // PUBLIC | PRIVATE | RESTRICTED
+  //* ---- Phân loại nghiệp vụ ---- */
+  job_type_code   varchar(50)  [null]          // code_list(JOB_TYPE)
+  ranking_level_code varchar(50) [null]        // code_list(JOB_RANK)
+  //* ---- changed 17dec2025: Grade & Level (moved from job_profile) ---- */
+  level_code      varchar(50) [ref: > jobpos.job_level.level_code, null]  // changed 17dec2025: Moved from job_profile - Job level/seniority
+  grade_code      varchar(50) [null]                                      // changed 17dec2025: Moved from job_profile - References TR.GradeVersion.grade_code for compensation
+  // Rationale: Grade determines compensation (Job concern, not Profile concern)
+  // - Simpler TR integration: Job → grade_code → TR.GradeVersion → PayRange
+  // - No duplication across multiple profiles (e.g., different locales)
+  // - Aligns with ontology (Job.grade_id in core-ontology.yaml)
+  // - Position can access grade directly via job.grade_code without job_profile
+  //* ---- Mô tả & meta ---- */
+  description     text       [null]
+  metadata        jsonb      [null]
+  //* ---- SCD Type-2 ---- */
+  effective_start_date date
+  effective_end_date   date   [null]
+  is_current_flag      boolean [default: true]
+  //* Audit */
+  created_at      timestamp  [default: `now()`]
+  updated_at      timestamp  [null]
+
+  Indexes {
+    (tree_id, job_code, is_current_flag)   // bảo đảm duy nhất trong tree
+    (grade_code)                            // changed 17dec2025: NEW - for TR integration lookups
+    (level_code)                            // changed 17dec2025: NEW - for level-based queries
+  }
+  Note: 'changed 17dec2025: Added grade_code and level_code (moved from job_profile) for direct TR integration. Job determines compensation level, Profile describes requirements. Job Node đa cấp: có thể nằm trong CORP_JOB hoặc cây clone của BU. Nhánh con mới: parent_id trỏ node tập đoàn. Override: tạo node BU cùng job_code, inherit_flag=false.'
+}
+
+// ----------- JOB CROSS-TREE MAPPING (nhiều BU → 1 Corp) ----------
+Table jobpos.job_xmap {
+  id              uuid   [pk, default: `gen_random_uuid()`]
+  src_job_id      uuid   [ref: > jobpos.job.id]      // Job ở cây BU
+  target_job_id   uuid   [ref: > jobpos.job.id]      // Job chuẩn ở cây CORP
+  map_type_code   varchar(20)                        // ALIGN_WITH | DUPLICATE_OF
+  comment         text    [null]
+  //* SCD-2 */
+  effective_start_date date
+  effective_end_date   date [null]
+  is_current_flag      boolean [default: true]
+  created_at        timestamp [default: `now()`]
+  updated_at        timestamp [null]
+  Note: 'Giúp báo cáo gộp: Job BU → Job Corp.'
+}
+
+
+/////// JOB Profile (Multi-locale, version SCD2) ///////
+Table jobpos.job_profile {
+  id                   uuid       [pk, default: `gen_random_uuid()`]
+  job_id               uuid [ref: > jobpos.job.id]
+  locale_code          varchar(10)  [default: 'en-US']
+  
+  // *** DEPRECATED 17dec2025: Moved to job table ***
+  // level_code        varchar(50) [ref: > jobpos.job_level.level_code, null]
+  // grade_code        varchar(50) [ref: > jobpos.job_grade.grade_code, null]
+  // Rationale: Grade/Level are Job attributes (compensation-related), not Profile attributes (description-related)
+  // Migration: Use job.grade_code and job.level_code instead
+  // Timeline: These fields will be removed in v5.0 (target: Q2 2026)
+  // For backward compatibility, keep these columns but mark as deprecated
+  
+  ranking_level_code   varchar(50) [null]
+  job_type_code        varchar(50) [null]
+  job_title            varchar(255)
+  summary              text      [null]
+  responsibilities     text      [null]
+  qualifications       text      [null]
+  competencies_json    jsonb     [null]
+  metadata             jsonb
+  effective_start_date date
+  effective_end_date   date      [null]
+  is_current_flag      boolean   [default: true]
+  created_at           timestamp [default: `now()`]
+  updated_at           timestamp [null]
+  Indexes { (job_id, locale_code, effective_start_date) [unique] }
+  Note: 'changed 17dec2025: Removed grade_code and level_code (moved to job table). Profile focuses on job description (summary, responsibilities, qualifications), not compensation attributes. Profile chi tiết cho job theo ngôn ngữ, version, SCD2.'
+}
+
+/////// Mapping JobProfile với Skill ///////
+Table jobpos.job_profile_skill {
+  job_profile_id    uuid [ref: > jobpos.job_profile.id]
+  skill_id          uuid [ref: > common.skill_master.id]
+  proficiency_level int        [null]
+  years_required    decimal(4,1) [null]
+  Indexes { (job_profile_id, skill_id) [unique] }
+  Note: 'Mapping kỹ năng cần thiết cho từng JobProfile.'
+}
+
+// // *** Job Category hierarchy for Job Family/Group multi-level ***
+// DEPRECATED using taxonomy tree
+// Table jobpos.job_category {
+//   id           uuid        [pk, default: `gen_random_uuid()`]
+//   code         varchar(50)
+//   name         varchar(100)
+//   parent_id    uuid        [ref: > jobpos.job_category.id, null] 
+//   owner_unit_id uuid       [ref: > org_bu.unit.id, null] // [New] null = danh mục chung tập đoàn; có giá trị = danh mục tùy chỉnh của đơn vị
+//   level        smallint    // [New] cấp của nhóm (ví dụ 1=Family, 2=Group, 3=Sub-group,...)
+//   description  text        [null]
+//   metadata     jsonb       [null]
+  
+//   effective_start_date date
+//   effective_end_date   date        [null]
+//   is_current_flag      boolean     [default: true]
+//   created_at     timestamp  [default: `now()`]
+//   updated_at     timestamp  [null]
+  
+//   Note: 'Danh mục nhóm công việc đa cấp (Job Family/Group). Cho phép khai báo cây phân cấp các nhóm job. Các mục có owner_unit_id null là danh mục dùng chung (toàn tập đoàn); nếu có owner_unit_id thì là danh mục tùy chỉnh cho đơn vị đó. Đơn vị có thể kế thừa nhóm chung bằng cách tạo nhóm con dưới nhóm của tập đoàn hoặc tạo nhóm mới riêng. SCD2 để quản lý thay đổi.'
+// }
+
+
+// *** Job Level (updated to support corp vs local levels) ***
+Table jobpos.job_level {
+  id           uuid        [pk, default: `gen_random_uuid()`]
+  level_code   varchar(50)
+  level_name   varchar(100)    [null]
+  rank_order   int            [null]   // [New] Thứ tự sắp xếp hoặc giá trị thứ bậc
+  owner_unit_id uuid       [ref: > org_bu.unit.id, null] // [New] đơn vị sở hữu level (null = cấp bậc chung tập đoàn)
+  description  text        [null]
+  
+  effective_start_date date
+  effective_end_date   date        [null]
+  is_current_flag      boolean     [default: true]
+  created_at     timestamp   [default: `now()`]
+  updated_at     timestamp   [null]
+  
+  Note: 'Danh mục Job Level. Thêm owner_unit_id để phân biệt cấp bậc chung (owner_unit_id null) và cấp bậc riêng của từng đơn vị. Level_code có thể là mã hoặc số cấp bậc. SCD2 để quản lý phiên bản.'
+}
+
+// *** Mapping Local Job Level to Corporate Job Level (BU/Entity vs Corp) ***
+Table jobpos.job_level_org_map {
+  id             uuid    [pk, default: `gen_random_uuid()`]
+  unit_id        uuid    [ref: > org_bu.unit.id]         // [New] đơn vị (BU/Entity) sở hữu level_local
+  job_level_id   uuid    [ref: > jobpos.job_level.id]    // [New] cấp bậc của đơn vị (local level)
+  corp_job_level_id uuid [ref: > jobpos.job_level.id]    // [New] cấp bậc tương ứng ở tập đoàn (corporate level)
+  
+  effective_start_date date 
+  effective_end_date   date    [null]
+  is_current_flag      boolean [default: true]
+  created_at     timestamp [default: `now()`]
+  updated_at     timestamp [null]
+  
+  Note: 'Mapping cấp bậc (Job Level) của đơn vị sang cấp bậc chuẩn của tập đoàn. Mỗi bản ghi gắn một job_level địa phương với một job_level của tập đoàn (thường job_level tập đoàn là bản ghi có owner_unit_id null). SCD2 để quản lý thay đổi mapping theo thời gian.'
+}
+
+// *** Job Grade (optional: updated for corp vs local like Job Level) ***
+Table jobpos.job_grade {
+  id           uuid      [pk, default: `gen_random_uuid()`]
+  grade_code   varchar(50)
+  grade_name   varchar(100)   [null]
+  owner_unit_id uuid     [ref: > org_bu.unit.id, null]  // [New] null = grade chung tập đoàn; có giá trị = grade riêng của đơn vị
+  description  text      [null]
+  
+  effective_start_date date
+  effective_end_date   date      [null]
+  is_current_flag      boolean   [default: true]
+  created_at   timestamp [default: `now()`]
+  updated_at   timestamp [null]
+  
+  Note: 'Danh mục Job Grade. Cho phép phân tách grade chung và grade theo đơn vị (nếu cần).'
+}
+
+// *** Mapping Local Job Grade to Corporate Job Grade (if needed) ***
+Table jobpos.job_grade_org_map {
+  id             uuid    [pk, default: `gen_random_uuid()`]
+  unit_id        uuid    [ref: > org_bu.unit.id] 
+  job_grade_id   uuid    [ref: > jobpos.job_grade.id]    // grade của đơn vị
+  corp_job_grade_id uuid [ref: > jobpos.job_grade.id]    // grade tương ứng của tập đoàn
+  
+  effective_start_date date 
+  effective_end_date   date    [null]
+  is_current_flag      boolean [default: true]
+  created_at     timestamp [default: `now()`]
+  updated_at     timestamp [null]
+  
+  Note: 'Mapping Job Grade địa phương với Job Grade tập đoàn (nếu công ty có khung grade riêng). Cách hoạt động tương tự mapping Job Level.'
+}
+
+
+
+// Table jobpos.job_taxonomy {              // danh mục Taxonomy cho Job (Track/Family/Group...)
+//   id                    uuid       [pk, default: `gen_random_uuid()`]   // CHANGED from int
+//   taxonomy_code         varchar(50)                                    // mã phân loại (duy nhất trong cùng loại)
+//   taxonomy_name         varchar(255)                                   // tên phân loại
+//   taxonomy_type_code    varchar(30)                                    // loại taxonomy: Track, Family, Group, SubGroup… (common.code_list(JOB_TAXONOMY_TYPE))
+//   parent_taxonomy_id    uuid       [ref: > jobpos.job_taxonomy.id, null]  // phân loại cha (cấp trên)
+//   description           text       [null]
+//   effective_start_date  date
+//   effective_end_date    date       [null]
+//   is_current_flag       boolean    [default: true]
+// }
+
+// Table jobpos.job_taxonomy_map {          // liên kết Job với các node taxonomy
+//   job_id                uuid       [ref: > jobpos.job.id]
+//   taxonomy_id           uuid       [ref: > jobpos.job_taxonomy.id]
+//   effective_start_date  date
+//   effective_end_date    date       [null]
+//   is_current_flag       boolean    [default: true]
+
+//   Indexes { (job_id, taxonomy_id, effective_start_date) [pk] }
+// }
+
+// === Chính sách áp dụng cho từng Job Level (Job Level Policy) ===
+Table jobpos.job_level_policy {
+  id                uuid      [pk, default: `gen_random_uuid()`]
+  job_level_id      uuid      [ref: > jobpos.job_level.id]   // Cấp bậc áp dụng
+  policy_code       varchar(50) // code_list(HR_POLICY)
+  owner_scope       varchar(10)   // CORP|LE|BU
+  owner_unit_id     uuid [ref: > org_bu.unit.id, null]   // Cho phép gán policy riêng theo scope
+  metadata          jsonb [null] // Thông tin mở rộng, điều kiện, rule áp dụng policy
+  effective_start_date date
+  effective_end_date   date [null]
+  is_current_flag      boolean [default: true]
+  created_at         timestamp [default: `now()`]
+  updated_at         timestamp [null]
+  Note: 'Gán chính sách nhân sự (HR Policy, benefit, rule…) theo từng Job Level, cho phép phân biệt theo scope (corp/BU/LE). SCD2.'
+}
+
+Table jobpos.position {                  // vị trí (Position) trong cơ cấu tổ chức
+  id                uuid       [pk, default: `gen_random_uuid()`]
+  code              varchar(50) [unique]                         // mã vị trí
+  title             varchar(255)                                 // tên vị trí (tên chức danh gắn với vị trí)
+  
+  // *** changed 17dec2025: Added job_id for direct grade/level access ***
+  job_id            uuid        [ref: > jobpos.job.id]            // changed 17dec2025: NEW - Direct reference to job for grade/level (REQUIRED)
+  job_profile_id    uuid        [ref: > jobpos.job_profile.id, null]  // changed 17dec2025: Made OPTIONAL - Use for detailed job description only
+  // Rationale:
+  // - job_id: Required for grade/level lookup (TR integration: position → job → grade_code → TR.GradeVersion)
+  // - job_profile_id: Optional for detailed job description (locale-specific summary, responsibilities)
+  // - Position can access job.grade_code without needing job_profile
+  // - Supports both position-based and job-based staffing models
+  
+  business_unit_id  uuid        [ref: > org_bu.unit.id]           // đơn vị (BU) sở hữu vị trí
+  reports_to_id     uuid        [ref: > jobpos.position.id, null] // báo cáo lên vị trí
+  position_class_code varchar(50)  [null]                        // phân loại vị trí (common.code_list(POS_CLASS))
+  position_type_code varchar(50)                                // loại vị trí (common.code_list(POSITION_TYPE))
+  full_time_equiv   decimal(4,2) [null]                          // FTE của vị trí
+  max_incumbents       int         [default: 1]                         // Số slot ghế
+  allow_overlap_days   int         [default: 0]                         // Handover chồng chéo
+  //auto_close_on_full   boolean     [default: true]                      // Đầy slot thì ngưng tuyển
+  status_code       varchar(50)                                 // trạng thái vị trí (common.code_list(POS_STATUS))
+  metadata          jsonb
+  planned_headcount int [default: 1, note: 'Số lượng nhân sự dự kiến cho vị trí']
+  actual_headcount int [default: 0, note: 'Số lượng nhân sự hiện tại gán vào vị trí']
+  effective_start_date date
+  effective_end_date   date    [null]
+  is_current_flag      boolean [default: true]
+  
+  Note: 'changed 17dec2025: Added job_id (required) and made job_profile_id optional. Position now has direct access to grade via job.grade_code for TR integration.'
+}
+
+Table jobpos.position_tag {             // gắn nhãn cho Position
+  position_id  uuid       [ref: > jobpos.position.id]
+  tag_code     varchar(50)                                  // nhãn (common.code_list(POS_TAG))
+  assigned_at  date       [default: `current_date`]
+
+  Indexes { (position_id, tag_code) [unique] }
+}
+
+Table jobpos.position_location {        // phân bổ Position vào Work Location
+  position_id      uuid       [ref: > jobpos.position.id]
+  work_location_id uuid       [ref: > facility.work_location.id]
+  is_primary       boolean    [default: false]
+  effective_start_date  date
+  effective_end_date    date   [null]
+  is_current_flag       boolean [default: true]
+
+  Indexes { (position_id, is_primary) }
+}
+
+// ======================================================
+//  SCHEMA: career – Career Track & Path (Lộ trình nghề nghiệp)
+// ======================================================
+
+Table career.career_path {            // lộ trình nghề nghiệp (Career Track/Path) mẫu
+  id                  uuid       [pk, default: `gen_random_uuid()`]
+  code                varchar(50) [unique]                        // mã Career Path
+  name                varchar(255)                                // tên lộ trình nghề nghiệp
+  track_taxonomy_id   uuid       [ref: > jobpos.job_taxonomy.id, null]   // Track tương ứng (jobpos.job_taxonomy.type = 'Track')
+  description         text       [null]
+  effective_start_date date
+  effective_end_date   date      [null]
+  is_current_flag      boolean   [default: true]
+}
+
+Table career.career_step {            // bước trong lộ trình nghề nghiệp
+  path_id             uuid       [ref: > career.career_path.id]
+  seq_no              smallint                                    // thứ tự bước
+  job_id              uuid       [ref: > jobpos.job.id]           // chức danh tại bước này
+  min_time_months     smallint   [null]                           // thời gian tối thiểu ở bước (tháng)
+  recommended         text       [null]                           // gợi ý phát triển (khóa học, chứng chỉ cần có)
+  weight              int        [null]                           // độ phù hợp (%)
+  
+  Indexes { (path_id, seq_no) [unique] }
+}
+
+
+////////////////////////////////////////////////////////////
+//  jobpos.job_progression – Đường đi nghề nghiệp giữa các Job
+//  Dùng cho Career Pathing / Internal Mobility gợi ý chuyển vai trò.
+////////////////////////////////////////////////////////////
+Table jobpos.job_progression {
+  id              uuid        [pk, default: `gen_random_uuid()`]
+  from_job_id     uuid        [ref: > jobpos.job.id]
+  to_job_id       uuid        [ref: > jobpos.job.id]
+  progression_type_code varchar(50)            // PROMOTION, LATERAL, CROSS_FUNC, DEMOTION
+  min_tenure_months int      [null]
+  required_level_code varchar(50) [null]       // if target requires specific level
+  auto_recommended_flag boolean [default: false] // hiển thị trong đề xuất tự động
+  metadata        jsonb       [null]
+  
+  effective_start_date date
+  effective_end_date   date    [null]
+  is_current_flag      boolean [default: true]
+  
+  Indexes { (from_job_id, to_job_id, effective_start_date) [unique] }
+  
+  Note: 'Map Job → Job (đích) cho Career Path.'
+}
+
+
+////////////////////////////////////////////////////////
+//  SCHEMA: facility – Place / Location / Work Location
+////////////////////////////////////////////////////////
+
+Table facility.place {
+  id              uuid       [pk, default: `gen_random_uuid()`]
+  code            varchar(50) [unique]
+  name            varchar(255)
+  place_type_code varchar(50)                                 // loại địa điểm (common.code_list(PLACE_TYPE))
+  parent_id       uuid       [ref: > facility.place.id, null]
+  admin_area_id   uuid       [ref: > geo.admin_area.id, null]
+  metadata        jsonb                                       // e.g., { "address":"123 Main St" }
+  is_active       boolean    [default: true]
+
+  Indexes { (admin_area_id) }
+}
+
+Table facility.location {
+  id                 uuid       [pk, default: `gen_random_uuid()`]
+  code               varchar(50) [unique]
+  name               varchar(255)
+  place_id           uuid       [ref: > facility.place.id]
+  location_type_code varchar(50)                               // loại địa điểm (common.code_list(LOC_TYPE))
+  parent_id          uuid       [ref: > facility.location.id, null]
+  latitude           decimal(9,6) [null]
+  longitude          decimal(9,6) [null]
+  metadata           jsonb
+  is_active          boolean    [default: true]
+}
+
+Table facility.work_location {         // địa điểm làm việc (office, site...)
+  id                 uuid       [pk, default: `gen_random_uuid()`]
+  code               varchar(50) [unique]
+  name               varchar(255)
+  location_id        uuid        [ref: > facility.location.id]
+  work_loc_type_code varchar(50)                                 // loại địa điểm làm việc (common.code_list(WORK_LOC_TYPE))
+  legal_entity_id    uuid        [ref: > org_legal.entity.id, null]  // NEW – pháp nhân sở hữu/ứng với địa điểm
+  capacity           int         [null]
+  metadata           jsonb       // equipment, features…
+  is_active          boolean     [default: true]
+}
+
+Table vendor.company {                 // Nhà cung cấp (Vendor) - công ty ngoài
+  id              uuid       [pk, default: `gen_random_uuid()`]
+  vendor_code     varchar(50)  [unique]                        // mã nhà cung cấp
+  legal_name      varchar(255)
+  display_name    varchar(255)
+  tax_id          varchar(100) [null]
+  country_code    char(2)      [ref: > geo.country.code_alpha2, null]
+  website         varchar(255) [null]
+  contact_info    jsonb        [null]                          // thông tin liên hệ (điện thoại, email…)
+  metadata        jsonb
+  effective_start_date date
+  effective_end_date   date    [null]
+  is_current_flag      boolean [default: true]
+}
+
+//////////////////////////////////////
+//  SCHEMA: tax – Personal Income Tax
+//////////////////////////////////////
+
+Table tax.dependent_registration {              // đăng ký người phụ thuộc (PIT)
+  id                       uuid       [pk, default: `gen_random_uuid()`]
+  relationship_id          uuid       [ref: > person.worker_relationship.id]
+
+  tax_year                 smallint                           // năm tính thuế (ví dụ: 2025)
+  registration_date        date                               // ngày đăng ký
+  approved_flag            boolean    [default: false]
+  approved_by_worker_id    uuid       [ref: > person.worker.id, null]    // nhân viên duyệt (HR)
+  notes                    text       [null]
+  effective_start_date     date
+  effective_end_date       date       [null]
+  // is_current_flag      boolean    [default: true]          // (optional, not required per tax_year logic)
+
+  Indexes { (relationship_id, tax_year) [unique] }
+}
+
+// =============================================================
+// SCHEMA: eligibility - Cross-Module Eligibility Engine
+// =============================================================
+// changed 11dec2025: NEW - Centralized eligibility management
+// Purpose: Shared eligibility for TA, TR, and other modules
+// Pattern: Hybrid Model (Default + Override) with Dynamic Groups
+
+Table eligibility.eligibility_profile {
+  id                uuid        [pk, default: `gen_random_uuid()`]
+  code              varchar(50) [unique, not null]                    // ELIG_SENIOR_STAFF, ELIG_VN_FULLTIME
+  name              varchar(255) [not null]                           // Display name
+  domain            varchar(50) [not null]                            // ABSENCE | BENEFITS | COMPENSATION | CORE
+  description       text        [null]                                // Business rationale
+  
+  rule_json         jsonb       [not null]                            // Dynamic criteria (organizational scope)
+  // Example: {"grades":["G4","G5"],"countries":["VN"],"min_tenure_months":12}
+  
+  priority          int         [default: 10]                         // Evaluation priority
+  is_active         boolean     [default: true]
+  
+  // SCD Type 2
+  effective_start_date date     [not null]
+  effective_end_date   date     [null]
+  is_current_flag      boolean  [default: true]
+  
+  created_at        timestamp   [default: `now()`]
+  updated_at        timestamp   [null]
+  
+  Indexes {
+    (domain, code, effective_start_date) [unique]                    // changed 11dec2025: Unique per domain
+    (domain, is_active)                                              // changed 11dec2025: Fast active lookup
+    (code)                                                           // changed 11dec2025: Code lookup
+  }
+  
+  Note: 'changed 11dec2025: NEW - Defines WHO is eligible (organizational scope). Object scope (leaveTypeId, benefitPlanId) stays in consuming entity. Supports cross-module reusability.'
+}
+
+Table eligibility.eligibility_member {
+  id                uuid        [pk, default: `gen_random_uuid()`]
+  profile_id        uuid        [ref: > eligibility.eligibility_profile.id, not null]
+  employee_id       uuid        [ref: > employment.employee.id, not null]
+  
+  start_date        date        [not null]                           // When eligibility began
+  end_date          date        [null]                               // NULL = currently eligible
+  
+  last_evaluated_at timestamp   [not null]                           // Last evaluation time
+  evaluation_source varchar(50) [not null]                           // AUTO | MANUAL | OVERRIDE
+  evaluation_reason text        [null]                               // Why added/removed
+  
+  metadata          jsonb       [null]                               // Additional context
+  
+  Indexes {
+    (profile_id, employee_id, start_date) [unique]                   // changed 11dec2025: Unique membership
+    (profile_id, employee_id) [name: 'idx_member_active', note: 'WHERE end_date IS NULL']  // changed 11dec2025: Fast active lookup
+    (employee_id, profile_id) [name: 'idx_member_employee', note: 'WHERE end_date IS NULL'] // changed 11dec2025: Employee lookup
+    (profile_id, start_date)                                         // changed 11dec2025: Profile history
+  }
+  
+  Note: 'changed 11dec2025: NEW - Cached membership for O(1) eligibility checks. Updated automatically when employee data or profile rules change.'
+}
+
+Table eligibility.eligibility_evaluation {
+  id                uuid        [pk, default: `gen_random_uuid()`]
+  profile_id        uuid        [ref: > eligibility.eligibility_profile.id, not null]
+  employee_id       uuid        [ref: > employment.employee.id, not null]
+  
+  evaluated_at      timestamp   [not null, default: `now()`]
+  evaluation_result varchar(20) [not null]                           // ELIGIBLE | NOT_ELIGIBLE
+  evaluation_reason text        [not null]                           // Which criteria matched/failed
+  
+  triggered_by      varchar(50) [not null]                           // EMPLOYEE_CHANGE | RULE_CHANGE | MANUAL | SCHEDULED
+  triggered_by_id   uuid        [null]                               // User ID if manual
+  
+  metadata          jsonb       [null]                               // Evaluation details
+  
+  Indexes {
+    (profile_id, evaluated_at)                                       // changed 11dec2025: Profile audit trail
+    (employee_id, evaluated_at)                                      // changed 11dec2025: Employee audit trail
+    (triggered_by, evaluated_at)                                     // changed 11dec2025: Trigger analysis
+  }
+  
+  Note: 'changed 11dec2025: NEW - Immutable audit log of all eligibility evaluations. Used for compliance and troubleshooting.'
+}
+
+// =============================================================
+//  SCHEMA: compensation – Compensation Basis (CompensationBasis Ontology)
+// =============================================================
+// changed 06feb2026: NEW schema for CompensationBasis entity with flexible component lines
+
+Table compensation.basis {                     // mức lương hiệu lực (header)
+  id                      uuid        [pk, default: `gen_random_uuid()`]
+  work_relationship_id    uuid        [ref: > employment.work_relationship.id, not null]  // link to WorkRelationship
+  
+  // Effective Dating (SCD Type-2)
+  effective_start_date    date        [not null]                        // ngày bắt đầu hiệu lực
+  effective_end_date      date        [null]                            // ngày kết thúc (null = current)
+  is_current_flag         boolean     [default: false]                  // cờ bản ghi hiện tại
+  
+  // Core Salary Basis
+  basis_amount            decimal(15,2) [not null]                      // lương cơ bản (operational)
+  currency_code           char(3)     [default: 'VND']                  // mã tiền tệ (ISO 4217)
+  frequency_code          varchar(20) [default: 'MONTHLY']              // MONTHLY, HOURLY, ANNUALLY, DAILY
+  annualization_factor    decimal(6,2) [null]                           // factor quy năm
+  annual_equivalent       decimal(15,2) [null]                          // lương quy năm (calculated)
+  
+  // Classification
+  basis_type_code         varchar(30) [not null, default: 'OPERATIONAL_BASE']  // LEGAL_BASE, OPERATIONAL_BASE, MARKET_ADJUSTED
+  source_code             varchar(30) [not null, default: 'CONTRACT']         // CONTRACT, MANUAL_ADJUST, PROMOTION, COMP_CYCLE
+  reason_code             varchar(30) [null]                                  // HIRE, PROBATION_END, ANNUAL_REVIEW, PROMOTION
+  
+  // Adjustment Tracking
+  adjustment_amount       decimal(15,2) [null]                          // delta từ record trước
+  adjustment_percentage   decimal(5,2) [null]                           // % thay đổi
+  previous_basis_id       uuid        [ref: > compensation.basis.id, null]  // SCD chain (self-ref)
+  
+  // References
+  contract_id             uuid        [ref: > employment.contract.id, null]  // source contract (for LEGAL_BASE)
+  salary_basis_id         uuid        [null]                                 // link to comp_core.salary_basis config
+  
+  // Approval Workflow
+  approval_status         varchar(20) [null]                            // PENDING, APPROVED, REJECTED
+  approved_by             uuid        [ref: > person.worker.id, null]   // approver
+  approval_date           timestamp   [null]
+  next_review_date        date        [null]
+  
+  // VN Specific
+  social_insurance_basis  decimal(15,2) [null]                          // mức đóng BHXH (nếu khác basis_amount)
+  regional_min_wage_zone  varchar(10) [null]                            // ZONE_I, ZONE_II, ZONE_III, ZONE_IV
+  
+  // Flexible Component Lines (aggregated)
+  has_component_lines     boolean     [default: false]                  // có detail lines không?
+  total_allowance_amount  decimal(15,2) [default: 0]                    // tổng phụ cấp cố định (SUM of lines)
+  total_gross_amount      decimal(15,2) [null]                          // basis_amount + total_allowance_amount
+  component_line_count    int         [default: 0]                      // số dòng phụ cấp
+  
+  // Notes & Status
+  notes                   text        [null]
+  status_code             varchar(30) [not null, default: 'DRAFT']      // DRAFT, PENDING_APPROVAL, ACTIVE, FUTURE, SUPERSEDED, CANCELLED
+  
+  // Audit
+  created_at              timestamp   [default: `now()`]
+  updated_at              timestamp   [null]
+  created_by              uuid        [ref: > person.worker.id, null]
+  updated_by              uuid        [ref: > person.worker.id, null]
+  
+  Indexes {
+    (work_relationship_id, effective_start_date) [unique]               // unique per relationship + date
+    (work_relationship_id, is_current_flag) [name: 'idx_basis_current', note: 'WHERE is_current_flag = true']
+    (status_code, is_current_flag)
+    (previous_basis_id)                                                 // SCD chain lookup
+  }
+  
+  Note: '''
+    changed 06feb2026: NEW - CompensationBasis entity from ontology.
+    Header table for operational salary. Supports SCD Type-2 (date-effective with previousBasisId chain).
+    Flexible allowances stored in compensation.basis_line (detail lines).
+    Aggregated fields: total_allowance_amount, total_gross_amount, component_line_count.
+  '''
+}
+
+Table compensation.basis_line {                // chi tiết phụ cấp cố định (flexible lines)
+  id                      uuid        [pk, default: `gen_random_uuid()`]
+  basis_id                uuid        [ref: > compensation.basis.id, not null]  // header
+  
+  // Component Type
+  component_type_code     varchar(50) [not null]                        // MEAL, HOUSING, TRANSPORTATION, RESPONSIBILITY, SENIORITY, TOXICITY, PHONE, OTHER
+                                                                        // Lookup: common.code_list(COMP_COMPONENT_TYPE)
+  component_name          varchar(100) [null]                           // tên phụ cấp (nếu type = OTHER)
+  
+  // Amount
+  amount                  decimal(15,2) [not null]                      // số tiền phụ cấp
+  currency_code           char(3)     [default: 'VND']
+  
+  // Source
+  source_code             varchar(30) [not null, default: 'FIXED']      // FIXED = chốt cứng riêng, OVERRIDE = override từ plan
+                                                                        // (Phụ cấp tính từ plan sẽ KHÔNG ở đây, do Compensation Plan xử lý)
+  reason_code             varchar(50) [null]                            // lý do phụ cấp (HIRE, ROLE_CHANGE, SPECIAL, etc.)
+  
+  // Effective Dating
+  effective_start_date    date        [not null]                        // ngày bắt đầu có hiệu lực
+  effective_end_date      date        [null]                            // ngày kết thúc (null = ongoing)
+  is_current_flag         boolean     [default: true]
+  
+  // Reference
+  reference_id            uuid        [null]                            // optional reference (e.g., job_id, position_id if based on role)
+  reference_type          varchar(30) [null]                            // JOB, POSITION, LOCATION, etc.
+  
+  // Notes & Audit
+  notes                   text        [null]
+  metadata                jsonb       [null]                            // additional info
+  created_at              timestamp   [default: `now()`]
+  updated_at              timestamp   [null]
+  created_by              uuid        [ref: > person.worker.id, null]
+  updated_by              uuid        [ref: > person.worker.id, null]
+  
+  Indexes {
+    (basis_id, component_type_code, effective_start_date) [unique]      // unique per basis + type + date
+    (basis_id, is_current_flag)                                         // current lines per basis
+    (component_type_code, is_current_flag)                              // reporting by type
+  }
+  
+  Note: '''
+    changed 06feb2026: NEW - Flexible allowance lines for CompensationBasis.
+    Only stores FIXED allowances that are "locked" per employee.
+    Allowances calculated from Compensation Plan are NOT stored here.
+    Examples: Meal (if fixed amount per person), Housing, Responsibility, Seniority.
+    source_code = FIXED means this amount is specific to this employee.
+    source_code = OVERRIDE means this overrides a plan-calculated value.
+  '''
+}
+
