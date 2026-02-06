@@ -346,6 +346,35 @@ policies:
     type: business
     rule: Major assignment changes (HIRE, PROMOTION, TRANSFER) should have assignmentReasonCode set
     severity: INFO
+  
+  # === STAFFING MODEL CONDITIONAL CONSTRAINTS ===
+  - name: PositionRequiredWhenPositionBased
+    type: validation
+    rule: When Legal Entity uses POSITION_BASED staffing model, positionId is required
+    expression: "LegalEntity.staffingModelCode != 'POSITION_BASED' OR positionId IS NOT NULL"
+    severity: ERROR
+    condition: "LegalEntity.staffingModelCode = 'POSITION_BASED'"
+  
+  - name: JobRequiredWhenJobBased
+    type: validation
+    rule: When Legal Entity uses JOB_BASED staffing model and positionId is null, jobId is required
+    expression: "LegalEntity.staffingModelCode != 'JOB_BASED' OR positionId IS NOT NULL OR jobId IS NOT NULL"
+    severity: ERROR
+    condition: "LegalEntity.staffingModelCode = 'JOB_BASED' AND positionId IS NULL"
+  
+  - name: EitherPositionOrJobWhenHybrid
+    type: validation
+    rule: When Legal Entity uses HYBRID staffing model, either positionId or jobId must be provided
+    expression: "LegalEntity.staffingModelCode != 'HYBRID' OR positionId IS NOT NULL OR jobId IS NOT NULL"
+    severity: ERROR
+    condition: "LegalEntity.staffingModelCode = 'HYBRID'"
+  
+  - name: JobAutoDerivation
+    type: business
+    rule: If positionId is provided and jobId is null, system auto-fills jobId from Position.jobId
+    expression: "positionId IS NULL OR jobId IS NOT NULL OR jobId = Position.jobId"
+    trigger: ON_CREATE, ON_UPDATE(positionId)
+    severity: INFO
 ---
 
 # Entity: Assignment
@@ -628,6 +657,70 @@ stateDiagram-v2
 - **PrimaryAssignmentRequired**: ACTIVE Employee must have ACTIVE primary assignment (WARNING)
 - **PositionOrJobRequired**: Assignment should have Position or Job defined (WARNING)
 - **AssignmentEventTracking**: Major changes should have assignmentReasonCode (INFO)
+
+### Staffing Model Conditional Constraints
+
+These constraints are conditional based on `LegalEntity.staffingModelCode`. See [[LegalEntity]] for staffing model configuration.
+
+| Rule ID | Condition | Constraint | Severity |
+|---------|-----------|------------|----------|
+| **PositionRequiredWhenPositionBased** | LegalEntity.staffingModelCode = 'POSITION_BASED' | positionId IS NOT NULL | ERROR |
+| **JobRequiredWhenJobBased** | LegalEntity.staffingModelCode = 'JOB_BASED' AND positionId IS NULL | jobId IS NOT NULL | ERROR |
+| **EitherPositionOrJobWhenHybrid** | LegalEntity.staffingModelCode = 'HYBRID' | positionId OR jobId IS NOT NULL | ERROR |
+| **JobAutoDerivation** | positionId IS NOT NULL AND jobId IS NULL | Auto-fill: jobId = Position.jobId | INFO |
+
+#### Staffing Model Examples
+
+**Position-based Organization (default)**:
+```yaml
+# ✅ Valid - has positionId, jobId auto-derived from Position.jobId
+Assignment:
+  legalEntityCode: "VNG-HCM"  # staffingModelCode = POSITION_BASED
+  positionId: "pos-dev-001"
+  jobId: null  # System auto-fills from Position.jobId
+
+# ❌ Invalid - missing positionId
+Assignment:
+  legalEntityCode: "VNG-HCM"  # staffingModelCode = POSITION_BASED
+  positionId: null  # ERROR: Position required for position-based staffing
+  jobId: "job-dev"
+```
+
+**Job-based Organization**:
+```yaml
+# ✅ Valid - has jobId only (no position required)
+Assignment:
+  legalEntityCode: "VNG-RETAIL"  # staffingModelCode = JOB_BASED
+  positionId: null
+  jobId: "job-sales-associate"
+
+# ✅ Also valid - has both (position is optional for tracking)
+Assignment:
+  legalEntityCode: "VNG-RETAIL"  # staffingModelCode = JOB_BASED
+  positionId: "pos-store-001"  # Optional tracking
+  jobId: "job-sales-associate"
+```
+
+**Hybrid Organization**:
+```yaml
+# ✅ Valid - has positionId (jobId auto-derived)
+Assignment:
+  legalEntityCode: "VNG-FLEX"  # staffingModelCode = HYBRID
+  positionId: "pos-mgr-001"
+  jobId: null  # Auto-derived
+
+# ✅ Valid - has jobId only
+Assignment:
+  legalEntityCode: "VNG-FLEX"  # staffingModelCode = HYBRID
+  positionId: null
+  jobId: "job-contractor"
+
+# ❌ Invalid - neither positionId nor jobId
+Assignment:
+  legalEntityCode: "VNG-FLEX"  # staffingModelCode = HYBRID
+  positionId: null  # ERROR: At least one required
+  jobId: null       # ERROR: At least one required
+```
 
 ### Date-Effective Pattern
 - **New Assignment**: Every job change creates new record with new effectiveStartDate

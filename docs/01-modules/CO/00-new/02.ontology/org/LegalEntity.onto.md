@@ -171,6 +171,21 @@ attributes:
     default: false
     description: Is this entity a tax reporting unit? (TRU classification)
   
+  # === EMPLOYMENT CONFIGURATION ===
+  - name: staffingModelCode
+    type: enum
+    required: false
+    description: |
+      Determines how employee assignments link to organization structure.
+      - POSITION_BASED: positionId is required for all assignments (default)
+      - JOB_BASED: jobId is required (positionId optional for tracking)
+      - HYBRID: Either positionId OR jobId must be provided
+    values: [POSITION_BASED, JOB_BASED, HYBRID]
+    default: POSITION_BASED
+    metadata:
+      db_column: "(org_legal.entity.metadata.staffing_model_code)"
+      industry_pattern: "Oracle HCM, Workday, SAP SuccessFactors"
+  
   # === HIERARCHY ===
   - name: parentLegalEntityId
     type: string
@@ -432,6 +447,8 @@ mindmap
       isLegalEmployer
       isPayrollStatutoryUnit
       isTaxReportingUnit
+    Employment Configuration
+      staffingModelCode
     Hierarchy
       parentLegalEntityId
       hasChildEntities
@@ -519,6 +536,22 @@ mindmap
 | isPayrollStatutoryUnit | boolean | ✓ | Responsible for payroll taxes? |
 | isTaxReportingUnit | boolean | ✓ | Tax reporting unit? |
 
+### 2.6.1 Employment Configuration
+
+| Attribute | Type | Required | Description |
+|-----------|------|----------|-------------|
+| staffingModelCode | enum | | POSITION_BASED (default), JOB_BASED, HYBRID |
+
+#### Staffing Model Values
+
+| Value | Description | Assignment Constraint |
+|-------|-------------|----------------------|
+| **POSITION_BASED** | Position-centric organization (default) | positionId REQUIRED for all assignments |
+| **JOB_BASED** | Job-centric organization (flexible) | jobId REQUIRED if positionId not provided |
+| **HYBRID** | Mixed model | Either positionId OR jobId must be provided |
+
+**Industry Pattern**: Oracle HCM, Workday, SAP SuccessFactors all treat Staffing Model as organization-level configuration attribute, not a separate entity.
+
 ### 2.7 Hierarchy Attributes
 
 | Attribute | Type | Required | Description |
@@ -564,6 +597,7 @@ erDiagram
         string countryCode FK
         enum statusCode
         string registrationNumber
+        enum staffingModelCode
         string taxId
         boolean isLegalEmployer
     }
@@ -703,6 +737,13 @@ stateDiagram-v2
 - **Payroll Statutory Unit (PSU)**: Responsible for payroll taxes (isPayrollStatutoryUnit = true)
 - **Tax Reporting Unit (TRU)**: Tax reporting unit (isTaxReportingUnit = true)
 - **Use Case**: Same entity can be Legal Employer + PSU + TRU (all flags true)
+
+### Staffing Model Configuration
+- **POSITION_BASED** (default): All assignments must reference a Position. Job is auto-derived from Position.jobId.
+- **JOB_BASED**: Assignments can reference Job directly without Position. Useful for smaller organizations or flexible structures.
+- **HYBRID**: Either Position or Job (or both) can be used. Maximum flexibility.
+- **Constraint Enforcement**: See [[Assignment]] entity for conditional validation rules based on staffingModelCode.
+- **Industry Pattern**: Oracle HCM (Position Management vs Grade Ladder), Workday (Position Management toggle), SAP SF (isPositionManagementEnabled).
 
 ### Corporate Hierarchy
 - **Parent-Child**: Legal entities can form hierarchies (holding company → subsidiaries)

@@ -189,6 +189,46 @@ attributes:
     constraints:
       maxLength: 2000
   
+  # === FLEXIBLE COMPONENT LINES (Table-Level Detail) ===
+  - name: hasComponentLines
+    type: boolean
+    required: false
+    default: false
+    description: |
+      Indicates whether this basis has detail component lines (compensation.basis_line table).
+      When true, allowances are stored in separate lines; when false, only basisAmount is used.
+  
+  - name: totalAllowanceAmount
+    type: decimal
+    required: false
+    default: 0
+    description: |
+      Aggregated sum of all fixed allowances from component lines.
+      Calculated field: SUM(compensation.basis_line.amount WHERE source_code = 'FIXED').
+      Phụ cấp cố định chốt số riêng cho nhân sự (không từ plan).
+    constraints:
+      min: 0
+  
+  - name: totalGrossAmount
+    type: decimal
+    required: false
+    description: |
+      Total gross compensation = basisAmount + totalAllowanceAmount.
+      Tổng thu nhập gross trước thuế (không bao gồm allowances từ compensation plan).
+    constraints:
+      min: 0
+    metadata:
+      calculated: true
+      formula: "basisAmount + totalAllowanceAmount"
+  
+  - name: componentLineCount
+    type: integer
+    required: false
+    default: 0
+    description: Number of component lines attached to this basis (for UI display)
+    constraints:
+      min: 0
+  
   # === LIFECYCLE ===
   - name: statusCode
     type: enum

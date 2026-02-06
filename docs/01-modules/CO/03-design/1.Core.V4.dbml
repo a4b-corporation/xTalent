@@ -355,6 +355,16 @@ Table org_legal.entity {       // hồ sơ pháp nhân (công ty/chi nhánh)
   // registration_num   varchar(100) [null]                         // MOVED to org_legal.entity_profile
   // tax_id            varchar(50)  [null]                         // MOVED to org_legal.entity_profile
   // metadata          jsonb                                       // MOVED to org_legal.entity_profile (thông tin mở rộng)
+  
+  // changed 06feb2026: ADDED - Staffing Model Configuration (from LegalEntity ontology)
+  // Determines how employee assignments link to organization structure
+  // Values: POSITION_BASED (default) | JOB_BASED | HYBRID
+  // - POSITION_BASED: positionId required for all assignments, jobId auto-derived from Position.jobId
+  // - JOB_BASED: jobId required (positionId optional for tracking)
+  // - HYBRID: Either positionId OR jobId must be provided
+  // Industry pattern: Oracle HCM (Position Management), Workday, SAP SuccessFactors
+  staffing_model_code   varchar(20) [null, default: 'POSITION_BASED']  // POSITION_BASED, JOB_BASED, HYBRID
+  
   effective_start_date  date
   effective_end_date    date       [null]
   is_current_flag       boolean    [default: true]
@@ -364,7 +374,10 @@ Table org_legal.entity {       // hồ sơ pháp nhân (công ty/chi nhánh)
     (code, effective_start_date) [unique] 
     // (country_code)                                             // changed 11dec2025: OPTIONAL index if country_code added
   }
-  Note: 'changed 11dec2025: OPTIONAL - Consider adding country_code for legal jurisdiction (per ontology), currently can be stored in entity_profile.address1_country_code'
+  Note: '''
+    changed 11dec2025: OPTIONAL - Consider adding country_code for legal jurisdiction (per ontology), currently can be stored in entity_profile.address1_country_code
+    changed 06feb2026: ADDED staffing_model_code - Configures Position-based vs Job-based staffing model per legal entity. Enforces Assignment validation constraints. See LegalEntity.onto.md and Assignment.onto.md for business rules.
+  '''
 }
 
 // NEW: Extended Legal Entity Information (Profile)
@@ -1559,3 +1572,131 @@ Table eligibility.eligibility_evaluation {
   
   Note: 'changed 11dec2025: NEW - Immutable audit log of all eligibility evaluations. Used for compliance and troubleshooting.'
 }
+
+// =============================================================
+//  SCHEMA: compensation – Compensation Basis (CompensationBasis Ontology)
+// =============================================================
+// changed 06feb2026: NEW schema for CompensationBasis entity with flexible component lines
+
+Table compensation.basis {                     // mức lương hiệu lực (header)
+  id                      uuid        [pk, default: `gen_random_uuid()`]
+  work_relationship_id    uuid        [ref: > employment.work_relationship.id, not null]  // link to WorkRelationship
+  
+  // Effective Dating (SCD Type-2)
+  effective_start_date    date        [not null]                        // ngày bắt đầu hiệu lực
+  effective_end_date      date        [null]                            // ngày kết thúc (null = current)
+  is_current_flag         boolean     [default: false]                  // cờ bản ghi hiện tại
+  
+  // Core Salary Basis
+  basis_amount            decimal(15,2) [not null]                      // lương cơ bản (operational)
+  currency_code           char(3)     [default: 'VND']                  // mã tiền tệ (ISO 4217)
+  frequency_code          varchar(20) [default: 'MONTHLY']              // MONTHLY, HOURLY, ANNUALLY, DAILY
+  annualization_factor    decimal(6,2) [null]                           // factor quy năm
+  annual_equivalent       decimal(15,2) [null]                          // lương quy năm (calculated)
+  
+  // Classification
+  basis_type_code         varchar(30) [not null, default: 'OPERATIONAL_BASE']  // LEGAL_BASE, OPERATIONAL_BASE, MARKET_ADJUSTED
+  source_code             varchar(30) [not null, default: 'CONTRACT']         // CONTRACT, MANUAL_ADJUST, PROMOTION, COMP_CYCLE
+  reason_code             varchar(30) [null]                                  // HIRE, PROBATION_END, ANNUAL_REVIEW, PROMOTION
+  
+  // Adjustment Tracking
+  adjustment_amount       decimal(15,2) [null]                          // delta từ record trước
+  adjustment_percentage   decimal(5,2) [null]                           // % thay đổi
+  previous_basis_id       uuid        [ref: > compensation.basis.id, null]  // SCD chain (self-ref)
+  
+  // References
+  contract_id             uuid        [ref: > employment.contract.id, null]  // source contract (for LEGAL_BASE)
+  salary_basis_id         uuid        [null]                                 // link to comp_core.salary_basis config
+  
+  // Approval Workflow
+  approval_status         varchar(20) [null]                            // PENDING, APPROVED, REJECTED
+  approved_by             uuid        [ref: > person.worker.id, null]   // approver
+  approval_date           timestamp   [null]
+  next_review_date        date        [null]
+  
+  // VN Specific
+  social_insurance_basis  decimal(15,2) [null]                          // mức đóng BHXH (nếu khác basis_amount)
+  regional_min_wage_zone  varchar(10) [null]                            // ZONE_I, ZONE_II, ZONE_III, ZONE_IV
+  
+  // Flexible Component Lines (aggregated)
+  has_component_lines     boolean     [default: false]                  // có detail lines không?
+  total_allowance_amount  decimal(15,2) [default: 0]                    // tổng phụ cấp cố định (SUM of lines)
+  total_gross_amount      decimal(15,2) [null]                          // basis_amount + total_allowance_amount
+  component_line_count    int         [default: 0]                      // số dòng phụ cấp
+  
+  // Notes & Status
+  notes                   text        [null]
+  status_code             varchar(30) [not null, default: 'DRAFT']      // DRAFT, PENDING_APPROVAL, ACTIVE, FUTURE, SUPERSEDED, CANCELLED
+  
+  // Audit
+  created_at              timestamp   [default: `now()`]
+  updated_at              timestamp   [null]
+  created_by              uuid        [ref: > person.worker.id, null]
+  updated_by              uuid        [ref: > person.worker.id, null]
+  
+  Indexes {
+    (work_relationship_id, effective_start_date) [unique]               // unique per relationship + date
+    (work_relationship_id, is_current_flag) [name: 'idx_basis_current', note: 'WHERE is_current_flag = true']
+    (status_code, is_current_flag)
+    (previous_basis_id)                                                 // SCD chain lookup
+  }
+  
+  Note: '''
+    changed 06feb2026: NEW - CompensationBasis entity from ontology.
+    Header table for operational salary. Supports SCD Type-2 (date-effective with previousBasisId chain).
+    Flexible allowances stored in compensation.basis_line (detail lines).
+    Aggregated fields: total_allowance_amount, total_gross_amount, component_line_count.
+  '''
+}
+
+Table compensation.basis_line {                // chi tiết phụ cấp cố định (flexible lines)
+  id                      uuid        [pk, default: `gen_random_uuid()`]
+  basis_id                uuid        [ref: > compensation.basis.id, not null]  // header
+  
+  // Component Type
+  component_type_code     varchar(50) [not null]                        // MEAL, HOUSING, TRANSPORTATION, RESPONSIBILITY, SENIORITY, TOXICITY, PHONE, OTHER
+                                                                        // Lookup: common.code_list(COMP_COMPONENT_TYPE)
+  component_name          varchar(100) [null]                           // tên phụ cấp (nếu type = OTHER)
+  
+  // Amount
+  amount                  decimal(15,2) [not null]                      // số tiền phụ cấp
+  currency_code           char(3)     [default: 'VND']
+  
+  // Source
+  source_code             varchar(30) [not null, default: 'FIXED']      // FIXED = chốt cứng riêng, OVERRIDE = override từ plan
+                                                                        // (Phụ cấp tính từ plan sẽ KHÔNG ở đây, do Compensation Plan xử lý)
+  reason_code             varchar(50) [null]                            // lý do phụ cấp (HIRE, ROLE_CHANGE, SPECIAL, etc.)
+  
+  // Effective Dating
+  effective_start_date    date        [not null]                        // ngày bắt đầu có hiệu lực
+  effective_end_date      date        [null]                            // ngày kết thúc (null = ongoing)
+  is_current_flag         boolean     [default: true]
+  
+  // Reference
+  reference_id            uuid        [null]                            // optional reference (e.g., job_id, position_id if based on role)
+  reference_type          varchar(30) [null]                            // JOB, POSITION, LOCATION, etc.
+  
+  // Notes & Audit
+  notes                   text        [null]
+  metadata                jsonb       [null]                            // additional info
+  created_at              timestamp   [default: `now()`]
+  updated_at              timestamp   [null]
+  created_by              uuid        [ref: > person.worker.id, null]
+  updated_by              uuid        [ref: > person.worker.id, null]
+  
+  Indexes {
+    (basis_id, component_type_code, effective_start_date) [unique]      // unique per basis + type + date
+    (basis_id, is_current_flag)                                         // current lines per basis
+    (component_type_code, is_current_flag)                              // reporting by type
+  }
+  
+  Note: '''
+    changed 06feb2026: NEW - Flexible allowance lines for CompensationBasis.
+    Only stores FIXED allowances that are "locked" per employee.
+    Allowances calculated from Compensation Plan are NOT stored here.
+    Examples: Meal (if fixed amount per person), Housing, Responsibility, Seniority.
+    source_code = FIXED means this amount is specific to this employee.
+    source_code = OVERRIDE means this overrides a plan-calculated value.
+  '''
+}
+
