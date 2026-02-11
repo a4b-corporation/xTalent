@@ -1,0 +1,696 @@
+id: https://xtalent.io/ontology/ecr/track
+name: track_ontology
+version: "1.0.0"
+description: "Track entity ontology for Event-Centric Recruitment (ECR) module"
+
+prefixes:
+  xt: https://xtalent.io/ontology/
+  oracle: https://oracle.com/hcm/
+  sap: https://successfactors.sap.com/
+  workday: https://workday.com/
+
+imports:
+  - ./event.yaml
+  - ./request_mapping.yaml
+  - ./track_type_enum.yaml
+
+default_range: string
+
+# === SLOTS (Attributes) ===
+slots:
+  track_id:
+    description: "Mã định danh duy nhất của Track"
+    identifier: true
+    required: true
+    pattern: "^TRK-\\d{6}$"
+    annotations:
+      example: "TRK-000001"
+  
+  track_code:
+    description: "Mã ngắn của Track (dùng trong SBD generation)"
+    required: true
+    pattern: "^[A-Z]{2,5}$"
+    annotations:
+      example: "GAME", "QC", "DESIGN"
+      usage: "Used in candidate SBD: {EventCode}-{TrackCode}-{Random}"
+  
+  track_name:
+    description: "Tên đầy đủ của Track"
+    required: true
+    annotations:
+      example: "Game Development", "Quality Control", "Game Design"
+  
+  track_description:
+    description: "Mô tả chi tiết về Track"
+    required: false
+  
+  track_type:
+    description: "Loại Track theo lĩnh vực"
+    range: TrackTypeEnum
+    required: true
+  
+  track_status:
+    description: "Trạng thái của Track"
+    range: TrackStatusEnum
+    required: true
+  
+  event_id:
+    description: "ID của Event chứa Track này"
+    required: true
+    annotations:
+      reference: "Event.event_id"
+      relationship: "Many-to-One (nhiều Track thuộc 1 Event)"
+  
+  question_set_id:
+    description: "ID của bộ câu hỏi (FieldBlueprint) cho Track này"
+    required: false
+    annotations:
+      reference: "FieldBlueprint.blueprint_id"
+      usage: "Dynamic question set rendered based on Track selection"
+  
+  question_set_locked:
+    description: "Bộ câu hỏi đã được lock hay chưa"
+    range: boolean
+    required: true
+    annotations:
+      default: false
+      lock_purpose: "Must lock before creating Fixed Report Templates"
+  
+  question_set_locked_at:
+    description: "Thời điểm lock bộ câu hỏi"
+    range: datetime
+    required: false
+  
+  question_set_locked_by:
+    description: "ID của user lock bộ câu hỏi"
+    required: false
+    annotations:
+      reference: "User.user_id"
+  
+  target_headcount:
+    description: "Số lượng ứng viên mục tiêu cần tuyển cho Track này"
+    range: integer
+    required: false
+    minimum_value: 0
+    annotations:
+      usage: "Planning and capacity management"
+  
+  display_order:
+    description: "Thứ tự hiển thị Track trong danh sách"
+    range: integer
+    required: false
+    minimum_value: 1
+    annotations:
+      usage: "UI rendering order for candidate selection"
+  
+  is_active:
+    description: "Track có đang active để ứng viên có thể đăng ký không"
+    range: boolean
+    required: true
+    annotations:
+      default: true
+  
+  created_by:
+    description: "ID của Talent Acquisition tạo Track"
+    required: true
+    annotations:
+      reference: "User.user_id"
+  
+  created_at:
+    description: "Thời điểm tạo Track"
+    range: datetime
+    required: true
+  
+  updated_at:
+    description: "Thời điểm cập nhật Track lần cuối"
+    range: datetime
+    required: false
+  
+  # Relationships
+  stages:
+    description: "Danh sách các Stage (giai đoạn) trong quy trình Track này"
+    range: Stage
+    multivalued: true
+    inlined: false
+    annotations:
+      reference: "Stage.stage_id"
+      example: "Check-in → Test → Interview"
+  
+  request_mappings:
+    description: "Ánh xạ Track này với các Request ID"
+    range: RequestMapping
+    multivalued: true
+    inlined: false
+    annotations:
+      reference: "RequestMapping.mapping_id"
+      pattern: "Many-to-Many via RequestMapping entity"
+
+# === CLASSES (Entities) ===
+classes:
+  Track:
+    description: |
+      Luồng chuyên môn trong Event (Game Dev, QC, Design, etc.).
+      Mỗi Track là một recruitment stream với bộ câu hỏi riêng, quy trình riêng.
+      Track map với một hoặc nhiều Request (Job Requisition) thông qua RequestMapping.
+      Dynamic Question Set: Khi ứng viên chọn Track, hệ thống render bộ câu hỏi tương ứng.
+    
+    annotations:
+      # Terminology mapping
+      workday_term: "Job Family"
+      sap_term: "Job Category"
+      oracle_hcm_term: "Job Family"
+      disambiguation: |
+        Trong Workday, "Job Family" là phân loại nghề nghiệp cố định (IT, HR, Finance).
+        Trong xTalent ECR, Track là một luồng tuyển dụng động trong 1 Event cụ thể,
+        có thể map với nhiều Job Family khác nhau tùy theo cấu hình Event.
+      
+      # Module info
+      module: "ecr"
+      sub_module: "event_management"
+      version: "1.0.0"
+      
+      # Bounded Context
+      bounded_context: "Event Management Context"
+      aggregate_root: false
+      parent_aggregate: "Event"
+      
+      # See also
+      see_also: "https://docs.xtalent.io/ecr/track-management"
+    
+    slots:
+      - track_id
+      - track_code
+      - track_name
+      - track_description
+      - track_type
+      - track_status
+      - event_id
+      - question_set_id
+      - question_set_locked
+      - question_set_locked_at
+      - question_set_locked_by
+      - target_headcount
+      - display_order
+      - is_active
+      - created_by
+      - created_at
+      - updated_at
+      - stages
+      - request_mappings
+    
+    slot_usage:
+      track_id:
+        required: true
+        identifier: true
+      
+      track_code:
+        required: true
+      
+      track_name:
+        required: true
+      
+      track_type:
+        required: true
+      
+      track_status:
+        required: true
+      
+      event_id:
+        required: true
+      
+      question_set_locked:
+        required: true
+      
+      is_active:
+        required: true
+      
+      created_by:
+        required: true
+      
+      created_at:
+        required: true
+    
+    rules:
+      - description: "BRS-TRK-001: Track phải thuộc về một Event đã tồn tại"
+        comments:
+          - "Tránh orphan Track không gắn với Event nào"
+        preconditions:
+          slot_conditions:
+            event_id:
+              required: true
+        postconditions:
+          comments:
+            - "Event với event_id này phải tồn tại trong hệ thống"
+      
+      - description: "BRS-TRK-002: Question Set phải locked trước khi tạo Fixed Report Template"
+        comments:
+          - "Đảm bảo tính nhất quán của báo cáo với cấu trúc câu hỏi"
+          - "Reference: BRS-EVT-003 và BRS-FORM-001"
+        preconditions:
+          comments:
+            - "Khi TA request Fixed Report Template"
+        postconditions:
+          slot_conditions:
+            question_set_locked:
+              equals_string: "true"
+      
+      - description: "BRS-TRK-003: Khi lock Question Set, phải set locked_at và locked_by"
+        preconditions:
+          slot_conditions:
+            question_set_locked:
+              equals_string: "true"
+        postconditions:
+          all_of:
+            - slot_conditions:
+                question_set_locked_at:
+                  required: true
+            - slot_conditions:
+                question_set_locked_by:
+                  required: true
+      
+      - description: "BRS-TRK-004: Track code phải unique trong cùng một Event"
+        comments:
+          - "Tránh conflict khi generate SBD"
+          - "Validated at application level"
+      
+      - description: "BRS-TRK-005: Track status phải ACTIVE để ứng viên có thể đăng ký"
+        comments:
+          - "UI chỉ hiển thị Track có status = ACTIVE và is_active = true"
+        preconditions:
+          comments:
+            - "Khi candidate chọn Track để đăng ký"
+        postconditions:
+          all_of:
+            - slot_conditions:
+                track_status:
+                  equals_string: "ACTIVE"
+            - slot_conditions:
+                is_active:
+                  equals_string: "true"
+      
+      - description: "BRS-TRK-006: Dynamic Question Rendering theo Track"
+        comments:
+          - "Track 'Game Dev' hiển thị câu hỏi về ngôn ngữ lập trình"
+          - "Track 'Game Design' hiển thị Portfolio"
+          - "Reference: BRS-FORM-002"
+        postconditions:
+          comments:
+            - "GET /api/forms/schema?track_id={id} trả về schema động"
+      
+      - description: "BRS-TRK-007: Display order phải unique trong cùng Event"
+        comments:
+          - "Đảm bảo UI rendering order rõ ràng"
+          - "Validated at application level"
+
+  Stage:
+    description: |
+      Value Object - Giai đoạn trong quy trình Track (Check-in → Test → Interview).
+      Stage định nghĩa các bước mà ứng viên phải trải qua trong một luồng tuyển dụng.
+      Workflow: Stage 1 → Stage 2 → Stage 3 (theo stage_order).
+      
+      DDD Pattern: Value Object (không có lifecycle độc lập, phụ thuộc hoàn toàn vào Track)
+    
+    annotations:
+      # Terminology mapping
+      sap_term: "Recruitment Phase"
+      oracle_hcm_term: "Selection Phase"
+      workday_term: "Hiring Step"
+      disambiguation: |
+        Trong SAP, "Recruitment Phase" thường cố định (Sourcing, Interview, Offer).
+        Trong xTalent ECR, Stage hoàn toàn flexible và configurable per Track,
+        cho phép mỗi Track có workflow riêng biệt.
+      
+      # Module info
+      module: "ecr"
+      sub_module: "event_management"
+      bounded_context: "Event Management Context"
+      ddd_pattern: "Value Object"
+      parent_entity: "Track"
+    
+    slots:
+      - stage_id
+      - stage_name
+      - stage_description
+      - stage_type
+      - stage_status
+      - stage_order
+      - track_id
+      - is_required
+      - is_active
+      - passing_criteria
+      - auto_advance
+      - time_limit_minutes
+      - cutoff_score
+      - weight
+      - requires_sbd
+      - notification_template_id
+      - created_by
+      - created_at
+      - updated_at
+    
+    slot_usage:
+      stage_id:
+        identifier: true
+        required: true
+      
+      stage_name:
+        required: true
+      
+      stage_type:
+        required: true
+      
+      stage_status:
+        required: true
+      
+      stage_order:
+        required: true
+      
+      track_id:
+        required: true
+        annotations:
+          reference: "Track.track_id"
+      
+      is_required:
+        required: true
+      
+      is_active:
+        required: true
+      
+      created_by:
+        required: true
+      
+      created_at:
+        required: true
+    
+    rules:
+      - description: "BRS-STG-001: Stage phải thuộc về một Track đã tồn tại"
+        comments:
+          - "Tránh orphan Stage không gắn với Track nào"
+      
+      - description: "BRS-STG-002: Stage order phải unique trong cùng một Track"
+        comments:
+          - "Đảm bảo workflow sequence rõ ràng, không trùng lặp"
+          - "Unique constraint on (track_id, stage_order)"
+      
+      - description: "BRS-STG-003: Nếu stage có cutoff_score thì phải có passing_criteria"
+        comments:
+          - "Cutoff score cần logic validation đi kèm"
+      
+      - description: "BRS-STG-004: Stage type TEST hoặc ASSESSMENT phải có time_limit_minutes"
+        comments:
+          - "Bài thi/đánh giá bắt buộc có thời gian giới hạn"
+      
+      - description: "BRS-STG-005: Tổng weight của tất cả Stage trong Track phải = 1.0"
+        comments:
+          - "Đảm bảo tính toán điểm tổng chính xác"
+          - "SUM(weight) WHERE track_id = {track_id} MUST EQUAL 1.0"
+      
+      - description: "BRS-STG-006: Stage INTERVIEW phải có is_required = true"
+        comments:
+          - "Phỏng vấn là giai đoạn quan trọng, không được skip"
+      
+      - description: "BRS-STG-007: Nếu requires_sbd = true, stage_order phải >= 2"
+        comments:
+          - "SBD thường được generate sau vòng REGISTRATION hoặc SCREENING"
+          - "Stage đầu tiên (order=1) thường là REGISTRATION, chưa có SBD"
+      
+      - description: "BRS-STG-008: Auto-advance chỉ áp dụng cho stage status = ACTIVE"
+        comments:
+          - "Stage inactive không thể auto-advance"
+
+
+
+# === ENUMS ===
+enums:
+
+
+  TrackStatusEnum:
+    description: "Trạng thái của Track trong vòng đời"
+    annotations:
+      module: "ecr"
+    
+    permissible_values:
+      DRAFT:
+        description: "Track đang được cấu hình, chưa active"
+        annotations:
+          visible_to_candidates: false
+          allow_registration: false
+      
+      ACTIVE:
+        description: "Track đang active, ứng viên có thể đăng ký"
+        annotations:
+          visible_to_candidates: true
+          allow_registration: true
+      
+      FULL:
+        description: "Track đã đủ số lượng target_headcount"
+        annotations:
+          visible_to_candidates: true
+          allow_registration: false
+          show_waitlist: true
+      
+      CLOSED:
+        description: "Track đã đóng đăng ký"
+        annotations:
+          visible_to_candidates: false
+          allow_registration: false
+      
+      ARCHIVED:
+        description: "Track đã được archive"
+        annotations:
+          visible_to_candidates: false
+          read_only: true
+
+  StageTypeEnum:
+    description: "Loại giai đoạn trong quy trình tuyển dụng"
+    annotations:
+      module: "ecr"
+    
+    permissible_values:
+      REGISTRATION:
+        description: "Đăng ký/Thu thập hồ sơ"
+        annotations:
+          typical_order: 1
+          requires_sbd: false
+      
+      SCREENING:
+        description: "Sàng lọc hồ sơ"
+        annotations:
+          typical_order: 2
+          requires_sbd: false
+      
+      CHECK_IN:
+        description: "Check-in tại sự kiện (onsite)"
+        annotations:
+          typical_order: 3
+          requires_sbd: true
+      
+      TEST:
+        description: "Bài kiểm tra (MCQ, Coding, Technical)"
+        annotations:
+          typical_order: 4
+          requires_sbd: true
+          requires_time_limit: true
+      
+      INTERVIEW:
+        description: "Phỏng vấn (HR, Technical, Panel)"
+        annotations:
+          typical_order: 5
+          requires_sbd: true
+          is_required: true
+      
+      ASSESSMENT:
+        description: "Đánh giá tổng hợp/Portfolio review"
+        annotations:
+          typical_order: 6
+          requires_time_limit: false
+      
+      OFFER:
+        description: "Gửi offer/Đàm phán"
+        annotations:
+          typical_order: 7
+          requires_sbd: false
+  
+  StageStatusEnum:
+    description: "Trạng thái hoạt động của Stage"
+    annotations:
+      module: "ecr"
+    
+    permissible_values:
+      DRAFT:
+        description: "Stage đang được cấu hình, chưa active"
+        annotations:
+          allow_candidates: false
+      
+      ACTIVE:
+        description: "Stage đang active, candidates có thể tham gia"
+        annotations:
+          allow_candidates: true
+      
+      PAUSED:
+        description: "Stage tạm dừng (có thể resume sau)"
+        annotations:
+          allow_candidates: false
+      
+      COMPLETED:
+        description: "Stage đã hoàn thành (tất cả candidates đã xử lý)"
+        annotations:
+          allow_candidates: false
+      
+      CLOSED:
+        description: "Stage đã đóng, không nhận candidates mới"
+        annotations:
+          allow_candidates: false
+      
+      ARCHIVED:
+        description: "Stage đã được archive"
+        annotations:
+          allow_candidates: false
+          read_only: true
+  
+  PassingStatusEnum:
+    description: "Trạng thái kết quả của candidate tại một stage"
+    annotations:
+      module: "ecr"
+      usage: "Used in CandidateStageProgress entity"
+    
+    permissible_values:
+      PENDING:
+        description: "Chưa bắt đầu stage này"
+      
+      IN_PROGRESS:
+        description: "Đang thực hiện stage"
+      
+      PASSED:
+        description: "Đã pass stage"
+        annotations:
+          advance_to_next: true
+      
+      FAILED:
+        description: "Không pass stage"
+        annotations:
+          advance_to_next: false
+          send_rejection_email: true
+      
+      SKIPPED:
+        description: "Bỏ qua stage (vì is_required=false)"
+        annotations:
+          advance_to_next: true
+      
+      NO_SHOW:
+        description: "Không tham dự (dành cho CHECK_IN, INTERVIEW)"
+        annotations:
+          advance_to_next: false
+          mark_as_absent: true
+      
+      UNDER_REVIEW:
+        description: "Đang chờ đánh giá (dành cho ASSESSMENT, INTERVIEW)"
+        annotations:
+          advance_to_next: false
+
+
+
+# === Additional slots for Stage and RequestMapping ===
+slots:
+  # Stage slots
+  stage_id:
+    description: "Mã định danh Stage"
+    identifier: true
+    pattern: "^STG-\\d{6}$"
+  
+  stage_name:
+    description: "Tên giai đoạn"
+    required: true
+    annotations:
+      example: "Check-in", "Online Test", "Interview Round 1"
+  
+  stage_description:
+    description: "Mô tả chi tiết về giai đoạn này"
+    required: false
+  
+  stage_type:
+    description: "Loại giai đoạn theo phân loại chuẩn"
+    range: StageTypeEnum
+    required: true
+  
+  stage_status:
+    description: "Trạng thái hoạt động của giai đoạn"
+    range: StageStatusEnum
+    required: true
+  
+  stage_order:
+    description: "Thứ tự giai đoạn trong quy trình Track (1, 2, 3, ...)"
+    range: integer
+    required: true
+    minimum_value: 1
+    annotations:
+      usage: "Defines workflow sequence: Stage 1 → Stage 2 → Stage 3"
+  
+  is_required:
+    description: "Giai đoạn này có bắt buộc (mandatory) hay không"
+    range: boolean
+    required: true
+    annotations:
+      default: true
+      usage: "If false, candidate can skip this stage"
+  
+  passing_criteria:
+    description: "Tiêu chí để pass giai đoạn (JSON format)"
+    required: false
+    annotations:
+      format: "JSON"
+      example_mcq: '{"min_score": 70, "required_status": "PASSED"}'
+      example_interview: '{"min_rating": 3, "required_approvals": 2}'
+  
+  auto_advance:
+    description: "Tự động chuyển sang stage tiếp theo khi pass"
+    range: boolean
+    required: false
+    annotations:
+      default: false
+      usage: "If true, system auto-moves candidate to next stage upon passing"
+  
+  time_limit_minutes:
+    description: "Thời gian giới hạn cho giai đoạn (phút)"
+    range: integer
+    required: false
+    minimum_value: 0
+    annotations:
+      usage: "For TEST stage: time limit for exam completion"
+      example: "60 minutes for MCQ test, 120 minutes for coding test"
+  
+  cutoff_score:
+    description: "Điểm cắt để pass giai đoạn"
+    range: float
+    required: false
+    minimum_value: 0
+    maximum_value: 100
+    annotations:
+      usage: "For TEST or ASSESSMENT stages"
+  
+  weight:
+    description: "Trọng số của giai đoạn trong tổng điểm (0-1)"
+    range: float
+    required: false
+    minimum_value: 0
+    maximum_value: 1
+    annotations:
+      usage: "For calculating overall candidate score across stages"
+      example: "CHECK_IN: 0, TEST: 0.4, INTERVIEW: 0.6"
+  
+  requires_sbd:
+    description: "Giai đoạn này có yêu cầu SBD (Số Báo Danh) không"
+    range: boolean
+    required: false
+    annotations:
+      default: false
+      usage: "If true, SBD must be generated before entering this stage"
+  
+  notification_template_id:
+    description: "ID của email template cho giai đoạn này"
+    required: false
+    annotations:
+      reference: "MessageTemplate.template_id"
+      usage: "Auto-send notification when candidate enters/completes stage"
+  
+

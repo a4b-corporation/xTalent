@@ -1,0 +1,340 @@
+id: https://xtalent.io/ontology/ecr/request_mapping
+name: request_mapping_ontology
+version: "1.0.0"
+description: "RequestMapping entity ontology for Event-Centric Recruitment (ECR) module"
+
+prefixes:
+  xt: https://xtalent.io/ontology/
+  oracle: https://oracle.com/hcm/
+  sap: https://successfactors.sap.com/
+  workday: https://workday.com/
+
+imports:
+  - ./track.yaml
+
+default_range: string
+
+# === SLOTS (Attributes) ===
+slots:
+  mapping_id:
+    description: "Mã định danh duy nhất của RequestMapping"
+    identifier: true
+    required: true
+    pattern: "^MAP-\\d{6}$"
+    annotations:
+      example: "MAP-000001"
+  
+  track_id:
+    description: "ID của Track trong Event"
+    required: true
+    annotations:
+      reference: "Track.track_id"
+      relationship: "Many-to-One (nhiều mapping có thể trỏ về 1 Track)"
+  
+  request_id:
+    description: "ID của Job Requisition từ ATS Core"
+    required: true
+    annotations:
+      reference: "Request.request_id (from ATS Core)"
+      relationship: "Many-to-One (nhiều mapping có thể trỏ về 1 Request)"
+      external_system: "ATS Core (Job Requisition Management)"
+  
+  mapping_type:
+    description: "Loại ánh xạ giữa Track và Request"
+    range: MappingTypeEnum
+    required: true
+  
+  is_primary:
+    description: "Có phải là ánh xạ chính không"
+    range: boolean
+    required: true
+    annotations:
+      default: false
+      usage: "Only one PRIMARY mapping per Track is allowed"
+  
+  mapping_status:
+    description: "Trạng thái của ánh xạ"
+    range: MappingStatusEnum
+    required: true
+    annotations:
+      default: "ACTIVE"
+  
+  request_type:
+    description: "Loại Request (chỉ Fresher mới được phép)"
+    required: false
+    annotations:
+      readonly: true
+      synced_from: "ATS Core Request.request_type"
+      validation: "Must be 'FRESHER'"
+  
+  request_status:
+    description: "Trạng thái Request tại thời điểm mapping"
+    required: false
+    annotations:
+      readonly: true
+      synced_from: "ATS Core Request.status"
+      validation: "Must be 'APPROVED' and NOT 'POSTED'"
+  
+  event_id:
+    description: "ID của Event chứa Track này (denormalized for quick filter)"
+    required: false
+    annotations:
+      reference: "Event.event_id"
+      denormalized: true
+      usage: "Faster query: Get all mappings for an Event"
+  
+  priority_order:
+    description: "Thứ tự ưu tiên mapping (1 = cao nhất)"
+    range: integer
+    required: false
+    minimum_value: 1
+    annotations:
+      usage: "When multiple mappings exist, determines fallback order"
+  
+  notes:
+    description: "Ghi chú về mapping này"
+    required: false
+  
+  created_by:
+    description: "ID của Talent Acquisition tạo mapping"
+    required: true
+    annotations:
+      reference: "User.user_id"
+  
+  created_at:
+    description: "Thời điểm tạo mapping"
+    range: datetime
+    required: true
+  
+  updated_at:
+    description: "Thời điểm cập nhật mapping lần cuối"
+    range: datetime
+    required: false
+  
+  deactivated_at:
+    description: "Thời điểm deactivate mapping"
+    range: datetime
+    required: false
+  
+  deactivated_by:
+    description: "ID của user deactivate mapping"
+    required: false
+    annotations:
+      reference: "User.user_id"
+
+# === CLASSES (Entities) ===
+classes:
+  RequestMapping:
+    description: |
+      Entity - Ánh xạ nhiều-nhiều giữa Track (trong Event Context) và Request (trong ATS Core).
+      RequestMapping đóng vai trò Anti-Corruption Layer (ACL), bảo vệ Event Context khỏi sự thay đổi của ATS Core.
+      
+      Pattern: Many-to-Many relationship với metadata.
+      Lifecycle: Có thể add/remove mapping mà không ảnh hưởng Track hoặc Request lifecycle.
+      
+      Business Constraint: Chỉ Request type 'Fresher' đã Approved nhưng chưa Posted mới được phép map.
+    
+    annotations:
+      # Terminology mapping
+      oracle_hcm_term: "Job Opening Allocation"
+      sap_term: "Requisition Assignment"
+      workday_term: "Job Posting Link"
+      disambiguation: |
+        Trong Oracle/SAP, "Job Opening" thường direct link với Job Posting.
+        Trong xTalent ECR, RequestMapping là một ACL layer cho phép 1 Track map với nhiều Requests,
+        hoặc 1 Request được chia sẻ bởi nhiều Tracks, với metadata về priority và type.
+      
+      # Module info
+      module: "ecr"
+      sub_module: "event_management"
+      version: "1.0.0"
+      
+      # Bounded Context
+      bounded_context: "Event Management Context"
+      aggregate_root: false
+      parent_aggregate: "Track"
+      ddd_pattern: "Entity (Anti-Corruption Layer)"
+      
+      # Integration
+      integration_pattern: "Anti-Corruption Layer between Event Context and ATS Core"
+      external_dependency: "ATS Core (Request/Job Requisition)"
+      
+      # See also
+      see_also: "https://docs.xtalent.io/ecr/request-mapping"
+    
+    slots:
+      - mapping_id
+      - track_id
+      - request_id
+      - mapping_type
+      - is_primary
+      - mapping_status
+      - request_type
+      - request_status
+      - event_id
+      - priority_order
+      - notes
+      - created_by
+      - created_at
+      - updated_at
+      - deactivated_at
+      - deactivated_by
+    
+    slot_usage:
+      mapping_id:
+        required: true
+        identifier: true
+      
+      track_id:
+        required: true
+      
+      request_id:
+        required: true
+      
+      mapping_type:
+        required: true
+      
+      is_primary:
+        required: true
+      
+      mapping_status:
+        required: true
+      
+      created_by:
+        required: true
+      
+      created_at:
+        required: true
+    
+    rules:
+      - description: "BRS-MAP-001: Request phải là type 'FRESHER'"
+        comments:
+          - "Ngăn chặn ánh xạ với các Request loại khác (Regular Job Posting, Internship, etc.)"
+          - "Reference: BRS-EVT-001"
+        preconditions:
+          comments:
+            - "Khi TA tạo RequestMapping mới"
+        postconditions:
+          slot_conditions:
+            request_type:
+              equals_string: "FRESHER"
+      
+      - description: "BRS-MAP-002: Request phải Approved nhưng chưa Posted"
+        comments:
+          - "Tránh xung đột giữa Event recruitment và Job Board recruitment"
+          - "Request status must be 'APPROVED' AND NOT 'POSTED'"
+          - "Reference: BRS-EVT-001"
+        preconditions:
+          comments:
+            - "Khi TA tạo RequestMapping mới"
+        postconditions:
+          comments:
+            - "Validated at application level: Check Request.status from ATS Core"
+      
+      - description: "BRS-MAP-003: Chỉ một PRIMARY mapping per Track"
+        comments:
+          - "Mỗi Track chỉ có thể có 1 Request chính"
+          - "Các Request khác phải là SECONDARY hoặc BACKUP"
+        preconditions:
+          slot_conditions:
+            mapping_type:
+              equals_string: "PRIMARY"
+        postconditions:
+          comments:
+            - "Unique constraint on (track_id, is_primary=true)"
+      
+      - description: "BRS-MAP-004: Nếu mapping_type = PRIMARY thì is_primary = true"
+        comments:
+          - "Consistency check giữa mapping_type và is_primary flag"
+        preconditions:
+          slot_conditions:
+            mapping_type:
+              equals_string: "PRIMARY"
+        postconditions:
+          slot_conditions:
+            is_primary:
+              equals_string: "true"
+      
+      - description: "BRS-MAP-005: Track và Request phải tồn tại trong hệ thống"
+        comments:
+          - "Referential integrity check"
+          - "Track must exist in Event Context"
+          - "Request must exist in ATS Core"
+      
+      - description: "BRS-MAP-006: Không duplicate mapping cho cùng (track_id, request_id)"
+        comments:
+          - "Tránh tạo nhiều mapping trùng lặp"
+          - "Unique constraint on (track_id, request_id) WHERE mapping_status = ACTIVE"
+      
+      - description: "BRS-MAP-007: Khi deactivate mapping, phải set deactivated_at và deactivated_by"
+        comments:
+          - "Audit trail requirement"
+        preconditions:
+          slot_conditions:
+            mapping_status:
+              equals_string: "INACTIVE"
+        postconditions:
+          all_of:
+            - slot_conditions:
+                deactivated_at:
+                  required: true
+            - slot_conditions:
+                deactivated_by:
+                  required: true
+
+# === ENUMS ===
+enums:
+  MappingTypeEnum:
+    description: "Loại ánh xạ giữa Track và Request"
+    annotations:
+      module: "ecr"
+    
+    permissible_values:
+      PRIMARY:
+        description: "Ánh xạ chính (1 Track → 1 main Request)"
+        annotations:
+          is_primary: true
+          priority: 1
+          usage: "Main job requisition for this Track"
+      
+      SECONDARY:
+        description: "Ánh xạ phụ (Track có thể map với nhiều Request phụ)"
+        annotations:
+          is_primary: false
+          priority: 2
+          usage: "Additional job requisitions sharing same candidate pool"
+      
+      BACKUP:
+        description: "Request dự phòng nếu Request chính bị cancel"
+        annotations:
+          is_primary: false
+          priority: 3
+          usage: "Fallback job requisition if primary is cancelled"
+  
+  MappingStatusEnum:
+    description: "Trạng thái của RequestMapping"
+    annotations:
+      module: "ecr"
+    
+    permissible_values:
+      ACTIVE:
+        description: "Mapping đang active"
+        annotations:
+          allow_candidate_assignment: true
+      
+      INACTIVE:
+        description: "Mapping đã bị deactivate"
+        annotations:
+          allow_candidate_assignment: false
+          require_deactivation_metadata: true
+      
+      SUSPENDED:
+        description: "Mapping tạm dừng (có thể reactivate)"
+        annotations:
+          allow_candidate_assignment: false
+      
+      EXPIRED:
+        description: "Mapping hết hạn (Request đã closed)"
+        annotations:
+          allow_candidate_assignment: false
+          readonly: true

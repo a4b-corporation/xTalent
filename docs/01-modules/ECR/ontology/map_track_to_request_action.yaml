@@ -1,0 +1,291 @@
+id: https://xtalent.io/ontology/ecr/map_track_to_request_action
+name: map_track_to_request_action_ontology
+version: "1.0.0"
+description: "MapTrackToRequestAction ontology for Track-Request mapping API in ECR module"
+
+prefixes:
+  xt: https://xtalent.io/ontology/
+  oracle: https://oracle.com/hcm/
+  sap: https://successfactors.sap.com/
+  workday: https://workday.com/
+
+imports:
+  - ./event.yaml
+  - ./track.yaml
+  - ./request_mapping.yaml
+
+default_range: string
+
+# === SLOTS FOR ACTION ===
+slots:
+  action_id:
+    description: "Unique identifier for action execution"
+    identifier: true
+    range: string
+  
+  input_payload:
+    description: "Request payload for action"
+    required: true
+  
+  output_result:
+    description: "Response result from action"
+    required: false
+  
+  performed_by:
+    description: "User ID who performed the action"
+    required: true
+    annotations:
+      reference: "User.user_id"
+  
+  performed_at:
+    description: "Timestamp when action was performed"
+    range: datetime
+    required: true
+  
+  # Input fields for MapTrackToRequest
+  event_id:
+    description: "ID của Event"
+    required: true
+    pattern: "^EVT-\\d{6}$"
+  
+  track_id:
+    description: "ID của Track"
+    required: true
+    pattern: "^TRK-\\d{6}$"
+  
+  request_id:
+    description: "ID của Job Requisition (từ ATS Core)"
+    required: true
+    annotations:
+      external_system: "ATS Core"
+  
+  mapping_type:
+    description: "Loại ánh xạ"
+    range: MappingTypeEnum
+    required: true
+  
+  priority_order:
+    description: "Thứ tự ưu tiên (nếu có nhiều mappings)"
+    range: integer
+    required: false
+    minimum_value: 1
+  
+  notes:
+    description: "Ghi chú về mapping"
+    required: false
+
+# === CLASSES ===
+classes:
+  TrackRequestMappingRequest:
+    description: "Request payload for mapping Track to Request"
+    slots:
+      - event_id
+      - track_id
+      - request_id
+      - mapping_type
+      - priority_order
+      - notes
+    
+    slot_usage:
+      event_id:
+        required: true
+      track_id:
+        required: true
+      request_id:
+        required: true
+      mapping_type:
+        required: true
+      priority_order:
+        required: false
+      notes:
+        required: false
+  
+  MapTrackToRequestAction:
+    description: |
+      API: Tạo ánh xạ giữa Track (Event Context) và Request (ATS Core).
+      POST /api/events/{event_id}/tracks/{track_id}/map - Create RequestMapping.
+      
+      Purpose: Anti-Corruption Layer
+      - Links Event recruitment flow to traditional ATS Job Requisitions
+      - Allows Event Tracks to funnel candidates into existing Requests
+      - Maintains separation between Event Context and ATS Core
+      
+      Effects:
+      - Creates RequestMapping entity
+      - Validates Request constraints (type, status)
+      - Handles PRIMARY/SECONDARY/BACKUP mapping types
+    
+    annotations:
+      # API metadata
+      http_method: "POST"
+      endpoint: "/api/events/{event_id}/tracks/{track_id}/map"
+      request_content_type: "application/json"
+      response_content_type: "application/json"
+      
+      # Authentication
+      requires_authentication: true
+      required_permission: "track:map_request"
+      required_role: "TA (Talent Acquisition)"
+      
+      # Integration
+      external_dependency: "ATS Core (Request/Job Requisition)"
+      integration_pattern: "Anti-Corruption Layer"
+      
+      # Terminology mapping
+      oracle_hcm_action: "Allocate Job Opening to Event"
+      sap_action: "Assign Requisition to Campaign"
+      workday_action: "Link Job Posting to Event"
+      
+      # Module info
+      module: "ecr"
+      sub_module: "event_management"
+      bounded_context: "Event Management Context"
+      
+      # See also
+      see_also: "https://docs.xtalent.io/ecr/api/map-track-request"
+    
+    slots:
+      - action_id
+      - input_payload
+      - output_result
+      - performed_by
+      - performed_at
+    
+    slot_usage:
+      input_payload:
+        range: TrackRequestMappingRequest
+        required: true
+        inlined: true
+        description: "Track-Request mapping request data"
+      
+      output_result:
+        range: RequestMapping
+        required: true
+        description: "Created RequestMapping with mapping_id"
+      
+      performed_by:
+        required: true
+      
+      performed_at:
+        required: true
+    
+    rules:
+      - description: "BRS-ACT-MAP-001: Event phải tồn tại"
+        comments:
+          - "Validate event_id exists in Event table"
+          - "Return 404 Not Found if Event doesn't exist"
+      
+      - description: "BRS-ACT-MAP-002: Track phải thuộc về Event"
+        comments:
+          - "Validate Track.event_id = event_id"
+          - "Return 400 Bad Request if Track doesn't belong to Event"
+        preconditions:
+          comments:
+            - "Track.event_id = input_payload.event_id"
+      
+      - description: "BRS-ACT-MAP-003: Request phải tồn tại trong ATS Core"
+        comments:
+          - "Validate request_id exists in ATS Core"
+          - "Return 404 if Request not found in ATS Core"
+          - "External API call to ATS Core"
+      
+      - description: "BRS-ACT-MAP-004: Request phải là type 'FRESHER'"
+        comments:
+          - "Reference: BRS-MAP-001, BRS-EVT-001"
+          - "Only Fresher requests can be mapped to Events"
+          - "Return 422 if Request.type != FRESHER"
+        preconditions:
+          comments:
+            - "Request.type = 'FRESHER' (validated from ATS Core)"
+        postconditions:
+          slot_conditions:
+            output_result:
+              request_type:
+                equals_string: "FRESHER"
+      
+      - description: "BRS-ACT-MAP-005: Request phải Approved nhưng chưa Posted"
+        comments:
+          - "Reference: BRS-MAP-002, BRS-EVT-001"
+          - "Avoid conflict between Event recruitment and Job Board recruitment"
+          - "Return 422 if Request status invalid"
+        preconditions:
+          comments:
+            - "Request.status = 'APPROVED' AND Request.posted = false (validated from ATS Core)"
+      
+      - description: "BRS-ACT-MAP-006: Không duplicate mapping cho cùng (track_id, request_id)"
+        comments:
+          - "Reference: BRS-MAP-006"
+          - "Return 409 Conflict if mapping already exists with status=ACTIVE"
+        preconditions:
+          comments:
+            - "NOT EXISTS RequestMapping WHERE track_id = ? AND request_id = ? AND mapping_status = ACTIVE"
+      
+      - description: "BRS-ACT-MAP-007: Nếu mapping_type = PRIMARY, chỉ 1 PRIMARY per Track"
+        comments:
+          - "Reference: BRS-MAP-003"
+          - "Return 422 if Track already has PRIMARY mapping"
+        preconditions:
+          slot_conditions:
+            input_payload:
+              mapping_type:
+                equals_string: "PRIMARY"
+        postconditions:
+          comments:
+            - "NOT EXISTS RequestMapping WHERE track_id = ? AND mapping_type = PRIMARY AND mapping_id != output.mapping_id"
+      
+      - description: "BRS-ACT-MAP-008: Nếu mapping_type = PRIMARY thì is_primary = true"
+        comments:
+          - "Reference: BRS-MAP-004"
+          - "Consistency between mapping_type and is_primary flag"
+        preconditions:
+          slot_conditions:
+            input_payload:
+              mapping_type:
+                equals_string: "PRIMARY"
+        postconditions:
+          slot_conditions:
+            output_result:
+              is_primary:
+                equals_string: "true"
+      
+      - description: "BRS-ACT-MAP-009: Mapping được tạo với status = ACTIVE"
+        comments:
+          - "Initial status is always ACTIVE"
+        postconditions:
+          slot_conditions:
+            output_result:
+              mapping_status:
+                equals_string: "ACTIVE"
+      
+      - description: "BRS-ACT-MAP-010: Audit trail required"
+        comments:
+          - "Record created_by and created_at in RequestMapping"
+        postconditions:
+          comments:
+            - "output_result.created_by = performed_by"
+            - "output_result.created_at = performed_at"
+      
+      - description: "BRS-ACT-MAP-011: Denormalize event_id vào RequestMapping"
+        comments:
+          - "For faster query: Get all mappings for an Event"
+        postconditions:
+          comments:
+            - "output_result.event_id = input_payload.event_id"
+
+# === Response Codes ===
+# Documented inline for clarity:
+# 
+# Success:
+#   - 201 Created: RequestMapping created successfully
+# 
+# Client Errors:
+#   - 400 Bad Request: Invalid input (e.g., Track doesn't belong to Event)
+#   - 401 Unauthorized: Missing or invalid authentication
+#   - 403 Forbidden: User doesn't have track:map_request permission
+#   - 404 Not Found: Event, Track, or Request doesn't exist
+#   - 409 Conflict: Duplicate mapping already exists
+#   - 422 Unprocessable Entity: Business rule validation failed (Request type/status invalid, duplicate PRIMARY)
+# 
+# Server Errors:
+#   - 500 Internal Server Error: Unexpected error during mapping
+#   - 503 Service Unavailable: ATS Core unavailable for Request validation

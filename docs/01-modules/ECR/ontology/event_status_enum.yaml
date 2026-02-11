@@ -1,0 +1,194 @@
+id: https://xtalent.io/ontology/ecr/event_status_enum
+name: event_status_enum_ontology
+version: "1.0.0"
+description: "EventStatusEnum ontology for Event lifecycle management in ECR module"
+
+prefixes:
+  xt: https://xtalent.io/ontology/
+  oracle: https://oracle.com/hcm/
+  sap: https://successfactors.sap.com/
+  workday: https://workday.com/
+
+default_range: string
+
+# === ENUMS ===
+enums:
+  EventStatusEnum:
+    description: |
+      Trạng thái vòng đời của Event trong Event-Centric Recruitment.
+      Enum này định nghĩa các giai đoạn lifecycle khác nhau của một Event,
+      từ khi được tạo (DRAFT) đến khi kết thúc và archive (ARCHIVED/CANCELLED).
+      
+      Lifecycle Flow: DRAFT → PUBLISHED → ONGOING → COMPLETED → ARCHIVED
+      Alternative Flow: ANY → CANCELLED
+    
+    annotations:
+      # Terminology mapping
+      oracle_hcm_term: "Event Status"
+      sap_term: "Campaign Status"
+      workday_term: "Event State"
+      disambiguation: |
+        Trong Oracle/SAP, Event Status thường chỉ có vài states cơ bản (Active, Inactive).
+        Trong xTalent ECR, EventStatusEnum chi tiết hơn với lifecycle states,
+        bao gồm pre-event (DRAFT, PUBLISHED), during-event (ONGOING), và post-event (COMPLETED, ARCHIVED).
+      
+      # Module info
+      module: "ecr"
+      sub_module: "event_management"
+      version: "1.0.0"
+      bounded_context: "Event Management Context"
+      
+      # State machine
+      state_machine: true
+      initial_state: "DRAFT"
+      terminal_states: ["ARCHIVED", "CANCELLED"]
+      
+      # See also
+      see_also: "https://docs.xtalent.io/ecr/event-lifecycle"
+    
+    permissible_values:
+      DRAFT:
+        description: "Sự kiện đang được tạo/chỉnh sửa, chưa public"
+        annotations:
+          # UI/UX behavior
+          allow_edits: true
+          visible_to_candidates: false
+          
+          # Feature flags
+          allow_registration: false
+          allow_checkin: false
+          allow_reporting: false
+          
+          # Workflow
+          next_states: ["PUBLISHED", "CANCELLED"]
+          validation_required: "Must have at least 1 Track to transition to PUBLISHED"
+          
+          # Business logic
+          send_notifications: false
+          sync_to_ats: false
+      
+      PUBLISHED:
+        description: "Sự kiện đã được publish, ứng viên có thể đăng ký"
+        annotations:
+          # UI/UX behavior
+          allow_edits: false
+          visible_to_candidates: true
+          show_on_portal: true
+          
+          # Feature flags
+          allow_registration: true
+          allow_checkin: false
+          allow_reporting: true
+          
+          # Workflow
+          next_states: ["ONGOING", "CANCELLED"]
+          auto_transition: "Automatically transitions to ONGOING at start_date"
+          
+          # Business logic
+          send_notifications: true
+          notification_type: "EventPublished"
+          sync_to_ats: true
+          lock_track_count: true
+      
+      ONGOING:
+        description: "Sự kiện đang diễn ra (trong khoảng start_date và end_date)"
+        annotations:
+          # UI/UX behavior
+          allow_edits: false
+          visible_to_candidates: true
+          show_realtime_stats: true
+          
+          # Feature flags
+          allow_registration: true
+          allow_checkin: true
+          allow_reporting: true
+          enable_kiosk_mode: true
+          
+          # Workflow
+          next_states: ["COMPLETED", "CANCELLED"]
+          auto_transition: "Automatically transitions to COMPLETED at end_date"
+          
+          # Business logic
+          send_notifications: true
+          notification_type: ["CandidateCheckedIn", "StageCompleted"]
+          realtime_dashboard: true
+          sync_to_ats: true
+      
+      COMPLETED:
+        description: "Sự kiện đã kết thúc nhưng chưa archive"
+        annotations:
+          # UI/UX behavior
+          allow_edits: false
+          visible_to_candidates: false
+          
+          # Feature flags
+          allow_registration: false
+          allow_checkin: false
+          allow_reporting: true
+          enable_post_event_survey: true
+          
+          # Workflow
+          next_states: ["ARCHIVED"]
+          validation_required: "All candidates must have final status before archiving"
+          
+          # Business logic
+          send_notifications: true
+          notification_type: "EventCompleted"
+          generate_final_reports: true
+          sync_to_ats: true
+      
+      ARCHIVED:
+        description: "Sự kiện đã được archive, chỉ đọc"
+        annotations:
+          # UI/UX behavior
+          allow_edits: false
+          visible_to_candidates: false
+          read_only: true
+          
+          # Feature flags
+          allow_registration: false
+          allow_checkin: false
+          allow_reporting: true
+          
+          # Workflow
+          next_states: []
+          is_terminal: true
+          
+          # Business logic
+          send_notifications: false
+          data_retention_policy: "Keep for compliance period (e.g., 7 years)"
+          sync_to_ats: false
+      
+      CANCELLED:
+        description: "Sự kiện bị hủy bỏ"
+        annotations:
+          # UI/UX behavior
+          allow_edits: false
+          visible_to_candidates: false
+          
+          # Feature flags
+          allow_registration: false
+          allow_checkin: false
+          allow_reporting: true
+          
+          # Workflow
+          next_states: []
+          is_terminal: true
+          require_cancellation_reason: true
+          
+          # Business logic
+          send_notifications: true
+          notification_type: "EventCancelled"
+          send_to: "All registered candidates"
+          sync_to_ats: true
+          release_all_reservations: true
+
+# === Business Rules for State Transitions ===
+# These rules are defined inline with the enum for clarity
+
+# BRS-EVTST-001: DRAFT → PUBLISHED requires at least 1 Track
+# BRS-EVTST-002: PUBLISHED → ONGOING happens automatically at start_date
+# BRS-EVTST-003: ONGOING → COMPLETED happens automatically at end_date
+# BRS-EVTST-004: Any state can transition to CANCELLED (emergency cancel)
+# BRS-EVTST-005: ARCHIVED and CANCELLED are terminal states (no further transitions)
+# BRS-EVTST-006: Cancellation requires cancellation_reason and cancelled_by audit fields

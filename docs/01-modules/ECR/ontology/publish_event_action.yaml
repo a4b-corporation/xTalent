@@ -1,0 +1,234 @@
+id: https://xtalent.io/ontology/ecr/publish_event_action
+name: publish_event_action_ontology
+version: "1.0.0"
+description: "PublishEventAction ontology for Event publication API in ECR module"
+
+prefixes:
+  xt: https://xtalent.io/ontology/
+  oracle: https://oracle.com/hcm/
+  sap: https://successfactors.sap.com/
+  workday: https://workday.com/
+
+imports:
+  - ./event.yaml
+  - ./event_status_enum.yaml
+
+default_range: string
+
+# === SLOTS FOR ACTION ===
+slots:
+  action_id:
+    description: "Unique identifier for action execution"
+    identifier: true
+    range: string
+  
+  input_payload:
+    description: "Request payload for action"
+    required: true
+  
+  output_result:
+    description: "Response result from action"
+    required: false
+  
+  performed_by:
+    description: "User ID who performed the action"
+    required: true
+    annotations:
+      reference: "User.user_id"
+  
+  performed_at:
+    description: "Timestamp when action was performed"
+    range: datetime
+    required: true
+  
+  # Input fields for PublishEvent
+  event_id:
+    description: "ID của Event cần publish"
+    required: true
+    pattern: "^EVT-\\d{6}$"
+  
+  publish_to_portal:
+    description: "Có publish lên portal công khai không"
+    range: boolean
+    required: false
+    annotations:
+      default: true
+  
+  notification_enabled:
+    description: "Có gửi notification cho stakeholders không"
+    range: boolean
+    required: false
+    annotations:
+      default: true
+
+# === CLASSES ===
+classes:
+  EventPublishRequest:
+    description: "Request payload for publishing an Event"
+    slots:
+      - event_id
+      - publish_to_portal
+      - notification_enabled
+    
+    slot_usage:
+      event_id:
+        required: true
+      publish_to_portal:
+        required: false
+      notification_enabled:
+        required: false
+  
+  PublishEventAction:
+    description: |
+      API: Publish Event để cho phép candidates đăng ký.
+      POST /api/events/{event_id}/publish - Transition Event from DRAFT to PUBLISHED.
+      
+      Effects:
+      - Event status changes from DRAFT → PUBLISHED
+      - Event becomes visible on candidate portal
+      - Candidates can start registering for Tracks
+      - Domain Event "EventPublished" is emitted
+      - Notifications sent to configured stakeholders
+    
+    annotations:
+      # API metadata
+      http_method: "POST"
+      endpoint: "/api/events/{event_id}/publish"
+      request_content_type: "application/json"
+      response_content_type: "application/json"
+      
+      # Authentication
+      requires_authentication: true
+      required_permission: "event:publish"
+      required_role: "TA (Talent Acquisition)"
+      
+      # Side effects
+      emits_domain_event: "EventPublished"
+      triggers_notifications: true
+      
+      # Terminology mapping
+      oracle_hcm_action: "Activate Recruiting Event"
+      sap_action: "Activate Campaign"
+      workday_action: "Publish Event"
+      
+      # Module info
+      module: "ecr"
+      sub_module: "event_management"
+      bounded_context: "Event Management Context"
+      
+      # Pattern
+      pattern: "State Transition Action (DRAFT → PUBLISHED)"
+      
+      # See also
+      see_also: "https://docs.xtalent.io/ecr/api/publish-event"
+    
+    slots:
+      - action_id
+      - input_payload
+      - output_result
+      - performed_by
+      - performed_at
+    
+    slot_usage:
+      input_payload:
+        range: EventPublishRequest
+        required: true
+        inlined: true
+        description: "Event publish request data"
+      
+      output_result:
+        range: Event
+        required: true
+        description: "Updated Event with status=PUBLISHED"
+      
+      performed_by:
+        required: true
+      
+      performed_at:
+        required: true
+    
+    rules:
+      - description: "BRS-ACT-PUB-001: Event phải tồn tại trong hệ thống"
+        comments:
+          - "Validate event_id exists"
+          - "Return 404 Not Found if Event doesn't exist"
+      
+      - description: "BRS-ACT-PUB-002: Event phải đang ở status = DRAFT"
+        comments:
+          - "Only DRAFT events can transition to PUBLISHED"
+          - "Return 409 Conflict if Event is not DRAFT"
+          - "Reference: BRS-EVTST-001"
+        preconditions:
+          comments:
+            - "Event.event_status = DRAFT"
+        postconditions:
+          comments:
+            - "Event.event_status = PUBLISHED"
+      
+      - description: "BRS-ACT-PUB-003: Event phải có ít nhất 1 Track"
+        comments:
+          - "Reference: BRS-EVT-002"
+          - "Cannot publish empty Event"
+          - "Return 422 Unprocessable Entity if no Tracks"
+        preconditions:
+          comments:
+            - "COUNT(Event.tracks) >= 1"
+      
+      - description: "BRS-ACT-PUB-004: Tất cả Tracks phải có question_set_id"
+        comments:
+          - "Each Track must have a question set configured"
+          - "Return 422 if any Track missing question_set_id"
+        preconditions:
+          comments:
+            - "FOR ALL Track t IN Event.tracks: t.question_set_id IS NOT NULL"
+      
+      - description: "BRS-ACT-PUB-005: Domain Event 'EventPublished' phải được emit"
+        comments:
+          - "Trigger downstream contexts (Form, Scheduling, Portal)"
+          - "EventPublished includes event_id, event_code, track_ids"
+        postconditions:
+          comments:
+            - "Domain Event 'EventPublished' emitted to event bus"
+      
+      - description: "BRS-ACT-PUB-006: Nếu notification_enabled=true, gửi notification"
+        comments:
+          - "Send email/push notification to configured stakeholders"
+          - "Includes Event URL, registration deadline"
+        preconditions:
+          slot_conditions:
+            input_payload:
+              notification_enabled:
+                equals_string: "true"
+        postconditions:
+          comments:
+            - "Notifications sent to stakeholders"
+      
+      - description: "BRS-ACT-PUB-007: Auto-transition từ PUBLISHED → ONGOING tại start_date"
+        comments:
+          - "Reference: BRS-EVTST-002"
+          - "System will auto-transition at Event.start_date"
+      
+      - description: "BRS-ACT-PUB-008: Audit trail required"
+        comments:
+          - "Record published_by and published_at"
+        postconditions:
+          comments:
+            - "Event.published_by = performed_by"
+            - "Event.published_at = performed_at"
+
+# === Response Codes ===
+# Documented inline for clarity:
+# 
+# Success:
+#   - 200 OK: Event published successfully
+# 
+# Client Errors:
+#   - 400 Bad Request: Invalid input
+#   - 401 Unauthorized: Missing or invalid authentication
+#   - 403 Forbidden: User doesn't have event:publish permission
+#   - 404 Not Found: Event with event_id doesn't exist
+#   - 409 Conflict: Event is not in DRAFT status
+#   - 422 Unprocessable Entity: Business rule validation failed (no tracks, missing question sets)
+# 
+# Server Errors:
+#   - 500 Internal Server Error: Unexpected error during publication

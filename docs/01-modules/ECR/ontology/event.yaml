@@ -1,0 +1,421 @@
+id: https://xtalent.io/ontology/ecr/event
+name: event_ontology
+version: "1.0.0"
+description: "Event entity ontology for Event-Centric Recruitment (ECR) module"
+
+prefixes:
+  xt: https://xtalent.io/ontology/
+  oracle: https://oracle.com/hcm/
+  sap: https://successfactors.sap.com/
+  workday: https://workday.com/
+
+imports:
+  - ./event_status_enum.yaml
+  - ./track_type_enum.yaml
+
+default_range: string
+
+# === SLOTS (Attributes) ===
+slots:
+  event_id:
+    description: "Mã định danh duy nhất của sự kiện"
+    identifier: true
+    required: true
+    pattern: "^EVT-\\d{6}$"
+    annotations:
+      example: "EVT-000001"
+  
+  event_code:
+    description: "Mã ngắn gọn của sự kiện (dùng để generate SBD)"
+    required: true
+    pattern: "^[A-Z0-9]{3,10}$"
+    annotations:
+      example: "FRESHER2026"
+      usage: "Used in candidate ID generation: {EventCode}-{TrackPrefix}-{Random}"
+  
+  event_name:
+    description: "Tên đầy đủ của sự kiện tuyển dụng"
+    required: true
+    annotations:
+      example: "Chương trình Tuyển dụng Fresher 2026"
+  
+  event_description:
+    description: "Mô tả chi tiết về sự kiện"
+    required: false
+  
+  event_type:
+    description: "Loại hình sự kiện tuyển dụng"
+    range: EventTypeEnum
+    required: true
+  
+  event_status:
+    description: "Trạng thái hiện tại của sự kiện"
+    range: EventStatusEnum
+    required: true
+  
+  start_date:
+    description: "Ngày bắt đầu sự kiện (Master Event lifecycle - trước sự kiện vật lý)"
+    range: date
+    required: true
+  
+  end_date:
+    description: "Ngày kết thúc sự kiện (Master Event lifecycle - sau sự kiện vật lý)"
+    range: date
+    required: true
+  
+  physical_event_date:
+    description: "Ngày diễn ra sự kiện vật lý (onsite event)"
+    range: date
+    required: false
+    annotations:
+      usage: "For hybrid events with both online and onsite phases"
+  
+  venue_location:
+    description: "Địa điểm tổ chức sự kiện vật lý"
+    required: false
+    annotations:
+      example: "Trường ĐH Bách Khoa, Hội trường A"
+  
+  max_capacity:
+    description: "Tổng số lượng ứng viên tối đa cho toàn bộ sự kiện"
+    range: integer
+    required: false
+    minimum_value: 0
+  
+  created_by:
+    description: "ID của Talent Acquisition tạo sự kiện"
+    required: true
+    annotations:
+      reference: "User.user_id"
+  
+  created_at:
+    description: "Thời điểm tạo sự kiện"
+    range: datetime
+    required: true
+  
+  published_at:
+    description: "Thời điểm publish sự kiện (chuyển từ Draft sang Published)"
+    range: datetime
+    required: false
+  
+  archived_at:
+    description: "Thời điểm archive sự kiện"
+    range: datetime
+    required: false
+  
+  # Relationships
+  tracks:
+    description: "Danh sách các Track (luồng tuyển dụng) thuộc sự kiện"
+    range: Track
+    multivalued: true
+    inlined: false
+    annotations:
+      reference: "Track.track_id"
+  
+  request_mappings:
+    description: "Ánh xạ giữa Track và Request ID"
+    range: RequestMapping
+    multivalued: true
+    inlined: false
+    annotations:
+      reference: "RequestMapping.mapping_id"
+
+# === CLASSES (Entities) ===
+classes:
+  Event:
+    description: |
+      Aggregate Root - Sự kiện tuyển dụng tập trung.
+      Event là container chứa nhiều Track (Luồng tuyển dụng), mỗi Track map với 1 hoặc nhiều Request (Yêu cầu tuyển dụng).
+      Vòng đời: Master Event lifecycle kéo dài từ trước → trong → sau sự kiện vật lý.
+      Hybrid: Kết hợp Online (Test remote) + Onsite (Check-in Kiosk, Phỏng vấn trực tiếp).
+    
+    annotations:
+      # Terminology mapping
+      oracle_hcm_term: "Recruiting Event"
+      sap_term: "Recruiting Campaign"
+      workday_term: "Recruiting Event"
+      disambiguation: |
+        Trong Oracle HCM và Workday, "Recruiting Event" thường chỉ là một hoạt động marketing/sourcing đơn giản.
+        Trong xTalent ECR, Event là một Aggregate Root phức tạp quản lý toàn bộ vòng đời tuyển dụng số lượng lớn,
+        từ đăng ký, check-in, test, đến phỏng vấn và offer.
+      
+      # Module info
+      module: "ecr"
+      sub_module: "event_management"
+      version: "1.0.0"
+      
+      # Bounded Context
+      bounded_context: "Event Management Context"
+      aggregate_root: true
+      
+      # See also
+      see_also: "https://docs.xtalent.io/ecr/event-management"
+    
+    slots:
+      - event_id
+      - event_code
+      - event_name
+      - event_description
+      - event_type
+      - event_status
+      - start_date
+      - end_date
+      - physical_event_date
+      - venue_location
+      - max_capacity
+      - created_by
+      - created_at
+      - published_at
+      - archived_at
+      - tracks
+      - request_mappings
+    
+    slot_usage:
+      event_id:
+        required: true
+        identifier: true
+      
+      event_code:
+        required: true
+      
+      event_name:
+        required: true
+      
+      event_type:
+        required: true
+      
+      event_status:
+        required: true
+      
+      start_date:
+        required: true
+      
+      end_date:
+        required: true
+      
+      created_by:
+        required: true
+      
+      created_at:
+        required: true
+    
+    rules:
+      - description: "BRS-EVT-001: Event chỉ map với Request loại 'Fresher' đã Approved nhưng chưa Posted"
+        comments:
+          - "Ngăn chặn xung đột khi một vị trí vừa tuyển qua Job Board vừa tuyển qua Event"
+          - "Validated at application level khi tạo RequestMapping"
+        preconditions:
+          slot_conditions:
+            request_mappings:
+              required: false
+        postconditions:
+          comments:
+            - "Tất cả Request được map phải có status = 'APPROVED' và posted = false"
+            - "Request type phải là 'FRESHER' hoặc các loại mass hiring tương tự"
+      
+      - description: "BRS-EVT-002: Event phải có >= 1 Track để chuyển sang Published"
+        comments:
+          - "Đảm bảo Event có ít nhất một luồng tuyển dụng trước khi public"
+        preconditions:
+          slot_conditions:
+            event_status:
+              equals_string: "PUBLISHED"
+        postconditions:
+          slot_conditions:
+            tracks:
+              required: true
+              comments:
+                - "Minimum 1 track required"
+      
+      - description: "BRS-EVT-003: Track.QuestionSet phải locked trước khi tạo Report cố định"
+        comments:
+          - "Đảm bảo tính nhất quán của báo cáo với cấu trúc câu hỏi"
+          - "Validated khi generate Fixed Report Template"
+      
+      - description: "BRS-EVT-004: End date phải sau Start date"
+        postconditions:
+          slot_conditions:
+            end_date:
+              minimum_value: "{start_date}"
+      
+      - description: "BRS-EVT-005: Physical event date phải nằm giữa Start date và End date"
+        comments:
+          - "Physical event là một phần của Master Event lifecycle"
+        preconditions:
+          slot_conditions:
+            physical_event_date:
+              required: true
+        postconditions:
+          all_of:
+            - slot_conditions:
+                physical_event_date:
+                  minimum_value: "{start_date}"
+            - slot_conditions:
+                physical_event_date:
+                  maximum_value: "{end_date}"
+      
+      - description: "BRS-EVT-006: Published_at phải được set khi status chuyển sang PUBLISHED"
+        preconditions:
+          slot_conditions:
+            event_status:
+              equals_string: "PUBLISHED"
+        postconditions:
+          slot_conditions:
+            published_at:
+              required: true
+      
+      - description: "BRS-EVT-007: Archived_at phải được set khi status chuyển sang ARCHIVED"
+        preconditions:
+          slot_conditions:
+            event_status:
+              equals_string: "ARCHIVED"
+        postconditions:
+          slot_conditions:
+            archived_at:
+              required: true
+
+  Track:
+    description: "Luồng chuyên môn trong Event (Game Dev, QC, Design, etc.)"
+    annotations:
+      workday_term: "Job Family"
+      module: "ecr"
+      see_also: "Track ánh xạ với một hoặc nhiều Request thông qua RequestMapping"
+    
+    slots:
+      - track_id
+      - track_name
+      - track_code
+      - track_type
+      - event_id
+      - question_set_id
+      - question_set_locked
+    
+    slot_usage:
+      track_id:
+        identifier: true
+        required: true
+      
+      event_id:
+        required: true
+        annotations:
+          reference: "Event.event_id"
+      
+      question_set_locked:
+        range: boolean
+        required: true
+        annotations:
+          default: false
+
+  RequestMapping:
+    description: "Liên kết Track ↔ Request ID (Many-to-many mapping)"
+    annotations:
+      module: "ecr"
+      pattern: "Anti-Corruption Layer giữa Event Context và ATS Core"
+    
+    slots:
+      - mapping_id
+      - track_id
+      - request_id
+      - created_at
+    
+    slot_usage:
+      mapping_id:
+        identifier: true
+        required: true
+      
+      track_id:
+        required: true
+        annotations:
+          reference: "Track.track_id"
+      
+      request_id:
+        required: true
+        annotations:
+          reference: "Request.request_id (from ATS Core)"
+
+# === ENUMS ===
+enums:
+
+
+  EventTypeEnum:
+    description: "Loại hình sự kiện tuyển dụng"
+    annotations:
+      module: "ecr"
+    
+    permissible_values:
+      FRESHER:
+        description: "Tuyển dụng sinh viên mới ra trường (Mass Hiring)"
+        annotations:
+          target_audience: "University graduates"
+          typical_scale: "100-1000 candidates"
+      
+      JOB_FAIR:
+        description: "Hội chợ việc làm"
+        annotations:
+          target_audience: "General job seekers"
+          typical_scale: "500-5000 candidates"
+      
+      MANAGEMENT_TRAINEE:
+        description: "Chương trình Management Trainee"
+        annotations:
+          target_audience: "High-potential graduates"
+          typical_scale: "50-200 candidates"
+      
+      INTERNSHIP:
+        description: "Tuyển dụng thực tập sinh"
+        annotations:
+          target_audience: "Students"
+          typical_scale: "20-500 candidates"
+      
+      CAMPUS_RECRUITMENT:
+        description: "Tuyển dụng tại trường (On-campus)"
+        annotations:
+          target_audience: "Students from specific universities"
+          typical_scale: "50-300 candidates"
+      
+      WALK_IN:
+        description: "Tuyển dụng Walk-in (Retail, Customer Service)"
+        annotations:
+          target_audience: "Walk-in applicants"
+          typical_scale: "100-500 candidates"
+      
+      ONLINE_ASSESSMENT:
+        description: "Sự kiện đánh giá trực tuyến"
+        annotations:
+          format: "Pure online, no physical event"
+          typical_scale: "Any"
+
+
+
+# === Placeholder slots for related entities ===
+slots:
+  # Track slots
+  track_id:
+    description: "Mã định danh Track"
+    identifier: true
+  
+  track_name:
+    description: "Tên Track"
+  
+  track_code:
+    description: "Mã ngắn của Track (dùng trong SBD generation)"
+    pattern: "^[A-Z]{2,5}$"
+  
+  track_type:
+    description: "Loại Track"
+    range: TrackTypeEnum
+  
+  question_set_id:
+    description: "ID của bộ câu hỏi (FieldBlueprint)"
+  
+  question_set_locked:
+    description: "Bộ câu hỏi đã được lock hay chưa"
+    range: boolean
+  
+  # RequestMapping slots
+  mapping_id:
+    description: "Mã định danh mapping"
+    identifier: true
+  
+  request_id:
+    description: "ID của Request (Job Requisition) trong ATS Core"

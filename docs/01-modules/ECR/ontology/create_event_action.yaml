@@ -1,0 +1,232 @@
+id: https://xtalent.io/ontology/ecr/create_event_action
+name: create_event_action_ontology
+version: "1.0.0"
+description: "CreateEventAction ontology for Event creation API in ECR module"
+
+prefixes:
+  xt: https://xtalent.io/ontology/
+  oracle: https://oracle.com/hcm/
+  sap: https://successfactors.sap.com/
+  workday: https://workday.com/
+
+imports:
+  - ./event.yaml
+  - ./event_status_enum.yaml
+
+default_range: string
+
+# === SLOTS FOR ACTION ===
+slots:
+  action_id:
+    description: "Unique identifier for action execution"
+    identifier: true
+    range: string
+  
+  input_payload:
+    description: "Request payload for action"
+    required: true
+  
+  output_result:
+    description: "Response result from action"
+    required: false
+  
+  performed_by:
+    description: "User ID who performed the action"
+    required: true
+    annotations:
+      reference: "User.user_id"
+  
+  performed_at:
+    description: "Timestamp when action was performed"
+    range: datetime
+    required: true
+  
+  # Input fields for CreateEvent
+  event_code:
+    description: "Mã ngắn của Event"
+    required: true
+    pattern: "^[A-Z0-9]{2,10}$"
+  
+  event_name:
+    description: "Tên đầy đủ của Event"
+    required: true
+  
+  event_type:
+    description: "Loại Event"
+    range: EventTypeEnum
+    required: true
+  
+  start_date:
+    description: "Ngày bắt đầu Event lifecycle"
+    range: date
+    required: true
+  
+  end_date:
+    description: "Ngày kết thúc Event lifecycle"
+    range: date
+    required: true
+  
+  physical_event_date:
+    description: "Ngày diễn ra sự kiện vật lý"
+    range: date
+    required: false
+  
+  venue_location:
+    description: "Địa điểm tổ chức"
+    required: false
+  
+  max_capacity:
+    description: "Sức chứa tối đa"
+    range: integer
+    required: false
+    minimum_value: 0
+
+# === CLASSES ===
+classes:
+  EventCreateRequest:
+    description: "Request payload for creating a new Event"
+    slots:
+      - event_code
+      - event_name
+      - event_type
+      - start_date
+      - end_date
+      - physical_event_date
+      - venue_location
+      - max_capacity
+    
+    slot_usage:
+      event_code:
+        required: true
+      event_name:
+        required: true
+      event_type:
+        required: true
+      start_date:
+        required: true
+      end_date:
+        required: true
+  
+  CreateEventAction:
+    description: |
+      API: Tạo mới Event trong ECR module.
+      POST /api/events - Create a new recruitment event.
+      
+      Default Behavior:
+      - Event is created with status = DRAFT
+      - No Tracks are created (must be added separately)
+      - Event is not visible to candidates until PUBLISHED
+    
+    annotations:
+      # API metadata
+      http_method: "POST"
+      endpoint: "/api/events"
+      request_content_type: "application/json"
+      response_content_type: "application/json"
+      
+      # Authentication
+      requires_authentication: true
+      required_permission: "event:create"
+      required_role: "TA (Talent Acquisition)"
+      
+      # Terminology mapping
+      oracle_hcm_action: "Create Recruiting Event"
+      sap_action: "Create Campaign"
+      workday_action: "Create Event"
+      
+      # Module info
+      module: "ecr"
+      sub_module: "event_management"
+      bounded_context: "Event Management Context"
+      
+      # See also
+      see_also: "https://docs.xtalent.io/ecr/api/create-event"
+    
+    slots:
+      - action_id
+      - input_payload
+      - output_result
+      - performed_by
+      - performed_at
+    
+    slot_usage:
+      input_payload:
+        range: EventCreateRequest
+        required: true
+        inlined: true
+        description: "Event creation request data"
+      
+      output_result:
+        range: Event
+        required: true
+        description: "Created Event with event_id and status=DRAFT"
+      
+      performed_by:
+        required: true
+      
+      performed_at:
+        required: true
+    
+    rules:
+      - description: "BRS-ACT-EVT-001: event_code phải unique trong toàn hệ thống"
+        comments:
+          - "Validate event_code uniqueness before creating Event"
+          - "Return 409 Conflict if event_code already exists"
+      
+      - description: "BRS-ACT-EVT-002: end_date phải sau start_date"
+        comments:
+          - "Validate date range consistency"
+        preconditions:
+          slot_conditions:
+            input_payload:
+              required: true
+        postconditions:
+          comments:
+            - "end_date > start_date"
+      
+      - description: "BRS-ACT-EVT-003: physical_event_date phải nằm trong khoảng [start_date, end_date]"
+        comments:
+          - "If physical_event_date is provided, it must be within lifecycle period"
+        preconditions:
+          slot_conditions:
+            input_payload:
+              physical_event_date:
+                required: true
+        postconditions:
+          comments:
+            - "start_date <= physical_event_date <= end_date"
+      
+      - description: "BRS-ACT-EVT-004: Event được tạo với status = DRAFT"
+        comments:
+          - "Initial status is always DRAFT, TA must explicitly PUBLISH later"
+        postconditions:
+          comments:
+            - "output_result.event_status = DRAFT"
+      
+      - description: "BRS-ACT-EVT-005: max_capacity nếu được set phải >= 0"
+        comments:
+          - "Capacity validation"
+      
+      - description: "BRS-ACT-EVT-006: Audit trail required"
+        comments:
+          - "Must record created_by and created_at in Event"
+        postconditions:
+          comments:
+            - "output_result.created_by = performed_by"
+            - "output_result.created_at = performed_at"
+
+# === Response Codes ===
+# Documented inline for clarity:
+# 
+# Success:
+#   - 201 Created: Event created successfully
+# 
+# Client Errors:
+#   - 400 Bad Request: Invalid input (e.g., end_date < start_date)
+#   - 401 Unauthorized: Missing or invalid authentication
+#   - 403 Forbidden: User doesn't have event:create permission
+#   - 409 Conflict: event_code already exists
+#   - 422 Unprocessable Entity: Business rule validation failed
+# 
+# Server Errors:
+#   - 500 Internal Server Error: Unexpected error during creation

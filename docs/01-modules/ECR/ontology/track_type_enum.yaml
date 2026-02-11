@@ -1,0 +1,214 @@
+id: https://xtalent.io/ontology/ecr/track_type_enum
+name: track_type_enum_ontology
+version: "1.0.0"
+description: "TrackTypeEnum ontology for Track professional categorization in ECR module"
+
+prefixes:
+  xt: https://xtalent.io/ontology/
+  oracle: https://oracle.com/hcm/
+  sap: https://successfactors.sap.com/
+  workday: https://workday.com/
+
+default_range: string
+
+# === ENUMS ===
+enums:
+  TrackTypeEnum:
+    description: |
+      Phân loại Track theo lĩnh vực chuyên môn trong Event-Centric Recruitment.
+      Enum này định nghĩa các category nghề nghiệp chính, giúp:
+      - Phân loại candidates theo skill domain
+      - Render dynamic question sets phù hợp
+      - Group reporting và analytics
+      - Configure stage workflows theo từng lĩnh vực
+    
+    annotations:
+      # Terminology mapping
+      oracle_hcm_term: "Job Family"
+      sap_term: "Job Category"
+      workday_term: "Job Family Group"
+      disambiguation: |
+        Trong Workday, "Job Family" là phân loại cố định gắn với organization structure.
+        Trong xTalent ECR, TrackType là phân loại động per Event, một Event có thể có
+        nhiều Tracks thuộc các Types khác nhau (TECHNICAL + CREATIVE + BUSINESS).
+      
+      # Module info
+      module: "ecr"
+      sub_module: "event_management"
+      version: "1.0.0"
+      bounded_context: "Event Management Context"
+      
+      # Usage
+      usage_pattern: "dynamic_categorization"
+      affects: ["question_sets", "stage_workflows", "interview_panels", "reporting"]
+      
+      # See also
+      see_also: "https://docs.xtalent.io/ecr/track-types"
+    
+    permissible_values:
+      TECHNICAL:
+        description: "Technical/Engineering positions"
+        annotations:
+          # Examples
+          job_examples: ["Software Developer", "QA Engineer", "DevOps Engineer", "Data Engineer", "Game Developer", "Backend Engineer", "Frontend Engineer", "Mobile Developer"]
+          
+          # Question Set Configuration
+          typical_questions:
+            - "Programming Languages (MCQ)"
+            - "Algorithm & Data Structures (Coding Test)"
+            - "System Design (Essay/Diagram)"
+            - "Technical Problem Solving"
+          
+          question_set_focus: "coding_skills_assessment"
+          require_coding_test: true
+          require_portfolio: false
+          
+          # Stage Workflow
+          typical_stages:
+            - "REGISTRATION"
+            - "SCREENING (Resume + GitHub)"
+            - "CODING_TEST (Online)"
+            - "TECHNICAL_INTERVIEW"
+            - "BEHAVIORAL_INTERVIEW"
+            - "OFFER"
+          
+          coding_test_duration: 120  # minutes
+          interview_panel_composition: "2 Senior Engineers + 1 Tech Lead"
+          
+          # Assessment Criteria
+          key_assessment_areas: ["coding_quality", "problem_solving", "algorithm_knowledge", "system_design"]
+          weight_technical_skills: 0.7
+          weight_soft_skills: 0.3
+          
+          # Reporting
+          skill_tags: ["coding", "algorithms", "system_design", "debugging"]
+          common_tech_stacks: ["Java", "Python", "JavaScript", "C++", "React", "Node.js"]
+      
+      BUSINESS:
+        description: "Business/Management positions"
+        annotations:
+          # Examples
+          job_examples: ["Business Analyst", "Product Manager", "Product Owner", "Sales", "Marketing Manager", "Project Manager", "Strategy Consultant"]
+          
+          # Question Set Configuration
+          typical_questions:
+            - "Business Case Analysis (Essay)"
+            - "Market Understanding (MCQ)"
+            - "Stakeholder Management Scenarios"
+            - "Product/Project Management Knowledge"
+          
+          question_set_focus: "business_acumen_assessment"
+          require_coding_test: false
+          require_portfolio: true  # Portfolio of projects/campaigns
+          require_case_study: true
+          
+          # Stage Workflow
+          typical_stages:
+            - "REGISTRATION"
+            - "SCREENING (Resume + Cover Letter)"
+            - "CASE_STUDY (Written)"
+            - "CASE_PRESENTATION"
+            - "PANEL_INTERVIEW"
+            - "CULTURAL_FIT_INTERVIEW"
+            - "OFFER"
+          
+          case_study_duration: 180  # minutes
+          interview_panel_composition: "1 Business Lead + 1 Product Manager + 1 HR"
+          
+          # Assessment Criteria
+          key_assessment_areas: ["strategic_thinking", "communication", "stakeholder_management", "business_acumen"]
+          weight_business_skills: 0.6
+          weight_soft_skills: 0.4
+          
+          # Reporting
+          skill_tags: ["strategy", "communication", "leadership", "analytics"]
+          common_tools: ["Excel", "PowerPoint", "Jira", "Tableau", "SQL"]
+      
+      CREATIVE:
+        description: "Creative/Design positions"
+        annotations:
+          # Examples
+          job_examples: ["Game Designer", "UI/UX Designer", "Graphic Designer", "Content Creator", "Motion Designer", "3D Artist", "Illustrator"]
+          
+          # Question Set Configuration
+          typical_questions:
+            - "Portfolio Upload (Required)"
+            - "Design Principles (MCQ)"
+            - "Creative Process (Essay)"
+            - "Tool Proficiency"
+          
+          question_set_focus: "portfolio_assessment"
+          require_coding_test: false
+          require_portfolio: true  # Visual portfolio is mandatory
+          require_design_challenge: true
+          
+          # Stage Workflow
+          typical_stages:
+            - "REGISTRATION"
+            - "PORTFOLIO_SCREENING"
+            - "DESIGN_CHALLENGE (Take-home)"
+            - "PORTFOLIO_PRESENTATION"
+            - "CREATIVE_INTERVIEW"
+            - "CULTURAL_FIT_INTERVIEW"
+            - "OFFER"
+          
+          design_challenge_duration: 240  # minutes (take-home)
+          interview_panel_composition: "1 Art Director + 1 Senior Designer + 1 Product Manager"
+          
+          # Assessment Criteria
+          key_assessment_areas: ["creativity", "portfolio_quality", "design_tools_proficiency", "artistic_vision"]
+          weight_portfolio: 0.5
+          weight_design_challenge: 0.3
+          weight_interview: 0.2
+          
+          # Reporting
+          skill_tags: ["design", "creativity", "tools", "aesthetics"]
+          common_tools: ["Figma", "Adobe XD", "Photoshop", "Illustrator", "Blender", "Unity", "Sketch"]
+      
+      OPERATIONAL:
+        description: "Operations/Support positions"
+        annotations:
+          # Examples
+          job_examples: ["Customer Service", "HR Specialist", "Admin Assistant", "Finance Officer", "Operations Coordinator", "Data Entry"]
+          
+          # Question Set Configuration
+          typical_questions:
+            - "Process Understanding (MCQ)"
+            - "Problem Solving Scenarios"
+            - "Attention to Detail (Task-based)"
+            - "Tool Proficiency (Excel, etc.)"
+          
+          question_set_focus: "operational_skills_assessment"
+          require_coding_test: false
+          require_portfolio: false
+          require_skill_test: true  # Excel, typing speed, etc.
+          
+          # Stage Workflow
+          typical_stages:
+            - "REGISTRATION"
+            - "SCREENING (Resume)"
+            - "SKILL_TEST (Excel/Typing/System)"
+            - "SITUATIONAL_INTERVIEW"
+            - "BEHAVIORAL_INTERVIEW"
+            - "OFFER"
+          
+          skill_test_duration: 60  # minutes
+          interview_panel_composition: "1 Department Manager + 1 HR"
+          
+          # Assessment Criteria
+          key_assessment_areas: ["attention_to_detail", "process_adherence", "tool_proficiency", "customer_service"]
+          weight_skill_test: 0.4
+          weight_interview: 0.4
+          weight_attitude: 0.2
+          
+          # Reporting
+          skill_tags: ["operations", "process", "tools", "service"]
+          common_tools: ["Excel", "Word", "ERP Systems", "CRM Systems", "Ticketing Systems"]
+
+# === Business Rules for TrackType ===
+
+# BRS-TRKTYPE-001: TECHNICAL tracks must have CODING_TEST stage
+# BRS-TRKTYPE-002: CREATIVE tracks must require Portfolio in question set
+# BRS-TRKTYPE-003: Question set rendering varies by TrackType (dynamic questions)
+# BRS-TRKTYPE-004: Interview panel composition follows TrackType guidelines
+# BRS-TRKTYPE-005: Assessment criteria weights differ per TrackType
