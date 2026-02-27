@@ -111,6 +111,8 @@ Markdown file
 
 **Query:** Tìm kiếm exact match hoặc prefix match.
 
+![Hybrid Knowledge Memory — 3 Tầng Storage](./charts/ig-09-hybrid-knowledge-memory.svg)
+
 ---
 
 ## 3. Ingest Pipeline
@@ -290,6 +292,8 @@ Project độc lập nằm tại `/myapp/knowledgeos-mcp`. Đây là một **thi
 | `ingest_file` | `POST /ingest/file` | Trigger ingest từ AI |
 | `ingest_status` | `GET /ingest/jobs` | Kiểm tra ingest status |
 
+![8 MCP Tools — KnowledgeOS Interface](./charts/ig-10-knowledgeos-mcp-tools.svg)
+
 ### Ví dụ AI Agent sử dụng MCP
 
 ```text
@@ -401,6 +405,8 @@ AI Agent query runtime data và trực tiếp manipulate system thông qua Canon
 - [ ] Runtime event feed → update knowledge graph dynamically
 - [ ] AI Agent có thể discover và call canonical APIs
 - [ ] Frontend-less application paradigm: AI là UI
+
+![KnowledgeOS Roadmap — Phase 1 & 2](./charts/ig-11-knowledgeos-roadmap.svg)
 
 ---
 

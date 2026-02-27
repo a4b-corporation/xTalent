@@ -36,6 +36,8 @@ ODDS chỉ mô tả resource APIs và state transition APIs. Không mô tả UI 
 
 Mỗi file phải: self-contained, ≤ ~800 lines, represent 1 domain context rõ ràng.
 
+![4 Nguyên Tắc Thiết Kế ODDS](./charts/ig-06-odds-4-principles.svg)
+
 ---
 
 ## 2. Cấu trúc chuẩn của một Module
@@ -66,6 +68,8 @@ module_name/
 └── governance/
     └── metadata.yaml        ← Version, owner, reviewers, dependencies
 ```
+
+![Cấu Trúc Module Chuẩn ODDS v1](./charts/ig-05-odds-doc-structure.svg)
 
 ---
 

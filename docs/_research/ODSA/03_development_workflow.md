@@ -38,6 +38,8 @@ ODSA không thay thế con người — nó thay đổi **những gì** mỗi ng
 | Approve design bằng email | Approve qua governance review flow |
 | Cross-module design check bằng meeting | Query knowledge graph để xem relationships |
 
+![Sự Dịch Chuyển Vai Trò trong ODSA](./charts/ig-07-role-transformation.svg)
+
 ---
 
 ## 2. Workflow theo Phase dự án
@@ -125,6 +127,8 @@ Khi business requirements thay đổi:
 ```
 
 > **Nguyên tắc:** Ontology là **living artifact**, không bao giờ outdated vì nó là source of truth.
+
+![Workflow Phát Triển theo ODSA — 4 Phases](./charts/ig-08-dev-workflow-phases.svg)
 
 ---
 
