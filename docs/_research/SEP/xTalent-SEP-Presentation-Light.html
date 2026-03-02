@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>xTalent — The Self-Evolving HCM Platform</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap"
+        rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box
+        }
+
+        :root {
+            --bg: #f8fafc;
+            --surface: #f1f5f9;
+            --card: #ffffff;
+            --purple: #6366f1;
+            --cyan: #06b6d4;
+            --amber: #f59e0b;
+            --green: #10b981;
+            --pink: #ec4899;
+            --text: #1e293b;
+            --dim: #64748b;
+            --grad: linear-gradient(135deg, #6366f1, #06b6d4)
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw
+        }
+
+        .deck {
+            position: relative;
+            width: 100vw;
+            height: 100vh
+        }
+
+        .slide {
+            position: absolute;
+            inset: 0;
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 60px 80px;
+            opacity: 0;
+            pointer-events: none;
+            overflow-y: auto
+        }
+
+        .slide.active {
+            display: flex;
+            opacity: 1;
+            pointer-events: all;
+            animation: fadeIn .5s ease
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px)
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0)
+            }
+        }
+
+        .slide.prev {
+            display: none;
+            opacity: 0
+        }
+
+        h1 {
+            font-size: 3.2rem;
+            font-weight: 800;
+            line-height: 1.1;
+            background: var(--grad);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-align: center;
+            margin-bottom: 16px
+        }
+
+        h2 {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--text);
+            margin-bottom: 12px;
+            text-align: center
+        }
+
+        h3 {
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: var(--cyan);
+            margin-bottom: 8px
+        }
+
+        .subtitle {
+            font-size: 1.2rem;
+            color: var(--dim);
+            text-align: center;
+            max-width: 700px;
+            line-height: 1.6
+        }
+
+        .tag {
+            display: inline-block;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: .75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 20px
+        }
+
+        .tag.purple {
+            background: rgba(99, 102, 241, .1);
+            color: #4f46e5;
+            border: 1px solid rgba(99, 102, 241, .25)
+        }
+
+        .grid2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            width: 100%;
+            max-width: 1100px
+        }
+
+        .grid3 {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 20px;
+            width: 100%;
+            max-width: 1100px
+        }
+
+        .grid4 {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            width: 100%;
+            max-width: 1100px
+        }
+
+        .grid5 {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 14px;
+            width: 100%;
+            max-width: 1100px
+        }
+
+        .card {
+            background: var(--card);
+            border-radius: 16px;
+            padding: 24px;
+            border: 1px solid rgba(0, 0, 0, .08);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, .06);
+            transition: transform .3s
+        }
+
+        .card:hover {
+            transform: translateY(-4px)
+        }
+
+        .card.purple-border {
+            border-left: 4px solid var(--purple)
+        }
+
+        .card.cyan-border {
+            border-left: 4px solid var(--cyan)
+        }
+
+        .card.amber-border {
+            border-left: 4px solid var(--amber)
+        }
+
+        .card.green-border {
+            border-left: 4px solid var(--green)
+        }
+
+        .card h3 {
+            text-align: left;
+            margin-bottom: 6px
+        }
+
+        .card p {
+            font-size: .85rem;
+            color: var(--dim);
+            line-height: 1.5
+        }
+
+        .stat {
+            text-align: center;
+            padding: 20px
+        }
+
+        .stat .num {
+            font-size: 2.4rem;
+            font-weight: 800;
+            background: var(--grad);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent
+        }
+
+        .stat .label {
+            font-size: .8rem;
+            color: var(--dim);
+            margin-top: 4px
+        }
+
+        .layer-bar {
+            width: 100%;
+            max-width: 1000px;
+            padding: 16px 24px;
+            border-radius: 12px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            cursor: default;
+            transition: transform .2s
+        }
+
+        .layer-bar:hover {
+            transform: scale(1.02)
+        }
+
+        .layer-bar .num {
+            font-size: 1.4rem;
+            font-weight: 800;
+            opacity: .5;
+            min-width: 30px
+        }
+
+        .layer-bar .name {
+            font-size: 1rem;
+            font-weight: 700;
+            min-width: 240px
+        }
+
+        .layer-bar .desc {
+            font-size: .8rem;
+            color: rgba(0, 0, 0, .6)
+        }
+
+        .lb-purple {
+            background: linear-gradient(90deg, rgba(99, 102, 241, .15), rgba(99, 102, 241, .04))
+        }
+
+        .lb-cyan {
+            background: linear-gradient(90deg, rgba(6, 182, 212, .15), rgba(6, 182, 212, .04))
+        }
+
+        .lb-amber {
+            background: linear-gradient(90deg, rgba(245, 158, 11, .15), rgba(245, 158, 11, .04))
+        }
+
+        .lb-green {
+            background: linear-gradient(90deg, rgba(16, 185, 129, .15), rgba(16, 185, 129, .04))
+        }
+
+        .img-container {
+            max-width: 700px;
+            width: 100%;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, .08);
+            margin: 16px 0
+        }
+
+        .img-container img {
+            width: 100%;
+            display: block
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            max-width: 1000px;
+            font-size: .82rem;
+            margin: 8px 0
+        }
+
+        th {
+            background: rgba(99, 102, 241, .08);
+            color: #4f46e5;
+            padding: 10px 14px;
+            text-align: left;
+            font-weight: 600
+        }
+
+        td {
+            padding: 8px 14px;
+            border-bottom: 1px solid rgba(0, 0, 0, .06);
+            color: var(--dim)
+        }
+
+        tr:hover td {
+            background: rgba(0, 0, 0, .02)
+        }
+
+        .nav {
+            position: fixed;
+            bottom: 30px;
+            right: 40px;
+            display: flex;
+            gap: 10px;
+            z-index: 100
+        }
+
+        .nav button {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            border: 1px solid rgba(0, 0, 0, .12);
+            background: rgba(255, 255, 255, .9);
+            color: var(--text);
+            cursor: pointer;
+            font-size: 1.1rem;
+            transition: all .2s;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 2px 6px rgba(0, 0, 0, .08)
+        }
+
+        .nav button:hover {
+            background: var(--purple);
+            border-color: var(--purple)
+        }
+
+        .counter {
+            position: fixed;
+            bottom: 38px;
+            left: 40px;
+            font-size: .75rem;
+            color: var(--dim);
+            z-index: 100
+        }
+
+        .phase-row {
+            display: flex;
+            gap: 16px;
+            width: 100%;
+            max-width: 1100px
+        }
+
+        .phase-card {
+            flex: 1;
+            border-radius: 16px;
+            padding: 24px;
+            border: 1px solid rgba(0, 0, 0, .06);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, .05)
+        }
+
+        .phase-card h3 {
+            font-size: 1.1rem;
+            margin-bottom: 4px
+        }
+
+        .phase-card .period {
+            font-size: .75rem;
+            color: var(--dim);
+            margin-bottom: 10px
+        }
+
+        .phase-card ul {
+            list-style: none;
+            padding: 0
+        }
+
+        .phase-card li {
+            font-size: .8rem;
+            color: var(--dim);
+            padding: 4px 0;
+            padding-left: 16px;
+            position: relative
+        }
+
+        .phase-card li::before {
+            content: "→";
+            position: absolute;
+            left: 0;
+            color: inherit
+        }
+
+        .p1 {
+            background: linear-gradient(180deg, rgba(99, 102, 241, .06), transparent);
+            border-color: rgba(99, 102, 241, .15)
+        }
+
+        .p1 h3 {
+            color: #4f46e5
+        }
+
+        .p1 li::before {
+            color: #4f46e5
+        }
+
+        .p2 {
+            background: linear-gradient(180deg, rgba(6, 182, 212, .06), transparent);
+            border-color: rgba(6, 182, 212, .15)
+        }
+
+        .p2 h3 {
+            color: #0891b2
+        }
+
+        .p2 li::before {
+            color: #0891b2
+        }
+
+        .p3 {
+            background: linear-gradient(180deg, rgba(16, 185, 129, .06), transparent);
+            border-color: rgba(16, 185, 129, .15)
+        }
+
+        .p3 h3 {
+            color: #059669
+        }
+
+        .p3 li::before {
+            color: #059669
+        }
+
+        .cta-box {
+            background: var(--grad);
+            border-radius: 20px;
+            padding: 48px;
+            text-align: center;
+            max-width: 800px
+        }
+
+        .cta-box h1 {
+            -webkit-text-fill-color: #fff;
+            font-size: 2.6rem
+        }
+
+        .cta-box p {
+            color: rgba(255, 255, 255, .85);
+            font-size: 1.1rem;
+            margin-top: 12px;
+            line-height: 1.7
+        }
+
+        .flow-step {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin: 6px 0
+        }
+
+        .flow-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1rem;
+            font-weight: 700;
+            flex-shrink: 0
+        }
+
+        .flow-text {
+            font-size: .85rem;
+            color: var(--dim)
+        }
+
+        .flow-text strong {
+            color: var(--text)
+        }
+
+        .divider {
+            width: 60px;
+            height: 3px;
+            border-radius: 2px;
+            background: var(--grad);
+            margin: 12px auto
+        }
+
+        .left-align {
+            align-items: flex-start;
+            text-align: left
+        }
+
+        .left-align h2,
+        .left-align h3 {
+            text-align: left
+        }
+    </style>
+</head>
+
+<body>
+    <div class="deck" id="deck">
+
+        <!-- SLIDE 1: Cover -->
+        <div class="slide active" id="s0">
+            <span class="tag purple">Strategic Vision 2026</span>
+            <h1>xTalent</h1>
+            <h2 style="color:var(--dim);font-weight:400;font-size:1.4rem">The Self-Evolving HCM Platform</h2>
+            <div class="divider" style="margin:20px auto"></div>
+            <p class="subtitle">A next-generation Human Capital Management solution built on the Self-Evolving Platform
+                (SEP) — designed to continuously learn, adapt, and evolve alongside your organization in the age of AI
+                Agents.</p>
+        </div>
+
+        <!-- SLIDE 2: Agenda -->
+        <div class="slide" id="s1">
+            <h2>Agenda</h2>
+            <div class="divider"></div>
+            <div style="max-width:600px;width:100%;margin-top:12px">
+                <div class="flow-step">
+                    <div class="flow-icon" style="background:rgba(99,102,241,.1);color:#4f46e5">1</div>
+                    <div class="flow-text"><strong>Market Context</strong> — The Era of Cognitive Autonomy</div>
+                </div>
+                <div class="flow-step">
+                    <div class="flow-icon" style="background:rgba(236,72,153,.1);color:#db2777">2</div>
+                    <div class="flow-text"><strong>The Problem</strong> — Why Traditional HCM Falls Short</div>
+                </div>
+                <div class="flow-step">
+                    <div class="flow-icon" style="background:rgba(6,182,212,.1);color:#0891b2">3</div>
+                    <div class="flow-text"><strong>Our Vision</strong> — xTalent on the Self-Evolving Platform</div>
+                </div>
+                <div class="flow-step">
+                    <div class="flow-icon" style="background:rgba(245,158,11,.1);color:#d97706">4</div>
+                    <div class="flow-text"><strong>Architecture</strong> — The Four-Layer Model</div>
+                </div>
+                <div class="flow-step">
+                    <div class="flow-icon" style="background:rgba(16,185,129,.1);color:#059669">5</div>
+                    <div class="flow-text"><strong>Capabilities</strong> — Use Cases on SEP</div>
+                </div>
+                <div class="flow-step">
+                    <div class="flow-icon" style="background:rgba(139,92,246,.1);color:#7c3aed">6</div>
+                    <div class="flow-text"><strong>Roadmap</strong> — Three Phases to Evolution</div>
+                </div>
+                <div class="flow-step">
+                    <div class="flow-icon" style="background:rgba(244,63,94,.1);color:#e11d48">7</div>
+                    <div class="flow-text"><strong>ROI & Governance</strong> — Value & Trust</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SLIDE 3: Market Context -->
+        <div class="slide" id="s2">
+            <span class="tag purple">Market Context</span>
+            <h2>The Era of Cognitive Autonomy</h2>
+            <p class="subtitle" style="margin-bottom:20px">AI has shifted from experimental pilots to production-grade
+                autonomous systems delivering measurable P&L impact.</p>
+            <div class="grid4" style="max-width:900px">
+                <div class="stat">
+                    <div class="num">40%</div>
+                    <div class="label">Enterprise apps with<br>agentic capabilities</div>
+                </div>
+                <div class="stat">
+                    <div class="num">$3-5T</div>
+                    <div class="label">Global Agentic<br>Commerce revenue</div>
+                </div>
+                <div class="stat">
+                    <div class="num">3.5×</div>
+                    <div class="label">ROI per $1 invested<br>in Agentic AI</div>
+                </div>
+                <div class="stat">
+                    <div class="num">15%</div>
+                    <div class="label">Daily decisions made<br>autonomously by AI</div>
+                </div>
+            </div>
+            <p style="font-size:.8rem;color:var(--dim);margin-top:16px;text-align:center">Sources: Gartner, McKinsey,
+                Deloitte, Neurons Lab — 2026</p>
+        </div>
+
+        <!-- SLIDE 3b: Agentic Divide -->
+        <div class="slide" id="s2b">
+            <span class="tag purple">Market Context</span>
+            <h2>The Agentic Divide</h2>
+            <p class="subtitle" style="margin-bottom:16px">A stark gap is emerging between organizations that rewire
+                around AI vs. those treating it as an add-on.</p>
+            <div class="img-container" style="max-width:560px">
+                <img src="assets/agentic_divide.png" alt="The Agentic Divide - 6% Leaders vs 94% Laggards">
+            </div>
+        </div>
+
+        <!-- SLIDE 4: The Problem -->
+        <div class="slide" id="s3">
+            <span class="tag purple">The Problem</span>
+            <h2>Traditional HCM is Fundamentally Broken</h2>
+            <div class="divider"></div>
+            <div class="img-container" style="max-width:640px">
+                <img src="assets/comparison.png" alt="Traditional vs xTalent SEP">
+            </div>
+        </div>
+
+        <!-- SLIDE 5: Vision -->
+        <div class="slide" id="s4">
+            <span class="tag purple">Our Vision</span>
+            <h2>xTalent on the Self-Evolving Platform</h2>
+            <p class="subtitle" style="margin-bottom:20px">Software that understands, learns, and evolves — transforming
+                HCM from a static tool to a living system.</p>
+            <div class="grid3">
+                <div class="card purple-border">
+                    <h3>Self-Understanding</h3>
+                    <p>AI Agents comprehend HR processes like a domain expert through Ontology-Driven Knowledge</p>
+                </div>
+                <div class="card cyan-border">
+                    <h3>Self-Adapting</h3>
+                    <p>Interfaces generate in real-time based on user intent — from fixed screens to AI-created views
+                    </p>
+                </div>
+                <div class="card amber-border">
+                    <h3>Self-Orchestrating</h3>
+                    <p>Multi-agent workflows coordinate across HR functions — onboarding, payroll, compliance</p>
+                </div>
+            </div>
+            <div style="margin-top:16px;max-width:360px">
+                <div class="card green-border">
+                    <h3>Self-Managing Data</h3>
+                    <p>Multi-modal data architecture grows organically — from ACID databases to AI-native vector stores
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- SLIDE 6: Architecture Overview -->
+        <div class="slide" id="s5">
+            <span class="tag purple">Architecture</span>
+            <h2>The Four-Layer Model</h2>
+            <div class="img-container" style="max-width:580px">
+                <img src="assets/architecture_overview.png" alt="4-Layer Architecture">
+            </div>
+        </div>
+
+        <!-- SLIDE 7: Layer 1 - Ontology -->
+        <div class="slide left-align" id="s6">
+            <span class="tag purple">Layer 1</span>
+            <h2>Ontology-Driven Knowledge Layer</h2>
+            <p style="color:var(--dim);font-size:.9rem;margin-bottom:16px;max-width:900px">The "semantic brain" —
+                enabling AI Agents to understand HR domain as deeply as a subject matter expert.</p>
+            <div class="grid5" style="max-width:1100px">
+                <div class="card purple-border">
+                    <h3 style="font-size:.95rem">Domain Ontology</h3>
+                    <p>Formal HR entity models in LinkML/OWL</p>
+                </div>
+                <div class="card purple-border">
+                    <h3 style="font-size:.95rem">Semantic Layer</h3>
+                    <p>Business terms → technical data mapping</p>
+                </div>
+                <div class="card purple-border">
+                    <h3 style="font-size:.95rem">Knowledge Graph</h3>
+                    <p>Employee → Position → Dept relationships</p>
+                </div>
+                <div class="card purple-border">
+                    <h3 style="font-size:.95rem">Rules Engine</h3>
+                    <p>Encoded labor law & policy guardrails</p>
+                </div>
+                <div class="card purple-border">
+                    <h3 style="font-size:.95rem">Cognitive API</h3>
+                    <p>"SME-as-a-Service" for any Agent</p>
+                </div>
+            </div>
+            <p style="font-size:.8rem;color:#4f46e5;margin-top:12px;font-weight:600">🔑 Without this layer, AI is
+                surface-level automation. With it, AI becomes a domain-aware decision partner.</p>
+        </div>
+
+        <!-- SLIDE 8: Layer 2 - UI -->
+        <div class="slide" id="s7">
+            <span class="tag purple">Layer 2</span>
+            <h2>Adaptive UI Layer — The 30-60-10 Model</h2>
+            <p style="color:var(--dim);font-size:.9rem;margin-bottom:16px;max-width:900px;text-align:center">The right
+                interface, to the right user, at the right time — balancing consistency with flexibility.</p>
+            <div class="grid2" style="max-width:1000px">
+                <div class="img-container" style="max-width:420px;margin:0">
+                    <img src="assets/ui_distribution.png" alt="UI Distribution 30-60-10">
+                </div>
+                <div>
+                    <div class="card cyan-border" style="margin-bottom:12px">
+                        <h3>Core UI (Fixed) — 30%</h3>
+                        <p>Navigation, design system, brand identity. Built by developers for maximum quality.</p>
+                    </div>
+                    <div class="card cyan-border" style="margin-bottom:12px">
+                        <h3>Configurable UI — 60%</h3>
+                        <p>JSON/Template-driven views. Admins customize without code deployment.</p>
+                    </div>
+                    <div class="card cyan-border">
+                        <h3>Generative UI (A2UI) — 10%</h3>
+                        <p>AI Agents create interfaces on-demand for unpredictable long-tail needs.</p>
+                    </div>
+                </div>
+            </div>
+            <p style="font-size:.8rem;color:var(--dim);margin-top:12px">Powered by: <strong
+                    style="color:var(--text)">A2UI</strong> (Google) + <strong style="color:var(--text)">AG-UI</strong>
+                (Event Protocol) + <strong style="color:var(--text)">MCP</strong> (Data Access)</p>
+        </div>
+
+        <!-- SLIDE 9: Layer 3 - Backend -->
+        <div class="slide left-align" id="s8">
+            <span class="tag purple">Layer 3</span>
+            <h2>Intelligent Backend Layer</h2>
+            <p style="color:var(--dim);font-size:.9rem;margin-bottom:16px;max-width:900px">From APIs to agent teams —
+                processing business logic through traditional and AI-powered orchestration.</p>
+            <div class="grid4" style="max-width:1100px">
+                <div class="card amber-border">
+                    <h3 style="font-size:.95rem">Headless API</h3>
+                    <p>REST/GraphQL stateless CRUD — serves all clients</p>
+                </div>
+                <div class="card amber-border">
+                    <h3 style="font-size:.95rem">Workflow Engine</h3>
+                    <p>Visual workflow designer for HR processes — zero-code customization</p>
+                </div>
+                <div class="card amber-border">
+                    <h3 style="font-size:.95rem">Agent Orchestration</h3>
+                    <p>Multi-agent teams: Recruit, Comply, Payroll, Analytics</p>
+                </div>
+                <div class="card amber-border">
+                    <h3 style="font-size:.95rem">Policy & Governance</h3>
+                    <p>Agent RBAC, audit logs, kill switches, HITL gates</p>
+                </div>
+            </div>
+            <div class="card"
+                style="max-width:1000px;margin-top:16px;background:rgba(245,158,11,.06);border-color:rgba(245,158,11,.15)">
+                <p style="font-size:.85rem;text-align:center"><strong style="color:#d97706">⚡ Workflow Engine
+                        Impact:</strong> <span style="color:var(--dim)">Customer requests "3-level approval for leave >
+                        5 days" → Traditional: 2-week release. <strong style="color:var(--text)">xTalent: Configure &
+                            deploy instantly.</strong></span></p>
+            </div>
+        </div>
+
+        <!-- SLIDE 10: Layer 4 - Data -->
+        <div class="slide left-align" id="s9">
+            <span class="tag purple">Layer 4</span>
+            <h2>Multi-Modal Data Layer</h2>
+            <p style="color:var(--dim);font-size:.9rem;margin-bottom:16px;max-width:900px">The right storage paradigm
+                for every type of data — from strict transactional records to AI-native stores.</p>
+            <div class="grid5" style="max-width:1100px">
+                <div class="card green-border">
+                    <h3 style="font-size:.9rem">Core RDBMS</h3>
+                    <p>PostgreSQL — ACID, strict schema, audit trail</p>
+                </div>
+                <div class="card green-border">
+                    <h3 style="font-size:.9rem">Flex Store</h3>
+                    <p>SurrealDB — schemaless custom fields, dynamic forms</p>
+                </div>
+                <div class="card green-border">
+                    <h3 style="font-size:.9rem">Graph Store</h3>
+                    <p>Neo4j — org charts, skill maps, GraphRAG</p>
+                </div>
+                <div class="card green-border">
+                    <h3 style="font-size:.9rem">Metadata & Audit</h3>
+                    <p>Catalog + lineage — AI decision traceability</p>
+                </div>
+                <div class="card green-border">
+                    <h3 style="font-size:.9rem">AI-Native Store</h3>
+                    <p>Vector DB — embeddings, semantic search, RAG</p>
+                </div>
+            </div>
+            <p style="font-size:.8rem;color:#059669;margin-top:12px;font-weight:600">🔒 Metadata & Audit is mandatory
+                for HR compliance — labor law, data privacy, GDPR/PDPA, AI transparency.</p>
+        </div>
+
+        <!-- SLIDE 11: Use Case - Onboarding -->
+        <div class="slide" id="s10">
+            <span class="tag purple">Use Case</span>
+            <h2>Self-Evolving Employee Onboarding</h2>
+            <p style="color:var(--dim);font-size:.9rem;margin-bottom:12px;text-align:center">6 AI-powered steps
+                orchestrated across all 4 layers of the Self-Evolving Platform</p>
+            <div class="img-container" style="max-width:640px">
+                <img src="assets/onboarding_flow.png" alt="AI-Powered Employee Onboarding Flow">
+            </div>
+        </div>
+
+        <!-- SLIDE 12: Use Case - Performance & Payroll -->
+        <div class="slide" id="s11">
+            <span class="tag purple">More Use Cases</span>
+            <h2>AI-Driven HR Operations</h2>
+            <div class="grid2" style="max-width:1000px;margin-top:12px">
+                <div class="card purple-border">
+                    <h3>AI Performance Review</h3>
+                    <p style="margin-bottom:8px">Continuous data collection from attendance, projects, peer feedback →
+                        Performance Agent synthesizes insights → Manager sees Generative UI dashboard → Business Rules
+                        ensure fairness</p>
+                    <p style="font-size:.8rem;color:#4f46e5;font-weight:600">From annual subjective reviews → continuous
+                        data-driven assessment</p>
+                </div>
+                <div class="card amber-border">
+                    <h3>Adaptive Payroll Compliance</h3>
+                    <p style="margin-bottom:8px">Tax rules encoded in Ontology → Regulation changes update ontology only
+                        → Payroll Agent runs + verifies in parallel → Full audit trail in Metadata layer</p>
+                    <p style="font-size:.8rem;color:#d97706;font-weight:600">Zero code changes when regulations update —
+                        ontology-only updates</p>
+                </div>
+            </div>
+            <div class="card cyan-border" style="max-width:1000px;margin-top:16px;text-align:center">
+                <h3>Intent-Based HR Analytics</h3>
+                <p><strong>Employee:</strong> "How many vacation days do I have?" → <strong>Manager:</strong> "Show
+                    attrition risk" → <strong>CHRO:</strong> "Headcount cost by region YoY"<br>Same flow: Intent →
+                    Ontology → Generative UI → Governance check</p>
+            </div>
+        </div>
+
+        <!-- SLIDE 13: Roadmap -->
+        <div class="slide" id="s12">
+            <span class="tag purple">Roadmap</span>
+            <h2>Three Phases to Evolution</h2>
+            <div class="phase-row" style="margin-top:16px">
+                <div class="phase-card p1">
+                    <h3>Phase 1: Foundation</h3>
+                    <div class="period">Months 1-6</div>
+                    <ul>
+                        <li>Core HR Domain Ontology (LinkML)</li>
+                        <li>Knowledge Graph — org structure</li>
+                        <li>Headless REST/GraphQL APIs</li>
+                        <li>Core UI — design system</li>
+                        <li>RDBMS + Flex Store + Metadata</li>
+                    </ul>
+                </div>
+                <div class="phase-card p2">
+                    <h3>Phase 2: Intelligence</h3>
+                    <div class="period">Months 7-12</div>
+                    <ul>
+                        <li>Workflow Engine — visual designer</li>
+                        <li>Agent Team: Onboard, Comply, Payroll</li>
+                        <li>Configurable UI (JSON-driven)</li>
+                        <li>Full Knowledge Graph + GraphRAG</li>
+                        <li>Vector DB — semantic search</li>
+                    </ul>
+                </div>
+                <div class="phase-card p3">
+                    <h3>Phase 3: Evolution</h3>
+                    <div class="period">Months 13-18</div>
+                    <ul>
+                        <li>Generative UI — A2UI integration</li>
+                        <li>Multi-Agent cross-functional teams</li>
+                        <li>MAPE-K self-optimization loops</li>
+                        <li>Predictive HR Analytics</li>
+                        <li>Auto-evolving rules & workflows</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- SLIDE 14: ROI -->
+        <div class="slide" id="s13">
+            <span class="tag purple">Value</span>
+            <h2>ROI & Strategic Impact</h2>
+            <div class="img-container" style="max-width:560px">
+                <img src="assets/roi_metrics.png" alt="Strategic Value & ROI Metrics">
+            </div>
+        </div>
+
+        <!-- SLIDE 15: Governance -->
+        <div class="slide" id="s14">
+            <span class="tag purple">Trust</span>
+            <h2>Governance & Security Framework</h2>
+            <p style="color:var(--dim);font-size:.9rem;margin-bottom:12px;text-align:center">Every AI Agent operates
+                under strict governance — with 5 pillars and 5 layers of defense-in-depth security.</p>
+            <div class="img-container" style="max-width:560px">
+                <img src="assets/governance_framework.png" alt="Agentic Governance Framework">
+            </div>
+        </div>
+
+        <!-- SLIDE 16: Summary & CTA -->
+        <div class="slide" id="s15">
+            <div class="cta-box">
+                <h1>xTalent is not just the future of HCM.<br>It is the future of enterprise software.</h1>
+                <div class="divider" style="background:#fff;opacity:.3;margin:20px auto"></div>
+                <p>From static software to living systems. From configuration to conversation.<br>From siloed data to
+                    unified knowledge. From manual compliance to automatic governance.</p>
+                <div style="margin-top:28px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
+                    <span
+                        style="background:rgba(255,255,255,.15);padding:8px 20px;border-radius:10px;font-size:.85rem;font-weight:600">Ontology-First</span>
+                    <span
+                        style="background:rgba(255,255,255,.15);padding:8px 20px;border-radius:10px;font-size:.85rem;font-weight:600">Intent-Over-Configuration</span>
+                    <span
+                        style="background:rgba(255,255,255,.15);padding:8px 20px;border-radius:10px;font-size:.85rem;font-weight:600">Evolution-by-Design</span>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Navigation -->
+    <div class="counter"><span id="cur">1</span> / <span id="tot">17</span></div>
+    <div class="nav">
+        <button onclick="go(-1)" id="prevBtn">←</button>
+        <button onclick="go(1)" id="nextBtn">→</button>
+    </div>
+
+    <script>
+        const slides = document.querySelectorAll('.slide');
+        let idx = 0;
+        function show(i) { slides.forEach((s, j) => { s.classList.remove('active', 'prev'); if (j === i) s.classList.add('active'); else if (j < i) s.classList.add('prev') }); document.getElementById('cur').textContent = i + 1 }
+        function go(d) { const n = idx + d; if (n >= 0 && n < slides.length) { idx = n; show(idx) } }
+        document.addEventListener('keydown', e => { if (e.key === 'ArrowRight' || e.key === ' ') go(1); if (e.key === 'ArrowLeft') go(-1) });
+        show(0);
+    </script>
+</body>
+
+</html>
