@@ -1,0 +1,342 @@
+{
+    "_meta": {
+        "description": "Policy config — áp dụng cho kỳ 2025-03",
+        "effectiveFrom": "2024-07-01",
+        "references": [
+            "Nghị định 73/2024/NĐ-CP (Lương cơ sở)",
+            "Thông tư 111/2013/TT-BTC (Thuế TNCN)",
+            "Luật Bảo hiểm xã hội 2014 + sửa đổi",
+            "TT03/2025/TTLT-BYT-BNV (Bảng lương y tế)",
+            "TT20/2023/TT-BLĐTBXH (Phụ cấp độc hại)",
+            "Nghị định 38/2022/NĐ-CP (Lương tối thiểu vùng)"
+        ]
+    },
+    "LABOR_STANDARDS": {
+        "BASE_WAGE": 2340000,
+        "REGIONAL_MIN_WAGE_ZONE1": 4960000,
+        "REGIONAL_MIN_WAGE_ZONE2": 4410000,
+        "STANDARD_WORK_DAYS_MONTH": 26,
+        "STANDARD_WORK_HOURS_DAY": 8,
+        "_note": "Lương cơ sở = 2,340,000 VNĐ/tháng (từ 7/2024). Min wage Vùng 1 áp cho Hà Nội"
+    },
+    "SOCIAL_INSURANCE": {
+        "effectiveFrom": "2024-07-01",
+        "ceiling": {
+            "bhxh": 46800000,
+            "bhyt": 46800000,
+            "bhtn": 46800000,
+            "_formula": "20 × BASE_WAGE = 20 × 2,340,000"
+        },
+        "employeeRates": {
+            "BHXH": 0.08,
+            "BHYT": 0.015,
+            "BHTN": 0.01,
+            "totalEmployee": 0.105
+        },
+        "employerRates": {
+            "BHXH": 0.175,
+            "BHYT": 0.03,
+            "BHTN": 0.01,
+            "TNLD_BNN": 0.005,
+            "totalEmployer": 0.22
+        },
+        "exclusions": [
+            "PROBATION — không đóng BHXH/BHYT/BHTN trong thời gian thử việc",
+            "FREELANCE — không đóng BHXH bắt buộc"
+        ]
+    },
+    "PIT_TAX": {
+        "description": "Biểu thuế TNCN lũy tiến 7 bậc — áp dụng cho thu nhập từ tiền lương, tiền công",
+        "calculationMethod": "MONTHLY_WITHHOLDING",
+        "brackets": [
+            {
+                "bracket": 1,
+                "fromVND": 0,
+                "toVND": 5000000,
+                "rate": 0.05,
+                "taxOnLower": 0,
+                "description": "Đến 5 triệu"
+            },
+            {
+                "bracket": 2,
+                "fromVND": 5000000,
+                "toVND": 10000000,
+                "rate": 0.10,
+                "taxOnLower": 250000,
+                "description": "5 - 10 triệu"
+            },
+            {
+                "bracket": 3,
+                "fromVND": 10000000,
+                "toVND": 18000000,
+                "rate": 0.15,
+                "taxOnLower": 750000,
+                "description": "10 - 18 triệu"
+            },
+            {
+                "bracket": 4,
+                "fromVND": 18000000,
+                "toVND": 32000000,
+                "rate": 0.20,
+                "taxOnLower": 1950000,
+                "description": "18 - 32 triệu"
+            },
+            {
+                "bracket": 5,
+                "fromVND": 32000000,
+                "toVND": 52000000,
+                "rate": 0.25,
+                "taxOnLower": 4750000,
+                "description": "32 - 52 triệu"
+            },
+            {
+                "bracket": 6,
+                "fromVND": 52000000,
+                "toVND": 80000000,
+                "rate": 0.30,
+                "taxOnLower": 9750000,
+                "description": "52 - 80 triệu"
+            },
+            {
+                "bracket": 7,
+                "fromVND": 80000000,
+                "toVND": null,
+                "rate": 0.35,
+                "taxOnLower": 18150000,
+                "description": "Trên 80 triệu"
+            }
+        ],
+        "deductions": {
+            "PERSONAL": 11000000,
+            "DEPENDENT_PER_PERSON": 4400000,
+            "_note": "Giảm trừ gia cảnh theo TT111/2013 — chưa điều chỉnh tính đến 2025"
+        },
+        "taxExemptItems": [
+            {
+                "code": "TRANSPORT_ALLOWANCE",
+                "exemptUpTo": 1500000,
+                "_note": "Miễn nếu không quá 1.5M/tháng, vượt phần chịu thuế"
+            },
+            {
+                "code": "LUNCH_ALLOWANCE",
+                "exemptUpTo": 730000,
+                "_note": "Miễn nếu không quá 730k/tháng"
+            },
+            {
+                "code": "PHONE_ALLOWANCE",
+                "exemptUpTo": 1000000,
+                "_note": "Phụ cấp điện thoại theo công việc"
+            },
+            {
+                "code": "MEDICAL_PROF_ALLOWANCE",
+                "exemptUpTo": null,
+                "exemptFull": true,
+                "_note": "Phụ cấp ưu đãi ngành (TT09/2019) — miễn toàn bộ theo Điều 3.1b Luật TNCN"
+            },
+            {
+                "code": "HAZARD_ALLOWANCE",
+                "exemptFull": false,
+                "exemptUpTo": 3600000,
+                "taxableAbove": true,
+                "_note": "PHỨC TẠP: Phụ cấp độc hại chỉ miễn thuế phần ≤ mức quy định nhà nước. Mức quy định = 3.6M/tháng theo NĐ81/2009-CP. Phần vượt trên 3.6M phải tính vào thu nhập chịu thuế TNCN.",
+                "_example": "Hazard = 9.6M → Miễn thuế: 3.6M → Chịu thuế: 9.6M - 3.6M = 6.0M"
+            }
+        ]
+    },
+    "OVERTIME_RATES": {
+        "description": "Hệ số lương OT theo BLLĐ 2019 Điều 98",
+        "OT_NORMAL_DAY": {
+            "multiplier": 1.5,
+            "_note": "≥ 150% lương ngày thường"
+        },
+        "OT_WEEKEND": {
+            "multiplier": 2.0,
+            "_note": "≥ 200% ngày nghỉ hàng tuần"
+        },
+        "OT_HOLIDAY_PUBLIC": {
+            "multiplier": 3.0,
+            "_note": "≥ 300% ngày nghỉ lễ tết"
+        },
+        "NIGHT_SHIFT_PREMIUM": {
+            "additionalPercent": 0.30,
+            "_note": "Thêm ≥ 30% so với lương ca ngày (Điều 98 BLLĐ)"
+        }
+    },
+    "MEDICAL_ALLOWANCE_TABLE": {
+        "description": "Phụ cấp ưu đãi ngành y — theo TT03/2025/TTLT-BYT-BNV. Miễn thuế toàn bộ.",
+        "_calcFormula": "ALLOWANCE = RATE × BASE_WAGE × PROFESSIONAL_COEFFICIENT",
+        "grades": [
+            {
+                "gradeCode": "MED-BS2",
+                "professionalGrade": "BS_CHINH",
+                "coefficient": 2.67,
+                "rate": 0.30,
+                "monthlyAmount": 1872360,
+                "_note": "Bác sỹ Chính bậc 2"
+            },
+            {
+                "gradeCode": "MED-BS3",
+                "professionalGrade": "BS_CHINH",
+                "coefficient": 3.00,
+                "rate": 0.30,
+                "monthlyAmount": 2106000,
+                "_note": "Bác sỹ Chính bậc 3"
+            },
+            {
+                "gradeCode": "MED-TK1",
+                "professionalGrade": "CHUYEN_KHOA_2",
+                "coefficient": 4.12,
+                "rate": 0.35,
+                "monthlyAmount": 3369960,
+                "_note": "Trưởng khoa CK2 — mức cao nhất"
+            }
+        ]
+    },
+    "HAZARD_ALLOWANCE_TABLE": {
+        "description": "Phụ cấp độc hại, nguy hiểm — TT20/2023/TT-BLĐTBXH. Miễn thuế ≤ 3.6M, vượt => chịu thuế",
+        "statutoryExemptCeiling": 3600000,
+        "levels": [
+            {
+                "level": "A",
+                "rateOnBaseSalary": 0.10,
+                "description": "Phụ cấp loại A — điều kiện lao động nặng nhọc"
+            },
+            {
+                "level": "B",
+                "rateOnBaseSalary": 0.20,
+                "description": "Phụ cấp loại B — điều kiện nguy hiểm, tiếp xúc bệnh lây nhiễm"
+            },
+            {
+                "level": "C",
+                "rateOnBaseSalary": 0.30,
+                "description": "Phụ cấp loại C — điều kiện đặc biệt nguy hiểm (xạ trị, ung thư)"
+            }
+        ],
+        "medicalCategories": {
+            "INFECTIOUS_DISEASE": {
+                "defaultLevel": "B",
+                "_note": "Bác sỹ Nội — tiếp xúc BN bệnh lây"
+            },
+            "CANCER_RADIATION": {
+                "defaultLevel": "C",
+                "_note": "Ung bướu + xạ trị — mức cao nhất"
+            },
+            "SURGERY": {
+                "defaultLevel": "B",
+                "_note": "Ngoại khoa"
+            },
+            "LAB_PATHOLOGY": {
+                "defaultLevel": "A",
+                "_note": "Xét nghiệm, giải phẫu bệnh"
+            }
+        }
+    },
+    "MEDICAL_DUTY_PAY": {
+        "description": "Phụ cấp trực bệnh viện — flat rate theo quy chế BYT + QĐ54/QĐ-BYT",
+        "_complexity_note": "Áp dụng cách tính phức tạp nhất: flat-rate theo chức danh + phân biệt ca bình thường/ca nghỉ lễ/ca đêm",
+        "dutyTypes": [
+            {
+                "type": "DUTY_24H_NORMAL",
+                "description": "Ca trực 24h ngày thường",
+                "ratePerDuty": {
+                    "BS_CHINH": 115000,
+                    "CHUYEN_KHOA_2": 160000
+                },
+                "taxable": true,
+                "_note": "Flat-rate QĐ54. Nếu ngày thường → taxable bình thường"
+            },
+            {
+                "type": "DUTY_24H_WEEKEND",
+                "description": "Ca trực 24h ngày nghỉ tuần",
+                "ratePerDuty": {
+                    "BS_CHINH": 180000,
+                    "CHUYEN_KHOA_2": 245000
+                },
+                "additionalOTRate": 2.0,
+                "taxable": true,
+                "_note": "Flat-rate QĐ54 + thêm lương OT 200% cho giờ quy định. PHỨC TẠP: cộng 2 khoản"
+            },
+            {
+                "type": "DUTY_24H_HOLIDAY",
+                "description": "Ca trực 24h ngày lễ tết",
+                "ratePerDuty": {
+                    "BS_CHINH": 220000,
+                    "CHUYEN_KHOA_2": 300000
+                },
+                "additionalOTRate": 3.0,
+                "taxable": true,
+                "_note": "Flat-rate + OT 300%. Case phức tạp nhất trong duty pay"
+            }
+        ],
+        "_employerSINote": "Toàn bộ duty pay (flat-rate + OT phần) đều tính vào quỹ lương đóng BHXH"
+    },
+    "PIECE_RATE_TABLE": {
+        "description": "Đơn giá sản phẩm theo mã SP — tháng 3/2025",
+        "currency": "VND",
+        "products": [
+            {
+                "productCode": "ASM-TYPE-A",
+                "description": "Lắp ráp linh kiện Type A (đơn giản)",
+                "unitPrice": 12000,
+                "unit": "SP (sản phẩm đạt chất lượng)",
+                "_note": "Giá 12,000 VNĐ/SP. Cần tối thiểu 413 SP để đạt tối thiểu vùng 4.96M"
+            },
+            {
+                "productCode": "ASM-TYPE-B",
+                "description": "Lắp ráp cụm Type B (phức tạp hơn)",
+                "unitPrice": 18500,
+                "unit": "cụm",
+                "_note": "Giá 18,500 VNĐ/cụm. Cần tối thiểu 268 cụm để đạt min wage"
+            }
+        ],
+        "qualityIncentive": {
+            "tier1": {
+                "minQualityRate": 0.98,
+                "bonusRateOnPieceSalary": 0.05,
+                "description": "≥ 98% đạt → bonus 5%"
+            },
+            "tier2": {
+                "minQualityRate": 0.95,
+                "bonusRateOnPieceSalary": 0.03,
+                "description": "95-97% đạt → bonus 3%"
+            },
+            "tier3": {
+                "minQualityRate": 0.90,
+                "bonusRateOnPieceSalary": 0.00,
+                "description": "90-94% → không bonus"
+            },
+            "penalty": {
+                "belowQualityRate": 0.90,
+                "penaltyRateOnPieceSalary": -0.05,
+                "description": "< 90% đạt → trừ 5% (tái chế)"
+            }
+        }
+    },
+    "SHIFT_PREMIUMS": {
+        "description": "Phụ cấp ca theo loại ca — xác định đầu ca theo lịch tháng",
+        "CA_SANG": {
+            "timeRange": "06:00-14:00",
+            "premium": 0,
+            "nightHours": 0,
+            "_note": "Ca sáng không có phụ cấp thêm ngoài lương sản phẩm"
+        },
+        "CA_CHIEU": {
+            "timeRange": "14:00-22:00",
+            "premium": 0,
+            "nightHours": 0,
+            "_note": "Ca chiều — chỉ có phụ cấp nếu kéo sang sau 22h"
+        },
+        "CA_DEM": {
+            "timeRange": "22:00-06:00",
+            "premium": 0.30,
+            "nightHours": 8,
+            "_note": "Ca đêm = +30% trên lương ngày (Điều 98 BLLĐ). Tính: 30% × (baseSalary/standardDays) × nightShiftCount"
+        }
+    },
+    "SENIORITY_ALLOWANCE": {
+        "description": "Phụ cấp thâm niên — tính theo năm làm việc",
+        "ratePerYear": 0.01,
+        "_formula": "seniorityRate = min(years × 0.01, 0.15)",
+        "_note": "Tối đa 15% BaseSalary. Năm đầy đủ (≥365 ngày). Chịu thuế TNCN."
+    }
+}

@@ -1,0 +1,169 @@
+// ============================================================
+// VN COMMON INSURANCE RULES
+// Package: vn.xtalent.payroll.rules.vn.common
+// Engine: Drools 8 — xTalent HCM Payroll Engine
+// Phiên bản: 1.0 | Ngày: 2025-03-04
+// Áp dụng: TẤT CẢ loại hình nhân viên VN (OFFICE, DOCTOR, WORKER)
+// Tham chiếu: Luật BHXH 2014, Nghị định 73/2024/NĐ-CP
+// ============================================================
+
+package vn.xtalent.payroll.rules.vn.common;
+
+import vn.xtalent.payroll.model.*;
+import vn.xtalent.payroll.functions.BuiltinFunctions;
+import java.math.BigDecimal;
+
+// ─────────────────────────────────────────────────────────
+// RULE: Validate BHXH Eligibility
+// Mục đích: Kiểm tra điều kiện đóng BHXH trước khi tính
+// Salience: 200 (chạy trước mọi BHXH rules)
+// ─────────────────────────────────────────────────────────
+rule "VN_SI_001 — Check BHXH Eligibility"
+    agenda-group "pre-payroll-validation"
+    salience 200
+    when
+        $emp: Employee(
+            status == "ACTIVE",
+            contractType != "PROBATION",
+            contractType != "FREELANCE"
+        )
+        not PayrollFlag(employeeId == $emp.employeeId, flagCode == "BHXH_INELIGIBLE")
+    then
+        insert(new PayrollFlag($emp.employeeId, "BHXH_ELIGIBLE", "Đủ điều kiện đóng BHXH"));
+        System.out.println("[BHXH] Employee " + $emp.employeeId + " BHXH eligible ✓");
+end
+
+// ─────────────────────────────────────────────────────────
+// RULE: Calculate BHXH_BASE
+// Mục đích: Tính cơ sở đóng BHXH = min(grossSalary, ceiling)
+// Phụ thuộc: GROSS_SALARY phải được insert trước
+// ─────────────────────────────────────────────────────────
+rule "VN_SI_002 — Calculate BHXH Base"
+    agenda-group "insurance"
+    salience 100
+    when
+        $emp: Employee(status == "ACTIVE")
+        PayrollFlag(employeeId == $emp.employeeId, flagCode == "BHXH_ELIGIBLE")
+        $gross: PayrollElement(
+            code == "GROSS_SALARY",
+            employeeId == $emp.employeeId
+        )
+        $policy: PolicyConfig(code == "BHXH_CEILING", countryCode == "VN")
+        not PayrollElement(code == "BHXH_BASE", employeeId == $emp.employeeId)
+    then
+        BigDecimal bhxhBase = $gross.getValue().min($policy.getDecimalValue());
+        PayrollElement element = new PayrollElement(
+            "BHXH_BASE", $emp.employeeId, bhxhBase,
+            "min(GROSS_SALARY, BHXH_CEILING)",
+            7  // executionOrder
+        );
+        element.addInput("grossSalary", $gross.getValue());
+        element.addInput("bhxhCeiling", $policy.getDecimalValue());
+        insert(element);
+        // EMP-004: min(60,636,498, 46,800,000) = 46,800,000 (capped!)
+        System.out.println("[BHXH_BASE] " + $emp.employeeId + " = " + bhxhBase);
+end
+
+// ─────────────────────────────────────────────────────────
+// RULE: Calculate BHXH_EMPLOYEE (8%)
+// ─────────────────────────────────────────────────────────
+rule "VN_SI_003 — Calculate BHXH Employee 8%"
+    agenda-group "insurance"
+    salience 90
+    when
+        $emp: Employee(status == "ACTIVE")
+        PayrollFlag(employeeId == $emp.employeeId, flagCode == "BHXH_ELIGIBLE")
+        $base: PayrollElement(code == "BHXH_BASE", employeeId == $emp.employeeId)
+        not PayrollElement(code == "BHXH_EMPLOYEE", employeeId == $emp.employeeId)
+    then
+        BigDecimal value = $base.getValue().multiply(new BigDecimal("0.08"));
+        insert(new PayrollElement("BHXH_EMPLOYEE", $emp.employeeId, value, "BHXH_BASE * 0.08", 8));
+        System.out.println("[BHXH_EMP] " + $emp.employeeId + " = " + value);
+end
+
+// ─────────────────────────────────────────────────────────
+// RULE: Calculate BHYT_EMPLOYEE (1.5%)
+// ─────────────────────────────────────────────────────────
+rule "VN_SI_004 — Calculate BHYT Employee 1.5%"
+    agenda-group "insurance"
+    salience 90
+    when
+        $emp: Employee(status == "ACTIVE")
+        PayrollFlag(employeeId == $emp.employeeId, flagCode == "BHXH_ELIGIBLE")
+        $base: PayrollElement(code == "BHXH_BASE", employeeId == $emp.employeeId)
+        not PayrollElement(code == "BHYT_EMPLOYEE", employeeId == $emp.employeeId)
+    then
+        BigDecimal value = $base.getValue().multiply(new BigDecimal("0.015"));
+        insert(new PayrollElement("BHYT_EMPLOYEE", $emp.employeeId, value, "BHXH_BASE * 0.015", 8));
+end
+
+// ─────────────────────────────────────────────────────────
+// RULE: Calculate BHTN_EMPLOYEE (1%)
+// ─────────────────────────────────────────────────────────
+rule "VN_SI_005 — Calculate BHTN Employee 1%"
+    agenda-group "insurance"
+    salience 90
+    when
+        $emp: Employee(status == "ACTIVE")
+        PayrollFlag(employeeId == $emp.employeeId, flagCode == "BHXH_ELIGIBLE")
+        $base: PayrollElement(code == "BHXH_BASE", employeeId == $emp.employeeId)
+        not PayrollElement(code == "BHTN_EMPLOYEE", employeeId == $emp.employeeId)
+    then
+        BigDecimal value = $base.getValue().multiply(new BigDecimal("0.01"));
+        insert(new PayrollElement("BHTN_EMPLOYEE", $emp.employeeId, value, "BHXH_BASE * 0.01", 8));
+end
+
+// ─────────────────────────────────────────────────────────
+// RULE: Calculate BHXH_EMPLOYER (17.5%) — Thông tin, không ảnh hưởng Net
+// ─────────────────────────────────────────────────────────
+rule "VN_SI_006 — Calculate BHXH Employer 17.5%"
+    agenda-group "insurance"
+    salience 85
+    when
+        $emp: Employee(status == "ACTIVE")
+        PayrollFlag(employeeId == $emp.employeeId, flagCode == "BHXH_ELIGIBLE")
+        $base: PayrollElement(code == "BHXH_BASE", employeeId == $emp.employeeId)
+        not PayrollElement(code == "BHXH_EMPLOYER", employeeId == $emp.employeeId)
+    then
+        BigDecimal value = $base.getValue().multiply(new BigDecimal("0.175"));
+        insert(new PayrollElement("BHXH_EMPLOYER", $emp.employeeId, value, "BHXH_BASE * 0.175", 8));
+end
+
+rule "VN_SI_007 — Calculate BHYT Employer 3%"
+    agenda-group "insurance"
+    salience 85
+    when
+        $emp: Employee(status == "ACTIVE")
+        PayrollFlag(employeeId == $emp.employeeId, flagCode == "BHXH_ELIGIBLE")
+        $base: PayrollElement(code == "BHXH_BASE", employeeId == $emp.employeeId)
+        not PayrollElement(code == "BHYT_EMPLOYER", employeeId == $emp.employeeId)
+    then
+        insert(new PayrollElement("BHYT_EMPLOYER", $emp.employeeId,
+            $base.getValue().multiply(new BigDecimal("0.03")), "BHXH_BASE * 0.03", 8));
+end
+
+rule "VN_SI_008 — Calculate BHTN Employer 1%"
+    agenda-group "insurance"
+    salience 85
+    when
+        $emp: Employee(status == "ACTIVE")
+        PayrollFlag(employeeId == $emp.employeeId, flagCode == "BHXH_ELIGIBLE")
+        $base: PayrollElement(code == "BHXH_BASE", employeeId == $emp.employeeId)
+        not PayrollElement(code == "BHTN_EMPLOYER", employeeId == $emp.employeeId)
+    then
+        insert(new PayrollElement("BHTN_EMPLOYER", $emp.employeeId,
+            $base.getValue().multiply(new BigDecimal("0.01")), "BHXH_BASE * 0.01", 8));
+end
+
+rule "VN_SI_009 — Calculate TNLD Employer 0.5%"
+    agenda-group "insurance"
+    salience 85
+    when
+        $emp: Employee(status == "ACTIVE")
+        PayrollFlag(employeeId == $emp.employeeId, flagCode == "BHXH_ELIGIBLE")
+        $base: PayrollElement(code == "BHXH_BASE", employeeId == $emp.employeeId)
+        not PayrollElement(code == "TNLD_EMPLOYER", employeeId == $emp.employeeId)
+    then
+        insert(new PayrollElement("TNLD_EMPLOYER", $emp.employeeId,
+            $base.getValue().multiply(new BigDecimal("0.005")), "BHXH_BASE * 0.005", 8));
+end

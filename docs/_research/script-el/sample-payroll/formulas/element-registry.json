@@ -1,0 +1,738 @@
+{
+    "_meta": {
+        "description": "Registry 27 Payroll Elements — phân nhóm theo EARNING/DEDUCTION/INFO/TAX",
+        "version": "1.0",
+        "countryCode": "VN",
+        "totalElements": 27,
+        "applicabilityMatrix": {
+            "OFFICE": [
+                "BASE_SALARY",
+                "PRORATED_SALARY",
+                "SENIORITY_ALLOWANCE",
+                "TRANSPORT_ALLOWANCE",
+                "LUNCH_ALLOWANCE",
+                "PHONE_ALLOWANCE",
+                "POSITION_ALLOWANCE",
+                "PERFORMANCE_BONUS",
+                "OT_150",
+                "OT_200",
+                "OT_300",
+                "GROSS_SALARY",
+                "BHXH_BASE",
+                "BHXH_EMPLOYEE",
+                "BHYT_EMPLOYEE",
+                "BHTN_EMPLOYEE",
+                "BHXH_EMPLOYER",
+                "BHYT_EMPLOYER",
+                "BHTN_EMPLOYER",
+                "TNLD_EMPLOYER",
+                "PERSONAL_DEDUCTION",
+                "DEPENDENT_DEDUCTION",
+                "TAXABLE_INCOME",
+                "PIT_TAX",
+                "TOTAL_DEDUCTION",
+                "NET_SALARY"
+            ],
+            "DOCTOR": [
+                "BASE_SALARY",
+                "PRORATED_SALARY",
+                "SENIORITY_ALLOWANCE",
+                "POSITION_ALLOWANCE",
+                "MEDICAL_PROF_ALLOWANCE",
+                "HAZARD_ALLOWANCE",
+                "HAZARD_TAX_EXEMPT",
+                "HAZARD_TAXABLE",
+                "DUTY_PAY_FLAT",
+                "DUTY_PAY_OT",
+                "OT_150",
+                "OT_200",
+                "OT_300",
+                "GROSS_SALARY",
+                "BHXH_BASE",
+                "BHXH_EMPLOYEE",
+                "BHYT_EMPLOYEE",
+                "BHTN_EMPLOYEE",
+                "BHXH_EMPLOYER",
+                "BHYT_EMPLOYER",
+                "BHTN_EMPLOYER",
+                "TNLD_EMPLOYER",
+                "PERSONAL_DEDUCTION",
+                "DEPENDENT_DEDUCTION",
+                "TAXABLE_INCOME",
+                "PIT_TAX",
+                "TOTAL_DEDUCTION",
+                "NET_SALARY"
+            ],
+            "WORKER": [
+                "BASE_SALARY",
+                "PIECE_RATE_QUANTITY",
+                "PIECE_RATE_SALARY",
+                "QUALITY_BONUS",
+                "NIGHT_SHIFT_ALLOWANCE",
+                "SHIFT_OT_PREMIUM",
+                "SENIORITY_ALLOWANCE",
+                "OT_200",
+                "GROSS_SALARY",
+                "MIN_WAGE_FLOOR_CHECK",
+                "BHXH_BASE",
+                "BHXH_EMPLOYEE",
+                "BHYT_EMPLOYEE",
+                "BHTN_EMPLOYEE",
+                "BHXH_EMPLOYER",
+                "BHYT_EMPLOYER",
+                "BHTN_EMPLOYER",
+                "TNLD_EMPLOYER",
+                "PERSONAL_DEDUCTION",
+                "DEPENDENT_DEDUCTION",
+                "TAXABLE_INCOME",
+                "PIT_TAX",
+                "TOTAL_DEDUCTION",
+                "NET_SALARY"
+            ]
+        }
+    },
+    "elements": [
+        {
+            "code": "BASE_SALARY",
+            "name": "Lương cơ bản hợp đồng",
+            "type": "EARNING",
+            "subtype": "FIXED",
+            "applicability": [
+                "OFFICE",
+                "DOCTOR",
+                "WORKER"
+            ],
+            "formula": {
+                "dsl": "BASE_SALARY",
+                "mvel": "employee.salary.baseSalary",
+                "description": "Lấy trực tiếp từ hợp đồng lao động — không tính toán"
+            },
+            "dependencies": [],
+            "taxable": true,
+            "siContribution": true,
+            "effectiveDate": "2024-01-01",
+            "executionOrder": 1
+        },
+        {
+            "code": "PRORATED_SALARY",
+            "name": "Lương theo ngày công thực tế (Pro-rata)",
+            "type": "EARNING",
+            "subtype": "COMPUTED",
+            "applicability": [
+                "OFFICE",
+                "DOCTOR"
+            ],
+            "formula": {
+                "dsl": "proRata(BASE_SALARY, actualWorkDays, standardWorkDays)",
+                "mvel": "baseSalary * (actualWorkDays / standardWorkDays)",
+                "description": "Lương thực nhận sau điều chỉnh số ngày công"
+            },
+            "dependencies": [
+                "BASE_SALARY"
+            ],
+            "inputs": [
+                "actualWorkDays",
+                "standardWorkDays"
+            ],
+            "taxable": true,
+            "siContribution": true,
+            "effectiveDate": "2024-01-01",
+            "executionOrder": 2
+        },
+        {
+            "code": "SENIORITY_ALLOWANCE",
+            "name": "Phụ cấp thâm niên",
+            "type": "EARNING",
+            "subtype": "ALLOWANCE",
+            "applicability": [
+                "OFFICE",
+                "DOCTOR",
+                "WORKER"
+            ],
+            "formula": {
+                "dsl": "min(seniorityYears * 0.01, 0.15) * BASE_SALARY",
+                "mvel": "Math.min(seniorityYears * 0.01, 0.15) * baseSalary",
+                "description": "1% × năm thâm niên × lương cơ bản, tối đa 15%"
+            },
+            "dependencies": [
+                "BASE_SALARY"
+            ],
+            "inputs": [
+                "seniorityYears"
+            ],
+            "taxable": true,
+            "siContribution": true,
+            "effectiveDate": "2024-01-01",
+            "executionOrder": 3
+        },
+        {
+            "code": "TRANSPORT_ALLOWANCE",
+            "name": "Phụ cấp đi lại",
+            "type": "EARNING",
+            "subtype": "ALLOWANCE",
+            "applicability": [
+                "OFFICE"
+            ],
+            "formula": {
+                "dsl": "lookup(ALLOWANCE_CONFIG, 'TRANSPORT_ALLOWANCE', employeeId)",
+                "mvel": "policyService.getAllowanceAmount('TRANSPORT_ALLOWANCE', employee.id)",
+                "description": "Phụ cấp cố định theo cấp bậc, lấy từ config"
+            },
+            "dependencies": [],
+            "taxable": false,
+            "taxExemptCeiling": 1500000,
+            "siContribution": false,
+            "effectiveDate": "2024-01-01",
+            "executionOrder": 3
+        },
+        {
+            "code": "LUNCH_ALLOWANCE",
+            "name": "Phụ cấp tiền ăn",
+            "type": "EARNING",
+            "subtype": "ALLOWANCE",
+            "applicability": [
+                "OFFICE"
+            ],
+            "formula": {
+                "dsl": "730000",
+                "mvel": "730000",
+                "description": "Flat amount 730k — miễn thuế toàn bộ"
+            },
+            "dependencies": [],
+            "taxable": false,
+            "taxExemptCeiling": 730000,
+            "siContribution": false,
+            "executionOrder": 3
+        },
+        {
+            "code": "POSITION_ALLOWANCE",
+            "name": "Phụ cấp chức vụ",
+            "type": "EARNING",
+            "subtype": "ALLOWANCE",
+            "applicability": [
+                "OFFICE",
+                "DOCTOR"
+            ],
+            "formula": {
+                "dsl": "lookup(POSITION_ALLOWANCE_TABLE, jobGrade)",
+                "mvel": "policyService.getPositionAllowance(employee.jobGrade)",
+                "description": "Phụ cấp theo bậc chức vụ"
+            },
+            "dependencies": [],
+            "taxable": true,
+            "siContribution": true,
+            "executionOrder": 3
+        },
+        {
+            "code": "PERFORMANCE_BONUS",
+            "name": "Thưởng KPI (3P — Pay for Performance)",
+            "type": "EARNING",
+            "subtype": "BONUS",
+            "applicability": [
+                "OFFICE"
+            ],
+            "formula": {
+                "dsl": "when kpiScore >= 1.2 then BASE_SALARY * 0.2\nwhen kpiScore >= 1.0 then BASE_SALARY * 0.1\nwhen kpiScore >= 0.8 then BASE_SALARY * 0.05\nelse 0",
+                "mvel": "kpiScore >= 1.2 ? baseSalary * 0.2 : kpiScore >= 1.0 ? baseSalary * 0.1 : kpiScore >= 0.8 ? baseSalary * 0.05 : 0",
+                "description": "KPI bonus theo thang điểm: ≥120% → 20%, ≥100% → 10%, ≥80% → 5%"
+            },
+            "dependencies": [
+                "BASE_SALARY"
+            ],
+            "inputs": [
+                "kpiScore"
+            ],
+            "taxable": true,
+            "siContribution": false,
+            "_note": "Thưởng KPI không tính BHXH (không phải quỹ lương thường xuyên)",
+            "executionOrder": 4
+        },
+        {
+            "code": "OT_150",
+            "name": "Lương OT ngày thường (150%)",
+            "type": "EARNING",
+            "subtype": "OVERTIME",
+            "applicability": [
+                "OFFICE",
+                "DOCTOR"
+            ],
+            "formula": {
+                "dsl": "(BASE_SALARY / standardWorkDays / 8) * otHours150 * 1.5",
+                "mvel": "(baseSalary / standardWorkDays / 8.0) * otHours150 * 1.5",
+                "description": "Lương giờ thường × 1.5 × số giờ OT ngày thường"
+            },
+            "dependencies": [
+                "BASE_SALARY"
+            ],
+            "inputs": [
+                "otHours150",
+                "standardWorkDays"
+            ],
+            "taxable": true,
+            "siContribution": false,
+            "executionOrder": 4
+        },
+        {
+            "code": "OT_200",
+            "name": "Lương OT ngày nghỉ tuần (200%)",
+            "type": "EARNING",
+            "subtype": "OVERTIME",
+            "applicability": [
+                "OFFICE",
+                "DOCTOR",
+                "WORKER"
+            ],
+            "formula": {
+                "dsl": "(BASE_SALARY / standardWorkDays / 8) * otHours200 * 2.0",
+                "mvel": "(baseSalary / standardWorkDays / 8.0) * otHours200 * 2.0",
+                "description": "OT ngày nghỉ hàng tuần × 200%"
+            },
+            "dependencies": [
+                "BASE_SALARY"
+            ],
+            "inputs": [
+                "otHours200",
+                "standardWorkDays"
+            ],
+            "taxable": true,
+            "siContribution": false,
+            "executionOrder": 4
+        },
+        {
+            "code": "OT_300",
+            "name": "Lương OT ngày lễ tết (300%)",
+            "type": "EARNING",
+            "subtype": "OVERTIME",
+            "applicability": [
+                "OFFICE",
+                "DOCTOR"
+            ],
+            "formula": {
+                "dsl": "(BASE_SALARY / standardWorkDays / 8) * otHours300 * 3.0",
+                "mvel": "(baseSalary / standardWorkDays / 8.0) * otHours300 * 3.0",
+                "description": "OT ngày lễ tết × 300%"
+            },
+            "dependencies": [
+                "BASE_SALARY"
+            ],
+            "inputs": [
+                "otHours300",
+                "standardWorkDays"
+            ],
+            "taxable": true,
+            "siContribution": false,
+            "executionOrder": 4
+        },
+        {
+            "code": "MEDICAL_PROF_ALLOWANCE",
+            "name": "Phụ cấp ưu đãi ngành y",
+            "type": "EARNING",
+            "subtype": "ALLOWANCE",
+            "applicability": [
+                "DOCTOR"
+            ],
+            "formula": {
+                "dsl": "lookup(MEDICAL_ALLOWANCE_TABLE, medicalGrade).monthlyAmount",
+                "mvel": "policyService.getMedicalAllowance(employee.medicalGradeInfo.gradeCode)",
+                "description": "Phụ cấp ngành y theo bậc chuyên môn — miễn toàn bộ thuế TNCN"
+            },
+            "dependencies": [],
+            "inputs": [
+                "medicalGrade"
+            ],
+            "taxable": false,
+            "taxExempt": true,
+            "taxExemptFull": true,
+            "siContribution": false,
+            "_legalBasis": "Điều 3.1b Luật Thuế TNCN — phụ cấp theo quy định nhà nước",
+            "executionOrder": 3
+        },
+        {
+            "code": "HAZARD_ALLOWANCE",
+            "name": "Phụ cấp độc hại (tổng)",
+            "type": "EARNING",
+            "subtype": "ALLOWANCE",
+            "applicability": [
+                "DOCTOR"
+            ],
+            "formula": {
+                "dsl": "when hazardLevel == 'A' then BASE_SALARY * 0.10\nwhen hazardLevel == 'B' then BASE_SALARY * 0.20\nwhen hazardLevel == 'C' then BASE_SALARY * 0.30\nelse 0",
+                "mvel": "hazardLevel.equals('C') ? baseSalary * 0.30 : hazardLevel.equals('B') ? baseSalary * 0.20 : hazardLevel.equals('A') ? baseSalary * 0.10 : 0",
+                "description": "Phụ cấp độc hại theo loại A/B/C — tổng số trước khi phân tách miễn/không miễn thuế"
+            },
+            "dependencies": [
+                "BASE_SALARY"
+            ],
+            "inputs": [
+                "hazardLevel"
+            ],
+            "taxable": "PARTIAL",
+            "_note": "Không tính thẳng vào GROSS. Tách thành HAZARD_TAX_EXEMPT + HAZARD_TAXABLE",
+            "executionOrder": 4
+        },
+        {
+            "code": "HAZARD_TAX_EXEMPT",
+            "name": "Phụ cấp độc hại — phần miễn thuế",
+            "type": "INFORMATION",
+            "subtype": "TAX_SPLIT",
+            "applicability": [
+                "DOCTOR"
+            ],
+            "formula": {
+                "dsl": "min(HAZARD_ALLOWANCE, HAZARD_EXEMPT_CEILING)",
+                "mvel": "Math.min(hazardAllowance, policyService.getHazardExemptCeiling())",
+                "description": "Phần miễn thuế = min(hazard_total, 3,600,000). Không tính vào TAXABLE_INCOME"
+            },
+            "dependencies": [
+                "HAZARD_ALLOWANCE"
+            ],
+            "taxable": false,
+            "siContribution": false,
+            "_legalBasis": "NĐ81/2009-CP + TT20/2023 — mức miễn thuế tối đa 3,600,000 VNĐ/tháng",
+            "executionOrder": 5
+        },
+        {
+            "code": "HAZARD_TAXABLE",
+            "name": "Phụ cấp độc hại — phần chịu thuế",
+            "type": "INFORMATION",
+            "subtype": "TAX_SPLIT",
+            "applicability": [
+                "DOCTOR"
+            ],
+            "formula": {
+                "dsl": "max(0, HAZARD_ALLOWANCE - HAZARD_EXEMPT_CEILING)",
+                "mvel": "Math.max(0, hazardAllowance - policyService.getHazardExemptCeiling())",
+                "description": "Phần vượt trần miễn thuế → phải cộng vào TAXABLE_INCOME"
+            },
+            "dependencies": [
+                "HAZARD_ALLOWANCE",
+                "HAZARD_TAX_EXEMPT"
+            ],
+            "taxable": true,
+            "_note": "EMP-004 (Ung bướu, Loại C): Hazard=9.6M, Miễn=3.6M → Taxable=6.0M ← Case phức tạp",
+            "executionOrder": 5
+        },
+        {
+            "code": "DUTY_PAY_FLAT",
+            "name": "Phụ cấp trực flat-rate (theo QĐ54/BYT)",
+            "type": "EARNING",
+            "subtype": "DUTY",
+            "applicability": [
+                "DOCTOR"
+            ],
+            "formula": {
+                "dsl": "sumElements(dutySchedule, (d) => lookup(DUTY_FLAT_RATE_TABLE, d.type, medicalGrade))",
+                "mvel": "attendanceService.getDutyFlatRatePay(employee.id, period, employee.medicalGradeInfo.professionalGrade)",
+                "description": "Tổng flat-rate trực × số ca theo loại (Normal/Weekend/Holiday)"
+            },
+            "dependencies": [],
+            "inputs": [
+                "dutySchedule",
+                "medicalGrade"
+            ],
+            "taxable": true,
+            "siContribution": true,
+            "executionOrder": 4
+        },
+        {
+            "code": "DUTY_PAY_OT",
+            "name": "Lương OT cộng thêm trong ca trực (Weekend/Holiday)",
+            "type": "EARNING",
+            "subtype": "OVERTIME",
+            "applicability": [
+                "DOCTOR"
+            ],
+            "formula": {
+                "dsl": "sumElements(dutySchedule.filter(d => d.additionalOT), (d) => (BASE_SALARY / standardWorkDays / 8) * d.additionalOTHours * d.additionalOTRate)",
+                "mvel": "attendanceService.getDutyOTAmount(employee.id, period, baseSalary, standardWorkDays)",
+                "description": "OT lương thêm cho ca trực ngày nghỉ/lễ = hourlyRate × OT_hours × multiplier (2.0 hoặc 3.0)"
+            },
+            "dependencies": [
+                "BASE_SALARY"
+            ],
+            "inputs": [
+                "dutySchedule",
+                "standardWorkDays"
+            ],
+            "taxable": true,
+            "siContribution": false,
+            "_note": "Khác DUTY_PAY_FLAT: đây là phần OT tính thêm ngoài flat-rate",
+            "executionOrder": 5
+        },
+        {
+            "code": "PIECE_RATE_SALARY",
+            "name": "Lương sản phẩm",
+            "type": "EARNING",
+            "subtype": "PIECE_RATE",
+            "applicability": [
+                "WORKER"
+            ],
+            "formula": {
+                "dsl": "qualityPassedQty * lookup(PIECE_RATE_TABLE, productCode)",
+                "mvel": "qualityPassedQuantity * policyService.getUnitPrice(productCode)",
+                "description": "Lương = số SP đạt chất lượng × đơn giá. SP lỗi không được tính"
+            },
+            "dependencies": [],
+            "inputs": [
+                "qualityPassedQuantity",
+                "productCode"
+            ],
+            "taxable": true,
+            "siContribution": true,
+            "executionOrder": 2
+        },
+        {
+            "code": "QUALITY_BONUS",
+            "name": "Thưởng chất lượng sản phẩm",
+            "type": "EARNING",
+            "subtype": "BONUS",
+            "applicability": [
+                "WORKER"
+            ],
+            "formula": {
+                "dsl": "when qualityRate >= 0.98 then PIECE_RATE_SALARY * 0.05\nwhen qualityRate >= 0.95 then PIECE_RATE_SALARY * 0.03\nwhen qualityRate < 0.90 then PIECE_RATE_SALARY * (-0.05)\nelse 0",
+                "mvel": "qualityRate >= 0.98 ? pieceRateSalary * 0.05 : qualityRate >= 0.95 ? pieceRateSalary * 0.03 : qualityRate < 0.90 ? pieceRateSalary * (-0.05) : 0",
+                "description": "Thưởng/phạt chất lượng theo ngưỡng. Tier1=+5%, Tier2=+3%, Penalty<90%=-5%"
+            },
+            "dependencies": [
+                "PIECE_RATE_SALARY"
+            ],
+            "inputs": [
+                "qualityRate"
+            ],
+            "taxable": true,
+            "siContribution": false,
+            "executionOrder": 3
+        },
+        {
+            "code": "NIGHT_SHIFT_ALLOWANCE",
+            "name": "Phụ cấp ca đêm (30% lương ngày)",
+            "type": "EARNING",
+            "subtype": "SHIFT_PREMIUM",
+            "applicability": [
+                "WORKER",
+                "DOCTOR"
+            ],
+            "formula": {
+                "dsl": "nightShiftCount * (BASE_SALARY / standardWorkDays) * 0.30",
+                "mvel": "nightShiftCount * (baseSalary / standardWorkDays) * 0.30",
+                "description": "30% × lương ngày × số ca đêm. Ca đêm xác định theo ĐẦU CA ≥22h từ lịch tháng"
+            },
+            "dependencies": [
+                "BASE_SALARY"
+            ],
+            "inputs": [
+                "nightShiftCount",
+                "standardWorkDays"
+            ],
+            "taxable": true,
+            "siContribution": true,
+            "_legalBasis": "BLLĐ 2019 Điều 98 — không ít hơn 30% so với ca ngày",
+            "executionOrder": 3
+        },
+        {
+            "code": "GROSS_SALARY",
+            "name": "Tổng thu nhập trước khấu trừ (Gross)",
+            "type": "EARNING",
+            "subtype": "AGGREGATE",
+            "applicability": [
+                "OFFICE",
+                "DOCTOR",
+                "WORKER"
+            ],
+            "formula": {
+                "OFFICE": {
+                    "dsl": "PRORATED_SALARY + SENIORITY_ALLOWANCE + TRANSPORT_ALLOWANCE + LUNCH_ALLOWANCE + PHONE_ALLOWANCE + POSITION_ALLOWANCE + PERFORMANCE_BONUS + OT_150 + OT_200 + OT_300",
+                    "mvel": "proratedSalary + seniorityAllowance + transportAllowance + lunchAllowance + phoneAllowance + positionAllowance + performanceBonus + ot150 + ot200 + ot300"
+                },
+                "DOCTOR": {
+                    "dsl": "PRORATED_SALARY + SENIORITY_ALLOWANCE + MEDICAL_PROF_ALLOWANCE + HAZARD_TAX_EXEMPT + HAZARD_TAXABLE + POSITION_ALLOWANCE + DUTY_PAY_FLAT + DUTY_PAY_OT + OT_150 + OT_200 + OT_300",
+                    "mvel": "proratedSalary + seniorityAllowance + medicalProfAllowance + hazardTaxExempt + hazardTaxable + positionAllowance + dutyPayFlat + dutyPayOT + ot150 + ot200 + ot300",
+                    "_note": "Hazard FULL amount đưa vào GROSS để base tính BHXH — split chỉ ảnh hưởng TAXABLE_INCOME"
+                },
+                "WORKER": {
+                    "dsl": "max(PIECE_RATE_SALARY + QUALITY_BONUS + NIGHT_SHIFT_ALLOWANCE + SENIORITY_ALLOWANCE + OT_200, REGIONAL_MIN_WAGE)",
+                    "mvel": "Math.max(pieceRateSalary + qualityBonus + nightShiftAllowance + seniorityAllowance + ot200, policyService.getMinWage('ZONE_1'))",
+                    "_note": "FLOOR ENFORCEMENT: Gross ≥ Min Wage Vùng 1 (4,960,000). Áp vào GROSS theo yêu cầu người dùng"
+                }
+            },
+            "dependencies": [
+                "PRORATED_SALARY",
+                "SENIORITY_ALLOWANCE",
+                "PERFORMANCE_BONUS",
+                "OT_150",
+                "OT_200",
+                "OT_300",
+                "PIECE_RATE_SALARY",
+                "QUALITY_BONUS",
+                "NIGHT_SHIFT_ALLOWANCE",
+                "MEDICAL_PROF_ALLOWANCE",
+                "HAZARD_TAX_EXEMPT",
+                "HAZARD_TAXABLE",
+                "DUTY_PAY_FLAT",
+                "DUTY_PAY_OT"
+            ],
+            "taxable": "PARTIAL",
+            "siContribution": "PARTIAL",
+            "executionOrder": 6
+        },
+        {
+            "code": "BHXH_BASE",
+            "name": "Cơ sở tính bảo hiểm xã hội",
+            "type": "INFORMATION",
+            "subtype": "SI_BASE",
+            "applicability": [
+                "OFFICE",
+                "DOCTOR",
+                "WORKER"
+            ],
+            "formula": {
+                "dsl": "min(GROSS_SALARY, BHXH_CEILING)",
+                "mvel": "Math.min(grossSalary, policyService.getBhxhCeiling())",
+                "description": "min(GROSS, 46,800,000). Trần BHXH = 20 × lương cơ sở"
+            },
+            "dependencies": [
+                "GROSS_SALARY"
+            ],
+            "executionOrder": 7
+        },
+        {
+            "code": "BHXH_EMPLOYEE",
+            "name": "BHXH nhân viên đóng (8%)",
+            "type": "DEDUCTION",
+            "subtype": "SOCIAL_INSURANCE",
+            "applicability": [
+                "OFFICE",
+                "DOCTOR",
+                "WORKER"
+            ],
+            "formula": {
+                "dsl": "BHXH_BASE * 0.08",
+                "mvel": "bhxhBase * 0.08"
+            },
+            "dependencies": [
+                "BHXH_BASE"
+            ],
+            "executionOrder": 8
+        },
+        {
+            "code": "BHYT_EMPLOYEE",
+            "name": "BHYT nhân viên đóng (1.5%)",
+            "type": "DEDUCTION",
+            "subtype": "SOCIAL_INSURANCE",
+            "applicability": [
+                "OFFICE",
+                "DOCTOR",
+                "WORKER"
+            ],
+            "formula": {
+                "dsl": "BHXH_BASE * 0.015",
+                "mvel": "bhxhBase * 0.015"
+            },
+            "dependencies": [
+                "BHXH_BASE"
+            ],
+            "executionOrder": 8
+        },
+        {
+            "code": "BHTN_EMPLOYEE",
+            "name": "BHTN nhân viên đóng (1%)",
+            "type": "DEDUCTION",
+            "subtype": "SOCIAL_INSURANCE",
+            "applicability": [
+                "OFFICE",
+                "DOCTOR",
+                "WORKER"
+            ],
+            "formula": {
+                "dsl": "BHXH_BASE * 0.01",
+                "mvel": "bhxhBase * 0.01"
+            },
+            "dependencies": [
+                "BHXH_BASE"
+            ],
+            "executionOrder": 8
+        },
+        {
+            "code": "TAXABLE_INCOME",
+            "name": "Thu nhập chịu thuế TNCN",
+            "type": "INFORMATION",
+            "subtype": "TAX_BASE",
+            "applicability": [
+                "OFFICE",
+                "DOCTOR",
+                "WORKER"
+            ],
+            "formula": {
+                "OFFICE": {
+                    "dsl": "GROSS_SALARY - TRANSPORT_ALLOWANCE - LUNCH_ALLOWANCE - PHONE_ALLOWANCE - BHXH_EMPLOYEE - BHYT_EMPLOYEE - BHTN_EMPLOYEE - PERSONAL_DEDUCTION - DEPENDENT_DEDUCTION",
+                    "mvel": "grossSalary - transportAllowance - lunchAllowance - phoneAllowance - bhxhEmployee - bhytEmployee - bhtnEmployee - personalDeduction - dependentDeduction"
+                },
+                "DOCTOR": {
+                    "dsl": "GROSS_SALARY - MEDICAL_PROF_ALLOWANCE - HAZARD_TAX_EXEMPT - BHXH_EMPLOYEE - BHYT_EMPLOYEE - BHTN_EMPLOYEE - PERSONAL_DEDUCTION - DEPENDENT_DEDUCTION",
+                    "mvel": "grossSalary - medicalProfAllowance - hazardTaxExempt - bhxhEmployee - bhytEmployee - bhtnEmployee - personalDeduction - dependentDeduction",
+                    "_note": "PHỨC TẠP: Trừ MEDICAL_PROF_ALLOWANCE (miễn toàn bộ) và HAZARD_TAX_EXEMPT (miễn phần ≤3.6M). Phần HAZARD_TAXABLE KHÔNG trừ → đã ở trong Gross"
+                },
+                "WORKER": {
+                    "dsl": "max(0, GROSS_SALARY - BHXH_EMPLOYEE - BHYT_EMPLOYEE - BHTN_EMPLOYEE - PERSONAL_DEDUCTION - DEPENDENT_DEDUCTION)",
+                    "mvel": "Math.max(0, grossSalary - bhxhEmployee - bhytEmployee - bhtnEmployee - personalDeduction - dependentDeduction)"
+                }
+            },
+            "dependencies": [
+                "GROSS_SALARY",
+                "BHXH_EMPLOYEE",
+                "BHYT_EMPLOYEE",
+                "BHTN_EMPLOYEE",
+                "MEDICAL_PROF_ALLOWANCE",
+                "HAZARD_TAX_EXEMPT",
+                "TRANSPORT_ALLOWANCE",
+                "LUNCH_ALLOWANCE"
+            ],
+            "executionOrder": 9
+        },
+        {
+            "code": "PIT_TAX",
+            "name": "Thuế thu nhập cá nhân (lũy tiến 7 bậc)",
+            "type": "TAX",
+            "subtype": "PROGRESSIVE_TAX",
+            "applicability": [
+                "OFFICE",
+                "DOCTOR",
+                "WORKER"
+            ],
+            "formula": {
+                "dsl": "progressiveTax(max(0, TAXABLE_INCOME), VN_PIT_BRACKETS_2024)",
+                "mvel": "max(0, taxableIncome) <= 0 ? 0 : BuiltinFunctions.progressiveTax(taxableIncome, pitBrackets)",
+                "description": "Thuế PIT theo thang lũy tiến 7 bậc. Nếu taxableIncome ≤ 0 → thuế = 0"
+            },
+            "dependencies": [
+                "TAXABLE_INCOME"
+            ],
+            "executionOrder": 10,
+            "_algNote": "progressiveTax() = Σ min(income_in_bracket) × rate. Ví dụ income=25M: (5M×5%)+(5M×10%)+(8M×15%)+(7M×20%) = 250k+500k+1.2M+1.4M = 3.35M"
+        },
+        {
+            "code": "NET_SALARY",
+            "name": "Lương thực nhận (Net)",
+            "type": "EARNING",
+            "subtype": "OUTPUT",
+            "applicability": [
+                "OFFICE",
+                "DOCTOR",
+                "WORKER"
+            ],
+            "formula": {
+                "dsl": "GROSS_SALARY - BHXH_EMPLOYEE - BHYT_EMPLOYEE - BHTN_EMPLOYEE - PIT_TAX",
+                "mvel": "grossSalary - bhxhEmployee - bhytEmployee - bhtnEmployee - pitTax"
+            },
+            "dependencies": [
+                "GROSS_SALARY",
+                "BHXH_EMPLOYEE",
+                "BHYT_EMPLOYEE",
+                "BHTN_EMPLOYEE",
+                "PIT_TAX"
+            ],
+            "executionOrder": 11
+        }
+    ]
+}

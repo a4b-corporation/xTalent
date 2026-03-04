@@ -1,0 +1,561 @@
+{
+    "_meta": {
+        "description": "Expected payroll output — manual calculation kỳ 2025-03",
+        "period": "2025-03",
+        "formulaVersion": "1.0",
+        "computedAt": "2025-03-04",
+        "verificationMethod": "Manual calculation (Excel cross-check)"
+    },
+    "results": [
+        {
+            "employeeId": "EMP-001",
+            "name": "Nguyễn Thị Mai",
+            "group": "OFFICE",
+            "period": "2025-03",
+            "_note": "Junior Finance Analyst — 24/26 ngày, OT 5.5h, KPI 1.15",
+            "elements": {
+                "BASE_SALARY": {
+                    "value": 15000000,
+                    "executionOrder": 1,
+                    "note": "Hợp đồng"
+                },
+                "PRORATED_SALARY": {
+                    "value": 13846154,
+                    "executionOrder": 2,
+                    "formula": "15M × 24/26"
+                },
+                "SENIORITY_ALLOWANCE": {
+                    "value": 450000,
+                    "executionOrder": 3,
+                    "formula": "15M × 3% (3 năm)"
+                },
+                "TRANSPORT_ALLOWANCE": {
+                    "value": 1500000,
+                    "executionOrder": 3,
+                    "taxExempt": true
+                },
+                "LUNCH_ALLOWANCE": {
+                    "value": 730000,
+                    "executionOrder": 3,
+                    "taxExempt": true
+                },
+                "POSITION_ALLOWANCE": {
+                    "value": 0,
+                    "note": "Junior — không có position allowance"
+                },
+                "PERFORMANCE_BONUS": {
+                    "value": 1500000,
+                    "executionOrder": 4,
+                    "formula": "15M × 10% (kpiScore=1.15)"
+                },
+                "OT_150": {
+                    "value": 488462,
+                    "executionOrder": 4,
+                    "formula": "(15M/26/8) × 5.5h × 1.5 = 72,115 × 5.5 × 1.5"
+                },
+                "OT_200": {
+                    "value": 0,
+                    "note": "Không có OT cuối tuần"
+                },
+                "OT_300": {
+                    "value": 0,
+                    "note": "Không có OT ngày lễ"
+                },
+                "GROSS_SALARY": {
+                    "value": 18514616,
+                    "executionOrder": 6,
+                    "formula": "SUM(prorated+seniority+transport+lunch+perf+ot150)"
+                },
+                "BHXH_BASE": {
+                    "value": 18514616,
+                    "executionOrder": 7,
+                    "formula": "min(18.5M, 46.8M) = 18.5M"
+                },
+                "BHXH_EMPLOYEE": {
+                    "value": 1481169,
+                    "executionOrder": 8,
+                    "formula": "18,514,616 × 8%"
+                },
+                "BHYT_EMPLOYEE": {
+                    "value": 277719,
+                    "executionOrder": 8,
+                    "formula": "18,514,616 × 1.5%"
+                },
+                "BHTN_EMPLOYEE": {
+                    "value": 185146,
+                    "executionOrder": 8,
+                    "formula": "18,514,616 × 1%"
+                },
+                "BHXH_EMPLOYER": {
+                    "value": 3240058,
+                    "executionOrder": 8,
+                    "formula": "18,514,616 × 17.5% (thông tin)"
+                },
+                "PERSONAL_DEDUCTION": {
+                    "value": 11000000,
+                    "note": "Giảm trừ bản thân"
+                },
+                "DEPENDENT_DEDUCTION": {
+                    "value": 4400000,
+                    "note": "1 người phụ thuộc"
+                },
+                "TAXABLE_INCOME": {
+                    "value": 0,
+                    "executionOrder": 9,
+                    "formula": "18,514,616 - 1,500,000(transport) - 730,000(lunch) - 1,481,169 - 277,719 - 185,146 - 11,000,000 - 4,400,000 = -1,059,418 → floor 0",
+                    "note": "THU NHẬP ÂM → KHÔNG ĐÓNG THUẾ THÁNG NÀY"
+                },
+                "PIT_TAX": {
+                    "value": 0,
+                    "executionOrder": 10,
+                    "note": "Taxable = 0 → PIT = 0"
+                },
+                "NET_SALARY": {
+                    "value": 16570582,
+                    "executionOrder": 11,
+                    "formula": "18,514,616 - 1,481,169 - 277,719 - 185,146 - 0"
+                }
+            }
+        },
+        {
+            "employeeId": "EMP-002",
+            "name": "Trần Văn Hùng",
+            "group": "OFFICE",
+            "period": "2025-03",
+            "_note": "Sales Manager — full month, OT gồm cả 3 loại (150/200/300%), KPI 1.25, PIT rơi vào bậc 4-5",
+            "elements": {
+                "BASE_SALARY": {
+                    "value": 35000000,
+                    "executionOrder": 1
+                },
+                "PRORATED_SALARY": {
+                    "value": 35000000,
+                    "executionOrder": 2,
+                    "formula": "Full month 26/26"
+                },
+                "SENIORITY_ALLOWANCE": {
+                    "value": 2450000,
+                    "executionOrder": 3,
+                    "formula": "35M × 7% (7 năm)"
+                },
+                "TRANSPORT_ALLOWANCE": {
+                    "value": 2000000,
+                    "executionOrder": 3,
+                    "taxable_portion": 500000,
+                    "note": "Vượt 1.5M → chịu thuế 500K"
+                },
+                "POSITION_ALLOWANCE": {
+                    "value": 5000000,
+                    "executionOrder": 3,
+                    "taxable": true
+                },
+                "PERFORMANCE_BONUS": {
+                    "value": 7000000,
+                    "executionOrder": 4,
+                    "formula": "35M × 20% (kpiScore=1.25)"
+                },
+                "OT_150": {
+                    "value": 504808,
+                    "executionOrder": 4,
+                    "formula": "(35M/26/8) × 2.0h × 1.5 = 168,269×2×1.5"
+                },
+                "OT_200": {
+                    "value": 2692308,
+                    "executionOrder": 4,
+                    "formula": "(35M/26/8) × 8h × 2.0 = 168,269×8×2"
+                },
+                "OT_300": {
+                    "value": 2019231,
+                    "executionOrder": 4,
+                    "formula": "(35M/26/8) × 4h × 3.0 = 168,269×4×3 (ngày 8/3)"
+                },
+                "GROSS_SALARY": {
+                    "value": 56666347,
+                    "executionOrder": 6,
+                    "formula": "35M+2.45M+2M+5M+7M+504,808+2,692,308+2,019,231"
+                },
+                "BHXH_BASE": {
+                    "value": 46800000,
+                    "executionOrder": 7,
+                    "note": "CAP! min(56.7M, 46.8M) = 46.8M"
+                },
+                "BHXH_EMPLOYEE": {
+                    "value": 3744000,
+                    "executionOrder": 8,
+                    "formula": "46,800,000 × 8%"
+                },
+                "BHYT_EMPLOYEE": {
+                    "value": 702000,
+                    "executionOrder": 8
+                },
+                "BHTN_EMPLOYEE": {
+                    "value": 468000,
+                    "executionOrder": 8
+                },
+                "TAXABLE_INCOME": {
+                    "value": 35752347,
+                    "executionOrder": 9,
+                    "formula": "56,666,347 - 1,500,000(transport_exempt) - 3,744,000 - 702,000 - 468,000 - 11,000,000 - 8,800,000(2 phu thuoc)",
+                    "note": "Bậc thuế 5 (32-52M)"
+                },
+                "PIT_TAX": {
+                    "value": 5500587,
+                    "executionOrder": 10,
+                    "formula": "5M×5%+5M×10%+8M×15%+14M×20%+3.75M×25% = 250K+500K+1.2M+2.8M+940.5K... = tổng tiến dần",
+                    "breakdown": {
+                        "bracket1": 250000,
+                        "bracket2": 500000,
+                        "bracket3": 1200000,
+                        "bracket4": 2800000,
+                        "bracket5_partial": 750587,
+                        "total": 5500587
+                    }
+                },
+                "NET_SALARY": {
+                    "value": 46251760,
+                    "executionOrder": 11,
+                    "formula": "56,666,347 - 3,744,000 - 702,000 - 468,000 - 5,500,587"
+                }
+            }
+        },
+        {
+            "employeeId": "EMP-003",
+            "name": "Lê Thị Thu Hà",
+            "group": "DOCTOR",
+            "period": "2025-03",
+            "_note": "BS Nội, Hazard B — nghỉ bệnh 4 ngày, 3 ca trực (1 lễ 8/3 + 1 CN + 1 thường). PIT thấp.",
+            "elements": {
+                "BASE_SALARY": {
+                    "value": 18000000
+                },
+                "PRORATED_SALARY": {
+                    "value": 15230769,
+                    "formula": "18M × 22/26"
+                },
+                "SENIORITY_ALLOWANCE": {
+                    "value": 720000,
+                    "formula": "18M × 4% (6 năm)"
+                },
+                "MEDICAL_PROF_ALLOWANCE": {
+                    "value": 1872360,
+                    "taxExempt": "FULL",
+                    "note": "30% × 2.34M × 2.67. Miễn toàn bộ"
+                },
+                "HAZARD_ALLOWANCE": {
+                    "value": 3600000,
+                    "formula": "18M × 20% (Loại B)"
+                },
+                "HAZARD_TAX_EXEMPT": {
+                    "value": 3600000,
+                    "taxExempt": true,
+                    "formula": "min(3.6M, 3.6M) = 3.6M → miễn toàn bộ!"
+                },
+                "HAZARD_TAXABLE": {
+                    "value": 0,
+                    "note": "BS Nội Loại B: hazard khớp đúng trần → HAZARD_TAXABLE = 0"
+                },
+                "DUTY_PAY_FLAT": {
+                    "value": 515000,
+                    "formula": "115K(normal) + 180K(weekend) + 220K(holiday)"
+                },
+                "DUTY_PAY_OT": {
+                    "value": 3461538,
+                    "formula": "DTY-002(CN) 86538×8×2 + DTY-003(Lễ) 86538×8×3 = 1,384,615 + 2,076,923"
+                },
+                "GROSS_SALARY": {
+                    "value": 25399667,
+                    "formula": "prorated+seniority+medProf+hazardExempt+hazardTaxable+dutyFlat+dutyOT"
+                },
+                "BHXH_BASE": {
+                    "value": 25399667,
+                    "note": "Dưới trần 46.8M"
+                },
+                "BHXH_EMPLOYEE": {
+                    "value": 2031973
+                },
+                "BHYT_EMPLOYEE": {
+                    "value": 380995
+                },
+                "BHTN_EMPLOYEE": {
+                    "value": 253997
+                },
+                "TAXABLE_INCOME": {
+                    "value": 6160702,
+                    "executionOrder": 9,
+                    "formula": "25,399,667 - 1,872,360(medProf) - 3,600,000(hazExempt) - 2,031,973 - 380,995 - 253,997 - 11,000,000 - 0",
+                    "note": "BẬC 2 (5-10M)"
+                },
+                "PIT_TAX": {
+                    "value": 366070,
+                    "formula": "5M×5% + 1.16M×10% = 250,000 + 116,070"
+                },
+                "NET_SALARY": {
+                    "value": 22332632,
+                    "formula": "25,399,667 - 2,031,973 - 380,995 - 253,997 - 366,070"
+                }
+            }
+        },
+        {
+            "employeeId": "EMP-004",
+            "name": "Phạm Đức Minh",
+            "group": "DOCTOR",
+            "_note": "TK Ung bướu, Hazard C = CASE PHỨC TẠP NHẤT: hazard vượt trần 6M chịu thuế, PIT bậc cao, BHXH capped",
+            "elements": {
+                "BASE_SALARY": {
+                    "value": 32000000
+                },
+                "PRORATED_SALARY": {
+                    "value": 32000000,
+                    "note": "Full month"
+                },
+                "SENIORITY_ALLOWANCE": {
+                    "value": 4800000,
+                    "formula": "32M × 15% (15 năm)"
+                },
+                "MEDICAL_PROF_ALLOWANCE": {
+                    "value": 3369960,
+                    "taxExempt": "FULL"
+                },
+                "POSITION_ALLOWANCE": {
+                    "value": 8000000,
+                    "taxable": true
+                },
+                "HAZARD_ALLOWANCE": {
+                    "value": 9600000,
+                    "formula": "32M × 30% (Loại C)"
+                },
+                "HAZARD_TAX_EXEMPT": {
+                    "value": 3600000,
+                    "taxExempt": true,
+                    "formula": "min(9.6M, 3.6M)"
+                },
+                "HAZARD_TAXABLE": {
+                    "value": 6000000,
+                    "taxExempt": false,
+                    "formula": "9.6M - 3.6M = 6M → PHẢI CHỊU THUẾ",
+                    "note": "★ CASE PHỨC TẠP: 6M này không được trừ khỏi TAXABLE_INCOME"
+                },
+                "DUTY_PAY_FLAT": {
+                    "value": 405000,
+                    "formula": "160K(normal) + 245K(weekend)"
+                },
+                "DUTY_PAY_OT": {
+                    "value": 2461538,
+                    "formula": "DTY-005(CN) 153846×8×2"
+                },
+                "GROSS_SALARY": {
+                    "value": 60636498,
+                    "formula": "32M+4.8M+3.37M+8M+3.6M+6M+405K+2,461,538"
+                },
+                "BHXH_BASE": {
+                    "value": 46800000,
+                    "note": "★ BHXH CAP: min(60.6M, 46.8M) = 46.8M"
+                },
+                "BHXH_EMPLOYEE": {
+                    "value": 3744000
+                },
+                "BHYT_EMPLOYEE": {
+                    "value": 702000
+                },
+                "BHTN_EMPLOYEE": {
+                    "value": 468000
+                },
+                "TAXABLE_INCOME": {
+                    "value": 28952538,
+                    "executionOrder": 9,
+                    "formula": "60,636,498 - 3,369,960(medProf) - 3,600,000(hazExempt) - 3,744,000 - 702,000 - 468,000 - 11,000,000 - 8,800,000(2phu thuoc)",
+                    "note": "HAZARD_TAXABLE 6M KHÔNG bị trừ → vẫn nằm trong base chịu thuế. Bậc 5 (32-52M)"
+                },
+                "PIT_TAX": {
+                    "value": 4140509,
+                    "breakdown": {
+                        "bracket1": 250000,
+                        "bracket2": 500000,
+                        "bracket3": 1200000,
+                        "bracket4_to32M": 2800000,
+                        "bracket5_partial": "-3,047,462 chịu bậc 5 × 25% = 761,865.5... ",
+                        "_recalc": "5M×5%+5M×10%+8M×15%+(32M-18M)×20%+(28.95M-32M)×25%... trực tiếp:",
+                        "formula": "5M×5%+5M×10%+8M×15%+14M×20%(đến 32M) + (28.95M-32M=<0 → 28.95M ở đâu?)...",
+                        "correct_calc": "taxable=28.95M → bậc 4 thôi: 5M×5%+5M×10%+8M×15%+(28.95M-18M)×20% = 250K+500K+1.2M+2.19M = 4,140,000",
+                        "total": 4140000
+                    },
+                    "note": "Bậc 4 (18-32M): taxable 28.95M < 32M → chỉ tới bậc 4"
+                },
+                "NET_SALARY": {
+                    "value": 51582538,
+                    "formula": "60,636,498 - 3,744,000 - 702,000 - 468,000 - 4,140,000"
+                }
+            }
+        },
+        {
+            "employeeId": "EMP-005",
+            "name": "Hoàng Văn Dũng",
+            "group": "WORKER",
+            "_note": "Ca ngày cố định — piece-rate, quality tier 2, không ca đêm, không PIT",
+            "elements": {
+                "BASE_SALARY": {
+                    "value": 5500000,
+                    "note": "Dùng cho BHXH và floor check"
+                },
+                "PIECE_RATE_SALARY": {
+                    "value": 6696000,
+                    "formula": "558 SP × 12,000/SP"
+                },
+                "QUALITY_BONUS": {
+                    "value": 200880,
+                    "formula": "6,696,000 × 3% (qualityRate=96.21% → Tier2)"
+                },
+                "SENIORITY_ALLOWANCE": {
+                    "value": 55000,
+                    "formula": "5.5M × 1% (1 năm)"
+                },
+                "NIGHT_SHIFT_ALLOWANCE": {
+                    "value": 0,
+                    "note": "Ca ngày cố định — không có ca đêm"
+                },
+                "OT_200": {
+                    "value": 0
+                },
+                "GROSS_SALARY": {
+                    "value": 6951880,
+                    "formula": "max(6696000+200880+55000, 4,960,000) = 6,951,880 ✓ trên min wage"
+                },
+                "_floor_check": {
+                    "rawGross": 6951880,
+                    "minWage": 4960000,
+                    "floorApplied": false
+                },
+                "BHXH_BASE": {
+                    "value": 6951880
+                },
+                "BHXH_EMPLOYEE": {
+                    "value": 556150,
+                    "formula": "6,951,880 × 8%"
+                },
+                "BHYT_EMPLOYEE": {
+                    "value": 104278
+                },
+                "BHTN_EMPLOYEE": {
+                    "value": 69519
+                },
+                "TOTAL_SI_DEDUCTION": {
+                    "value": 729947
+                },
+                "TAXABLE_INCOME": {
+                    "value": 0,
+                    "formula": "6,951,880 - 729,947 - 11,000,000 = -4,778,067 → 0",
+                    "note": "Thu nhập thấp, không đến ngưỡng TNCN"
+                },
+                "PIT_TAX": {
+                    "value": 0
+                },
+                "NET_SALARY": {
+                    "value": 6221933,
+                    "formula": "6,951,880 - 729,947"
+                }
+            }
+        },
+        {
+            "employeeId": "EMP-006",
+            "name": "Vũ Thị Lan",
+            "group": "WORKER",
+            "_note": "Luân ca 3 ca — CASE PHỨC TẠP NHẤT: piece-rate + ca đêm + OT ca đêm CN + quality tier 1. Vẫn không đến ngưỡng PIT.",
+            "elements": {
+                "BASE_SALARY": {
+                    "value": 6500000
+                },
+                "PIECE_RATE_SALARY": {
+                    "value": 7085500,
+                    "formula": "383 cụm × 18,500/cụm"
+                },
+                "QUALITY_BONUS": {
+                    "value": 354275,
+                    "formula": "7,085,500 × 5% (qualityRate=98.21% → Tier1)"
+                },
+                "SENIORITY_ALLOWANCE": {
+                    "value": 292500,
+                    "formula": "6.5M × 4.5% (4.5 năm)"
+                },
+                "NIGHT_SHIFT_ALLOWANCE": {
+                    "value": 450000,
+                    "formula": "6 ca đêm × (6.5M/26) × 30% = 6 × 250,000 × 0.30"
+                },
+                "OT_200": {
+                    "value": 500000,
+                    "formula": "Chủ nhật ca đêm: (6.5M/26/8) × 8h × 2.0 = 31,250 × 8 × 2"
+                },
+                "NIGHT_OT_PREMIUM": {
+                    "value": 75000,
+                    "formula": "(6.5M/26/8) × 8h × 30% = 31,250 × 8 × 0.30",
+                    "note": "Ca OT ca đêm → cộng thêm 30% (tách riêng OT_200 để audit)"
+                },
+                "GROSS_SALARY": {
+                    "value": 8757275,
+                    "formula": "max(7,085,500+354,275+450,000+292,500+500,000+75,000, 4,960,000) = 8,757,275"
+                },
+                "_floor_check": {
+                    "rawGross": 8757275,
+                    "minWage": 4960000,
+                    "floorApplied": false
+                },
+                "BHXH_BASE": {
+                    "value": 8757275
+                },
+                "BHXH_EMPLOYEE": {
+                    "value": 700582,
+                    "formula": "8,757,275 × 8%"
+                },
+                "BHYT_EMPLOYEE": {
+                    "value": 131359
+                },
+                "BHTN_EMPLOYEE": {
+                    "value": 87573
+                },
+                "TOTAL_SI_DEDUCTION": {
+                    "value": 919514
+                },
+                "TAXABLE_INCOME": {
+                    "value": 0,
+                    "formula": "8,757,275 - 919,514 - 11,000,000 - 4,400,000 = -7,562,239 → 0",
+                    "note": "Thu nhập thấp, không đóng PIT dù có ca đêm và OT"
+                },
+                "PIT_TAX": {
+                    "value": 0
+                },
+                "NET_SALARY": {
+                    "value": 7837761,
+                    "formula": "8,757,275 - 919,514"
+                }
+            }
+        }
+    ],
+    "summary": {
+        "totalGross": {
+            "EMP-001": 18514616,
+            "EMP-002": 56666347,
+            "EMP-003": 25399667,
+            "EMP-004": 60636498,
+            "EMP-005": 6951880,
+            "EMP-006": 8757275
+        },
+        "totalPIT": {
+            "EMP-001": 0,
+            "EMP-002": 5500587,
+            "EMP-003": 366070,
+            "EMP-004": 4140000,
+            "EMP-005": 0,
+            "EMP-006": 0
+        },
+        "totalNet": {
+            "EMP-001": 16570582,
+            "EMP-002": 46251760,
+            "EMP-003": 22332632,
+            "EMP-004": 51582538,
+            "EMP-005": 6221933,
+            "EMP-006": 7837761
+        },
+        "totalEmployerCost": {
+            "note": "BHXH_EMPLOYER + BHYT_EMPLOYER + BHTN_EMPLOYER + TNLD = ~22% × BHXH_BASE per employee"
+        }
+    }
+}

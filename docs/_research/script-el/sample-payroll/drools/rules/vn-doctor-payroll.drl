@@ -1,0 +1,223 @@
+// ============================================================
+// VN DOCTOR PAYROLL RULES
+// Package: vn.xtalent.payroll.rules.vn.doctor
+// Engine: Drools 8 — xTalent HCM Payroll Engine
+// Áp dụng: EMP-003 (BS Chính, Hazard B), EMP-004 (TK CK2, Hazard C)
+// Rule count: 10 rules
+//
+// ★ CHAIN PHỨC TẠP:
+//   HAZARD_ALLOWANCE → HAZARD_TAX_EXEMPT + HAZARD_TAXABLE (SPLIT)
+//   DUTY_SCHEDULE    → DUTY_PAY_FLAT + DUTY_PAY_OT (2 khoản riêng)
+//   GROSS (include all hazard) → BHXH_BASE → BHXH/BHYT/BHTN
+//   TAXABLE = GROSS - medProf_exempt - hazard_exempt - BHXH/BHYT/BHTN - ded
+// ============================================================
+
+package vn.xtalent.payroll.rules.vn.doctor;
+
+import vn.xtalent.payroll.model.*;
+import java.math.BigDecimal;
+
+// ─────────────────────────────────────────────────────────
+// RULE: Medical Professional Allowance (Phụ cấp ngành y)
+// Miễn thuế TOÀN BỘ theo Điều 3.1b Luật TNCN
+// ─────────────────────────────────────────────────────────
+rule "DOC_001 — Medical Professional Allowance"
+    agenda-group "gross-calculation"
+    salience 80
+    when
+        $emp: Employee(status == "ACTIVE", employeeGroup == "DOCTOR")
+        $gradeConfig: MedicalGradeConfig(gradeCode == $emp.medicalGradeInfo.gradeCode)
+        not PayrollElement(code == "MEDICAL_PROF_ALLOWANCE", employeeId == $emp.employeeId)
+    then
+        BigDecimal amount = $gradeConfig.getMonthlyAmount();
+        PayrollElement el = new PayrollElement("MEDICAL_PROF_ALLOWANCE",
+            $emp.employeeId, amount, "lookup(MEDICAL_ALLOWANCE_TABLE, medicalGrade)", 3);
+        el.setTaxExempt(true);
+        el.setTaxExemptFull(true);
+        el.addNote("Phụ cấp ưu đãi ngành y — miễn thuế TNCN toàn bộ theo Điều 3.1b");
+        insert(el);
+        // EMP-003 (BS2): 1,872,360 — miễn hoàn toàn
+        // EMP-004 (TK1): 3,369,960 — miễn hoàn toàn
+end
+
+// ─────────────────────────────────────────────────────────
+// RULE: Hazard Allowance Total (Phụ cấp độc hại - tổng)
+// TT20/2023: A=10%, B=20%, C=30% × baseSalary
+// ─────────────────────────────────────────────────────────
+rule "DOC_002 — Hazard Allowance Total"
+    agenda-group "gross-calculation"
+    salience 79
+    when
+        $emp: Employee(status == "ACTIVE", employeeGroup == "DOCTOR")
+        not PayrollElement(code == "HAZARD_ALLOWANCE", employeeId == $emp.employeeId)
+    then
+        String level = $emp.getHazardInfo().getHazardLevel();
+        BigDecimal baseSalary = new BigDecimal($emp.getSalary().getBaseSalary());
+        BigDecimal rate = "C".equals(level) ? new BigDecimal("0.30") :
+                          "B".equals(level) ? new BigDecimal("0.20") :
+                          "A".equals(level) ? new BigDecimal("0.10") :
+                          BigDecimal.ZERO;
+        BigDecimal hazard = baseSalary.multiply(rate);
+        PayrollElement el = new PayrollElement("HAZARD_ALLOWANCE",
+            $emp.employeeId, hazard, "BASE_SALARY * hazardRate[level]", 4);
+        el.addInput("hazardLevel", level);
+        el.addInput("rate", rate);
+        el.addNote("Must be split into HAZARD_TAX_EXEMPT + HAZARD_TAXABLE next");
+        insert(el);
+        // EMP-003 (B, 18M): 18M × 20% = 3,600,000
+        // EMP-004 (C, 32M): 32M × 30% = 9,600,000
+end
+
+// ─────────────────────────────────────────────────────────
+// RULE: ★★ HAZARD TAX SPLIT — Rule quan trọng nhất ★★
+// Tách hazard thành 2 elements:
+//   HAZARD_TAX_EXEMPT: min(hazard, 3,600,000) — miễn thuế
+//   HAZARD_TAXABLE:    max(0, hazard - 3,600,000) — chịu thuế
+// Chạy sau DOC_002. Cả 2 phần đều vào GROSS.
+// Chỉ HAZARD_TAX_EXEMPT được trừ ra khỏi TAXABLE_INCOME.
+// ─────────────────────────────────────────────────────────
+rule "DOC_003 — Hazard Tax Split (Exempt vs Taxable)"
+    agenda-group "gross-calculation"
+    salience 70
+    when
+        $emp: Employee(status == "ACTIVE", employeeGroup == "DOCTOR")
+        $hazard: PayrollElement(code == "HAZARD_ALLOWANCE", employeeId == $emp.employeeId)
+        $ceiling: PolicyConfig(code == "HAZARD_EXEMPT_CEILING", countryCode == "VN")
+        not PayrollElement(code == "HAZARD_TAX_EXEMPT", employeeId == $emp.employeeId)
+    then
+        BigDecimal exempt  = $hazard.getValue().min($ceiling.getDecimalValue());
+        BigDecimal taxable = $hazard.getValue().subtract($ceiling.getDecimalValue())
+                              .max(BigDecimal.ZERO);
+
+        PayrollElement exemptEl = new PayrollElement("HAZARD_TAX_EXEMPT",
+            $emp.employeeId, exempt, "min(HAZARD_ALLOWANCE, HAZARD_EXEMPT_CEILING)", 5);
+        exemptEl.setTaxExempt(true);
+        exemptEl.addNote("Phần miễn thuế ≤ 3,600,000 VNĐ (NĐ81/2009-CP)");
+
+        PayrollElement taxableEl = new PayrollElement("HAZARD_TAXABLE",
+            $emp.employeeId, taxable, "max(0, HAZARD_ALLOWANCE - HAZARD_EXEMPT_CEILING)", 5);
+        taxableEl.setTaxExempt(false);
+        taxableEl.addNote("Phần vượt trần miễn thuế — chịu thuế TNCN bình thường");
+
+        insert(exemptEl);
+        insert(taxableEl);
+
+        // AUDIT LOG: EMP-004 hazard split
+        if (taxable.compareTo(BigDecimal.ZERO) > 0) {
+            System.out.println("[HAZARD_SPLIT] " + $emp.employeeId +
+                ": Total=" + $hazard.getValue() +
+                ", Exempt=" + exempt +
+                ", Taxable=" + taxable + " ← PHẢI CHỊU THUẾ!");
+        }
+end
+
+// ─────────────────────────────────────────────────────────
+// RULE: Duty Pay Flat-Rate (Trực bệnh viện — QĐ54)
+// Tính tổng flat-rate theo số ca và loại ca (Normal/Weekend/Holiday)
+// ─────────────────────────────────────────────────────────
+rule "DOC_004 — Duty Pay Flat Rate"
+    agenda-group "gross-calculation"
+    salience 78
+    when
+        $emp: Employee(status == "ACTIVE", employeeGroup == "DOCTOR")
+        $att: AttendanceRecord(employeeId == $emp.employeeId, hasDutySchedule == true)
+        not PayrollElement(code == "DUTY_PAY_FLAT", employeeId == $emp.employeeId)
+    then
+        BigDecimal flatTotal = attendanceService.calculateDutyFlatRate(
+            $emp.employeeId, payrollPeriod, $emp.getMedicalGradeInfo().getProfessionalGrade()
+        );
+        PayrollElement el = new PayrollElement("DUTY_PAY_FLAT",
+            $emp.employeeId, flatTotal, "SUM(flatRate × dutyType per grade)", 4);
+        el.addNote("QĐ54/BYT: Flat-rate per ca trực theo chức danh. Taxable + SI");
+        insert(el);
+end
+
+// ─────────────────────────────────────────────────────────
+// RULE: Duty Pay OT (Trực ca Weekend/Holiday — OT thêm)
+// ★★ Ca WEEKEND: +OT 200%, Ca HOLIDAY: +OT 300% (NGOÀI flat-rate) ★★
+// Tách riêng khỏi DUTY_PAY_FLAT để audit trail rõ ràng
+// ─────────────────────────────────────────────────────────
+rule "DOC_005 — Duty Pay OT (Weekend/Holiday Supplement)"
+    agenda-group "gross-calculation"
+    salience 77
+    when
+        $emp: Employee(status == "ACTIVE", employeeGroup == "DOCTOR")
+        $att: AttendanceRecord(employeeId == $emp.employeeId, hasDutyWithOT == true)
+        not PayrollElement(code == "DUTY_PAY_OT", employeeId == $emp.employeeId)
+    then
+        BigDecimal baseSalary  = new BigDecimal($emp.getSalary().getBaseSalary());
+        BigDecimal hourlyRate  = baseSalary
+            .divide(new BigDecimal($att.getStandardWorkDays()), 10, java.math.RoundingMode.HALF_UP)
+            .divide(new BigDecimal("8"), 10, java.math.RoundingMode.HALF_UP);
+
+        BigDecimal otTotal = attendanceService.calculateDutyOTAmount(
+            $emp.employeeId, payrollPeriod, hourlyRate
+        );
+        PayrollElement el = new PayrollElement("DUTY_PAY_OT",
+            $emp.employeeId, otTotal, "SUM(hourlyRate × OTHours × multiplier per duty)", 5);
+        el.addNote("OT trực ngày nghỉ/lễ — tách riêng DUTY_PAY_FLAT để audit. Taxable, không tính SI");
+        insert(el);
+        // EMP-003: DTY-002(CN) 86538×8×2 + DTY-003(Lễ) 86538×8×3 = 1,384,615 + 2,076,923 = 3,461,538
+        // EMP-004: DTY-005(CN) 153846×8×2 = 2,461,538
+end
+
+// ─────────────────────────────────────────────────────────
+// RULE: Pro-Rated Salary  — Doctor (khi có nghỉ bệnh)
+// ─────────────────────────────────────────────────────────
+rule "DOC_006 — Pro-rated Salary Doctor"
+    agenda-group "gross-calculation"
+    salience 80
+    when
+        $emp: Employee(status == "ACTIVE", employeeGroup == "DOCTOR")
+        $att: AttendanceRecord(employeeId == $emp.employeeId)
+        not PayrollElement(code == "PRORATED_SALARY", employeeId == $emp.employeeId)
+    then
+        BigDecimal prorated = new BigDecimal($emp.getSalary().getBaseSalary())
+            .multiply(new BigDecimal($att.getActualWorkDays()))
+            .divide(new BigDecimal($att.getStandardWorkDays()), 0, java.math.RoundingMode.HALF_UP);
+        insert(new PayrollElement("PRORATED_SALARY", $emp.employeeId, prorated,
+            "BASE × (actual/std)", 2));
+        // EMP-003: 18M × 22/26 = 15,230,769 (nghỉ bệnh 4 ngày)
+        // EMP-004: 32M × 26/26 = 32,000,000 (full month)
+end
+
+// ─────────────────────────────────────────────────────────
+// RULE: Aggregate GROSS_SALARY — Doctor
+// ★★ PHẢI cộng CẢ hazard_exempt + hazard_taxable vào GROSS ★★
+// BHXH tính trên toàn bộ gross (kể cả phần có miễn thuế TNCN)
+// ─────────────────────────────────────────────────────────
+rule "DOC_007 — Aggregate Gross Salary Doctor"
+    agenda-group "gross-calculation"
+    salience 20
+    when
+        $emp:      Employee(status == "ACTIVE", employeeGroup == "DOCTOR")
+        $prorated: PayrollElement(code == "PRORATED_SALARY",       employeeId == $emp.employeeId)
+        $seniority:PayrollElement(code == "SENIORITY_ALLOWANCE",   employeeId == $emp.employeeId)
+        $medProf:  PayrollElement(code == "MEDICAL_PROF_ALLOWANCE",employeeId == $emp.employeeId)
+        $hazExempt:PayrollElement(code == "HAZARD_TAX_EXEMPT",     employeeId == $emp.employeeId)
+        $hazTax:   PayrollElement(code == "HAZARD_TAXABLE",        employeeId == $emp.employeeId)
+        $position: PayrollElement(code == "POSITION_ALLOWANCE",    employeeId == $emp.employeeId)
+        $dutyFlat: PayrollElement(code == "DUTY_PAY_FLAT",         employeeId == $emp.employeeId)
+        $dutyOT:   PayrollElement(code == "DUTY_PAY_OT",           employeeId == $emp.employeeId)
+        not PayrollElement(code == "GROSS_SALARY", employeeId == $emp.employeeId)
+    then
+        // OTs: nếu không có ca trực OT thì default = 0
+        BigDecimal ot150 = getOrZero(drools, $emp.employeeId, "OT_150");
+        BigDecimal ot200 = getOrZero(drools, $emp.employeeId, "OT_200");
+        BigDecimal ot300 = getOrZero(drools, $emp.employeeId, "OT_300");
+
+        BigDecimal gross = $prorated.getValue()
+            .add($seniority.getValue())
+            .add($medProf.getValue())
+            .add($hazExempt.getValue())   // ← phần miễn thuế nhưng vẫn vào GROSS
+            .add($hazTax.getValue())      // ← phần chịu thuế vào GROSS
+            .add($position.getValue())
+            .add($dutyFlat.getValue())
+            .add($dutyOT.getValue())
+            .add(ot150).add(ot200).add(ot300);
+
+        PayrollElement el = new PayrollElement("GROSS_SALARY", $emp.employeeId, gross,
+            "SUM(all_doctor_elements)", 6);
+        el.addNote("Doctor GROSS = Full hazard included (both exempt+taxable). BHXH tính trên GROSS.");
+        insert(el);
+end

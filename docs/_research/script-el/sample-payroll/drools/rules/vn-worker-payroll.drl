@@ -1,0 +1,241 @@
+// ============================================================
+// VN WORKER PAYROLL RULES (Piece-Rate / Luân Ca)
+// Package: vn.xtalent.payroll.rules.vn.worker
+// Engine: Drools 8 — xTalent HCM Payroll Engine
+// Áp dụng: EMP-005 (Ca ngày cố định), EMP-006 (Luân ca 3 ca)
+// Rule count: 12 rules
+//
+// ★ CHAIN PHỨC TẠP NHẤT:
+//   [Pre-process] ShiftSchedule → NIGHT_SHIFT_COUNT fact
+//   PRODUCTION_RECORD → PIECE_RATE_SALARY → QUALITY_BONUS
+//   NIGHT_SHIFT_COUNT → NIGHT_SHIFT_ALLOWANCE
+//   OT ca đêm CN → OT_200 + NIGHT_SHIFT_OT_PREMIUM (2 khoản)
+//   GROSS = max(SUM, MIN_WAGE) ← floor enforcement
+// ============================================================
+
+package vn.xtalent.payroll.rules.vn.worker;
+
+import vn.xtalent.payroll.model.*;
+import java.math.BigDecimal;
+
+// ─────────────────────────────────────────────────────────
+// RULE: Pre-process — Count Night Shifts
+// ★★ TIÊN QUYẾT: Đếm ca đêm TỪ LỊCH THÁNG trước khi tính allowance ★★
+// Shift type xác định ĐẦU CA (CA_DEM = shiftStart ≥ 22:00)
+// Chạy trước tất cả worker rules: agenda-group "pre-payroll-worker", salience=300
+// ─────────────────────────────────────────────────────────
+rule "WRK_PRE_001 — Pre-process Night Shift Count"
+    agenda-group "pre-payroll-worker"
+    salience 300
+    when
+        $emp: Employee(status == "ACTIVE", employeeGroup == "WORKER",
+                       shiftInfo.shiftPattern == "ROTATING_3_SHIFT")
+        $att: AttendanceRecord(employeeId == $emp.employeeId)
+        not NightShiftFact(employeeId == $emp.employeeId)
+    then
+        int nightCount = 0;
+        for (ShiftRecord s : $att.getShifts()) {
+            if ("CA_DEM".equals(s.getShiftType())) {
+                nightCount += s.getWorkDays();
+            }
+        }
+        NightShiftFact fact = new NightShiftFact($emp.employeeId, nightCount);
+        insert(fact);
+        System.out.println("[PRE] " + $emp.employeeId + " nightShiftCount = " + nightCount);
+        // EMP-005 (FIXED_DAY): không trigger rule này (pattern khác)
+        // EMP-006 (ROTATING): nightCount = 6 (tuần 3, CA_DEM, 6 ngày)
+end
+
+// ─────────────────────────────────────────────────────────
+// RULE: Piece-Rate Salary
+// qualityPassedQty × unitPrice(productCode)
+// ─────────────────────────────────────────────────────────
+rule "WRK_001 — Piece Rate Salary"
+    agenda-group "gross-calculation"
+    salience 90
+    when
+        $emp: Employee(status == "ACTIVE", employeeGroup == "WORKER")
+        $prod: ProductionRecord(employeeId == $emp.employeeId)
+        $price: PieceRateConfig(productCode == $prod.getProductCode())
+        not PayrollElement(code == "PIECE_RATE_SALARY", employeeId == $emp.employeeId)
+    then
+        BigDecimal pieceRate = new BigDecimal($prod.getQualityPassedQuantity())
+            .multiply($price.getUnitPrice());
+        PayrollElement el = new PayrollElement("PIECE_RATE_SALARY",
+            $emp.employeeId, pieceRate, "qualityPassedQty * unitPrice(productCode)", 2);
+        el.addInput("qualityPassedQty", $prod.getQualityPassedQuantity());
+        el.addInput("unitPrice", $price.getUnitPrice());
+        insert(el);
+        // EMP-005: 558 × 12,000 = 6,696,000
+        // EMP-006: 383 × 18,500 = 7,085,500
+end
+
+// ─────────────────────────────────────────────────────────
+// RULE: Quality Bonus (Tier system: bonus hoặc penalty)
+// Chạy SAU PIECE_RATE_SALARY
+// ─────────────────────────────────────────────────────────
+rule "WRK_002 — Quality Bonus (Tier + Penalty)"
+    agenda-group "gross-calculation"
+    salience 80
+    when
+        $emp: Employee(status == "ACTIVE", employeeGroup == "WORKER")
+        $prod: ProductionRecord(employeeId == $emp.employeeId)
+        $piece: PayrollElement(code == "PIECE_RATE_SALARY", employeeId == $emp.employeeId)
+        not PayrollElement(code == "QUALITY_BONUS", employeeId == $emp.employeeId)
+    then
+        double qualityRate = $prod.getQualityRate();
+        BigDecimal bonusRate = qualityRate >= 0.98 ? new BigDecimal("0.05") :
+                               qualityRate >= 0.95 ? new BigDecimal("0.03") :
+                               qualityRate <  0.90 ? new BigDecimal("-0.05") :  // penalty!
+                               BigDecimal.ZERO;
+        BigDecimal bonus = $piece.getValue().multiply(bonusRate);
+
+        PayrollElement el = new PayrollElement("QUALITY_BONUS",
+            $emp.employeeId, bonus, "PIECE_RATE × qualityTier(qualityRate)", 3);
+        el.addInput("qualityRate", qualityRate);
+        el.addInput("bonusRate", bonusRate);
+        if (bonus.compareTo(BigDecimal.ZERO) < 0) {
+            el.addNote("PENALTY applied: quality rate " + qualityRate + " < 0.90");
+        }
+        insert(el);
+        // EMP-005 (0.9621): 6,696,000 × 3% = +200,880 (Tier 2)
+        // EMP-006 (0.9821): 7,085,500 × 5% = +354,275 (Tier 1)
+end
+
+// ─────────────────────────────────────────────────────────
+// RULE: Night Shift Allowance
+// Dùng NightShiftFact từ pre-processing rule
+// Fixed-day worker: night=0 → rule không insert (no NightShiftFact)
+// ─────────────────────────────────────────────────────────
+rule "WRK_003 — Night Shift Allowance (30%)"
+    agenda-group "gross-calculation"
+    salience 75
+    when
+        $emp: Employee(status == "ACTIVE", employeeGroup == "WORKER")
+        $nightFact: NightShiftFact(employeeId == $emp.employeeId, nightShiftCount > 0)
+        $att: AttendanceRecord(employeeId == $emp.employeeId)
+        not PayrollElement(code == "NIGHT_SHIFT_ALLOWANCE", employeeId == $emp.employeeId)
+    then
+        BigDecimal dailyRate = new BigDecimal($emp.getSalary().getBaseSalary())
+            .divide(new BigDecimal($att.getStandardWorkDays()), 10, java.math.RoundingMode.HALF_UP);
+        BigDecimal nightAllowance = dailyRate
+            .multiply(new BigDecimal("0.30"))
+            .multiply(new BigDecimal($nightFact.getNightShiftCount()))
+            .setScale(0, java.math.RoundingMode.HALF_UP);
+        PayrollElement el = new PayrollElement("NIGHT_SHIFT_ALLOWANCE",
+            $emp.employeeId, nightAllowance, "nightShiftCount × (BASE/stdDays) × 0.30", 3);
+        el.addInput("nightShiftCount", $nightFact.getNightShiftCount());
+        el.addInput("dailyRate", dailyRate);
+        insert(el);
+        // EMP-006: 6 × (6,500,000/26) × 0.30 = 6 × 250,000 × 0.30 = 450,000
+end
+
+// ─────────────────────────────────────────────────────────
+// RULE: OT_200 (Weekend/Holiday OT — áp dụng chung)
+// ─────────────────────────────────────────────────────────
+rule "WRK_004 — OT 200% Weekend/Holiday"
+    agenda-group "gross-calculation"
+    salience 75
+    when
+        $emp: Employee(status == "ACTIVE", employeeGroup == "WORKER")
+        $att: AttendanceRecord(employeeId == $emp.employeeId, otHours200 > 0)
+        not PayrollElement(code == "OT_200", employeeId == $emp.employeeId)
+    then
+        BigDecimal ot200 = new BigDecimal($emp.getSalary().getBaseSalary())
+            .divide(new BigDecimal($att.getStandardWorkDays()), 10, java.math.RoundingMode.HALF_UP)
+            .divide(new BigDecimal("8"), 10, java.math.RoundingMode.HALF_UP)
+            .multiply(new BigDecimal($att.getOtHours200()))
+            .multiply(new BigDecimal("2.0"))
+            .setScale(0, java.math.RoundingMode.HALF_UP);
+        insert(new PayrollElement("OT_200", $emp.employeeId, ot200,
+            "(BASE/days/8) × hours × 2.0", 4));
+        // EMP-006 (Chủ nhật ca đêm, 8h): (6.5M/26/8) × 8 × 2.0 = 500,000
+end
+
+// ─────────────────────────────────────────────────────────
+// RULE: Night OT Premium — Extra 30% cho OT ca đêm cuối tuần
+// ★★ OT ca đêm = 2 khoản riêng: OT_200 + NIGHT_OT_PREMIUM ★★
+// Phát hiện khi có OT ca đêm trong AttendanceRecord
+// ─────────────────────────────────────────────────────────
+rule "WRK_005 — Night OT Premium (30% extra for night OT shift)"
+    agenda-group "gross-calculation"
+    salience 73
+    when
+        $emp: Employee(status == "ACTIVE", employeeGroup == "WORKER")
+        $att: AttendanceRecord(employeeId == $emp.employeeId, hasNightOT == true)
+        PayrollElement(code == "OT_200", employeeId == $emp.employeeId)
+        not PayrollElement(code == "NIGHT_OT_PREMIUM", employeeId == $emp.employeeId)
+    then
+        // 30% extra trên giờ OT ca đêm (ngoài OT 200% đã tính)
+        BigDecimal extra = new BigDecimal($emp.getSalary().getBaseSalary())
+            .divide(new BigDecimal($att.getStandardWorkDays()), 10, java.math.RoundingMode.HALF_UP)
+            .divide(new BigDecimal("8"), 10, java.math.RoundingMode.HALF_UP)
+            .multiply(new BigDecimal($att.getNightOTHours()))
+            .multiply(new BigDecimal("0.30"))
+            .setScale(0, java.math.RoundingMode.HALF_UP);
+        PayrollElement el = new PayrollElement("NIGHT_OT_PREMIUM", $emp.employeeId, extra,
+            "(BASE/days/8) × nightOTHours × 0.30", 4);
+        el.addNote("Ca đêm OT CN: tách riêng khỏi OT_200 — audit trail rõ ràng");
+        insert(el);
+        // EMP-006: (6.5M/26/8) × 8h × 0.30 = 31,250 × 8 × 0.30 = 75,000
+end
+
+// ─────────────────────────────────────────────────────────
+// RULE: ★★ GROSS FLOOR ENFORCEMENT ★★
+// Gross ≥ REGIONAL_MIN_WAGE_ZONE1 = 4,960,000
+// Áp vào GROSS (không phải BASE) theo confirm của PO
+// Salience = 9 → chạy SAU khi tất cả elements đã insert, TRƯỚC final aggregation
+// ─────────────────────────────────────────────────────────
+rule "WRK_006 — Raw Gross Calculation (pre-floor)"
+    agenda-group "gross-calculation"
+    salience 20
+    when
+        $emp:      Employee(status == "ACTIVE", employeeGroup == "WORKER")
+        $piece:    PayrollElement(code == "PIECE_RATE_SALARY",     employeeId == $emp.employeeId)
+        $quality:  PayrollElement(code == "QUALITY_BONUS",         employeeId == $emp.employeeId)
+        $seniority:PayrollElement(code == "SENIORITY_ALLOWANCE",   employeeId == $emp.employeeId)
+        not PayrollElement(code == "GROSS_SALARY", employeeId == $emp.employeeId)
+    then
+        BigDecimal nightAllowance = getOrZero(drools, $emp.employeeId, "NIGHT_SHIFT_ALLOWANCE");
+        BigDecimal ot200          = getOrZero(drools, $emp.employeeId, "OT_200");
+        BigDecimal nightOTPremium = getOrZero(drools, $emp.employeeId, "NIGHT_OT_PREMIUM");
+
+        BigDecimal rawGross = $piece.getValue()
+            .add($quality.getValue())
+            .add(nightAllowance)
+            .add($seniority.getValue())
+            .add(ot200)
+            .add(nightOTPremium);
+
+        insert(new TemporaryFact($emp.employeeId, "RAW_GROSS", rawGross));
+end
+
+rule "WRK_007 — Worker Gross Floor Enforcement (Min Wage Zone 1)"
+    agenda-group "gross-calculation"
+    salience 15
+    when
+        $emp:     Employee(status == "ACTIVE", employeeGroup == "WORKER")
+        $rawFact: TemporaryFact(employeeId == $emp.employeeId, factCode == "RAW_GROSS")
+        $minWage: PolicyConfig(code == "REGIONAL_MIN_WAGE_ZONE1", countryCode == "VN")
+        not PayrollElement(code == "GROSS_SALARY", employeeId == $emp.employeeId)
+    then
+        BigDecimal rawGross = $rawFact.getValue();
+        BigDecimal minWage  = $minWage.getDecimalValue();
+        BigDecimal gross    = rawGross.max(minWage);
+
+        boolean floorApplied = rawGross.compareTo(minWage) < 0;
+
+        PayrollElement el = new PayrollElement("GROSS_SALARY", $emp.employeeId, gross,
+            "max(RawGross, REGIONAL_MIN_WAGE_ZONE1)", 6);
+        el.addInput("rawGross", rawGross);
+        el.addInput("minWage", minWage);
+        if (floorApplied) {
+            el.addNote("MIN WAGE FLOOR APPLIED: rawGross=" + rawGross + " < minWage=" + minWage);
+            insert(new PayrollFlag($emp.employeeId, "MIN_WAGE_FLOOR_APPLIED",
+                "GROSS adjusted from " + rawGross + " to " + minWage));
+        }
+        insert(el);
+        // EMP-005: max(6,951,880, 4,960,000) = 6,951,880 → không cần floor
+        // EMP-006: max(8,757,275, 4,960,000) = 8,757,275 → không cần floor
+        // TEST CASE hypothetical: max(2,500,000, 4,960,000) = 4,960,000 → floor applied!
+end

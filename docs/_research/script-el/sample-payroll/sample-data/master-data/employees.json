@@ -1,0 +1,351 @@
+{
+    "_meta": {
+        "description": "Master data nhân viên mẫu — 3 loại hình × 2 nhân viên",
+        "period": "2025-03",
+        "currency": "VND",
+        "region": "VN",
+        "laborZone": "ZONE_1",
+        "notes": [
+            "EMP-001/002: Nhân viên văn phòng (Junior & Senior Manager)",
+            "EMP-003/004: Bác sỹ bệnh viện (Bác sỹ thường trực & Trưởng khoa)",
+            "EMP-005/006: Công nhân sản xuất (Đơn ca & Luân ca 3 ca)"
+        ]
+    },
+    "employees": [
+        {
+            "_group": "OFFICE",
+            "employeeId": "EMP-001",
+            "fullName": "Nguyễn Thị Mai",
+            "contractType": "INDEFINITE",
+            "employeeType": "FULL_TIME",
+            "status": "ACTIVE",
+            "jobGrade": "OFF-S3",
+            "department": "FINANCE",
+            "position": "Financial Analyst",
+            "region": "HN",
+            "taxResidency": "RESIDENT",
+            "startDate": "2022-06-01",
+            "salary": {
+                "baseSalary": 15000000,
+                "contractSalary": 15000000,
+                "salaryType": "MONTHLY_FIXED",
+                "currency": "VND"
+            },
+            "allowances": [
+                {
+                    "code": "TRANSPORT_ALLOWANCE",
+                    "amount": 1500000,
+                    "taxable": false,
+                    "_note": "Miễn thuế theo mức quy định TT111"
+                },
+                {
+                    "code": "SENIORITY_ALLOWANCE",
+                    "amount": 450000,
+                    "taxable": true,
+                    "_note": "3% × BaseSalary × seniorityYears/10"
+                },
+                {
+                    "code": "LUNCH_ALLOWANCE",
+                    "amount": 730000,
+                    "taxable": false,
+                    "_note": "Miễn thuế ≤ 730k/tháng (NĐ 24/2020)"
+                }
+            ],
+            "taxInfo": {
+                "personalDeduction": 11000000,
+                "dependents": 1,
+                "dependentDeduction": 4400000,
+                "_note": "1 người phụ thuộc đã đăng ký MST"
+            },
+            "performanceInfo": {
+                "kpiScore": 1.15,
+                "kpiRating": "GOOD",
+                "_note": "Đạt 115% KPI tháng 3/2025 → bonus 15% × baseSalary"
+            }
+        },
+        {
+            "_group": "OFFICE",
+            "employeeId": "EMP-002",
+            "fullName": "Trần Văn Hùng",
+            "contractType": "INDEFINITE",
+            "employeeType": "FULL_TIME",
+            "status": "ACTIVE",
+            "jobGrade": "OFF-M2",
+            "department": "SALES",
+            "position": "Regional Sales Manager",
+            "region": "HN",
+            "taxResidency": "RESIDENT",
+            "startDate": "2018-03-15",
+            "salary": {
+                "baseSalary": 35000000,
+                "contractSalary": 35000000,
+                "salaryType": "MONTHLY_FIXED",
+                "currency": "VND"
+            },
+            "allowances": [
+                {
+                    "code": "TRANSPORT_ALLOWANCE",
+                    "amount": 2000000,
+                    "taxable": false
+                },
+                {
+                    "code": "POSITION_ALLOWANCE",
+                    "amount": 5000000,
+                    "taxable": true,
+                    "_note": "Phụ cấp chức vụ Manager"
+                },
+                {
+                    "code": "SENIORITY_ALLOWANCE",
+                    "amount": 2450000,
+                    "taxable": true,
+                    "_note": "7% × BaseSalary (7 năm thâm niên)"
+                },
+                {
+                    "code": "PHONE_ALLOWANCE",
+                    "amount": 500000,
+                    "taxable": false
+                }
+            ],
+            "taxInfo": {
+                "personalDeduction": 11000000,
+                "dependents": 2,
+                "dependentDeduction": 8800000,
+                "_note": "2 người phụ thuộc đã xác nhận"
+            },
+            "performanceInfo": {
+                "kpiScore": 1.25,
+                "kpiRating": "EXCELLENT",
+                "_note": "Sales vượt 125% target → bonus 25% × baseSalary"
+            }
+        },
+        {
+            "_group": "DOCTOR",
+            "employeeId": "EMP-003",
+            "fullName": "Lê Thị Thu Hà",
+            "contractType": "INDEFINITE",
+            "employeeType": "FULL_TIME",
+            "status": "ACTIVE",
+            "jobGrade": "MED-BS2",
+            "department": "INTERNAL_MEDICINE",
+            "position": "Bác sỹ Nội tổng quát",
+            "region": "HN",
+            "taxResidency": "RESIDENT",
+            "startDate": "2019-08-01",
+            "salary": {
+                "baseSalary": 18000000,
+                "contractSalary": 18000000,
+                "salaryType": "MONTHLY_FIXED",
+                "currency": "VND",
+                "_note": "Lương theo bảng lương chuyên môn bệnh viện"
+            },
+            "medicalGradeInfo": {
+                "professionalGrade": "BS_CHINH",
+                "gradeCoefficient": 3.33,
+                "baseMedicalWage": 2340000,
+                "_note": "Bậc 3 Bác sỹ Chính — TT03/2025/TTLT-BYT-BNV"
+            },
+            "allowances": [
+                {
+                    "code": "MEDICAL_PROF_ALLOWANCE",
+                    "amount": 1872000,
+                    "taxable": false,
+                    "_note": "Phụ cấp ngành y = 30% × lương cơ sở × hệ số = 30% × 2.34M × 2.67. Miễn toàn bộ thuế"
+                },
+                {
+                    "code": "SENIORITY_ALLOWANCE",
+                    "amount": 720000,
+                    "taxable": true,
+                    "_note": "4% × BaseSalary (6 năm thâm niên)"
+                }
+            ],
+            "hazardInfo": {
+                "hazardLevel": "B",
+                "hazardCategory": "INFECTIOUS_DISEASE",
+                "hazardAllowanceRate": 0.2,
+                "statutoryExemptCeiling": 3600000,
+                "_note": "Loại B — Tiếp xúc bệnh lây nhiễm nguy hiểm. PCA độc hại = 20% BaseSalary = 3.6M. Miễn thuế chỉ phần ≤ 3.6M (khớp với quy định NĐ81/2009 + TT20/2023)"
+            },
+            "taxInfo": {
+                "personalDeduction": 11000000,
+                "dependents": 0,
+                "dependentDeduction": 0
+            },
+            "dutyInfo": {
+                "regularDutyDays": 22,
+                "on24hDutyCount": 3,
+                "_note": "3 ca trực 24h trong tháng 3/2025. Flat-rate trực theo quy chế BV + BYT"
+            }
+        },
+        {
+            "_group": "DOCTOR",
+            "employeeId": "EMP-004",
+            "fullName": "Phạm Đức Minh",
+            "contractType": "INDEFINITE",
+            "employeeType": "FULL_TIME",
+            "status": "ACTIVE",
+            "jobGrade": "MED-TK1",
+            "department": "ONCOLOGY",
+            "position": "Trưởng khoa Ung bướu",
+            "region": "HN",
+            "taxResidency": "RESIDENT",
+            "startDate": "2010-01-01",
+            "salary": {
+                "baseSalary": 32000000,
+                "contractSalary": 32000000,
+                "salaryType": "MONTHLY_FIXED",
+                "currency": "VND",
+                "_note": "Lương Trưởng khoa theo bậc Y tế đặc thù"
+            },
+            "medicalGradeInfo": {
+                "professionalGrade": "CHUYEN_KHOA_2",
+                "gradeCoefficient": 5.42,
+                "baseMedicalWage": 2340000,
+                "_note": "Bác sỹ Chuyên khoa II — hệ số cao nhất"
+            },
+            "allowances": [
+                {
+                    "code": "MEDICAL_PROF_ALLOWANCE",
+                    "amount": 3369960,
+                    "taxable": false,
+                    "_note": "35% × 2.34M × 4.12 theo quy định BYT (Trưởng khoa CK2)"
+                },
+                {
+                    "code": "POSITION_ALLOWANCE",
+                    "amount": 8000000,
+                    "taxable": true,
+                    "_note": "Phụ cấp Trưởng khoa cấp I"
+                },
+                {
+                    "code": "SENIORITY_ALLOWANCE",
+                    "amount": 4800000,
+                    "taxable": true,
+                    "_note": "15% × BaseSalary (15 năm thâm niên)"
+                }
+            ],
+            "hazardInfo": {
+                "hazardLevel": "C",
+                "hazardCategory": "CANCER_RADIATION",
+                "hazardAllowanceRate": 0.3,
+                "statutoryExemptCeiling": 3600000,
+                "_note": "Loại C cao nhất — Ung bướu + xạ trị. Hazard = 30% × 32M = 9.6M. Miễn thuế chỉ ≤ 3.6M, phần vượt (5.99M+) = chịu thuế TNCN. ĐÂY LÀ CASE PHỨC TẠP NHẤT"
+            },
+            "taxInfo": {
+                "personalDeduction": 11000000,
+                "dependents": 2,
+                "dependentDeduction": 8800000
+            },
+            "dutyInfo": {
+                "regularDutyDays": 20,
+                "on24hDutyCount": 2,
+                "_note": "2 ca trực 24h, flat-rate quy chế BYT + phụ cấp ca trực trưởng khoa"
+            }
+        },
+        {
+            "_group": "WORKER",
+            "employeeId": "EMP-005",
+            "fullName": "Hoàng Văn Dũng",
+            "contractType": "DEFINITE_12M",
+            "employeeType": "FULL_TIME",
+            "status": "ACTIVE",
+            "jobGrade": "WRK-A2",
+            "department": "ASSEMBLY_LINE_1",
+            "position": "Công nhân lắp ráp bậc 2",
+            "region": "HN",
+            "taxResidency": "RESIDENT",
+            "startDate": "2024-04-01",
+            "salary": {
+                "baseSalary": 5500000,
+                "contractSalary": 5500000,
+                "salaryType": "PIECE_RATE",
+                "currency": "VND",
+                "_note": "Hưởng lương sản phẩm. BaseSalary chỉ dùng tính BHXH và floor check"
+            },
+            "allowances": [
+                {
+                    "code": "SENIORITY_ALLOWANCE",
+                    "amount": 55000,
+                    "taxable": true,
+                    "_note": "1% × BaseSalary (1 năm thâm niên)"
+                },
+                {
+                    "code": "SHIFT_ALLOWANCE",
+                    "amount": 0,
+                    "taxable": true,
+                    "_note": "Ca ngày — không có phụ cấp ca thêm"
+                }
+            ],
+            "shiftInfo": {
+                "shiftPattern": "FIXED_DAY",
+                "standardWorkDays": 26,
+                "standardHoursPerDay": 8,
+                "_note": "Ca ngày cố định 8h, 26 ngày/tháng"
+            },
+            "taxInfo": {
+                "personalDeduction": 11000000,
+                "dependents": 0,
+                "dependentDeduction": 0,
+                "_note": "Thu nhập thấp, có thể không đến ngưỡng đóng thuế"
+            },
+            "pieceRateInfo": {
+                "productCode": "ASM-TYPE-A",
+                "qualityThreshold": 0.95
+            }
+        },
+        {
+            "_group": "WORKER",
+            "employeeId": "EMP-006",
+            "fullName": "Vũ Thị Lan",
+            "contractType": "INDEFINITE",
+            "employeeType": "FULL_TIME",
+            "status": "ACTIVE",
+            "jobGrade": "WRK-B3",
+            "department": "ASSEMBLY_LINE_2",
+            "position": "Công nhân lắp ráp bậc 3",
+            "region": "HN",
+            "taxResidency": "RESIDENT",
+            "startDate": "2020-09-01",
+            "salary": {
+                "baseSalary": 6500000,
+                "contractSalary": 6500000,
+                "salaryType": "PIECE_RATE",
+                "currency": "VND"
+            },
+            "allowances": [
+                {
+                    "code": "SENIORITY_ALLOWANCE",
+                    "amount": 292500,
+                    "taxable": true,
+                    "_note": "4.5% × BaseSalary (4.5 năm)"
+                },
+                {
+                    "code": "SHIFT_ALLOWANCE",
+                    "amount": 0,
+                    "taxable": true,
+                    "_note": "Tính động theo ca thực —  xem attendance"
+                },
+                {
+                    "code": "NIGHT_SHIFT_ALLOWANCE",
+                    "amount": 0,
+                    "taxable": true,
+                    "_note": "Tính động: 30% × lương ngày × số ca đêm"
+                }
+            ],
+            "shiftInfo": {
+                "shiftPattern": "ROTATING_3_SHIFT",
+                "standardWorkDays": 26,
+                "standardHoursPerDay": 8,
+                "shiftRotationCycle": "WEEKLY",
+                "_note": "Luân ca 3 ca (CA SÁNG 6h-14h / CA CHIỀU 14h-22h / CA ĐÊM 22h-6h). Shift type xác định tại ĐẦU CA theo lịch tháng."
+            },
+            "taxInfo": {
+                "personalDeduction": 11000000,
+                "dependents": 1,
+                "dependentDeduction": 4400000
+            },
+            "pieceRateInfo": {
+                "productCode": "ASM-TYPE-B",
+                "qualityThreshold": 0.95
+            }
+        }
+    ]
+}

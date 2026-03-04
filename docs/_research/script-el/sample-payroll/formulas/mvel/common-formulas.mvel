@@ -1,0 +1,142 @@
+// ============================================================
+// COMMON FORMULAS — Dùng chung cho tất cả loại hình nhân viên
+// Engine: Drools 8 / MVEL — xTalent HCM Payroll Engine
+// Phiên bản: 1.0 | Ngày: 2025-03-04
+// Tham chiếu: BHXH/BHYT/BHTN (Luật BHXH 2014), PIT (TT111/2013)
+// ============================================================
+
+// ─────────────────────────────────────────────────────────
+// ELEMENT: BHXH_BASE
+// Mục đích: Cơ sở tính bảo hiểm = min(grossSalary, BHXH ceiling)
+// Input facts:  grossSalary (BigDecimal), bhxhCeiling (BigDecimal from policy)
+// Output fact:  bhxhBase (BigDecimal)
+// ─────────────────────────────────────────────────────────
+// DSL (Business-friendly):
+//   min(GROSS_SALARY, BHXH_CEILING)
+//
+// MVEL Compiled:
+Math.min(grossSalary, bhxhCeiling)
+
+// Ghi chú: bhxhCeiling = 20 × 2,340,000 = 46,800,000 VNĐ (từ 7/2024)
+// Nghị định 73/2024/NĐ-CP
+
+
+// ─────────────────────────────────────────────────────────
+// ELEMENT: BHXH_EMPLOYEE
+// Mục đích: BHXH nhân viên đóng 8%
+// Input facts:  bhxhBase (BigDecimal)
+// Output fact:  bhxhEmployee (BigDecimal)
+// ─────────────────────────────────────────────────────────
+// DSL:
+//   BHXH_BASE * 0.08
+//
+// MVEL Compiled:
+bhxhBase * new java.math.BigDecimal("0.08")
+
+// Làm tròn: round(bhxhBase * 0.08, 0) — làm tròn đến đồng
+// Theo thông lệ: làm tròn xuống (ROUND_DOWN) cho phần trả về người lao động
+
+
+// ─────────────────────────────────────────────────────────
+// ELEMENT: BHYT_EMPLOYEE
+// Mục đích: BHYT nhân viên đóng 1.5%
+// Input facts:  bhxhBase (BigDecimal)
+// ─────────────────────────────────────────────────────────
+// MVEL Compiled:
+bhxhBase * new java.math.BigDecimal("0.015")
+
+
+// ─────────────────────────────────────────────────────────
+// ELEMENT: BHTN_EMPLOYEE
+// Mục đích: BHTN nhân viên đóng 1%
+// ─────────────────────────────────────────────────────────
+// MVEL Compiled:
+bhxhBase * new java.math.BigDecimal("0.01")
+
+
+// ─────────────────────────────────────────────────────────
+// ELEMENT: BHXH_EMPLOYER
+// Mục đích: BHXH công ty đóng 17.5% (thông tin, không ảnh hưởng Net)
+// ─────────────────────────────────────────────────────────
+// MVEL Compiled:
+bhxhBase * new java.math.BigDecimal("0.175")
+
+
+// ─────────────────────────────────────────────────────────
+// ELEMENT: BHYT_EMPLOYER
+// MVEL Compiled:
+bhxhBase * new java.math.BigDecimal("0.03")
+
+
+// ─────────────────────────────────────────────────────────
+// ELEMENT: BHTN_EMPLOYER
+// MVEL Compiled:
+bhxhBase * new java.math.BigDecimal("0.01")
+
+
+// ─────────────────────────────────────────────────────────
+// ELEMENT: TNLD_EMPLOYER  (Bảo hiểm TNLĐ-BNN)
+// MVEL Compiled:
+bhxhBase * new java.math.BigDecimal("0.005")
+
+
+// ─────────────────────────────────────────────────────────
+// ELEMENT: PIT_TAX
+// Mục đích: Thuế TNCN lũy tiến 7 bậc VN 2024
+// Input facts:  taxableIncome (BigDecimal)
+// Output fact:  pitTax (BigDecimal)
+//
+// QUAN TRỌNG: Không thể viết loop trong DSL grammar (bị cấm).
+// Hàm progressiveTax() là BuiltinFunction được đăng ký vào MVEL whitelist.
+// Implementation trong: vn.xtalent.payroll.functions.BuiltinFunctions.progressiveTax()
+// ─────────────────────────────────────────────────────────
+// DSL (Business-friendly):
+//   progressiveTax(max(0, TAXABLE_INCOME), VN_PIT_BRACKETS_2024)
+//
+// MVEL Compiled:
+taxableIncome.compareTo(java.math.BigDecimal.ZERO) <= 0
+    ? java.math.BigDecimal.ZERO
+    : BuiltinFunctions.progressiveTax(taxableIncome, pitBrackets)
+
+// pitBrackets được inject vào evaluation context từ policy-config.json
+// Thuật toán progressiveTax() (implemented trong Java, NOT inline MVEL):
+//   tax = 0
+//   for each bracket (from, to, rate):
+//     inBracket = min(taxableIncome, to) - from
+//     if inBracket > 0: tax += inBracket * rate
+//   return tax
+//
+// Ví dụ EMP-002 (Trần Văn Hùng) taxableIncome = 32,000,000:
+//   Bậc 1: min(32M,5M)-0   = 5M × 5%  = 250,000
+//   Bậc 2: min(32M,10M)-5M = 5M × 10% = 500,000
+//   Bậc 3: min(32M,18M)-10M= 8M × 15% = 1,200,000
+//   Bậc 4: 32M-18M         = 14M× 20% = 2,800,000
+//   TỔNG PIT:               = 4,750,000 VNĐ
+
+
+// ─────────────────────────────────────────────────────────
+// ELEMENT: SENIORITY_ALLOWANCE (dùng chung)
+// Input facts:  baseSalary (BigDecimal), seniorityYears (int)
+// ─────────────────────────────────────────────────────────
+// DSL:
+//   min(seniorityYears * 0.01, 0.15) * BASE_SALARY
+//
+// MVEL Compiled:
+Math.min(seniorityYears * 0.01, 0.15) * baseSalary
+
+// seniorityYears = floor((today - startDate) / 365)
+// Tối đa 15% sau 15 năm
+
+
+// ─────────────────────────────────────────────────────────
+// ELEMENT: NET_SALARY (dùng chung)
+// ─────────────────────────────────────────────────────────
+// DSL:
+//   GROSS_SALARY - BHXH_EMPLOYEE - BHYT_EMPLOYEE - BHTN_EMPLOYEE - PIT_TAX
+//
+// MVEL Compiled:
+grossSalary
+    .subtract(bhxhEmployee)
+    .subtract(bhytEmployee)
+    .subtract(bhtnEmployee)
+    .subtract(pitTax)

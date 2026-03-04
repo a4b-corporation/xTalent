@@ -1,0 +1,316 @@
+{
+    "_meta": {
+        "description": "Bảng chấm công tháng 3/2025 — 6 nhân viên mẫu",
+        "period": "2025-03",
+        "periodStartDate": "2025-03-01",
+        "periodEndDate": "2025-03-31",
+        "workingDaysInMonth": 26,
+        "calendarDaysInMonth": 31,
+        "publicHolidays": [
+            "2025-03-08"
+        ],
+        "_note": "Tháng 3/2025 có 26 ngày công chuẩn (trừ 4 CN + 1 ngày 8/3 nghỉ bù)"
+    },
+    "attendanceRecords": [
+        {
+            "employeeId": "EMP-001",
+            "_name": "Nguyễn Thị Mai — Văn phòng Junior",
+            "salaryType": "MONTHLY_FIXED",
+            "standardWorkDays": 26,
+            "actualWorkDays": 24,
+            "absenceDays": 2,
+            "absenceDetails": [
+                {
+                    "date": "2025-03-17",
+                    "type": "ANNUAL_LEAVE",
+                    "paid": true
+                },
+                {
+                    "date": "2025-03-18",
+                    "type": "ANNUAL_LEAVE",
+                    "paid": true
+                }
+            ],
+            "overtime": [
+                {
+                    "date": "2025-03-14",
+                    "type": "OT_NORMAL_DAY",
+                    "hours": 3.0,
+                    "multiplier": 1.5,
+                    "_note": "OT thứ Sáu deadline quý 1"
+                },
+                {
+                    "date": "2025-03-21",
+                    "type": "OT_NORMAL_DAY",
+                    "hours": 2.5,
+                    "_note": "OT thứ Sáu cuối tháng"
+                }
+            ],
+            "otHours": {
+                "OT_150_HOURS": 5.5,
+                "OT_200_HOURS": 0,
+                "OT_300_HOURS": 0
+            },
+            "proRataRatio": 0.9231,
+            "_proRataNote": "24/26 ngày = 0.9231"
+        },
+        {
+            "employeeId": "EMP-002",
+            "_name": "Trần Văn Hùng — Sales Manager",
+            "salaryType": "MONTHLY_FIXED",
+            "standardWorkDays": 26,
+            "actualWorkDays": 26,
+            "absenceDays": 0,
+            "overtime": [
+                {
+                    "date": "2025-03-08",
+                    "type": "OT_HOLIDAY_PUBLIC",
+                    "hours": 4.0,
+                    "multiplier": 3.0,
+                    "_note": "Nghỉ lễ 8/3 nhưng chốt deal lớn"
+                },
+                {
+                    "date": "2025-03-15",
+                    "type": "OT_NORMAL_DAY",
+                    "hours": 2.0,
+                    "multiplier": 1.5
+                },
+                {
+                    "date": "2025-03-22",
+                    "type": "OT_WEEKEND",
+                    "hours": 8.0,
+                    "multiplier": 2.0,
+                    "_note": "Họp khách hàng ngày cuối tuần"
+                }
+            ],
+            "otHours": {
+                "OT_150_HOURS": 2.0,
+                "OT_200_HOURS": 8.0,
+                "OT_300_HOURS": 4.0
+            },
+            "proRataRatio": 1.0,
+            "_otNote": "Manager cấp cao có OT phức tạp: có cả 3 loại OT trong tháng"
+        },
+        {
+            "employeeId": "EMP-003",
+            "_name": "Lê Thị Thu Hà — Bác sỹ BS2",
+            "salaryType": "MONTHLY_FIXED",
+            "standardWorkDays": 26,
+            "actualWorkDays": 22,
+            "absenceDays": 4,
+            "absenceDetails": [
+                {
+                    "date": "2025-03-24",
+                    "type": "SICK_LEAVE",
+                    "paid": true,
+                    "_note": "1 ngày nghỉ bệnh"
+                },
+                {
+                    "date": "2025-03-25",
+                    "type": "SICK_LEAVE",
+                    "paid": true
+                },
+                {
+                    "date": "2025-03-26",
+                    "type": "SICK_LEAVE",
+                    "paid": true
+                },
+                {
+                    "date": "2025-03-27",
+                    "type": "SICK_LEAVE",
+                    "paid": true
+                }
+            ],
+            "regularOvertimeHours": 0,
+            "dutySchedule": [
+                {
+                    "dutyId": "DTY-001",
+                    "date": "2025-03-05",
+                    "type": "DUTY_24H_NORMAL",
+                    "startTime": "2025-03-05T07:00:00",
+                    "endTime": "2025-03-06T07:00:00",
+                    "flatRatePay": 115000,
+                    "additionalOT": false,
+                    "_note": "Ca trực thường ngày thứ 4, không OT"
+                },
+                {
+                    "dutyId": "DTY-002",
+                    "date": "2025-03-09",
+                    "type": "DUTY_24H_WEEKEND",
+                    "startTime": "2025-03-09T07:00:00",
+                    "endTime": "2025-03-10T07:00:00",
+                    "flatRatePay": 180000,
+                    "additionalOTRate": 2.0,
+                    "additionalOTHours": 8.0,
+                    "_note": "Ca trực Chủ nhật → flat-rate weekend QĐ54 + cộng OT 200% × 8h"
+                },
+                {
+                    "dutyId": "DTY-003",
+                    "date": "2025-03-08",
+                    "type": "DUTY_24H_HOLIDAY",
+                    "startTime": "2025-03-08T07:00:00",
+                    "endTime": "2025-03-09T07:00:00",
+                    "flatRatePay": 220000,
+                    "additionalOTRate": 3.0,
+                    "additionalOTHours": 8.0,
+                    "_note": "Ca trực ngày 8/3 (nghỉ lễ) → flat-rate + OT 300% × 8h. PHỨC TẠP NHẤT"
+                }
+            ],
+            "proRataRatio": 0.8462,
+            "_proRataNote": "22/26 ngày công thực tế"
+        },
+        {
+            "employeeId": "EMP-004",
+            "_name": "Phạm Đức Minh — Trưởng khoa Ung bướu",
+            "salaryType": "MONTHLY_FIXED",
+            "standardWorkDays": 26,
+            "actualWorkDays": 26,
+            "absenceDays": 0,
+            "dutySchedule": [
+                {
+                    "dutyId": "DTY-004",
+                    "date": "2025-03-12",
+                    "type": "DUTY_24H_NORMAL",
+                    "startTime": "2025-03-12T07:00:00",
+                    "endTime": "2025-03-13T07:00:00",
+                    "flatRatePay": 160000,
+                    "additionalOT": false,
+                    "_note": "Ca trực ngày thường — Trưởng khoa rate cao hơn BS thường"
+                },
+                {
+                    "dutyId": "DTY-005",
+                    "date": "2025-03-23",
+                    "type": "DUTY_24H_WEEKEND",
+                    "startTime": "2025-03-23T07:00:00",
+                    "endTime": "2025-03-24T07:00:00",
+                    "flatRatePay": 245000,
+                    "additionalOTRate": 2.0,
+                    "additionalOTHours": 8.0,
+                    "_note": "Ca Chủ nhật — flat-rate TK + OT weekend 200%"
+                }
+            ],
+            "proRataRatio": 1.0,
+            "_hazardNote": "Hazard level C = 30% × 32M = 9.6M, miễn thuế 3.6M, chịu thuế 6M — TH phức tạp nhất"
+        },
+        {
+            "employeeId": "EMP-005",
+            "_name": "Hoàng Văn Dũng — Công nhân ca ngày (đơn ca)",
+            "salaryType": "PIECE_RATE",
+            "shiftPattern": "FIXED_DAY",
+            "standardWorkDays": 26,
+            "actualWorkDays": 25,
+            "absenceDays": 1,
+            "absenceDetails": [
+                {
+                    "date": "2025-03-10",
+                    "type": "UNPAID_LEAVE",
+                    "paid": false
+                }
+            ],
+            "productionData": {
+                "productCode": "ASM-TYPE-A",
+                "totalQuantityProduced": 580,
+                "qualityPassedQuantity": 558,
+                "qualityRejectedQuantity": 22,
+                "qualityRate": 0.9621,
+                "unitPrice": 12000,
+                "_note": "580 SP sản xuất, 558 đạt chất lượng (96.21% → đạt tier2 bonus ≥95%)"
+            },
+            "shifts": [
+                {
+                    "month": "2025-03",
+                    "shiftType": "CA_NGAY",
+                    "count": 25,
+                    "nightShiftCount": 0
+                }
+            ],
+            "overtime": [],
+            "proRataRatio": 0.9615,
+            "_note": "Ca ngày cố định — không ca đêm, không OT. Lương SP = 558 × 12,000 = 6,696,000 (vượt min wage 4,960,000 ✓)"
+        },
+        {
+            "employeeId": "EMP-006",
+            "_name": "Vũ Thị Lan — Công nhân luân ca 3 ca",
+            "salaryType": "PIECE_RATE",
+            "shiftPattern": "ROTATING_3_SHIFT",
+            "standardWorkDays": 26,
+            "actualWorkDays": 26,
+            "absenceDays": 0,
+            "productionData": {
+                "productCode": "ASM-TYPE-B",
+                "totalQuantityProduced": 390,
+                "qualityPassedQuantity": 383,
+                "qualityRejectedQuantity": 7,
+                "qualityRate": 0.9821,
+                "unitPrice": 18500,
+                "_note": "390 cụm Type-B, đạt 98.21% → tier1 bonus ≥98%"
+            },
+            "shifts": {
+                "shiftDetail": [
+                    {
+                        "weekOfMonth": 1,
+                        "shiftType": "CA_SANG",
+                        "workDays": 5,
+                        "shiftStart": "06:00",
+                        "shiftEnd": "14:00",
+                        "nightShiftCount": 0,
+                        "_note": "Tuần 1: Ca Sáng 6h-14h — không phụ cấp ca đêm"
+                    },
+                    {
+                        "weekOfMonth": 2,
+                        "shiftType": "CA_CHIEU",
+                        "workDays": 6,
+                        "shiftStart": "14:00",
+                        "shiftEnd": "22:00",
+                        "nightShiftCount": 0,
+                        "_note": "Tuần 2: Ca Chiều 14h-22h — kết thúc đúng 22h, không tính ca đêm"
+                    },
+                    {
+                        "weekOfMonth": 3,
+                        "shiftType": "CA_DEM",
+                        "workDays": 6,
+                        "shiftStart": "22:00",
+                        "shiftEnd": "06:00",
+                        "nightShiftCount": 6,
+                        "_note": "Tuần 3: Ca Đêm 22h-6h — ĐẦU CA = 22h (xác định theo giờ bắt đầu ca). 6 ca đêm × 30%"
+                    },
+                    {
+                        "weekOfMonth": 4,
+                        "shiftType": "CA_SANG",
+                        "workDays": 5,
+                        "shiftStart": "06:00",
+                        "shiftEnd": "14:00",
+                        "nightShiftCount": 0
+                    },
+                    {
+                        "weekOfMonth": "partial_5",
+                        "shiftType": "CA_CHIEU",
+                        "workDays": 4,
+                        "shiftStart": "14:00",
+                        "shiftEnd": "22:00",
+                        "nightShiftCount": 0
+                    }
+                ],
+                "summary": {
+                    "CA_SANG": 10,
+                    "CA_CHIEU": 10,
+                    "CA_DEM": 6,
+                    "totalNightShifts": 6,
+                    "totalShifts": 26
+                }
+            },
+            "overtime": [
+                {
+                    "date": "2025-03-16",
+                    "type": "OT_WEEKEND",
+                    "hours": 8.0,
+                    "multiplier": 2.0,
+                    "shiftType": "CA_DEM",
+                    "_note": "Làm thêm Chủ nhật ca đêm → OT 200% + phụ cấp ca đêm 30%"
+                }
+            ],
+            "proRataRatio": 1.0,
+            "_complexityNote": "CASE PHỨC TẠP NHẤT công nhân: 3 loại ca + piece-rate + OT ca đêm weekend → nhiều elements cộng gộp nhất"
+        }
+    ]
+}

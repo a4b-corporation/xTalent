@@ -1,0 +1,257 @@
+// ============================================================
+// DOCTOR FORMULAS — Bác sỹ trực bệnh viện
+// Engine: Drools 8 / MVEL — xTalent HCM Payroll Engine
+// Phiên bản: 1.0 | Ngày: 2025-03-04
+// Áp dụng: EMP-003 (BS Nội, Loại B), EMP-004 (TK Ung bướu, Loại C)
+//
+// ★ ĐIỂM PHỨC TẠP CHÍNH:
+//   1. Phụ cấp độc hại split 2 phần (exempt + taxable)
+//   2. Ca trực: flat-rate + OT phụ thêm (2 khoản riêng)
+//   3. TAXABLE_INCOME trừ medical & hazard_exempt nhưng GIỮ hazard_taxable
+// ============================================================
+
+
+// ─────────────────────────────────────────────────────────
+// ELEMENT: MEDICAL_PROF_ALLOWANCE
+// Phụ cấp ưu đãi ngành y — miễn toàn bộ thuế TNCN
+// Input facts:  employee.medicalGradeInfo.gradeCode (String)
+// Output fact:  medicalProfAllowance (BigDecimal)
+// ─────────────────────────────────────────────────────────
+// DSL:
+//   lookup(MEDICAL_ALLOWANCE_TABLE, medicalGrade)
+//
+// MVEL Compiled:
+policyService.getMedicalAllowance(employee.medicalGradeInfo.gradeCode)
+
+// EMP-003 (MED-BS2, BS_CHINH bậc 2): 30% × 2,340,000 × 2.67 = 1,872,360
+// EMP-004 (MED-TK1, CK2): 35% × 2,340,000 × 4.12 = 3,369,960
+// Source: TT03/2025/TTLT-BYT-BNV
+// TAX: Điều 3.1b Luật TNCN — miễn toàn bộ
+
+
+// ─────────────────────────────────────────────────────────
+// ELEMENT: HAZARD_ALLOWANCE (tổng)
+// Phụ cấp độc hại trước khi phân tách thuế
+// Input facts:  baseSalary, hazardLevel ("A"|"B"|"C")
+// Output fact:  hazardAllowance (BigDecimal)
+// ─────────────────────────────────────────────────────────
+// DSL:
+//   when hazardLevel == "A" then BASE_SALARY * 0.10
+//   when hazardLevel == "B" then BASE_SALARY * 0.20
+//   when hazardLevel == "C" then BASE_SALARY * 0.30
+//   else 0
+//
+// MVEL Compiled:
+"A".equals(hazardLevel) ? baseSalary.multiply(new java.math.BigDecimal("0.10")) :
+"B".equals(hazardLevel) ? baseSalary.multiply(new java.math.BigDecimal("0.20")) :
+"C".equals(hazardLevel) ? baseSalary.multiply(new java.math.BigDecimal("0.30")) :
+java.math.BigDecimal.ZERO
+
+// EMP-003 (B, base=18M): 18,000,000 × 0.20 = 3,600,000
+// EMP-004 (C, base=32M): 32,000,000 × 0.30 = 9,600,000
+// Source: TT20/2023/TT-BLĐTBXH
+
+
+// ─────────────────────────────────────────────────────────
+// ELEMENT: HAZARD_TAX_EXEMPT
+// ★★ PHỨC TẠP: Phần phụ cấp độc hại được miễn thuế TNCN ★★
+// Trần miễn thuế: 3,600,000 VNĐ/tháng (NĐ81/2009-CP)
+// Input facts:  hazardAllowance, hazardExemptCeiling (from policy)
+// Output fact:  hazardTaxExempt (BigDecimal)
+// ─────────────────────────────────────────────────────────
+// DSL:
+//   min(HAZARD_ALLOWANCE, HAZARD_EXEMPT_CEILING)
+//
+// MVEL Compiled:
+hazardAllowance.min(policyService.getHazardExemptCeiling())
+
+// EMP-003 (hazard=3.6M): min(3.6M, 3.6M) = 3,600,000 → miễn toàn bộ ✓
+// EMP-004 (hazard=9.6M): min(9.6M, 3.6M) = 3,600,000 → miễn 3.6M
+//
+// NOTE: hazardTaxExempt sẽ được TRỪ khỏi TAXABLE_INCOME
+
+
+// ─────────────────────────────────────────────────────────
+// ELEMENT: HAZARD_TAXABLE
+// ★★ PHỨC TẠP: Phần phụ cấp độc hại PHẢI chịu thuế ★★
+// = Phần vượt trần miễn thuế 3,600,000
+// Input facts:  hazardAllowance, hazardExemptCeiling
+// Output fact:  hazardTaxable (BigDecimal)
+// ─────────────────────────────────────────────────────────
+// DSL:
+//   max(0, HAZARD_ALLOWANCE - HAZARD_EXEMPT_CEILING)
+//
+// MVEL Compiled:
+hazardAllowance
+    .subtract(policyService.getHazardExemptCeiling())
+    .max(java.math.BigDecimal.ZERO)
+
+// EMP-003 (hazard=3.6M): max(0, 3.6M-3.6M) = 0 → không chịu thuế
+// EMP-004 (hazard=9.6M): max(0, 9.6M-3.6M) = 6,000,000 → PHẢI ĐÓng thuế!
+//
+// CRITICAL: hazardTaxable KHÔNG được trừ khỏi taxable_income vì đã ở trong gross
+// Drools rule phải đảm bảo chain: HAZARD → HAZARD_EXEMPT + HAZARD_TAXABLE → TAXABLE_INCOME
+
+
+// ─────────────────────────────────────────────────────────
+// ELEMENT: DUTY_PAY_FLAT
+// Phụ cấp trực bệnh viện — flat-rate theo QĐ54/BYT
+// Mỗi ca trực × rate tương ứng (phân biệt thường/cuối tuần/lễ)
+// Input facts:  dutySchedule[], employee.medicalGradeInfo.professionalGrade
+// Output fact:  dutyPayFlat (BigDecimal)
+// ─────────────────────────────────────────────────────────
+// DSL:
+//   sumElements(dutySchedule, (d) => lookup(DUTY_FLAT_RATE_TABLE, d.type, medicalGrade))
+//
+// MVEL Compiled (gọi service tổng hợp):
+attendanceService.calculateDutyFlatRate(
+    employee.employeeId,
+    payrollPeriod,
+    employee.medicalGradeInfo.professionalGrade
+)
+
+// EMP-003 (BS_CHINH):
+//   DTY-001 NORMAL:   115,000
+//   DTY-002 WEEKEND:  180,000
+//   DTY-003 HOLIDAY:  220,000
+//   TOTAL FLAT: 515,000
+
+// EMP-004 (CHUYEN_KHOA_2):
+//   DTY-004 NORMAL:   160,000
+//   DTY-005 WEEKEND:  245,000
+//   TOTAL FLAT: 405,000
+
+
+// ─────────────────────────────────────────────────────────
+// ELEMENT: DUTY_PAY_OT
+// ★★ PHỨC TẠP: OT lương thêm trong ca trực ngày nghỉ/lễ ★★
+// Ca WEEKEND: hourlyRate × 8h × 2.0
+// Ca HOLIDAY: hourlyRate × 8h × 3.0
+// Input facts:  baseSalary, standardWorkDays, dutySchedule[]
+// Output fact:  dutyPayOT (BigDecimal)
+// ─────────────────────────────────────────────────────────
+// DSL:
+//   sumElements(dutySchedule.where(additionalOT == true),
+//     (d) => (BASE_SALARY/standardWorkDays/8) * d.additionalOTHours * d.additionalOTRate)
+//
+// MVEL Compiled:
+attendanceService.calculateDutyOTAmount(
+    employee.employeeId,
+    payrollPeriod,
+    baseSalary,
+    new java.math.BigDecimal(standardWorkDays)
+)
+
+// EMP-003:
+//   DTY-002 WEEKEND OT: (18M/26/8) × 8h × 2.0 = 86,538 × 8 × 2 = 1,384,615
+//   DTY-003 HOLIDAY OT: (18M/26/8) × 8h × 3.0 = 86,538 × 8 × 3 = 2,076,923
+//   TOTAL OT: 3,461,538
+
+// EMP-004:
+//   DTY-005 WEEKEND OT: (32M/26/8) × 8h × 2.0 = 153,846 × 8 × 2 = 2,461,538
+//   TOTAL OT: 2,461,538
+
+// NOTE: DUTY_PAY_FLAT + DUTY_PAY_OT = TỔNG ĐỀN BÙ TRỰC
+// Cả 2 khoản đều tính vào quỹ lương đóng BHXH (theo hướng dẫn BHXH)
+
+
+// ─────────────────────────────────────────────────────────
+// ELEMENT: GROSS_SALARY — Bác sỹ
+// ★★ CHÚ Ý: Cộng TOÀN BỘ hazard (cả exempt + taxable) vào GROSS ★★
+// BHXH tính trên toàn bộ GROSS (không trừ phần miễn thuế)
+// ─────────────────────────────────────────────────────────
+// DSL:
+//   PRORATED_SALARY + SENIORITY_ALLOWANCE
+//   + MEDICAL_PROF_ALLOWANCE
+//   + HAZARD_TAX_EXEMPT + HAZARD_TAXABLE    ← tổng hazard
+//   + POSITION_ALLOWANCE
+//   + DUTY_PAY_FLAT + DUTY_PAY_OT
+//   + OT_150 + OT_200 + OT_300
+//
+// MVEL Compiled:
+proratedSalary
+    .add(seniorityAllowance)
+    .add(medicalProfAllowance)
+    .add(hazardTaxExempt)
+    .add(hazardTaxable)
+    .add(positionAllowance)
+    .add(dutyPayFlat)
+    .add(dutyPayOT)
+    .add(ot150)
+    .add(ot200)
+    .add(ot300)
+
+// EMP-003 Ước tính (sau nghỉ bệnh 4 ngày, proRata=22/26):
+//   PRORATED   = 18M × 22/26  =            15,230,769
+//   SENIORITY  = 18M × 4%     =               720,000
+//   MED_PROF                  =             1,872,360
+//   HAZARD_TAX_EXEMPT         =             3,600,000
+//   HAZARD_TAXABLE (B)        =                     0
+//   DUTY_FLAT                 =               515,000
+//   DUTY_OT                   =             3,461,538
+//   GROSS_EMP_003             ≈            25,399,667
+
+// EMP-004 Ước tính (full month):
+//   PRORATED   = 32M × 1.0    =            32,000,000
+//   SENIORITY  = 32M × 15%   =             4,800,000
+//   MED_PROF                  =             3,369,960
+//   HAZARD_TAX_EXEMPT         =             3,600,000
+//   HAZARD_TAXABLE (C)        =             6,000,000
+//   POSITION                  =             8,000,000
+//   DUTY_FLAT                 =               405,000
+//   DUTY_OT                   =             2,461,538
+//   GROSS_EMP_004             ≈            60,636,498
+
+
+// ─────────────────────────────────────────────────────────
+// ELEMENT: TAXABLE_INCOME — Bác sỹ
+// ★★ PHỨC TẠP NHẤT: 3 lớp miễn thuế khác nhau ★★
+//
+// Trừ ra khỏi GROSS:
+//   1. MEDICAL_PROF_ALLOWANCE → miễn TOÀN BỘ (Điều 3.1b)
+//   2. HAZARD_TAX_EXEMPT      → miễn PHẦN ≤ 3.6M (NĐ81/2009)
+//   3. BHXH/BHYT/BHTN NV đóng → được trừ full
+//   4. Giảm trừ gia cảnh bản thân + phụ thuộc
+//
+// KHÔNG trừ: HAZARD_TAXABLE (đã ở trong gross, không có exempt)
+// ─────────────────────────────────────────────────────────
+// DSL:
+//   GROSS_SALARY
+//     - MEDICAL_PROF_ALLOWANCE
+//     - HAZARD_TAX_EXEMPT
+//     - BHXH_EMPLOYEE - BHYT_EMPLOYEE - BHTN_EMPLOYEE
+//     - PERSONAL_DEDUCTION - DEPENDENT_DEDUCTION
+//
+// MVEL Compiled:
+grossSalary
+    .subtract(medicalProfAllowance)
+    .subtract(hazardTaxExempt)
+    .subtract(bhxhEmployee)
+    .subtract(bhytEmployee)
+    .subtract(bhtnEmployee)
+    .subtract(personalDeduction)
+    .subtract(dependentDeduction)
+    .max(java.math.BigDecimal.ZERO)
+
+// EMP-003:
+//   GROSS = 25,399,667
+//   - medProf   = 1,872,360
+//   - hazExempt = 3,600,000
+//   - BHXH_BASE = min(25.4M, 46.8M) × 10.5% = 2,666,964
+//   - personal  = 11,000,000
+//   - dependent = 0
+//   TAXABLE = 25,399,667 - 1,872,360 - 3,600,000 - 2,666,964 - 11,000,000
+//           = 6,260,343
+//   PIT = 5M×5% + 1.26M×10% = 250,000 + 126,034 = 376,034
+
+// EMP-004 (rất phức tạp, thu nhập cao):
+//   GROSS = 60,636,498
+//   - medProf   = 3,369,960
+//   - hazExempt = 3,600,000     ← chỉ trừ phần miễn, không trừ 6M phần chịu thuế
+//   - BHXH_BASE = 46,800,000 (cap) × 10.5% = 4,914,000
+//   - personal  = 11,000,000
+//   - dependent = 8,800,000
+//   TAXABLE = 60,636,498 - 3,369,960 - 3,600,000 - 4,914,000 - 11,000,000 - 8,800,000
+//           = 28,952,538
+//   PIT = 5M×5% + 5M×10% + 8M×15% + 10.95M×20%
+//       = 250,000 + 500,000 + 1,200,000 + 2,190,508 = 4,140,508

@@ -1,0 +1,1027 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Self-Evolving Platform — Strategic Vision</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap"
+        rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box
+        }
+
+        :root {
+            --bg: #ffffff;
+            --surface: #f8fafc;
+            --card: #ffffff;
+            --card-border: #e2e8f0;
+            --purple: #6366f1;
+            --purple-light: #eef2ff;
+            --purple-medium: #c7d2fe;
+            --cyan: #06b6d4;
+            --cyan-light: #ecfeff;
+            --amber: #f59e0b;
+            --amber-light: #fffbeb;
+            --green: #10b981;
+            --green-light: #ecfdf5;
+            --pink: #ec4899;
+            --text: #0f172a;
+            --text-secondary: #475569;
+            --dim: #64748b;
+            --grad: linear-gradient(135deg, #6366f1, #06b6d4);
+            --shadow-sm: 0 1px 3px rgba(0, 0, 0, .06), 0 1px 2px rgba(0, 0, 0, .04);
+            --shadow-md: 0 4px 16px rgba(0, 0, 0, .08);
+            --shadow-lg: 0 10px 40px rgba(0, 0, 0, .1);
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw
+        }
+
+        .deck {
+            position: relative;
+            width: 100vw;
+            height: 100vh
+        }
+
+        .slide {
+            position: absolute;
+            inset: 0;
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 60px 80px;
+            opacity: 0;
+            pointer-events: none;
+            overflow-y: auto
+        }
+
+        .slide.active {
+            display: flex;
+            opacity: 1;
+            pointer-events: all;
+            animation: fadeIn .5s ease
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px)
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0)
+            }
+        }
+
+        h1 {
+            font-size: 3.2rem;
+            font-weight: 800;
+            line-height: 1.1;
+            background: var(--grad);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-align: center;
+            margin-bottom: 16px
+        }
+
+        h2 {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--text);
+            margin-bottom: 12px;
+            text-align: center
+        }
+
+        h3 {
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-bottom: 6px
+        }
+
+        .subtitle {
+            font-size: 1.15rem;
+            color: var(--dim);
+            text-align: center;
+            max-width: 740px;
+            line-height: 1.7
+        }
+
+        .tag {
+            display: inline-block;
+            padding: 6px 18px;
+            border-radius: 20px;
+            font-size: .72rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1.2px;
+            margin-bottom: 18px;
+            background: var(--purple-light);
+            color: var(--purple);
+            border: 1px solid var(--purple-medium);
+        }
+
+        .divider {
+            width: 60px;
+            height: 3px;
+            border-radius: 2px;
+            background: var(--grad);
+            margin: 14px auto;
+        }
+
+        /* Grids */
+        .grid2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            width: 100%;
+            max-width: 1100px
+        }
+
+        .grid3 {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 20px;
+            width: 100%;
+            max-width: 1100px
+        }
+
+        .grid4 {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            width: 100%;
+            max-width: 1100px
+        }
+
+        .grid5 {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 14px;
+            width: 100%;
+            max-width: 1100px
+        }
+
+        /* Cards */
+        .card {
+            background: var(--card);
+            border-radius: 16px;
+            padding: 24px;
+            border: 1px solid var(--card-border);
+            box-shadow: var(--shadow-sm);
+            transition: transform .3s, box-shadow .3s;
+        }
+
+        .card:hover {
+            transform: translateY(-3px);
+            box-shadow: var(--shadow-md);
+        }
+
+        .card.purple-border {
+            border-left: 4px solid var(--purple)
+        }
+
+        .card.cyan-border {
+            border-left: 4px solid var(--cyan)
+        }
+
+        .card.amber-border {
+            border-left: 4px solid var(--amber)
+        }
+
+        .card.green-border {
+            border-left: 4px solid var(--green)
+        }
+
+        .card h3 {
+            text-align: left
+        }
+
+        .card p {
+            font-size: .85rem;
+            color: var(--dim);
+            line-height: 1.6
+        }
+
+        /* Stat */
+        .stat {
+            text-align: center;
+            padding: 20px
+        }
+
+        .stat .num {
+            font-size: 2.4rem;
+            font-weight: 800;
+            background: var(--grad);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .stat .label {
+            font-size: .8rem;
+            color: var(--dim);
+            margin-top: 4px
+        }
+
+        /* Layer bars */
+        .layer-bar {
+            width: 100%;
+            max-width: 1000px;
+            padding: 18px 28px;
+            border-radius: 14px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 18px;
+            cursor: default;
+            transition: transform .2s, box-shadow .2s;
+            border: 1px solid transparent;
+        }
+
+        .layer-bar:hover {
+            transform: scale(1.015);
+            box-shadow: var(--shadow-md)
+        }
+
+        .layer-bar .num {
+            font-size: 1.4rem;
+            font-weight: 800;
+            opacity: .6;
+            min-width: 30px
+        }
+
+        .layer-bar .name {
+            font-size: 1rem;
+            font-weight: 700;
+            min-width: 260px
+        }
+
+        .layer-bar .desc {
+            font-size: .82rem;
+            color: var(--text-secondary)
+        }
+
+        .lb-purple {
+            background: var(--purple-light);
+            border-color: var(--purple-medium)
+        }
+
+        .lb-purple .name {
+            color: var(--purple)
+        }
+
+        .lb-cyan {
+            background: var(--cyan-light);
+            border-color: #a5f3fc
+        }
+
+        .lb-cyan .name {
+            color: #0891b2
+        }
+
+        .lb-amber {
+            background: var(--amber-light);
+            border-color: #fde68a
+        }
+
+        .lb-amber .name {
+            color: #d97706
+        }
+
+        .lb-green {
+            background: var(--green-light);
+            border-color: #a7f3d0
+        }
+
+        .lb-green .name {
+            color: #059669
+        }
+
+        /* Image */
+        .img-container {
+            max-width: 720px;
+            width: 100%;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: var(--shadow-lg);
+            margin: 16px 0;
+            border: 1px solid var(--card-border);
+        }
+
+        .img-container img {
+            width: 100%;
+            display: block
+        }
+
+        /* Nav */
+        .nav {
+            position: fixed;
+            bottom: 30px;
+            right: 40px;
+            display: flex;
+            gap: 10px;
+            z-index: 100
+        }
+
+        .nav button {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            border: 1px solid var(--card-border);
+            background: rgba(255, 255, 255, .95);
+            color: var(--text);
+            cursor: pointer;
+            font-size: 1.1rem;
+            transition: all .2s;
+            box-shadow: var(--shadow-sm);
+            backdrop-filter: blur(10px)
+        }
+
+        .nav button:hover {
+            background: var(--purple);
+            color: #fff;
+            border-color: var(--purple)
+        }
+
+        .counter {
+            position: fixed;
+            bottom: 38px;
+            left: 40px;
+            font-size: .75rem;
+            color: var(--dim);
+            z-index: 100
+        }
+
+        /* Flow steps */
+        .flow-step {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin: 7px 0
+        }
+
+        .flow-icon {
+            width: 38px;
+            height: 38px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1rem;
+            font-weight: 700;
+            flex-shrink: 0
+        }
+
+        .flow-text {
+            font-size: .88rem;
+            color: var(--dim)
+        }
+
+        .flow-text strong {
+            color: var(--text)
+        }
+
+        /* Problem cards */
+        .problem-card {
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            border-radius: 14px;
+            padding: 20px 24px;
+            text-align: center;
+        }
+
+        .problem-card .icon {
+            font-size: 2rem;
+            margin-bottom: 8px
+        }
+
+        .problem-card h3 {
+            color: #dc2626;
+            font-size: 1rem
+        }
+
+        .problem-card p {
+            font-size: .82rem;
+            color: #991b1b;
+            line-height: 1.5
+        }
+
+        /* Callout */
+        .callout {
+            max-width: 1000px;
+            width: 100%;
+            padding: 16px 24px;
+            border-radius: 12px;
+            text-align: center;
+            margin-top: 14px;
+        }
+
+        .callout.purple {
+            background: var(--purple-light);
+            border: 1px solid var(--purple-medium)
+        }
+
+        .callout.amber {
+            background: var(--amber-light);
+            border: 1px solid #fde68a
+        }
+
+        .callout.green {
+            background: var(--green-light);
+            border: 1px solid #a7f3d0
+        }
+
+        .callout.cyan {
+            background: var(--cyan-light);
+            border: 1px solid #a5f3fc
+        }
+
+        .callout p {
+            font-size: .85rem;
+            color: var(--text-secondary)
+        }
+
+        .callout strong {
+            color: var(--text)
+        }
+
+        /* Principle pills */
+        .principles {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            justify-content: center;
+            max-width: 900px;
+            margin-top: 16px;
+        }
+
+        .pill {
+            padding: 10px 20px;
+            border-radius: 30px;
+            font-size: .82rem;
+            font-weight: 600;
+            border: 1px solid var(--card-border);
+            background: var(--surface);
+            color: var(--text-secondary);
+            transition: all .2s;
+        }
+
+        .pill:hover {
+            background: var(--purple-light);
+            border-color: var(--purple-medium);
+            color: var(--purple);
+        }
+
+        /* Left align variant */
+        .left-align {
+            align-items: flex-start;
+            text-align: left
+        }
+
+        .left-align h2,
+        .left-align h3 {
+            text-align: left
+        }
+
+        /* Operating model */
+        .model-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 20px;
+            max-width: 1000px;
+            width: 100%;
+            margin-top: 8px;
+        }
+
+        .model-card {
+            border-radius: 16px;
+            padding: 28px;
+            text-align: center;
+            border: 1px solid var(--card-border);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .model-card .emoji {
+            font-size: 2.4rem;
+            margin-bottom: 12px
+        }
+
+        .model-card h3 {
+            text-align: center;
+            font-size: 1.1rem;
+            margin-bottom: 6px
+        }
+
+        .model-card p {
+            font-size: .82rem;
+            color: var(--dim);
+            line-height: 1.6
+        }
+
+        .mc-human {
+            background: linear-gradient(180deg, #fdf4ff, #fff);
+            border-color: #f0abfc
+        }
+
+        .mc-human h3 {
+            color: #a855f7
+        }
+
+        .mc-agent {
+            background: linear-gradient(180deg, #ecfeff, #fff);
+            border-color: #a5f3fc
+        }
+
+        .mc-agent h3 {
+            color: #0891b2
+        }
+
+        .mc-platform {
+            background: linear-gradient(180deg, #eef2ff, #fff);
+            border-color: var(--purple-medium)
+        }
+
+        .mc-platform h3 {
+            color: var(--purple)
+        }
+
+        /* Governance */
+        .gov-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            max-width: 1000px;
+            width: 100%;
+        }
+
+        .gov-card {
+            background: var(--card);
+            border-radius: 16px;
+            padding: 24px;
+            border: 1px solid var(--card-border);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .gov-card h3 {
+            color: var(--purple);
+            font-size: 1rem;
+            margin-bottom: 8px;
+            text-align: left
+        }
+
+        .gov-card p {
+            font-size: .82rem;
+            color: var(--dim);
+            line-height: 1.6
+        }
+
+        .gov-card ul {
+            list-style: none;
+            padding: 0
+        }
+
+        .gov-card li {
+            font-size: .82rem;
+            color: var(--dim);
+            padding: 4px 0 4px 18px;
+            position: relative;
+            line-height: 1.5
+        }
+
+        .gov-card li::before {
+            content: "→";
+            position: absolute;
+            left: 0;
+            color: var(--purple)
+        }
+
+        /* Cover decoration */
+        .cover-deco {
+            position: absolute;
+            width: 400px;
+            height: 400px;
+            border-radius: 50%;
+            filter: blur(120px);
+            opacity: .12;
+            pointer-events: none;
+        }
+
+        .cover-deco.d1 {
+            top: -100px;
+            right: -100px;
+            background: #6366f1
+        }
+
+        .cover-deco.d2 {
+            bottom: -100px;
+            left: -100px;
+            background: #06b6d4
+        }
+    </style>
+</head>
+
+<body>
+    <div class="deck" id="deck">
+
+        <!-- SLIDE 1: Cover -->
+        <div class="slide active" id="s0" style="position:relative">
+            <div class="cover-deco d1"></div>
+            <div class="cover-deco d2"></div>
+            <span class="tag">Strategic Vision 2026</span>
+            <h1>The Self-Evolving Platform</h1>
+            <h2 style="color:var(--dim);font-weight:400;font-size:1.35rem;margin-bottom:8px">Deep AI Integration That
+                Personalizes Every Experience</h2>
+            <div class="divider" style="margin:18px auto"></div>
+            <p class="subtitle">An enterprise platform architecture where AI is not a feature but the foundation — using
+                A2UI protocol to create tailored interfaces for every user, individualizing capabilities automatically
+                in the age of AI Agents.</p>
+        </div>
+
+        <!-- SLIDE 2: The Problem -->
+        <div class="slide" id="s1">
+            <span class="tag">The Problem</span>
+            <h2>Why Current Enterprise Software Fails</h2>
+            <p class="subtitle" style="margin-bottom:24px">Three fundamental barriers prevent enterprises from evolving
+            </p>
+            <div class="grid3">
+                <div class="problem-card">
+                    <div class="icon">🔒</div>
+                    <h3>Static & Expensive</h3>
+                    <p>60-70% of IT budget goes to maintaining legacy systems — not innovation. Software stops evolving
+                        the day it's delivered.</p>
+                </div>
+                <div class="problem-card">
+                    <div class="icon">🧩</div>
+                    <h3>AI as an Add-On</h3>
+                    <p>95% of AI pilots fail because AI is bolted on top of rigid architecture, not integrated into the
+                        platform's DNA.</p>
+                </div>
+                <div class="problem-card">
+                    <div class="icon">🌫️</div>
+                    <h3>Nobody Understands the Current State</h3>
+                    <p>After digital transformation, enterprises can't change because no one fully understands the
+                        existing applications, data flows, and dependencies across systems.</p>
+                </div>
+            </div>
+            <div class="callout purple" style="margin-top:20px">
+                <p><strong>The Core Issue:</strong> Change is the hardest problem in enterprise software — not because
+                    of technology, but because of <strong>lost institutional knowledge</strong> about how current
+                    systems actually work.</p>
+            </div>
+        </div>
+
+        <!-- SLIDE 3: Vision -->
+        <div class="slide" id="s2">
+            <span class="tag">Our Vision</span>
+            <h2>Software as a Living System</h2>
+            <p class="subtitle" style="margin-bottom:20px">What if your enterprise platform could understand, learn, and
+                evolve — continuously?</p>
+            <div class="grid2" style="max-width:1000px">
+                <div class="card purple-border">
+                    <h3 style="color:var(--purple)">🧠 Self-Understanding</h3>
+                    <p>AI comprehends your business domain like an expert through an Ontology-Driven Knowledge Layer —
+                        no more lost institutional knowledge.</p>
+                </div>
+                <div class="card cyan-border">
+                    <h3 style="color:#0891b2">🎨 Self-Adapting UI</h3>
+                    <p>AI generates personalized interfaces for every user via A2UI — each person gets exactly the
+                        experience they need, automatically.</p>
+                </div>
+                <div class="card amber-border">
+                    <h3 style="color:#d97706">⚙️ Self-Orchestrating</h3>
+                    <p>Multi-agent workflows coordinate across functions automatically — complex processes that once
+                        took weeks now configure in minutes.</p>
+                </div>
+                <div class="card green-border">
+                    <h3 style="color:#059669">💾 Self-Managing Data</h3>
+                    <p>Multi-modal data architecture grows organically — the right storage paradigm for every type of
+                        data, no painful compromises.</p>
+                </div>
+            </div>
+            <div class="callout purple" style="margin-top:18px">
+                <p>🔑 <strong>Key Shift:</strong> From static tool → <strong>living system</strong> that continuously
+                    learns and evolves alongside your organization.</p>
+            </div>
+        </div>
+
+        <!-- SLIDE 4: Operating Model -->
+        <div class="slide" id="s3">
+            <span class="tag">Operating Model</span>
+            <h2>Human + Agent + Platform</h2>
+            <p class="subtitle" style="margin-bottom:20px">A new operating paradigm where humans lead strategy and AI
+                executes operations</p>
+            <div class="model-row">
+                <div class="model-card mc-human">
+                    <div class="emoji">👤</div>
+                    <h3>Humans Define</h3>
+                    <p>Strategic objectives, ethical boundaries, organizational culture, business guardrails</p>
+                </div>
+                <div class="model-card mc-agent">
+                    <div class="emoji">🤖</div>
+                    <h3>AI Agents Execute</h3>
+                    <p>Operational processes, data analysis, routine decisions, cross-functional coordination</p>
+                </div>
+                <div class="model-card mc-platform">
+                    <div class="emoji">🔄</div>
+                    <h3>Platform Ensures</h3>
+                    <p>Full traceability, explainability, reversibility — every action is auditable and governed</p>
+                </div>
+            </div>
+            <div class="divider" style="margin:24px auto 16px"></div>
+            <p style="font-size:.9rem;color:var(--dim);text-align:center;margin-bottom:12px;font-weight:500">Five Design
+                Principles</p>
+            <div class="principles">
+                <div class="pill">🧬 Ontology-First</div>
+                <div class="pill">💬 Intent-Over-Configuration</div>
+                <div class="pill">🔄 Evolution-by-Design</div>
+                <div class="pill">🛡️ Deterministic Governance</div>
+                <div class="pill">👁️ Human-on-the-Loop</div>
+            </div>
+        </div>
+
+        <!-- SLIDE 5: Architecture Overview -->
+        <div class="slide" id="s4">
+            <span class="tag">Architecture</span>
+            <h2>The Four-Layer Model</h2>
+            <p class="subtitle" style="margin-bottom:16px">Four independently evolving layers, connected through
+                well-defined protocols</p>
+            <div class="layer-bar lb-purple">
+                <div class="num">1</div>
+                <div class="name">Ontology-Driven Knowledge</div>
+                <div class="desc">The "semantic brain" — Domain Ontology · Semantic Layer · Knowledge Graph · Rules
+                    Engine · Cognitive Interface</div>
+            </div>
+            <div class="layer-bar lb-cyan">
+                <div class="num">2</div>
+                <div class="name">Adaptive UI</div>
+                <div class="desc">Core UI (30%) · Configurable UI (60%) · Generative UI via A2UI (10%) — right
+                    interface, right user, right time</div>
+            </div>
+            <div class="layer-bar lb-amber">
+                <div class="num">3</div>
+                <div class="name">Intelligent Backend</div>
+                <div class="desc">Headless API · Workflow Engine · Agent Orchestration · Policy & Governance —
+                    API-first, event-based, flexible</div>
+            </div>
+            <div class="layer-bar lb-green">
+                <div class="num">4</div>
+                <div class="name">Multi-Modal Data</div>
+                <div class="desc">Relational · Flexible · Graph · Metadata & Audit · AI-Native — right storage for every
+                    data type</div>
+            </div>
+            <div class="callout purple" style="margin-top:16px">
+                <p>Each layer evolves <strong>independently</strong> while contributing to the intelligence of the whole
+                    system.</p>
+            </div>
+        </div>
+
+        <!-- SLIDE 6: Layer 1 - Ontology -->
+        <div class="slide left-align" id="s5">
+            <span class="tag">Layer 1</span>
+            <h2>Ontology-Driven Knowledge Layer</h2>
+            <p style="color:var(--dim);font-size:.9rem;margin-bottom:18px;max-width:900px">The "semantic brain" of the
+                enterprise — enabling AI Agents to understand your business domain as deeply as a subject matter expert.
+            </p>
+            <div class="grid5" style="max-width:1100px">
+                <div class="card purple-border">
+                    <h3 style="font-size:.92rem;color:var(--purple)">Domain Ontology</h3>
+                    <p>Formal business entity models — entities, attributes, relationships, constraints</p>
+                </div>
+                <div class="card purple-border">
+                    <h3 style="font-size:.92rem;color:var(--purple)">Semantic Layer</h3>
+                    <p>Business language ↔ technical data mapping — queries in business terms</p>
+                </div>
+                <div class="card purple-border">
+                    <h3 style="font-size:.92rem;color:var(--purple)">Knowledge Graph</h3>
+                    <p>Entity relationships enabling multi-hop reasoning and GraphRAG</p>
+                </div>
+                <div class="card purple-border">
+                    <h3 style="font-size:.92rem;color:var(--purple)">Rules Engine</h3>
+                    <p>Encoded hard guardrails — policies that AI by design cannot bypass</p>
+                </div>
+                <div class="card purple-border">
+                    <h3 style="font-size:.92rem;color:var(--purple)">Cognitive Interface</h3>
+                    <p>"SME-as-a-Service" — API exposing domain knowledge to any AI Agent</p>
+                </div>
+            </div>
+            <div class="callout purple" style="max-width:1100px;margin-top:14px">
+                <p>🔑 <strong>Without this layer,</strong> AI is surface-level automation. <strong>With it,</strong> AI
+                    becomes a domain-aware, context-sensitive decision partner with zero hallucination risk.</p>
+            </div>
+        </div>
+
+        <!-- SLIDE 7: Layer 2 - UI -->
+        <div class="slide" id="s6">
+            <span class="tag">Layer 2</span>
+            <h2>Adaptive UI — The 30-60-10 Model</h2>
+            <p style="color:var(--dim);font-size:.9rem;margin-bottom:18px;max-width:900px;text-align:center">The right
+                interface, to the right user, at the right time — balancing consistency with flexibility.</p>
+            <div class="grid3" style="max-width:1000px">
+                <div class="card cyan-border">
+                    <h3 style="color:#0891b2">Core UI (Fixed) — 30%</h3>
+                    <p>Navigation, design system, brand identity. Built by developers for maximum quality,
+                        accessibility, and performance.</p>
+                </div>
+                <div class="card cyan-border">
+                    <h3 style="color:#0891b2">Configurable UI — 60%</h3>
+                    <p>JSON/Template-driven views. Admins customize list pages, detail views, forms, dashboards — zero
+                        code deployment needed.</p>
+                </div>
+                <div class="card cyan-border">
+                    <h3 style="color:#0891b2">Generative UI (A2UI) — 10%</h3>
+                    <p>AI Agents create personalized interfaces on-demand per user intent — handling unpredictable,
+                        long-tail needs automatically.</p>
+                </div>
+            </div>
+            <div style="margin-top:16px;display:flex;gap:16px;justify-content:center;flex-wrap:wrap">
+                <div class="pill" style="background:var(--cyan-light);border-color:#a5f3fc;color:#0891b2">
+                    <strong>A2UI</strong> — UI Structure (Google)
+                </div>
+                <div class="pill" style="background:var(--cyan-light);border-color:#a5f3fc;color:#0891b2">
+                    <strong>AG-UI</strong> — Event Transport
+                </div>
+                <div class="pill" style="background:var(--cyan-light);border-color:#a5f3fc;color:#0891b2">
+                    <strong>MCP</strong> — Data Access
+                </div>
+            </div>
+            <div class="callout cyan" style="margin-top:14px">
+                <p><strong>90% of requirements</strong> met without code deployment. Every user gets a <strong>tailored
+                        experience</strong> — from fixed professional screens to AI-generated personalized views.</p>
+            </div>
+        </div>
+
+        <!-- SLIDE 8: Layer 3 - Backend -->
+        <div class="slide left-align" id="s7">
+            <span class="tag">Layer 3</span>
+            <h2>Intelligent Backend</h2>
+            <p style="color:var(--dim);font-size:.9rem;margin-bottom:18px;max-width:900px">API-First · Headless ·
+                Event-Based · Workflow-Ready · Flexible — from microservices to multi-agent orchestration.</p>
+            <div class="grid4" style="max-width:1100px">
+                <div class="card amber-border">
+                    <h3 style="font-size:.92rem;color:#d97706">Headless API</h3>
+                    <p>API-first architecture powered by microservices — stateless, idempotent, serving all clients</p>
+                </div>
+                <div class="card amber-border">
+                    <h3 style="font-size:.92rem;color:#d97706">Workflow Engine</h3>
+                    <p>Visual workflow designer with event-driven orchestration — zero-code process customization</p>
+                </div>
+                <div class="card amber-border">
+                    <h3 style="font-size:.92rem;color:#d97706">Agent Orchestration</h3>
+                    <p>Multi-agent teams coordinate complex cross-functional processes — agents collaborate like a team
+                    </p>
+                </div>
+                <div class="card amber-border">
+                    <h3 style="font-size:.92rem;color:#d97706">Policy & Governance</h3>
+                    <p>Agent RBAC, comprehensive audit trails, kill switches, Human-in-the-Loop gates for high-risk
+                        actions</p>
+                </div>
+            </div>
+            <div class="callout amber" style="max-width:1100px;margin-top:14px">
+                <p>⚡ <strong>Impact:</strong> Customer requests "3-level approval for leave > 5 days" → Traditional:
+                    2-week release cycle. <strong>SEP: Configure & deploy instantly.</strong></p>
+            </div>
+        </div>
+
+        <!-- SLIDE 9: Layer 4 - Data + Adoption Strategy -->
+        <div class="slide left-align" id="s8">
+            <span class="tag">Layer 4 + Adoption Strategy</span>
+            <h2>Multi-Modal Data & Cognitive Intelligence</h2>
+            <p style="color:var(--dim);font-size:.9rem;margin-bottom:16px;max-width:900px">The right storage paradigm
+                for every type of data — and the entry point for enterprise adoption.</p>
+            <div class="grid5" style="max-width:1100px">
+                <div class="card green-border">
+                    <h3 style="font-size:.88rem;color:#059669">Relational Store</h3>
+                    <p>ACID-compliant, strict schema, full audit trail for transactional data</p>
+                </div>
+                <div class="card green-border">
+                    <h3 style="font-size:.88rem;color:#059669">Flexible Store</h3>
+                    <p>Schema-on-read, dynamic extension without migration for custom fields</p>
+                </div>
+                <div class="card green-border">
+                    <h3 style="font-size:.88rem;color:#059669">Graph Store</h3>
+                    <p>Relationship-first, multi-hop traversal — <strong>strategic for Ontology</strong></p>
+                </div>
+                <div class="card green-border">
+                    <h3 style="font-size:.88rem;color:#059669">Metadata & Audit</h3>
+                    <p>Data catalog + lineage — every AI decision traceable to its source</p>
+                </div>
+                <div class="card green-border">
+                    <h3 style="font-size:.88rem;color:#059669">AI-Native Store</h3>
+                    <p>Vector embeddings, semantic search, RAG-optimized for AI inference</p>
+                </div>
+            </div>
+            <div class="callout green" style="max-width:1100px;margin-top:14px">
+                <p>🚀 <strong>Adoption Path:</strong> Layer 4 + Layer 1 first — connect existing data (read-only),
+                    reduce fragmentation, build <strong>"Cognitive Intelligence"</strong> for AI-first management
+                    reports and decision support. Then Layer 3 orchestrates → Layer 2 personalizes automatically.</p>
+            </div>
+            <div style="display:flex;gap:12px;margin-top:12px;max-width:1100px">
+                <div class="pill"
+                    style="background:var(--green-light);border-color:#a7f3d0;color:#059669;font-size:.78rem">
+                    Phase 1: <strong>Understand</strong> (L4+L1) — Cognitive Intelligence
+                </div>
+                <div class="pill"
+                    style="background:var(--amber-light);border-color:#fde68a;color:#d97706;font-size:.78rem">
+                    Phase 2: <strong>Orchestrate</strong> (L3) — Workflow & Agents
+                </div>
+                <div class="pill"
+                    style="background:var(--cyan-light);border-color:#a5f3fc;color:#0891b2;font-size:.78rem">
+                    Phase 3: <strong>Personalize</strong> (L2) — AI-Driven UI
+                </div>
+            </div>
+        </div>
+
+        <!-- SLIDE 10: Governance & Trust -->
+        <div class="slide" id="s9">
+            <span class="tag">Governance & Trust</span>
+            <h2>The Safety Architecture</h2>
+            <p class="subtitle" style="margin-bottom:20px">Full control and trust — AI operates within hard,
+                deterministic boundaries</p>
+            <div class="gov-grid">
+                <div class="gov-card">
+                    <h3>🛡️ Agentic Governance Framework</h3>
+                    <ul>
+                        <li><strong>Identity:</strong> Each agent has a unique Non-Human Identity (NHI) with specific
+                            permissions</li>
+                        <li><strong>Lifecycle:</strong> Formal approval → deployment → monitoring → retirement</li>
+                        <li><strong>Audit Trail:</strong> Every action logged with reasoning chain and outcome</li>
+                        <li><strong>Guardrails:</strong> Rules Engine prevents regulatory violations by design</li>
+                        <li><strong>Kill Switch:</strong> Immediate shutdown for anomalous agent behavior</li>
+                        <li><strong>HITL Gates:</strong> High-risk actions require human approval</li>
+                    </ul>
+                </div>
+                <div class="gov-card">
+                    <h3>🧪 VIRF — Trustworthy AI Framework</h3>
+                    <p style="margin-bottom:10px">Dual Process Theory applied to AI safety:</p>
+                    <ul>
+                        <li><strong>System 1 (LLM Planner):</strong> Fast, creative — proposes actions and interfaces
+                        </li>
+                        <li><strong>System 2 (Logic Verifier):</strong> Slow, rigorous — checks proposals against
+                            ontology and rules</li>
+                        <li><strong>Result:</strong> 0% dangerous actions while maintaining highest task completion
+                            rates</li>
+                    </ul>
+                    <div
+                        style="margin-top:12px;padding:10px 14px;background:#f0fdf4;border-radius:10px;border:1px solid #a7f3d0">
+                        <p style="font-size:.78rem;color:#059669;font-weight:600;text-align:center">Defense-in-Depth: AI
+                            Identity → Runtime Monitoring → Persistence Boundary → Action Guards → Data Encryption</p>
+                    </div>
+                </div>
+            </div>
+            <div class="callout purple" style="margin-top:16px">
+                <p>🔐 <strong>Key Principle:</strong> AI is powerful but governed. Every decision is traceable, every
+                    action is explainable, and every operation is reversible.</p>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Navigation -->
+    <div class="counter" id="counter">1 / 10</div>
+    <div class="nav">
+        <button onclick="go(-1)" title="Previous">←</button>
+        <button onclick="go(1)" title="Next">→</button>
+    </div>
+
+    <script>
+        const slides = document.querySelectorAll('.slide');
+        let cur = 0;
+
+        function go(d) {
+            slides[cur].classList.remove('active');
+            cur = Math.max(0, Math.min(slides.length - 1, cur + d));
+            slides[cur].classList.add('active');
+            document.getElementById('counter').textContent = `${cur + 1} / ${slides.length}`;
+        }
+
+        document.addEventListener('keydown', e => {
+            if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); go(1); }
+            if (e.key === 'ArrowLeft') { e.preventDefault(); go(-1); }
+            if (e.key === 'Home') { e.preventDefault(); go(-cur); }
+            if (e.key === 'End') { e.preventDefault(); go(slides.length - 1 - cur); }
+        });
+
+        // Touch support
+        let touchStartX = 0;
+        document.addEventListener('touchstart', e => touchStartX = e.changedTouches[0].screenX);
+        document.addEventListener('touchend', e => {
+            const diff = touchStartX - e.changedTouches[0].screenX;
+            if (Math.abs(diff) > 50) go(diff > 0 ? 1 : -1);
+        });
+    </script>
+</body>
+
+</html>

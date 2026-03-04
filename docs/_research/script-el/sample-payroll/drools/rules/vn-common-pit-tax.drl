@@ -1,0 +1,188 @@
+// ============================================================
+// VN COMMON PIT TAX RULES
+// Package: vn.xtalent.payroll.rules.vn.common
+// Engine: Drools 8 — xTalent HCM Payroll Engine
+// Phiên bản: 1.0 | Ngày: 2025-03-04
+// Tham chiếu: TT111/2013/TT-BTC, Luật Thuế TNCN sửa đổi 2012
+// ============================================================
+
+package vn.xtalent.payroll.rules.vn.common;
+
+import vn.xtalent.payroll.model.*;
+import vn.xtalent.payroll.functions.BuiltinFunctions;
+import java.math.BigDecimal;
+
+// ─────────────────────────────────────────────────────────
+// RULE: Calculate TAXABLE_INCOME — Office
+// Mục đích: Tính thu nhập chịu thuế TNCN cho văn phòng
+// Loại miễn: TRANSPORT (≤1.5M) + LUNCH (≤730k) + PHONE (≤1M)
+// Salience: 50 (sau BHXH, trước PIT)
+// ─────────────────────────────────────────────────────────
+rule "VN_PIT_001 — Taxable Income Office"
+    agenda-group "tax"
+    salience 50
+    when
+        $emp: Employee(status == "ACTIVE", employeeGroup == "OFFICE")
+        $gross: PayrollElement(code == "GROSS_SALARY", employeeId == $emp.employeeId)
+        $bhxh: PayrollElement(code == "BHXH_EMPLOYEE", employeeId == $emp.employeeId)
+        $bhyt: PayrollElement(code == "BHYT_EMPLOYEE", employeeId == $emp.employeeId)
+        $bhtn: PayrollElement(code == "BHTN_EMPLOYEE", employeeId == $emp.employeeId)
+        not PayrollElement(code == "TAXABLE_INCOME", employeeId == $emp.employeeId)
+    then
+        BigDecimal transportAmt = formulaEngine.evaluate(
+            "policyService.getAllowanceConfig('TRANSPORT_ALLOWANCE', employee.jobGrade)",
+            new EvalContext(drools).with("employee", $emp)
+        );
+        BigDecimal transportExempt = transportAmt.min(new BigDecimal("1500000"));
+        BigDecimal lunchExempt     = new BigDecimal("730000");
+        BigDecimal phoneExempt     = new BigDecimal("1000000"); // if applicable
+
+        BigDecimal personalDed  = new BigDecimal("11000000");
+        BigDecimal dependentDed = new BigDecimal("4400000")
+            .multiply(new BigDecimal($emp.getTaxInfo().getDependents()));
+
+        BigDecimal taxable = $gross.getValue()
+            .subtract(transportExempt)
+            .subtract(lunchExempt)
+            .subtract($bhxh.getValue())
+            .subtract($bhyt.getValue())
+            .subtract($bhtn.getValue())
+            .subtract(personalDed)
+            .subtract(dependentDed)
+            .max(BigDecimal.ZERO);
+
+        PayrollElement el = new PayrollElement("TAXABLE_INCOME", $emp.employeeId, taxable, "...", 9);
+        el.addInput("grossSalary", $gross.getValue());
+        el.addInput("transportExempt", transportExempt);
+        el.addInput("lunchExempt", lunchExempt);
+        el.addInput("personalDeduction", personalDed);
+        el.addInput("dependentDeduction", dependentDed);
+        insert(el);
+end
+
+// ─────────────────────────────────────────────────────────
+// RULE: Calculate TAXABLE_INCOME — Doctor
+// ★★ PHỨC TẠP: 3 lớp miễn thuế khác nhau ★★
+// Layer 1: MEDICAL_PROF_ALLOWANCE — miễn toàn bộ
+// Layer 2: HAZARD_TAX_EXEMPT     — miễn phần ≤ 3.6M
+// Layer 3: HAZARD_TAXABLE        — KHÔNG trừ (vẫn chịu thuế)
+// ─────────────────────────────────────────────────────────
+rule "VN_PIT_002 — Taxable Income Doctor (3-layer Tax Exempt)"
+    agenda-group "tax"
+    salience 50
+    when
+        $emp: Employee(status == "ACTIVE", employeeGroup == "DOCTOR")
+        $gross:    PayrollElement(code == "GROSS_SALARY",           employeeId == $emp.employeeId)
+        $medProf:  PayrollElement(code == "MEDICAL_PROF_ALLOWANCE", employeeId == $emp.employeeId)
+        $hazExempt:PayrollElement(code == "HAZARD_TAX_EXEMPT",      employeeId == $emp.employeeId)
+        $bhxh: PayrollElement(code == "BHXH_EMPLOYEE", employeeId == $emp.employeeId)
+        $bhyt: PayrollElement(code == "BHYT_EMPLOYEE", employeeId == $emp.employeeId)
+        $bhtn: PayrollElement(code == "BHTN_EMPLOYEE", employeeId == $emp.employeeId)
+        not PayrollElement(code == "TAXABLE_INCOME", employeeId == $emp.employeeId)
+    then
+        BigDecimal personalDed  = new BigDecimal("11000000");
+        BigDecimal dependentDed = new BigDecimal("4400000")
+            .multiply(new BigDecimal($emp.getTaxInfo().getDependents()));
+
+        // CRITICAL: Trừ medProf (full exempt) + hazardExempt (partial exempt)
+        // KHÔNG trừ hazardTaxable vì đã nằm trong GROSS và phải chịu thuế
+        BigDecimal taxable = $gross.getValue()
+            .subtract($medProf.getValue())      // Layer 1: full exempt
+            .subtract($hazExempt.getValue())    // Layer 2: partial exempt (≤3.6M)
+            // Layer 3: HAZARD_TAXABLE không trừ → còn trong gross → chịu thuế
+            .subtract($bhxh.getValue())
+            .subtract($bhyt.getValue())
+            .subtract($bhtn.getValue())
+            .subtract(personalDed)
+            .subtract(dependentDed)
+            .max(BigDecimal.ZERO);
+
+        PayrollElement el = new PayrollElement("TAXABLE_INCOME", $emp.employeeId, taxable, "...", 9);
+        el.addInput("grossSalary", $gross.getValue());
+        el.addInput("medProfExempt", $medProf.getValue());
+        el.addInput("hazardExempt", $hazExempt.getValue());
+        el.addNote("HAZARD_TAXABLE not deducted — remains taxable within Gross");
+        insert(el);
+        // EMP-004 audit trail: hazardTaxable = 6,000,000 included in taxable base
+end
+
+// ─────────────────────────────────────────────────────────
+// RULE: Calculate TAXABLE_INCOME — Worker
+// Đơn giản hơn: không có medical/hazard deductions
+// ─────────────────────────────────────────────────────────
+rule "VN_PIT_003 — Taxable Income Worker"
+    agenda-group "tax"
+    salience 50
+    when
+        $emp: Employee(status == "ACTIVE", employeeGroup == "WORKER")
+        $gross: PayrollElement(code == "GROSS_SALARY", employeeId == $emp.employeeId)
+        $bhxh: PayrollElement(code == "BHXH_EMPLOYEE", employeeId == $emp.employeeId)
+        $bhyt: PayrollElement(code == "BHYT_EMPLOYEE", employeeId == $emp.employeeId)
+        $bhtn: PayrollElement(code == "BHTN_EMPLOYEE", employeeId == $emp.employeeId)
+        not PayrollElement(code == "TAXABLE_INCOME", employeeId == $emp.employeeId)
+    then
+        BigDecimal personalDed  = new BigDecimal("11000000");
+        BigDecimal dependentDed = new BigDecimal("4400000")
+            .multiply(new BigDecimal($emp.getTaxInfo().getDependents()));
+
+        BigDecimal taxable = $gross.getValue()
+            .subtract($bhxh.getValue())
+            .subtract($bhyt.getValue())
+            .subtract($bhtn.getValue())
+            .subtract(personalDed)
+            .subtract(dependentDed)
+            .max(BigDecimal.ZERO);
+
+        insert(new PayrollElement("TAXABLE_INCOME", $emp.employeeId, taxable, "...", 9));
+        // EMP-005: 6,951,880 - 729,947 - 11M = negative → floor 0 → PIT=0
+end
+
+// ─────────────────────────────────────────────────────────
+// RULE: Calculate PIT_TAX (Progressive — 7 Brackets)
+// ★★ QUAN TRỌNG: progressiveTax() là BuiltinFunction (không phải inline loop) ★★
+// Drools không thể dùng loop trong condition/action theo design nguyên lý
+// → Gọi Java BuiltinFunctions.progressiveTax() được đăng ký vào MVEL whitelist
+// ─────────────────────────────────────────────────────────
+rule "VN_PIT_004 — Calculate PIT Tax (7-bracket Progressive)"
+    agenda-group "tax"
+    salience 40
+    when
+        $emp: Employee(status == "ACTIVE")
+        $taxable: PayrollElement(code == "TAXABLE_INCOME", employeeId == $emp.employeeId)
+        $brackets: TaxBracketConfig(countryCode == "VN", taxYear == "2024")
+        not PayrollElement(code == "PIT_TAX", employeeId == $emp.employeeId)
+    then
+        BigDecimal pitTax = BigDecimal.ZERO;
+        if ($taxable.getValue().compareTo(BigDecimal.ZERO) > 0) {
+            pitTax = BuiltinFunctions.progressiveTax($taxable.getValue(), $brackets.getBrackets());
+        }
+        PayrollElement el = new PayrollElement("PIT_TAX", $emp.employeeId, pitTax, "progressiveTax(TAXABLE_INCOME)", 10);
+        el.addInput("taxableIncome", $taxable.getValue());
+        el.addInput("taxBrackets", "VN_2024_7_BRACKETS");
+        insert(el);
+end
+
+// ─────────────────────────────────────────────────────────
+// RULE: Calculate NET_SALARY (Dùng chung)
+// Chạy SAU KHI tất cả deductions đã được insert
+// ─────────────────────────────────────────────────────────
+rule "VN_NET_001 — Calculate Net Salary"
+    agenda-group "net-calculation"
+    salience 10
+    when
+        $emp: Employee(status == "ACTIVE")
+        $gross: PayrollElement(code == "GROSS_SALARY",  employeeId == $emp.employeeId)
+        $bhxh:  PayrollElement(code == "BHXH_EMPLOYEE", employeeId == $emp.employeeId)
+        $bhyt:  PayrollElement(code == "BHYT_EMPLOYEE", employeeId == $emp.employeeId)
+        $bhtn:  PayrollElement(code == "BHTN_EMPLOYEE", employeeId == $emp.employeeId)
+        $pit:   PayrollElement(code == "PIT_TAX",       employeeId == $emp.employeeId)
+        not PayrollElement(code == "NET_SALARY", employeeId == $emp.employeeId)
+    then
+        BigDecimal net = $gross.getValue()
+            .subtract($bhxh.getValue())
+            .subtract($bhyt.getValue())
+            .subtract($bhtn.getValue())
+            .subtract($pit.getValue());
+        insert(new PayrollElement("NET_SALARY", $emp.employeeId, net,
+            "GROSS - BHXH - BHYT - BHTN - PIT", 11));
+end

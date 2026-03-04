@@ -1,0 +1,212 @@
+// ============================================================
+// WORKER FORMULAS — Công nhân lương sản phẩm (Piece-Rate)
+// Engine: Drools 8 / MVEL — xTalent HCM Payroll Engine
+// Phiên bản: 1.0 | Ngày: 2025-03-04
+// Áp dụng: EMP-005 (Ca ngày cố định), EMP-006 (Luân ca 3 ca)
+//
+// ★ ĐIỂM PHỨC TẠP CHÍNH:
+//   1. Lương sản phẩm thay vì fixed (dynamic input)
+//   2. Quality tier (bonus/penalty)
+//   3. Ca đêm xác định ĐẦU CA từ lịch tháng
+//   4. Floor enforcement tại GROSS ≥ Min Wage Vùng 1
+//   5. OT ca đêm cuối tuần = 2 khoản cộng gộp
+// ============================================================
+
+
+// ─────────────────────────────────────────────────────────
+// ELEMENT: PIECE_RATE_SALARY
+// Lương sản phẩm = số SP đạt chất lượng × đơn giá
+// Input facts:  qualityPassedQuantity (int), productCode (String)
+// Output fact:  pieceRateSalary (BigDecimal)
+// ─────────────────────────────────────────────────────────
+// DSL:
+//   qualityPassedQty * lookup(PIECE_RATE_TABLE, productCode)
+//
+// MVEL Compiled:
+new java.math.BigDecimal(qualityPassedQuantity)
+    .multiply(policyService.getUnitPrice(productCode))
+
+// EMP-005 (ASM-TYPE-A, qualityPassed=558, unitPrice=12,000):
+//   PIECE_RATE = 558 × 12,000 = 6,696,000
+// EMP-006 (ASM-TYPE-B, qualityPassed=383, unitPrice=18,500):
+//   PIECE_RATE = 383 × 18,500 = 7,085,500
+
+// NOTE: SP lỗi (22 sp và 7 cụm) không được đưa vào tính toán
+// qualityPassedQuantity = totalProduced × qualityRate (sau QC scan)
+
+
+// ─────────────────────────────────────────────────────────
+// ELEMENT: QUALITY_BONUS
+// Thưởng/phạt chất lượng theo tỷ lệ đạt
+// Input facts:  pieceRateSalary, qualityRate
+// Output fact:  qualityBonus (BigDecimal) — có thể âm!
+// ─────────────────────────────────────────────────────────
+// DSL:
+//   when qualityRate >= 0.98 then PIECE_RATE_SALARY * 0.05
+//   when qualityRate >= 0.95 then PIECE_RATE_SALARY * 0.03
+//   when qualityRate < 0.90  then PIECE_RATE_SALARY * (-0.05)
+//   else 0
+//
+// MVEL Compiled:
+qualityRate >= 0.98 ? pieceRateSalary.multiply(new java.math.BigDecimal("0.05")) :
+qualityRate >= 0.95 ? pieceRateSalary.multiply(new java.math.BigDecimal("0.03")) :
+qualityRate <  0.90 ? pieceRateSalary.multiply(new java.math.BigDecimal("-0.05")) :
+java.math.BigDecimal.ZERO
+
+// EMP-005 (qualityRate=0.9621): Tier2 → 6,696,000 × 3% = +200,880
+// EMP-006 (qualityRate=0.9821): Tier1 → 7,085,500 × 5% = +354,275
+//
+// Guard clause trong Drools: qualityBonus phải được inserted trước GROSS_SALARY rule
+// Nếu penalty đưa pieceRate + qualityBonus âm → không giảm dưới 0 (guard ở GROSS)
+
+
+// ─────────────────────────────────────────────────────────
+// ELEMENT: NIGHT_SHIFT_ALLOWANCE (Worker)
+// ★★ PHỨC TẠP: Ca đêm xác định từ ĐẦU CA (≥22h) trong lịch tháng ★★
+// Input facts:  nightShiftCount (int), baseSalary, standardWorkDays
+// Output fact:  nightShiftAllowance (BigDecimal)
+//
+// nightShiftCount được tính bởi pre-processing rule trong Drools TRƯỚC khi
+// rule này chạy. Rule đọc shift schedule, đếm ca có shiftStart ≥ "22:00"
+// ─────────────────────────────────────────────────────────
+// DSL:
+//   nightShiftCount * (BASE_SALARY / standardWorkDays) * 0.30
+//
+// MVEL Compiled:
+new java.math.BigDecimal(nightShiftCount)
+    .multiply(
+        baseSalary.divide(
+            new java.math.BigDecimal(standardWorkDays),
+            10, java.math.RoundingMode.HALF_UP
+        )
+    )
+    .multiply(new java.math.BigDecimal("0.30"))
+
+// EMP-005 (nightShiftCount=0): 0 × ... = 0 (ca ngày toàn thời)
+// EMP-006 (nightShiftCount=6):
+//   6 × (6,500,000/26) × 0.30 = 6 × 250,000 × 0.30 = 450,000
+//
+// Source: BLLĐ 2019 Điều 98 — tối thiểu 30% so với ca ngày
+
+
+// ─────────────────────────────────────────────────────────
+// ELEMENT: OT_200_NIGHT (EMP-006 — Ca đêm cuối tuần)
+// ★★ PHỨC TẠP: OT cuối tuần + ca đêm = 2 khoản cộng gộp ★★
+//   Khoản 1: OT 200% (vì là ngày nghỉ cuối tuần)
+//   Khoản 2: Night premium 30% (vì là ca đêm)
+//  → Engine hạch toán 2 elements khác nhau, KHÔNG gộp làm 1
+// Input facts:  baseSalary, standardWorkDays, otHours200Night
+// ─────────────────────────────────────────────────────────
+// MVEL Compiled (Khoản 1 — OT_200):
+baseSalary
+    .divide(new java.math.BigDecimal(standardWorkDays), 10, java.math.RoundingMode.HALF_UP)
+    .divide(new java.math.BigDecimal("8"), 10, java.math.RoundingMode.HALF_UP)
+    .multiply(new java.math.BigDecimal(otHours200))
+    .multiply(new java.math.BigDecimal("2.0"))
+
+// Khoản 2 (NIGHT_SHIFT_ALLOWANCE cho ca OT đó) được insert qua rule riêng:
+// → Drools rule "Worker Night OT Premium" sẽ detect ca đêm cuối tuần
+//   và insert thêm night premium = (BASE/days/8 × 8h) × 30%
+
+// EMP-006 (OT Chủ nhật ca đêm, 8h, base=6.5M):
+//   OT_200 = (6.5M/26/8) × 8h × 2.0 = 31,250 × 8 × 2 = 500,000
+//   NIGHT_PREMIUM (ca OT đó) = 31,250 × 8 × 0.30 = 75,000
+//   TOTAL OT ca đêm CN: 575,000 (hạch toán ở 2 elements)
+
+
+// ─────────────────────────────────────────────────────────
+// ELEMENT: GROSS_SALARY — Công nhân
+// ★★ PHỨC TẠP: Có floor enforcement tại REGIONAL_MIN_WAGE ★★
+// Áp Min Wage vào GROSS (theo confirm của product owner)
+// Input facts:  pieceRateSalary, qualityBonus, nightShiftAllowance,
+//               seniorityAllowance, ot200, regionalMinWage
+// ─────────────────────────────────────────────────────────
+// DSL:
+//   max(
+//     PIECE_RATE_SALARY + QUALITY_BONUS + NIGHT_SHIFT_ALLOWANCE
+//     + SENIORITY_ALLOWANCE + OT_200,
+//     REGIONAL_MIN_WAGE_ZONE1
+//   )
+//
+// MVEL Compiled:
+pieceRateSalary
+    .add(qualityBonus)
+    .add(nightShiftAllowance)
+    .add(seniorityAllowance)
+    .add(ot200)
+    .max(policyService.getMinWage("ZONE_1"))
+
+// EMP-005:
+//   raw = 6,696,000 + 200,880 + 0 + 55,000 + 0 = 6,951,880
+//   GROSS = max(6,951,880, 4,960,000) = 6,951,880 (không cần floor ✓)
+
+// EMP-006:
+//   raw = 7,085,500 + 354,275 + 450,000 + 292,500 + 500,000 + 75,000 = 8,757,275
+//   GROSS = max(8,757,275, 4,960,000) = 8,757,275 (không cần floor ✓)
+
+// FLOOR TEST CASE (scenario):
+//   Nếu worker chỉ sản xuất 200 SP (piece=2.4M) → raw=2.5M
+//   GROSS = max(2,500,000, 4,960,000) = 4,960,000
+//   BHXH_BASE = min(4,960,000, 46,800,000) = 4,960,000
+//   → Đảm bảo BHXH được tính đúng trên min wage, không trên raw thấp
+//
+// Drools implementation NOTE:
+//   Cần "salience" rule ưu tiên: "Worker Gross Floor Check" với salience=100
+//   để override GROSS nếu raw-sum < minWage TRƯỚC KHI các rule tiếp theo chạy
+
+
+// ─────────────────────────────────────────────────────────
+// ELEMENT: TAXABLE_INCOME — Công nhân
+// Đơn giản hơn bác sỹ: không có hazard/medical deduction
+// Input facts:  grossSalary, bhxhEmployee, bhytEmployee, bhtnEmployee,
+//               personalDeduction, dependentDeduction
+// ─────────────────────────────────────────────────────────
+// DSL:
+//   max(0, GROSS_SALARY - BHXH_EMPLOYEE - BHYT_EMPLOYEE - BHTN_EMPLOYEE
+//         - PERSONAL_DEDUCTION - DEPENDENT_DEDUCTION)
+//
+// MVEL Compiled:
+grossSalary
+    .subtract(bhxhEmployee)
+    .subtract(bhytEmployee)
+    .subtract(bhtnEmployee)
+    .subtract(personalDeduction)
+    .subtract(dependentDeduction)
+    .max(java.math.BigDecimal.ZERO)
+
+// EMP-005 (no dependent):
+//   GROSS = 6,951,880
+//   BHXH_BASE = min(6,951,880, 46.8M) = 6,951,880
+//   BHXH_EMPLOYEE = 6,951,880 × 8% = 556,150
+//   BHYT = 104,278, BHTN = 69,519 → Total SI = 729,947
+//   TAXABLE = 6,951,880 - 729,947 - 11,000,000 = -4,778,067 → floor = 0
+//   PIT = 0 ← không đến ngưỡng!
+
+// EMP-006 (1 dependent):
+//   GROSS = 8,757,275
+//   Total SI = 8,757,275 × 10.5% = 919,513
+//   TAXABLE = 8,757,275 - 919,513 - 11,000,000 - 4,400,000 = -7,562,238 → 0
+//   PIT = 0 ← thu nhập không đủ ngưỡng PIT dù có ca đêm OT
+
+
+// ─────────────────────────────────────────────────────────
+// PRE-PROCESSING FORMULA: NIGHT_SHIFT_COUNT CALCULATION
+// Đây là rule pre-processing trong Drools — không phải MVEL formula thuần
+// Logic: duyệt shift_schedule, đếm ca có shiftStart ≥ "22:00"
+//
+// Input: shiftSchedule (list from attendance)
+// Output: nightShiftCount (fact được insert vào working memory)
+//
+// Drools action (trong .then block):
+//   int count = 0;
+//   for (ShiftRecord s : $attendance.getShifts()) {
+//       if (s.getShiftType().equals("CA_DEM")) count++;
+//   }
+//   insert(new NightShiftFact($emp.getId(), count));
+//
+// Sau đó NIGHT_SHIFT_ALLOWANCE rule có thể đọc NightShiftFact.count
+// ─────────────────────────────────────────────────────────
+// MVEL equivalent (nếu cần tính inline, chỉ demonstration):
+attendanceService.countNightShifts(employee.employeeId, payrollPeriod)
+
+// Returns int: EMP-005 → 0, EMP-006 → 6

@@ -1,0 +1,180 @@
+// ============================================================
+// OFFICE FORMULAS — Nhân viên văn phòng
+// Engine: Drools 8 / MVEL — xTalent HCM Payroll Engine
+// Phiên bản: 1.0 | Ngày: 2025-03-04
+// Áp dụng: EMP-001 (Financial Analyst), EMP-002 (Sales Manager)
+// ============================================================
+
+
+// ─────────────────────────────────────────────────────────
+// ELEMENT: PRORATED_SALARY
+// Tính lương theo ngày công thực tế (khi có nghỉ phép, vắng)
+// Input facts:  baseSalary, actualWorkDays, standardWorkDays
+// ─────────────────────────────────────────────────────────
+// DSL:
+//   proRata(BASE_SALARY, actualWorkDays, standardWorkDays)
+//
+// MVEL Compiled:
+baseSalary.multiply(
+    new java.math.BigDecimal(actualWorkDays)
+        .divide(new java.math.BigDecimal(standardWorkDays), 10, java.math.RoundingMode.HALF_UP)
+)
+
+// EMP-001: baseSalary=15M, actual=24, std=26
+//   PRORATED = 15,000,000 × (24/26) = 13,846,154
+
+
+// ─────────────────────────────────────────────────────────
+// ELEMENT: OT_150 — Lương OT ngày thường (150%)
+// Áp theo Điều 98 BLLĐ 2019: ≥ 150% lương giờ thường
+// Input facts:  baseSalary, standardWorkDays, otHours150
+// ─────────────────────────────────────────────────────────
+// DSL:
+//   (BASE_SALARY / standardWorkDays / 8) * otHours150 * 1.5
+//
+// MVEL Compiled (BigDecimal-safe):
+baseSalary
+    .divide(new java.math.BigDecimal(standardWorkDays), 10, java.math.RoundingMode.HALF_UP)
+    .divide(new java.math.BigDecimal("8"), 10, java.math.RoundingMode.HALF_UP)
+    .multiply(new java.math.BigDecimal(otHours150))
+    .multiply(new java.math.BigDecimal("1.5"))
+
+// EMP-001: 15M/26/8 × 5.5h × 1.5 = 59,134.6 × 5.5 × 1.5 = 488,461
+// EMP-002: 35M/26/8 × 2.0h × 1.5 = 168,269 × 2.0 × 1.5 = 504,808
+
+
+// ─────────────────────────────────────────────────────────
+// ELEMENT: OT_200 — Lương OT ngày nghỉ tuần (200%)
+// ─────────────────────────────────────────────────────────
+// MVEL Compiled:
+baseSalary
+    .divide(new java.math.BigDecimal(standardWorkDays), 10, java.math.RoundingMode.HALF_UP)
+    .divide(new java.math.BigDecimal("8"), 10, java.math.RoundingMode.HALF_UP)
+    .multiply(new java.math.BigDecimal(otHours200))
+    .multiply(new java.math.BigDecimal("2.0"))
+
+// EMP-002: 35M/26/8 × 8h × 2.0 = 168,269 × 8 × 2.0 = 2,692,308
+
+
+// ─────────────────────────────────────────────────────────
+// ELEMENT: OT_300 — Lương OT ngày lễ tết (300%)
+// ─────────────────────────────────────────────────────────
+// MVEL Compiled:
+baseSalary
+    .divide(new java.math.BigDecimal(standardWorkDays), 10, java.math.RoundingMode.HALF_UP)
+    .divide(new java.math.BigDecimal("8"), 10, java.math.RoundingMode.HALF_UP)
+    .multiply(new java.math.BigDecimal(otHours300))
+    .multiply(new java.math.BigDecimal("3.0"))
+
+// EMP-002: 35M/26/8 × 4h × 3.0 = 168,269 × 4 × 3.0 = 2,019,231
+// (Ca 8/3 — ngày lễ Quốc tế Phụ nữ)
+
+
+// ─────────────────────────────────────────────────────────
+// ELEMENT: PERFORMANCE_BONUS (3P Model — Pay for Performance)
+// Thưởng KPI dựa trên performance score
+// Input facts:  baseSalary, kpiScore
+// ─────────────────────────────────────────────────────────
+// DSL (Business-friendly, readable):
+//   when kpiScore >= 1.2 then BASE_SALARY * 0.2
+//   when kpiScore >= 1.0 then BASE_SALARY * 0.1
+//   when kpiScore >= 0.8 then BASE_SALARY * 0.05
+//   else 0
+//
+// MVEL Compiled (ternary chain):
+kpiScore >= 1.2 ? baseSalary.multiply(new java.math.BigDecimal("0.20")) :
+kpiScore >= 1.0 ? baseSalary.multiply(new java.math.BigDecimal("0.10")) :
+kpiScore >= 0.8 ? baseSalary.multiply(new java.math.BigDecimal("0.05")) :
+java.math.BigDecimal.ZERO
+
+// EMP-001 (kpiScore=1.15): 15M × 0.10 = 1,500,000   (Tier: ≥1.0)
+// EMP-002 (kpiScore=1.25): 35M × 0.20 = 7,000,000   (Tier: ≥1.2)
+// NOTE: Thưởng KPI không tính BHXH (không là quỹ lương thường xuyên)
+
+
+// ─────────────────────────────────────────────────────────
+// ELEMENT: TRANSPORT_ALLOWANCE (Office)
+// Phụ cấp đi lại — miễn thuế ≤ 1,500,000 VNĐ/tháng
+// Input: config lookup theo employee grade
+// ─────────────────────────────────────────────────────────
+// MVEL Compiled:
+policyService.getAllowanceConfig("TRANSPORT_ALLOWANCE", employee.jobGrade)
+// Returns BigDecimal: amount from policy-config, already pre-set per grade
+// EMP-001 (OFF-S3): 1,500,000 → miễn toàn bộ
+// EMP-002 (OFF-M2): 2,000,000 → miễn 1,500,000, chịu thuế 500,000
+
+
+// ─────────────────────────────────────────────────────────
+// ELEMENT: TAXABLE_INCOME — Văn phòng
+// Thu nhập chịu thuế = Gross - phần miễn thuế - BHXH/BHYT/BHTN
+//                    - giảm trừ gia cảnh
+// Input facts: grossSalary, transportAllowance, lunchAllowance,
+//              phoneAllowance, bhxhEmployee, bhytEmployee, bhtnEmployee,
+//              personalDeduction, dependentDeduction
+// ─────────────────────────────────────────────────────────
+// DSL (Business-readable):
+//   GROSS_SALARY
+//     - min(TRANSPORT_ALLOWANCE, 1_500_000)   // phần miễn thuế
+//     - min(LUNCH_ALLOWANCE, 730_000)          // phần miễn thuế
+//     - min(PHONE_ALLOWANCE, 1_000_000)        // phần miễn thuế
+//     - BHXH_EMPLOYEE - BHYT_EMPLOYEE - BHTN_EMPLOYEE
+//     - PERSONAL_DEDUCTION
+//     - DEPENDENT_DEDUCTION
+//
+// MVEL Compiled:
+grossSalary
+    .subtract(Math.min(transportAllowance, new java.math.BigDecimal("1500000")))
+    .subtract(Math.min(lunchAllowance, new java.math.BigDecimal("730000")))
+    .subtract(Math.min(phoneAllowance, new java.math.BigDecimal("1000000")))
+    .subtract(bhxhEmployee)
+    .subtract(bhytEmployee)
+    .subtract(bhtnEmployee)
+    .subtract(personalDeduction)
+    .subtract(dependentDeduction)
+    .max(java.math.BigDecimal.ZERO)  // floor tại 0, không âm
+
+// EMP-001 Tính toán:
+//   gross = 13,846,154 + 450,000 + 1,500,000 + 730,000 + 1,500,000
+//          = 18,026,154 (approx)
+//   trừ: transport_exempt=1.5M, lunch_exempt=730K, phone_exempt=0
+//   trừ: BHXH=1,442,092, BHYT=270,392, BHTN=180,262 (tổng SI: 1,892,746)
+//   trừ: personal=11M, dependent=4.4M
+//   TAXABLE ≈ 18,026,154 - 1,500,000 - 730,000 - 1,892,746 - 11,000,000 - 4,400,000
+//           = -1,496,592 → floor về 0 → PIT = 0
+//   EMP-001 không phải đóng thuế TNCN tháng này!
+
+// EMP-002 Tính toán (phức tạp hơn, nhiều OT + KPI):
+//   gross ≈ 35M + 2.45M(seniority) + 5M(position) + 7M(perf_bonus)
+//          + 2M(transport) + 504,808(OT150) + 2,692,308(OT200) + 2,019,231(OT300)
+//          = 56,666,347
+//   trừ: transport_exempt=1.5M (vượt 500K chịu thuế), lunch exempt (nếu có)
+//   trừ: BHXH=3,744,000(cap 46.8M×8%), BHYT=702,000, BHTN=468,000 = 4,914,000
+//   trừ: personal=11M, dependent=8.8M (2 người phụ thuộc)
+//   TAXABLE ≈ 56,666,347 - 1,500,000 - 4,914,000 - 11,000,000 - 8,800,000
+//           = 30,452,347
+//   PIT (Bậc 1-4):
+//     5M×5% + 5M×10% + 8M×15% + 12.45M×20%
+//   = 250,000 + 500,000 + 1,200,000 + 2,490,469 = 4,440,469
+
+
+// ─────────────────────────────────────────────────────────
+// ELEMENT: GROSS_SALARY — Văn phòng (Aggregate)
+// Tổng hợp tất cả earning elements
+// ─────────────────────────────────────────────────────────
+// DSL:
+//   PRORATED_SALARY + SENIORITY_ALLOWANCE
+//   + TRANSPORT_ALLOWANCE + LUNCH_ALLOWANCE + PHONE_ALLOWANCE
+//   + POSITION_ALLOWANCE + PERFORMANCE_BONUS
+//   + OT_150 + OT_200 + OT_300
+//
+// MVEL Compiled:
+proratedSalary
+    .add(seniorityAllowance)
+    .add(transportAllowance)
+    .add(lunchAllowance)
+    .add(phoneAllowance)
+    .add(positionAllowance)
+    .add(performanceBonus)
+    .add(ot150)
+    .add(ot200)
+    .add(ot300)

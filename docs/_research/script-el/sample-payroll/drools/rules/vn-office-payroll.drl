@@ -1,0 +1,158 @@
+// ============================================================
+// VN OFFICE PAYROLL RULES
+// Package: vn.xtalent.payroll.rules.vn.office
+// Engine: Drools 8 — xTalent HCM Payroll Engine
+// Áp dụng: EMP-001 (Financial Analyst), EMP-002 (Sales Manager)
+// Rule count: 6 rules
+// ============================================================
+
+package vn.xtalent.payroll.rules.vn.office;
+
+import vn.xtalent.payroll.model.*;
+import java.math.BigDecimal;
+
+// ─────────────────────────────────────────────────────────
+// RULE: Calculate Pro-Rated Salary
+// Áp dụng khi actualWorkDays < standardWorkDays (có nghỉ phép)
+// ─────────────────────────────────────────────────────────
+rule "OFF_001 — Pro-rated Salary Calculation"
+    agenda-group "gross-calculation"
+    salience 80
+    when
+        $emp: Employee(status == "ACTIVE", employeeGroup == "OFFICE")
+        $att: AttendanceRecord(employeeId == $emp.employeeId)
+        not PayrollElement(code == "PRORATED_SALARY", employeeId == $emp.employeeId)
+    then
+        BigDecimal prorated = new BigDecimal($emp.getSalary().getBaseSalary())
+            .multiply(new BigDecimal($att.getActualWorkDays()))
+            .divide(new BigDecimal($att.getStandardWorkDays()), 0, java.math.RoundingMode.HALF_UP);
+
+        PayrollElement el = new PayrollElement("PRORATED_SALARY", $emp.employeeId, prorated,
+            "BASE_SALARY * (actualWorkDays / standardWorkDays)", 2);
+        el.addInput("baseSalary", $emp.getSalary().getBaseSalary());
+        el.addInput("actualWorkDays", $att.getActualWorkDays());
+        el.addInput("standardWorkDays", $att.getStandardWorkDays());
+        insert(el);
+        // EMP-001: 15M × 24/26 = 13,846,154
+        // EMP-002: 35M × 26/26 = 35,000,000
+end
+
+// ─────────────────────────────────────────────────────────
+// RULE: Calculate Overtime (3 loại: 150%, 200%, 300%)
+// Drools Rete: 1 rule pattern, kích hoạt cho từng OT type
+// ─────────────────────────────────────────────────────────
+rule "OFF_002 — Overtime OT_150 Calculation"
+    agenda-group "gross-calculation"
+    salience 75
+    when
+        $emp: Employee(status == "ACTIVE", employeeGroup == "OFFICE")
+        $att: AttendanceRecord(employeeId == $emp.employeeId, otHours150 > 0)
+        not PayrollElement(code == "OT_150", employeeId == $emp.employeeId)
+    then
+        BigDecimal hourlyRate = new BigDecimal($emp.getSalary().getBaseSalary())
+            .divide(new BigDecimal($att.getStandardWorkDays()), 10, java.math.RoundingMode.HALF_UP)
+            .divide(new BigDecimal("8"), 10, java.math.RoundingMode.HALF_UP);
+        BigDecimal ot150 = hourlyRate.multiply(new BigDecimal($att.getOtHours150()))
+            .multiply(new BigDecimal("1.5"))
+            .setScale(0, java.math.RoundingMode.HALF_UP);
+        insert(new PayrollElement("OT_150", $emp.employeeId, ot150,
+            "(BASE/days/8) * hours * 1.5", 4));
+end
+
+rule "OFF_003 — Overtime OT_200 Calculation"
+    agenda-group "gross-calculation"
+    salience 75
+    when
+        $emp: Employee(status == "ACTIVE", employeeGroup == "OFFICE")
+        $att: AttendanceRecord(employeeId == $emp.employeeId, otHours200 > 0)
+        not PayrollElement(code == "OT_200", employeeId == $emp.employeeId)
+    then
+        BigDecimal ot200 = new BigDecimal($emp.getSalary().getBaseSalary())
+            .divide(new BigDecimal($att.getStandardWorkDays()), 10, java.math.RoundingMode.HALF_UP)
+            .divide(new BigDecimal("8"), 10, java.math.RoundingMode.HALF_UP)
+            .multiply(new BigDecimal($att.getOtHours200()))
+            .multiply(new BigDecimal("2.0"))
+            .setScale(0, java.math.RoundingMode.HALF_UP);
+        insert(new PayrollElement("OT_200", $emp.employeeId, ot200,
+            "(BASE/days/8) * hours * 2.0", 4));
+        // EMP-002: (35M/26/8) × 8h × 2.0 = 2,692,308
+end
+
+rule "OFF_004 — Overtime OT_300 Holiday"
+    agenda-group "gross-calculation"
+    salience 75
+    when
+        $emp: Employee(status == "ACTIVE", employeeGroup == "OFFICE")
+        $att: AttendanceRecord(employeeId == $emp.employeeId, otHours300 > 0)
+        not PayrollElement(code == "OT_300", employeeId == $emp.employeeId)
+    then
+        BigDecimal ot300 = new BigDecimal($emp.getSalary().getBaseSalary())
+            .divide(new BigDecimal($att.getStandardWorkDays()), 10, java.math.RoundingMode.HALF_UP)
+            .divide(new BigDecimal("8"), 10, java.math.RoundingMode.HALF_UP)
+            .multiply(new BigDecimal($att.getOtHours300()))
+            .multiply(new BigDecimal("3.0"))
+            .setScale(0, java.math.RoundingMode.HALF_UP);
+        insert(new PayrollElement("OT_300", $emp.employeeId, ot300,
+            "(BASE/days/8) * hours * 3.0", 4));
+        // EMP-002 ngày 8/3: (35M/26/8) × 4h × 3.0 = 2,019,231
+end
+
+// ─────────────────────────────────────────────────────────
+// RULE: Calculate Performance Bonus (3P Model)
+// KPI tier: ≥1.2 → 20%, ≥1.0 → 10%, ≥0.8 → 5%, else 0
+// ─────────────────────────────────────────────────────────
+rule "OFF_005 — Performance Bonus 3P"
+    agenda-group "gross-calculation"
+    salience 70
+    when
+        $emp: Employee(status == "ACTIVE", employeeGroup == "OFFICE")
+        $kpiScore: Double() from $emp.getPerformanceInfo().getKpiScore()
+        not PayrollElement(code == "PERFORMANCE_BONUS", employeeId == $emp.employeeId)
+    then
+        BigDecimal rate = $kpiScore >= 1.2 ? new BigDecimal("0.20") :
+                          $kpiScore >= 1.0 ? new BigDecimal("0.10") :
+                          $kpiScore >= 0.8 ? new BigDecimal("0.05") :
+                          BigDecimal.ZERO;
+        BigDecimal bonus = new BigDecimal($emp.getSalary().getBaseSalary()).multiply(rate)
+            .setScale(0, java.math.RoundingMode.HALF_UP);
+        PayrollElement el = new PayrollElement("PERFORMANCE_BONUS", $emp.employeeId, bonus,
+            "3P_KPI_TIER_CALCULATION", 4);
+        el.addInput("kpiScore", $kpiScore);
+        el.addInput("bonusRate", rate);
+        insert(el);
+        // EMP-001 (1.15): 15M × 10% = 1,500,000
+        // EMP-002 (1.25): 35M × 20% = 7,000,000
+end
+
+// ─────────────────────────────────────────────────────────
+// RULE: Aggregate GROSS_SALARY — Office
+// Chạy SAU KHI tất cả sub-elements đã insert
+// ─────────────────────────────────────────────────────────
+rule "OFF_006 — Aggregate Gross Salary Office"
+    agenda-group "gross-calculation"
+    salience 20
+    when
+        $emp: Employee(status == "ACTIVE", employeeGroup == "OFFICE")
+        $prorated:   PayrollElement(code == "PRORATED_SALARY",      employeeId == $emp.employeeId)
+        $seniority:  PayrollElement(code == "SENIORITY_ALLOWANCE",  employeeId == $emp.employeeId)
+        $transport:  PayrollElement(code == "TRANSPORT_ALLOWANCE",  employeeId == $emp.employeeId)
+        $lunch:      PayrollElement(code == "LUNCH_ALLOWANCE",      employeeId == $emp.employeeId)
+        $position:   PayrollElement(code == "POSITION_ALLOWANCE",   employeeId == $emp.employeeId)
+        $perfBonus:  PayrollElement(code == "PERFORMANCE_BONUS",    employeeId == $emp.employeeId)
+        $ot150:      PayrollElement(code == "OT_150",               employeeId == $emp.employeeId)
+        $ot200:      PayrollElement(code == "OT_200",               employeeId == $emp.employeeId)
+        $ot300:      PayrollElement(code == "OT_300",               employeeId == $emp.employeeId)
+        not PayrollElement(code == "GROSS_SALARY", employeeId == $emp.employeeId)
+    then
+        BigDecimal gross = $prorated.getValue()
+            .add($seniority.getValue())
+            .add($transport.getValue())
+            .add($lunch.getValue())
+            .add($position.getValue())
+            .add($perfBonus.getValue())
+            .add($ot150.getValue())
+            .add($ot200.getValue())
+            .add($ot300.getValue());
+        insert(new PayrollElement("GROSS_SALARY", $emp.employeeId, gross,
+            "SUM(earning_elements)", 6));
+end
