@@ -1,5 +1,6 @@
 # Sample Payroll Data — xTalent HCM Payroll Engine (MVEL + Drools 8)
 
+
 > **Mục đích:** Bộ dữ liệu mô phỏng để đánh giá mức độ phức tạp khi triển khai Payroll Engine theo kiến trúc H4 (Drools 8 + Restricted MVEL + Business DSL Layer)  
 > **Kỳ mẫu:** 2025-03  
 > **Thị trường:** Việt Nam  
