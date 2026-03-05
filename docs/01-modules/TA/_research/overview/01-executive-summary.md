@@ -146,4 +146,5 @@ Sự tương đồng này có nghĩa là:
 
 ---
 
-*Để đọc chi tiết từng capability, xem bộ tài liệu đầy đủ tại [README](./README.md).*
+*Nguồn: tổng hợp từ `01-concept-overview.md`*  
+*← [README](./README.md) · [02 Quản lý Nghỉ phép →](./02-absence-management.md)*
