@@ -1,0 +1,247 @@
+id: odsa.ta.concept.leave_instant
+type: concept
+name: LeaveInstant
+version: 1.0.0
+description: >
+  "Tài khoản nghỉ" (leave account) của một nhân viên cho một LeaveClass cụ thể.
+  LeaveInstant là multi-period account - sống xuyên kỳ, không reset khi sang kỳ mới.
+  Có 2 mode vận hành:
+  - ACCOUNT: Balance-based, có current_qty, hold_qty, available_qty
+  - LIMIT: Cap-based, có limit_yearly, used_ytd, used_mtd
+
+  LeaveInstant là trung tâm ghi sổ của module Absence, được sinh ra tự động
+  khi nhân viên đủ điều kiện (eligibility) từ LeaveClass.
+
+prefixes:
+  ta: https://xtalent.com/ta/
+  xsd: http://www.w3.org/2001/XMLSchema#
+
+default_range: string
+
+attributes:
+  id:
+    identifier: true
+    required: true
+    range: string
+    description: Unique identifier (UUID) cho LeaveInstant
+
+  employee_id:
+    required: true
+    range: string
+    description: Reference đến Employee owner của tài khoản này
+    comments: FK đến employment.employee
+
+  class_id:
+    required: true
+    range: string
+    description: Reference đến LeaveClass sinh ra Instant này
+    comments: FK đến leave_class
+
+  state_code:
+    range: string
+    required: true
+    default: ACTIVE
+    description: Trạng thái của LeaveInstant
+    constraints:
+      permitted_values:
+        - ACTIVE      # Đang hoạt động
+        - SUSPENDED   # Tạm ngưng (ví dụ: nghỉ không lương dài hạn)
+        - CLOSED      # Đã đóng (nhân viên nghỉ việc)
+        - EXPIRED     # Hết hạn (tất cả lots đã expire)
+
+  # === ACCOUNT MODE FIELDS ===
+  current_qty:
+    range: decimal
+    required: false
+    default: 0.0
+    description: >
+      Tổng số lượng hiện hành (đã post từ movements).
+      Không bao gồm hold_qty.
+      Chỉ áp dụng cho mode=ACCOUNT.
+    constraints:
+      min_value: 0
+
+  hold_qty:
+    range: decimal
+    required: false
+    default: 0.0
+    description: >
+      Số lượng đang bị block do reservation (approved requests chưa start).
+      Chỉ áp dụng cho mode=ACCOUNT.
+    constraints:
+      min_value: 0
+
+  available_qty:
+    range: decimal
+    required: false
+    default: 0.0
+    description: >
+      Số lượng khả dụng để request.
+      Công thức: available_qty = current_qty - hold_qty
+      Có thể là materialized column (tính sẵn) hoặc computed.
+      Chỉ áp dụng cho mode=ACCOUNT.
+    constraints:
+      min_value: 0
+
+  # === LIMIT MODE FIELDS ===
+  limit_yearly:
+    range: decimal
+    required: false
+    description: Giới hạn số ngày/giờ/năm
+    comments: Override từ LeaveClass rules_json nếu cần
+
+  limit_monthly:
+    range: decimal
+    required: false
+    description: Giới hạn số ngày/giờ/tháng
+
+  limit_per_case:
+    range: decimal
+    required: false
+    description: Giới hạn số ngày/giờ/lần nghỉ
+
+  limit_rolling_days:
+    range: integer
+    required: false
+    description: >
+      Rolling window days. Nếu > 0, giới hạn áp dụng cho rolling window
+      thay vì calendar period.
+
+  used_ytd:
+    range: decimal
+    required: false
+    default: 0.0
+    description: Số ngày/giờ đã sử dụng từ đầu năm (Year To Date)
+
+  used_mtd:
+    range: decimal
+    required: false
+    default: 0.0
+    description: Số ngày/giờ đã sử dụng từ đầu tháng (Month To Date)
+
+  # === CONTEXT DIMENSIONS ===
+  bu_id:
+    range: string
+    required: false
+    description: Business Unit dimension (snapshot từ class/employee)
+
+  le_id:
+    range: string
+    required: false
+    description: Legal Entity dimension (snapshot từ class/employee)
+
+  country_code:
+    range: string
+    required: false
+    description: Country code dimension (snapshot từ class/employee)
+
+  effective_start:
+    range: date
+    required: true
+    description: Ngày bắt đầu hiệu lực của Instant
+
+  effective_end:
+    range: date
+    required: false
+    description: Ngày kết thúc hiệu lực (null = vô thời hạn)
+
+  metadata:
+    range: json
+    required: false
+    description: Metadata linh hoạt cho các thuộc tính mở rộng
+
+relationships:
+  employee:
+    target: Employee
+    cardinality: many_to_one
+    description: Employee owner của tài khoản này
+    required: true
+
+  leave_class:
+    target: LeaveClass
+    cardinality: many_to_one
+    description: LeaveClass sinh ra Instant này
+    required: true
+
+  details:
+    target: LeaveInstantDetail
+    cardinality: one_to_many
+    description: Các grant lots (LeaveInstantDetail) của Instant này
+    required: false
+
+  movements:
+    target: LeaveMovement
+    cardinality: one_to_many
+    description: Các LeaveMovements ghi nhận biến động của Instant này
+    required: false
+
+  balance_history:
+    target: LeaveBalanceHistory
+    cardinality: one_to_many
+    description: Các snapshot lịch sử số dư (EOD)
+    required: false
+
+  reservations:
+    target: LeaveReservation
+    cardinality: one_to_many
+    description: Các LeaveReservation block quota trên Instant này
+    required: false
+
+  requests:
+    target: LeaveRequest
+    cardinality: one_to_many
+    description: Các LeaveRequest liên quan đến Instant này
+    required: false
+
+lifecycle:
+  reference: LeaveInstantLifecycle
+  initial_state: ACTIVE
+
+states:
+  - ACTIVE
+  - SUSPENDED
+  - CLOSED
+  - EXPIRED
+
+business_rules:
+  - rule_instant_unique_employee_class
+  - rule_instant_available_qty_formula
+  - rule_instant_cannot_go_negative_if_no_overdraft
+  - rule_instant_hold_cannot_exceed_current
+  - rule_instant_must_have_class
+  - rule_instant_auto_create_on_eligibility
+
+constraints:
+  - unique: [employee_id, class_id]
+  - check: available_qty = current_qty - hold_qty
+  - check: current_qty >= 0 (nếu không có overdraft)
+
+examples:
+  - employee_id: EMP001
+    class_id: ANL_VN_FT
+    state_code: ACTIVE
+    current_qty: 96.0
+    hold_qty: 8.0
+    available_qty: 88.0
+    bu_id: BU_HR
+    le_id: LE_VN
+    country_code: VN
+
+  - employee_id: EMP002
+    class_id: SL_VN_ALL
+    state_code: ACTIVE
+    mode_code: LIMIT
+    limit_yearly: 30.0
+    used_ytd: 5.0
+    used_mtd: 2.0
+    country_code: VN
+
+  - employee_id: EMP003
+    class_id: ANL_SG_FT
+    state_code: SUSPENDED
+    current_qty: 50.0
+    hold_qty: 0.0
+    available_qty: 50.0
+    country_code: SG
+    metadata:
+      suspensionReason: Unpaid leave > 3 months

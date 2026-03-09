@@ -1,0 +1,170 @@
+id: odsa.ta.concept.leave_reservation
+type: concept
+name: LeaveReservation
+version: 1.0.0
+description: >
+  Reservation (hold) block quota từ LeaveInstant khi LeaveRequest được approved.
+  LeaveReservation giữ chỗ để đảm bảo nhân viên không vượt hạn mức khi nghỉ.
+  Khi đến start_date, event START_POST unhold và post movement trừ thật.
+  Khi request bị cancel/reject, reservation được release.
+
+prefixes:
+  ta: https://xtalent.com/ta/
+  xsd: http://www.w3.org/2001/XMLSchema#
+
+default_range: string
+
+attributes:
+  request_id:
+    identifier: true
+    required: true
+    range: string
+    description: Reference đến LeaveRequest parent
+    comments: FK đến leave_request, 1:1 relationship
+
+  instant_id:
+    required: true
+    range: string
+    description: Reference đến LeaveInstant bị hold quota
+    comments: FK đến leave_instant
+
+  reserved_qty:
+    range: decimal
+    required: true
+    description: Số lượng bị block (hold)
+    constraints:
+      min_value: 0
+
+  hold_start_date:
+    range: date
+    required: false
+    description: Ngày bắt đầu hold (thường = created_at)
+
+  hold_end_date:
+    range: date
+    required: false
+    description: >
+      Ngày kết thúc hold. Thường = end_dt của request.
+      Nếu qua ngày này mà request chưa start, reservation expire.
+
+  expires_at:
+    range: datetime
+    required: false
+    description: >
+      Thời điểm reservation hết hạn.
+      Tự động release nếu qua expires_at mà request chưa start.
+
+  status_code:
+    range: string
+    required: true
+    default: ACTIVE
+    description: Trạng thái của reservation
+    constraints:
+      permitted_values:
+        - ACTIVE      # Đang hold quota
+        - RELEASED    # Đã release (cancel/reject)
+        - USED        # Đã used (start_post đã chạy)
+        - EXPIRED     # Hết hạn
+
+  released_at:
+    range: datetime
+    required: false
+    description: Thời điểm release reservation
+
+  released_reason:
+    range: string
+    required: false
+    description: Lý do release (CANCELLED, REJECTED, EXPIRED)
+
+  metadata:
+    range: json
+    required: false
+    description: Metadata linh hoạt cho các thuộc tính mở rộng
+
+relationships:
+  request:
+    target: LeaveRequest
+    cardinality: one_to_one
+    description: LeaveRequest tạo ra reservation này
+    required: true
+
+  instant:
+    target: LeaveInstant
+    cardinality: many_to_one
+    description: LeaveInstant bị hold quota
+    required: true
+
+lifecycle:
+  reference: LeaveReservationLifecycle
+  initial_state: ACTIVE
+
+states:
+  - ACTIVE
+  - RELEASED
+  - USED
+  - EXPIRED
+
+business_rules:
+  - rule_reservation_unique_request
+  - must_have_active_instant
+  - rule_reservation_cannot_exceed_available
+  - rule_reservation_auto_release_on_reject
+  - rule_reservation_auto_release_on_cancel
+  - rule_reservation_auto_expire_if_not_started
+  - rule_reservation_unhold_on_start_post
+
+constraints:
+  - unique: [request_id]
+  - check: reserved_qty > 0
+  - check: expires_at > hold_start_date (nếu có)
+
+examples:
+  # Active reservation
+  - request_id: REQ_2025_001
+    instant_id: INST_EMP001_ANL
+    reserved_qty: 16.0        # 2 ngày × 8 giờ
+    hold_start_date: '2025-04-10'
+    hold_end_date: '2025-04-16'
+    expires_at: '2025-04-15T08:00:00Z'
+    status_code: ACTIVE
+    metadata:
+      leaveRequest:
+        start_dt: '2025-04-15T08:00:00Z'
+        end_dt: '2025-04-16T17:00:00Z'
+
+  # Released reservation (cancelled)
+  - request_id: REQ_2025_002
+    instant_id: INST_EMP001_ANL
+    reserved_qty: 8.0
+    hold_start_date: '2025-04-08'
+    hold_end_date: '2025-04-12'
+    status_code: RELEASED
+    released_at: '2025-04-09T10:00:00Z'
+    released_reason: CANCELLED
+    metadata:
+      cancelledBy: EMP001
+
+  # Used reservation (start_post đã chạy)
+  - request_id: REQ_2025_003
+    instant_id: INST_EMP001_ANL
+    reserved_qty: 8.0
+    hold_start_date: '2025-04-01'
+    hold_end_date: '2025-04-15'
+    status_code: USED
+    metadata:
+      startPostRunId: RUN_START_POST_20250415
+      movementIds: [MOVE_2025_100]
+
+  # Expired reservation
+  - request_id: REQ_2025_004
+    instant_id: INST_EMP001_ANL
+    reserved_qty: 24.0
+    hold_start_date: '2025-03-01'
+    hold_end_date: '2025-03-15'
+    expires_at: '2025-03-15T08:00:00Z'
+    status_code: EXPIRED
+    metadata:
+      autoExpired: true
+      neverStarted: true
+
+# Reservation Impact rules được define chi tiết trong ontology/rules.yaml

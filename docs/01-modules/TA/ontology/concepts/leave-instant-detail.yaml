@@ -1,0 +1,167 @@
+id: odsa.ta.concept.leave_instant_detail
+type: concept
+name: LeaveInstantDetail
+version: 1.0.0
+description: >
+  Chi tiết các lô cấp phát (grant lots) của LeaveInstant. Mỗi lot có:
+  - eff_date: ngày hiệu lực
+  - expire_date: ngày hết hạn
+  - lot_qty: tổng số được cấp
+  - used_qty: số đã sử dụng
+  - priority: độ ưu tiên khi trừ (FEFO - First Expire First Out)
+
+  LeaveInstantDetail quản lý việc consumption theo FEFO: lot nào hết hạn
+  trước sẽ được trừ trước. Khi hết hạn, lot được đánh dấu silent expiry
+  (không tạo movement trừ khi emit_expire_turnover = true).
+
+prefixes:
+  ta: https://xtalent.com/ta/
+  xsd: http://www.w3.org/2001/XMLSchema#
+
+default_range: string
+
+attributes:
+  id:
+    identifier: true
+    required: true
+    range: string
+    description: Unique identifier (UUID) cho LeaveInstantDetail
+
+  instant_id:
+    required: true
+    range: string
+    description: Reference đến LeaveInstant parent
+    comments: FK đến leave_instant
+
+  lot_kind:
+    range: string
+    required: true
+    description: Loại lô cấp phát
+    constraints:
+      permitted_values:
+        - GRANT      # Cấp phát thường (accrual)
+        - CARRY      # Chuyển từ kỳ trước (carry forward)
+        - BONUS      # Thưởng phép (special grant)
+        - TRANSFER   # Chuyển từ tài khoản khác
+        - ADJUST     # Điều chỉnh (adjustment)
+        - OTHER      # Khác
+
+  eff_date:
+    range: date
+    required: true
+    description: Ngày hiệu lực của lot (ngày được cấp)
+
+  expire_date:
+    range: date
+    required: false
+    description: >
+      Ngày hết hạn của lot. Null = vô thời hạn.
+      Ví dụ: Annual Leave 2025 thường expire_date = 2026-03-31
+
+  lot_qty:
+    range: decimal
+    required: true
+    description: Tổng số lượng được cấp cho lot
+    constraints:
+      min_value: 0
+
+  used_qty:
+    range: decimal
+    required: true
+    default: 0.0
+    description: Số lượng đã được sử dụng từ lot này
+    constraints:
+      min_value: 0
+      max_value: lot_qty
+
+  priority:
+    range: integer
+    required: true
+    default: 100
+    description: >
+      Độ ưu tiên khi trừ (FEFO consumption).
+      Priority thấp hơn = trừ trước.
+      Thường tính tự động dựa trên expire_date ASC.
+
+  tag:
+    range: string
+    required: false
+    description: >
+      Tag/nhãn để phân loại lot (ví dụ: "2025_ACCRUAL", "CARRY_FROM_2024")
+      Dùng cho reporting và debugging.
+
+  metadata:
+    range: json
+    required: false
+    description: Metadata linh hoạt cho các thuộc tính mở rộng
+
+relationships:
+  instant:
+    target: LeaveInstant
+    cardinality: many_to_one
+    description: LeaveInstant parent chứa lot này
+    required: true
+
+  movements:
+    target: LeaveMovement
+    cardinality: one_to_many
+    description: Các LeaveMovement trừ từ lot này (FEFO consumption)
+    required: false
+
+lifecycle:
+  reference: LeaveInstantDetailLifecycle
+  initial_state: ACTIVE
+
+states:
+  - ACTIVE      # Còn可用 (chưa hết hạn, còn qty)
+  - PARTIALLY_USED  # Đã dùng một phần
+  - EXHAUSTED   # Đã dùng hết (used_qty = lot_qty)
+  - EXPIRED     # Hết hạn (expire_date < today)
+
+business_rules:
+  - rule_detail_unique_id
+  - rule_detail_used_cannot_exceed_lot
+  - rule_detail_fefo_consumption
+  - rule_detail_silent_expiry_default
+  - rule_detail_must_have_positive_qty
+  - rule_detail_priority_based_on_expire_date
+
+constraints:
+  - index: [instant_id, eff_date]
+  - index: [instant_id, expire_date]
+  - check: used_qty <= lot_qty
+  - check: lot_qty > 0
+
+examples:
+  - instant_id: INST_EMP001_ANL
+    lot_kind: GRANT
+    eff_date: '2025-01-01'
+    expire_date: '2026-03-31'
+    lot_qty: 96.0
+    used_qty: 48.0
+    priority: 100
+    tag: '2025_ANNUAL_GRANT'
+
+  - instant_id: INST_EMP001_ANL
+    lot_kind: CARRY
+    eff_date: '2025-01-01'
+    expire_date: '2025-03-31'
+    lot_qty: 10.0
+    used_qty: 10.0
+    priority: 50
+    tag: 'CARRY_FROM_2024'
+    # Priority thấp hơn (50 < 100) nên sẽ được trừ trước
+
+  - instant_id: INST_EMP002_ANL
+    lot_kind: GRANT
+    eff_date: '2025-06-15'
+    expire_date: '2026-03-31'
+    lot_qty: 84.0
+    used_qty: 0.0
+    priority: 100
+    tag: '2025_PRORATED_GRANT'
+    metadata:
+      proratedMonths: 7
+      reason: Employee joined mid-year
+
+# FEFO Consumption Logic được define chi tiết trong ontology/rules.yaml

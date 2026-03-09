@@ -1,0 +1,1299 @@
+openapi: 3.0.3
+info:
+  title: xTalent Absence Module - Canonical API
+  description: |
+    Canonical REST API for Absence (Leave Management) Module.
+
+    This API provides access to:
+    - Leave configuration (types, classes, policies)
+    - Leave accounts (instants, details, movements)
+    - Leave requests and reservations
+    - Event management and period operations
+  version: 1.0.0
+  contact:
+    name: xTalent Platform Team
+
+servers:
+  - url: /api/v1
+    description: Production API
+
+tags:
+  - name: Leave Types
+    description: Leave type definitions
+  - name: Leave Classes
+    description: Operational leave variants
+  - name: Leave Policies
+    description: Reusable policy definitions
+  - name: Leave Instants
+    description: Employee leave accounts
+  - name: Leave Movements
+    description: Balance transactions
+  - name: Leave Requests
+    description: Leave request management
+  - name: Leave Reservations
+    description: Quota reservations
+  - name: Leave Periods
+    description: Period management
+  - name: Events
+    description: Event definitions and runs
+  - name: Balance History
+    description: Daily balance snapshots
+  - name: Wallets
+    description: Aggregated balance view
+
+paths:
+  /leave-types:
+    get:
+      tags:
+        - Leave Types
+      summary: List Leave Types
+      operationId: listLeaveTypes
+      parameters:
+        - name: is_active
+          in: query
+          schema:
+            type: boolean
+        - name: unit_code
+          in: query
+          schema:
+            type: string
+            enum: [DAY, HOUR]
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveTypeList'
+    post:
+      tags:
+        - Leave Types
+      summary: Create Leave Type
+      operationId: createLeaveType
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeaveTypeCreate'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveType'
+
+  /leave-types/{id}:
+    get:
+      tags:
+        - Leave Types
+      summary: Get Leave Type
+      operationId: getLeaveType
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveType'
+    put:
+      tags:
+        - Leave Types
+      summary: Update Leave Type
+      operationId: updateLeaveType
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeaveTypeUpdate'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveType'
+
+  /leave-classes:
+    get:
+      tags:
+        - Leave Classes
+      summary: List Leave Classes
+      operationId: listLeaveClasses
+      parameters:
+        - name: leave_type_id
+          in: query
+          schema:
+            type: string
+        - name: mode_code
+          in: query
+          schema:
+            type: string
+            enum: [ACCOUNT, LIMIT, UNPAID, CUSTOM]
+        - name: country_code
+          in: query
+          schema:
+            type: string
+        - name: status_code
+          in: query
+          schema:
+            type: string
+            enum: [ACTIVE, INACTIVE]
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveClassList'
+    post:
+      tags:
+        - Leave Classes
+      summary: Create Leave Class
+      operationId: createLeaveClass
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeaveClassCreate'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveClass'
+
+  /leave-classes/{id}:
+    get:
+      tags:
+        - Leave Classes
+      summary: Get Leave Class
+      operationId: getLeaveClass
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveClass'
+
+  /leave-instants:
+    get:
+      tags:
+        - Leave Instants
+      summary: List Leave Instants
+      operationId: listLeaveInstants
+      parameters:
+        - name: employee_id
+          in: query
+          schema:
+            type: string
+        - name: class_id
+          in: query
+          schema:
+            type: string
+        - name: state_code
+          in: query
+          schema:
+            type: string
+            enum: [ACTIVE, SUSPENDED, CLOSED, EXPIRED]
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveInstantList'
+
+  /leave-instants/{id}:
+    get:
+      tags:
+        - Leave Instants
+      summary: Get Leave Instant
+      operationId: getLeaveInstant
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveInstant'
+
+  /leave-instants/{id}/details:
+    get:
+      tags:
+        - Leave Instants
+      summary: Get Leave Instant Details (Lots)
+      operationId: getLeaveInstantDetails
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveInstantDetailList'
+
+  /leave-instants/{id}/balance-history:
+    get:
+      tags:
+        - Balance History
+      summary: Get Balance History
+      operationId: getBalanceHistory
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: start_date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BalanceHistoryList'
+
+  /leave-movements:
+    get:
+      tags:
+        - Leave Movements
+      summary: List Leave Movements
+      operationId: listLeaveMovements
+      parameters:
+        - name: instant_id
+          in: query
+          schema:
+            type: string
+        - name: event_code
+          in: query
+          schema:
+            type: string
+        - name: start_date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveMovementList'
+
+  /leave-requests:
+    get:
+      tags:
+        - Leave Requests
+      summary: List Leave Requests
+      operationId: listLeaveRequests
+      parameters:
+        - name: employee_id
+          in: query
+          schema:
+            type: string
+        - name: class_id
+          in: query
+          schema:
+            type: string
+        - name: status_code
+          in: query
+          schema:
+            type: string
+            enum: [DRAFT, SUBMITTED, PENDING, APPROVED, REJECTED, CANCELLED, WITHDRAWN]
+        - name: start_date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveRequestList'
+    post:
+      tags:
+        - Leave Requests
+      summary: Create Leave Request
+      operationId: createLeaveRequest
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeaveRequestCreate'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveRequest'
+
+  /leave-requests/{id}:
+    get:
+      tags:
+        - Leave Requests
+      summary: Get Leave Request
+      operationId: getLeaveRequest
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveRequest'
+
+  /leave-requests/{id}/submit:
+    post:
+      tags:
+        - Leave Requests
+      summary: Submit Leave Request
+      operationId: submitLeaveRequest
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Submitted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveRequest'
+        '422':
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /leave-requests/{id}/approve:
+    post:
+      tags:
+        - Leave Requests
+      summary: Approve Leave Request
+      operationId: approveLeaveRequest
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                comment:
+                  type: string
+      responses:
+        '200':
+          description: Approved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveRequest'
+
+  /leave-requests/{id}/reject:
+    post:
+      tags:
+        - Leave Requests
+      summary: Reject Leave Request
+      operationId: rejectLeaveRequest
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: Rejected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveRequest'
+
+  /leave-requests/{id}/cancel:
+    post:
+      tags:
+        - Leave Requests
+      summary: Cancel Leave Request
+      operationId: cancelLeaveRequest
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Cancelled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveRequest'
+
+  /leave-periods:
+    get:
+      tags:
+        - Leave Periods
+      summary: List Leave Periods
+      operationId: listLeavePeriods
+      parameters:
+        - name: level_code
+          in: query
+          schema:
+            type: string
+            enum: [YEAR, QUARTER, MONTH, CUSTOM]
+        - name: status_code
+          in: query
+          schema:
+            type: string
+            enum: [OPEN, CLOSED, LOCKED]
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeavePeriodList'
+
+  /leave-periods/{id}:
+    get:
+      tags:
+        - Leave Periods
+      summary: Get Leave Period
+      operationId: getLeavePeriod
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeavePeriod'
+
+  /leave-periods/{id}/close:
+    post:
+      tags:
+        - Leave Periods
+      summary: Close Leave Period
+      operationId: closeLeavePeriod
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                force:
+                  type: boolean
+                  default: false
+      responses:
+        '200':
+          description: Closed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeavePeriod'
+
+  /leave-periods/{id}/lock:
+    post:
+      tags:
+        - Leave Periods
+      summary: Lock Leave Period
+      operationId: lockLeavePeriod
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Locked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeavePeriod'
+
+  /leave-event-definitions:
+    get:
+      tags:
+        - Events
+      summary: List Event Definitions
+      operationId: listEventDefinitions
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventDefinitionList'
+
+  /leave-event-definitions/{id}/trigger:
+    post:
+      tags:
+        - Events
+      summary: Trigger Event Manually
+      operationId: triggerEvent
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                class_id:
+                  type: string
+                period_id:
+                  type: string
+                parameters:
+                  type: object
+      responses:
+        '202':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventRun'
+
+  /leave-event-runs/{id}:
+    get:
+      tags:
+        - Events
+      summary: Get Event Run Status
+      operationId: getEventRun
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventRun'
+
+  /employees/{employee_id}/leave-wallet:
+    get:
+      tags:
+        - Wallets
+      summary: Get Employee Leave Wallet
+      operationId: getLeaveWallet
+      parameters:
+        - name: employee_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveWallet'
+
+components:
+  schemas:
+    # LeaveType
+    LeaveType:
+      type: object
+      properties:
+        id:
+          type: string
+        code:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        is_paid:
+          type: boolean
+        is_quota_based:
+          type: boolean
+        requires_approval:
+          type: boolean
+        unit_code:
+          type: string
+          enum: [DAY, HOUR]
+        core_min_unit:
+          type: number
+        holiday_handling:
+          type: string
+          enum: [EXCLUDE_HOLIDAYS, INCLUDE_HOLIDAYS, STOP_AT_HOLIDAY]
+        overlap_policy:
+          type: string
+          enum: [ALLOW, DENY, OVERRIDE]
+        support_scope:
+          type: string
+        metadata:
+          type: object
+        is_active:
+          type: boolean
+        effective_start:
+          type: string
+          format: date
+        effective_end:
+          type: string
+          format: date
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    LeaveTypeList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/LeaveType'
+        meta:
+          type: object
+          properties:
+            total:
+              type: integer
+            page:
+              type: integer
+            per_page:
+              type: integer
+
+    LeaveTypeCreate:
+      type: object
+      required:
+        - code
+        - name
+        - is_paid
+        - is_quota_based
+        - unit_code
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        is_paid:
+          type: boolean
+          default: true
+        is_quota_based:
+          type: boolean
+          default: true
+        requires_approval:
+          type: boolean
+          default: true
+        unit_code:
+          type: string
+          enum: [DAY, HOUR]
+        core_min_unit:
+          type: number
+        holiday_handling:
+          type: string
+          default: EXCLUDE_HOLIDAYS
+        overlap_policy:
+          type: string
+          default: ALLOW
+        support_scope:
+          type: string
+        metadata:
+          type: object
+
+    LeaveTypeUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        is_paid:
+          type: boolean
+        is_quota_based:
+          type: boolean
+        requires_approval:
+          type: boolean
+        unit_code:
+          type: string
+        core_min_unit:
+          type: number
+        holiday_handling:
+          type: string
+        overlap_policy:
+          type: string
+        support_scope:
+          type: string
+        metadata:
+          type: object
+        is_active:
+          type: boolean
+
+    # LeaveClass
+    LeaveClass:
+      type: object
+      properties:
+        id:
+          type: string
+        leave_type_id:
+          type: string
+        code:
+          type: string
+        name:
+          type: string
+        status_code:
+          type: string
+          enum: [ACTIVE, INACTIVE]
+        mode_code:
+          type: string
+          enum: [ACCOUNT, LIMIT, UNPAID, CUSTOM]
+        unit_code:
+          type: string
+          enum: [DAY, HOUR]
+        period_profile:
+          type: object
+        posting_map:
+          type: array
+          items:
+            type: object
+        eligibility_json:
+          type: object
+        rules_json:
+          type: object
+        emit_expire_turnover:
+          type: boolean
+        bu_id:
+          type: string
+        le_id:
+          type: string
+        country_code:
+          type: string
+        effective_start:
+          type: string
+          format: date
+        effective_end:
+          type: string
+          format: date
+        metadata:
+          type: object
+
+    LeaveClassList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/LeaveClass'
+
+    LeaveClassCreate:
+      type: object
+      required:
+        - leave_type_id
+        - code
+        - name
+        - mode_code
+        - unit_code
+        - period_profile
+      properties:
+        leave_type_id:
+          type: string
+        code:
+          type: string
+        name:
+          type: string
+        mode_code:
+          type: string
+          enum: [ACCOUNT, LIMIT, UNPAID, CUSTOM]
+        unit_code:
+          type: string
+          enum: [DAY, HOUR]
+        period_profile:
+          type: object
+        posting_map:
+          type: array
+          items:
+            type: object
+        eligibility_json:
+          type: object
+        rules_json:
+          type: object
+        bu_id:
+          type: string
+        le_id:
+          type: string
+        country_code:
+          type: string
+
+    # LeaveInstant
+    LeaveInstant:
+      type: object
+      properties:
+        id:
+          type: string
+        employee_id:
+          type: string
+        class_id:
+          type: string
+        state_code:
+          type: string
+          enum: [ACTIVE, SUSPENDED, CLOSED, EXPIRED]
+        current_qty:
+          type: number
+        hold_qty:
+          type: number
+        available_qty:
+          type: number
+        limit_yearly:
+          type: number
+        limit_monthly:
+          type: number
+        used_ytd:
+          type: number
+        used_mtd:
+          type: number
+        bu_id:
+          type: string
+        le_id:
+          type: string
+        country_code:
+          type: string
+        effective_start:
+          type: string
+          format: date
+        effective_end:
+          type: string
+          format: date
+        metadata:
+          type: object
+
+    LeaveInstantList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/LeaveInstant'
+
+    LeaveInstantDetail:
+      type: object
+      properties:
+        id:
+          type: string
+        instant_id:
+          type: string
+        lot_kind:
+          type: string
+          enum: [GRANT, CARRY, BONUS, TRANSFER, ADJUST, OTHER]
+        eff_date:
+          type: string
+          format: date
+        expire_date:
+          type: string
+          format: date
+        lot_qty:
+          type: number
+        used_qty:
+          type: number
+        priority:
+          type: integer
+        tag:
+          type: string
+        metadata:
+          type: object
+
+    LeaveInstantDetailList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/LeaveInstantDetail'
+
+    # LeaveMovement
+    LeaveMovement:
+      type: object
+      properties:
+        id:
+          type: string
+        instant_id:
+          type: string
+        class_id:
+          type: string
+        event_code:
+          type: string
+        qty:
+          type: number
+        unit_code:
+          type: string
+          enum: [DAY, HOUR]
+        period_id:
+          type: string
+        effective_date:
+          type: string
+          format: date
+        expire_date:
+          type: string
+          format: date
+        posted_at:
+          type: string
+          format: date-time
+        request_id:
+          type: string
+        lot_id:
+          type: string
+        run_id:
+          type: string
+        idempotency_key:
+          type: string
+        metadata:
+          type: object
+
+    LeaveMovementList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/LeaveMovement'
+
+    # LeaveRequest
+    LeaveRequest:
+      type: object
+      properties:
+        id:
+          type: string
+        employee_id:
+          type: string
+        class_id:
+          type: string
+        instant_id:
+          type: string
+        start_dt:
+          type: string
+          format: date-time
+        end_dt:
+          type: string
+          format: date-time
+        qty_hours_req:
+          type: number
+        status_code:
+          type: string
+          enum: [DRAFT, SUBMITTED, PENDING, APPROVED, REJECTED, CANCELLED, WITHDRAWN]
+        workflow_state:
+          type: object
+        reason:
+          type: string
+        attachment_urls:
+          type: array
+          items:
+            type: string
+        escalation_level:
+          type: integer
+        metadata:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    LeaveRequestList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/LeaveRequest'
+
+    LeaveRequestCreate:
+      type: object
+      required:
+        - employee_id
+        - class_id
+        - start_dt
+        - end_dt
+      properties:
+        employee_id:
+          type: string
+        class_id:
+          type: string
+        start_dt:
+          type: string
+          format: date-time
+        end_dt:
+          type: string
+          format: date-time
+        qty_hours_req:
+          type: number
+        reason:
+          type: string
+        attachment_urls:
+          type: array
+          items:
+            type: string
+
+    # LeavePeriod
+    LeavePeriod:
+      type: object
+      properties:
+        id:
+          type: string
+        code:
+          type: string
+        parent_id:
+          type: string
+        level_code:
+          type: string
+          enum: [YEAR, QUARTER, MONTH, CUSTOM]
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        status_code:
+          type: string
+          enum: [OPEN, CLOSED, LOCKED]
+        calendar_code:
+          type: string
+        metadata:
+          type: object
+
+    LeavePeriodList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/LeavePeriod'
+
+    # Event Definition
+    EventDefinition:
+      type: object
+      properties:
+        id:
+          type: string
+        code:
+          type: string
+        name:
+          type: string
+        trigger_kind:
+          type: string
+          enum: [SCHEDULED, REQUEST_BASED, MANUAL, API]
+        schedule_expr:
+          type: string
+        policy_refs:
+          type: object
+        qty_formula:
+          type: string
+        target_override:
+          type: string
+          enum: [INSTANT, DETAIL, BOTH]
+        idempotent:
+          type: boolean
+        is_active:
+          type: boolean
+
+    EventDefinitionList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/EventDefinition'
+
+    # Event Run
+    EventRun:
+      type: object
+      properties:
+        id:
+          type: string
+        event_def_id:
+          type: string
+        class_id:
+          type: string
+        period_id:
+          type: string
+        schedule_key:
+          type: string
+        idempotency_key:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+        run_status:
+          type: string
+          enum: [RUNNING, DONE, ERROR, CANCELED, PARTIAL]
+        stats_json:
+          type: object
+        metadata:
+          type: object
+
+    # Balance History
+    BalanceHistory:
+      type: object
+      properties:
+        instant_id:
+          type: string
+        as_of_date:
+          type: string
+          format: date
+        opening_qty:
+          type: number
+        turnover_dr:
+          type: number
+        turnover_cr:
+          type: number
+        closing_qty:
+          type: number
+
+    BalanceHistoryList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/BalanceHistory'
+
+    # Leave Wallet
+    LeaveWallet:
+      type: object
+      properties:
+        employee_id:
+          type: string
+        wallets:
+          type: array
+          items:
+            type: object
+            properties:
+              leave_type_code:
+                type: string
+              available_hours:
+                type: number
+              balance_hours:
+                type: number
+              hold_hours:
+                type: number
+              pending_hours:
+                type: number
+              overdraft_limit:
+                type: number
+              last_calc_at:
+                type: string
+                format: date-time
+
+    # Error
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object

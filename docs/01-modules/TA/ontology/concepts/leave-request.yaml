@@ -1,0 +1,249 @@
+id: odsa.ta.concept.leave_request
+type: concept
+name: LeaveRequest
+version: 1.0.0
+description: >
+  Yêu cầu nghỉ phép chính thức của nhân viên, yêu cầu phê duyệt từ quản lý.
+  LeaveRequest trải qua workflow: DRAFT → SUBMITTED → PENDING → APPROVED/REJECTED.
+  Khi approved, tạo LeaveReservation để block quota. Khi đến start_date,
+  event START_POST post movement trừ phép.
+
+prefixes:
+  ta: https://xtalent.com/ta/
+  xsd: http://www.w3.org/2001/XMLSchema#
+
+default_range: string
+
+attributes:
+  id:
+    identifier: true
+    required: true
+    range: string
+    description: Unique identifier (UUID) cho LeaveRequest
+
+  employee_id:
+    required: true
+    range: string
+    description: Reference đến Employee tạo request
+    comments: FK đến employment.employee
+
+  class_id:
+    required: true
+    range: string
+    description: Reference đến LeaveClass áp dụng
+    comments: FK đến leave_class
+
+  instant_id:
+    range: string
+    required: false
+    description: >
+      Reference đến LeaveInstant đích để hold/post.
+      Có thể null lúc tạo, được xác định tự động khi validate.
+    comments: FK đến leave_instant (nullable)
+
+  start_dt:
+    range: datetime
+    required: true
+    description: Thời điểm bắt đầu nghỉ
+
+  end_dt:
+    range: datetime
+    required: true
+    description: Thời điểm kết thúc nghỉ
+
+  qty_hours_req:
+    range: decimal
+    required: false
+    description: >
+      Số giờ nghỉ yêu cầu. Có thể tính tự động từ start_dt/end_dt
+      hoặc override thủ công (ví dụ: nghỉ nửa ngày = 4 giờ).
+    comments: Unit conversion dựa theo LeaveType.unit_code
+
+  status_code:
+    range: string
+    required: true
+    default: DRAFT
+    description: Trạng thái của request trong workflow
+    constraints:
+      permitted_values:
+        - DRAFT       # Nháp, chưa submit
+        - SUBMITTED   # Đã submit, chờ duyệt
+        - PENDING     # Đang duyệt ( escalated)
+        - APPROVED    # Đã duyệt
+        - REJECTED    # Từ chối
+        - CANCELLED   # Hủy (trước khi start)
+        - WITHDRAWN   # Rút lại (sau khi approve)
+
+  workflow_state:
+    range: json
+    required: false
+    description: >
+      Trạng thái chi tiết của approval workflow.
+    examples:
+      - currentStep: 2
+        totalSteps: 3
+        approvers:
+          - step: 1
+            userId: MGR001
+            status: APPROVED
+            timestamp: '2025-04-10T10:00:00Z'
+          - step: 2
+            userId: MGR002
+            status: PENDING
+        escalationLevel: 1
+
+  reason:
+    range: string
+    required: false
+    description: Lý do nghỉ (optional)
+
+  attachment_urls:
+    range: json
+    required: false
+    description: >
+      Danh sách URL attachments (medical cert, documents).
+    examples:
+      - https://storage/attachments/med_cert_001.pdf
+      - https://storage/attachments/other_doc.pdf
+
+  escalation_level:
+    range: integer
+    required: true
+    default: 0
+    description: >
+      Cấp độ escalation hiện tại của workflow.
+      0 = chưa escalate, tăng dần theo số cấp duyệt.
+
+  metadata:
+    range: json
+    required: false
+    description: Metadata linh hoạt cho các thuộc tính mở rộng
+
+  created_at:
+    range: datetime
+    required: true
+    default: now
+    description: Thời điểm tạo request
+
+  updated_at:
+    range: datetime
+    required: true
+    default: now
+    description: Thời điểm cập nhật cuối cùng
+
+relationships:
+  employee:
+    target: Employee
+    cardinality: many_to_one
+    description: Employee tạo request
+    required: true
+
+  leave_class:
+    target: LeaveClass
+    cardinality: many_to_one
+    description: LeaveClass áp dụng
+    required: true
+
+  leave_instant:
+    target: LeaveInstant
+    cardinality: many_to_one
+    description: LeaveInstant bị ảnh hưởng
+    required: false
+
+  reservation:
+    target: LeaveReservation
+    cardinality: one_to_one
+    description: LeaveReservation tạo từ request này
+    required: false
+
+  movements:
+    target: LeaveMovement
+    cardinality: one_to_many
+    description: Các LeaveMovements sinh ra từ request này
+    required: false
+
+  approvals:
+    target: Approval
+    cardinality: one_to_many
+    description: Các Approval records trong workflow
+    required: false
+
+lifecycle:
+  reference: LeaveRequestLifecycle
+  initial_state: DRAFT
+
+states:
+  - DRAFT
+  - SUBMITTED
+  - PENDING
+  - APPROVED
+  - REJECTED
+  - CANCELLED
+  - WITHDRAWN
+
+business_rules:
+  - rule_request_unique_id
+  - rule_request_must_have_employee
+  - rule_request_must_have_class
+  - rule_request_end_must_be_after_start
+  - rule_request_cannot_overlap_approved
+  - rule_request_must_have_available_balance
+  - rule_request_cannot_cancel_after_start
+  - rule_request_status_transition_valid
+
+constraints:
+  - index: [employee_id, status_code]
+  - index: [class_id, status_code]
+  - check: end_dt > start_dt
+  - check: qty_hours_req > 0 (nếu có)
+
+examples:
+  - employee_id: EMP001
+    class_id: ANL_VN_FT
+    instant_id: INST_EMP001_ANL
+    start_dt: '2025-04-15T08:00:00Z'
+    end_dt: '2025-04-16T17:00:00Z'
+    qty_hours_req: 16.0
+    status_code: APPROVED
+    reason: Family vacation
+    escalation_level: 1
+    workflow_state:
+      currentStep: 2
+      totalSteps: 2
+      approvers:
+        - step: 1
+          userId: MGR001
+          status: APPROVED
+          timestamp: '2025-04-10T10:00:00Z'
+        - step: 2
+          userId: MGR002
+          status: APPROVED
+          timestamp: '2025-04-10T14:00:00Z'
+
+  - employee_id: EMP002
+    class_id: SL_VN_ALL
+    start_dt: '2025-04-20T08:00:00Z'
+    end_dt: '2025-04-20T17:00:00Z'
+    qty_hours_req: 8.0
+    status_code: SUBMITTED
+    reason: Medical appointment
+    escalation_level: 0
+    attachment_urls:
+      - https://storage/attachments/med_cert_002.pdf
+
+  - employee_id: EMP003
+    class_id: ANL_SG_FT
+    start_dt: '2025-05-01T08:00:00Z'
+    end_dt: '2025-05-05T17:00:00Z'
+    qty_hours_req: 40.0
+    status_code: REJECTED
+    reason: Personal reasons
+    workflow_state:
+      currentStep: 1
+      totalSteps: 2
+      approvers:
+        - step: 1
+          userId: MGR003
+          status: REJECTED
+          timestamp: '2025-04-12T09:00:00Z'
+          comment: Project deadline conflict

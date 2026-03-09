@@ -1,0 +1,257 @@
+id: odsa.ta.concept.leave_policy
+type: concept
+name: LeavePolicy
+version: 1.0.0
+description: >
+  Tập hợp các quy tắc nghiệp vụ (rules) có thể tái sử dụng cho nhiều LeaveClass
+  hoặc LeaveEvent. LeavePolicy đóng gói các rules: accrual, carry, limit,
+  overdraft, validation, rounding, proration vào các JSON columns để linh hoạt
+  cấu hình mà không cần thay đổi code.
+
+prefixes:
+  ta: https://xtalent.com/ta/
+  xsd: http://www.w3.org/2001/XMLSchema#
+
+default_range: string
+
+attributes:
+  id:
+    identifier: true
+    required: true
+    range: string
+    description: Unique identifier (UUID) cho LeavePolicy
+
+  leave_type_id:
+    required: true
+    range: string
+    description: Reference đến LeaveType áp dụng policy này
+
+  code:
+    required: true
+    range: string
+    unique: true
+    description: >
+      Mã định danh duy nhất cho LeavePolicy (ví dụ: ANL_VN_FT, ANL_VN_PT).
+      Phân biệt variant theo quốc gia, loại nhân viên, v.v.
+    constraints:
+      pattern: '^[A-Z][A-Z0-9_]{0,49}$'
+
+  name:
+    required: true
+    range: string
+    description: Tên hiển thị của LeavePolicy
+    constraints:
+      max_length: 100
+
+  accrual_rule_json:
+    range: json
+    required: false
+    description: >
+      Quy tắc tích lũy phép (accrual rules).
+      Định nghĩa tần suất, số giờ/ngày được cộng, điều kiện áp dụng.
+    examples:
+      - freq: MONTH                   # Tích lũy hàng tháng
+        hours: 1.75                   # 1.75 giờ/tháng
+        basis: WORKDAYS               # Dựa trên ngày làm việc
+        prorated: true                # Áp dụng proration nếu vào giữa kỳ
+
+      - freq: YEAR                    # Cấp phát hàng năm
+        fixedDays: 15                 # 15 ngày/năm
+        tenureBands:                  # Theo thâm niên
+          - min: 0
+            max: 2
+            days: 10
+          - min: 3
+            max: 5
+            days: 15
+          - min: 6
+            days: 20
+
+  carry_rule_json:
+    range: json
+    required: false
+    description: >
+      Quy tắc chuyển phép sang kỳ sau (carry forward rules).
+      Định nghĩa số ngày tối đa được chuyển, thời hạn hết hạn.
+    examples:
+      - maxCarry: 10                  # Tối đa 10 ngày được chuyển
+        expireMonths: 3               # Hết hạn sau 3 tháng
+        minBalance: 5                 # Chỉ carry nếu còn >= 5 ngày
+
+      - allowed: false                # Không cho phép carry
+        useByMonths: 3                # Phải sử dụng trong 3 tháng
+
+  limit_rule_json:
+    range: json
+    required: false
+    description: >
+      Quy tắc giới hạn (limit rules). Áp dụng cho mode=LIMIT
+      hoặc làm cap cho mode=ACCOUNT.
+    examples:
+      - yearly: 96                    # Giới hạn 96 giờ/năm
+        monthlyCap: 8                 # Tối đa 8 giờ/tháng
+        perCase: 8                    # Tối đa 8 giờ/lần nghỉ
+        rollingDays: 0                # 0 = theo period, >0 = rolling window
+
+  overdraft_rule_json:
+    range: json
+    required: false
+    description: >
+      Quy tắc cho phép âm số dư (overdraft/ứng trước).
+      Chỉ áp dụng cho mode=ACCOUNT.
+    examples:
+      - allowed: true
+        limitHours: 40                # Tối đa ứng trước 40 giờ
+        recoveryMethod: NEXT_ACCRUAL  # Trừ vào lần accrual tiếp theo
+
+      - allowed: false                # Không cho phép overdraft
+
+  validation_json:
+    range: json
+    required: false
+    description: >
+      Quy tắc validation khi tạo request.
+    examples:
+      - requireEvidence: true         # Yêu cầu chứng từ
+        evidenceTypes: [MEDICAL_CERT, OTHER]
+        minNoticeDays: 3              # Báo trước tối thiểu 3 ngày
+        blackoutDates:                # Ngày không được nghỉ
+          - 2025-12-25
+          - 2025-01-01
+        maxConsecutiveDays: 10        # Tối đa 10 ngày liên tiếp
+
+  rounding_json:
+    range: json
+    required: false
+    description: >
+      Quy tắc làm tròn số giờ/ngày.
+    examples:
+      - increment: 0.5                # Làm tròn đến 0.5
+        mode: NEAREST                 # Làm tròn đến giá trị gần nhất
+        # modes: NEAREST, UP, DOWN
+
+      - increment: 1.0
+        mode: DOWN
+
+  proration_json:
+    range: json
+    required: false
+    description: >
+      Quy tắc tính proration (tỷ lệ) khi nhân viên vào/restay giữa kỳ.
+    examples:
+      - basis: WORK_SCHEDULE          # Dựa trên lịch làm việc
+        hoursPerDay: 8
+        method: DAILY                 # Tính theo ngày
+        # methods: DAILY, MONTHLY, EXACT
+
+      - basis: TENURE                 # Dựa trên thâm niên trong kỳ
+        accrualStartsAfter: 3         # Bắt đầu tích lũy sau 3 tháng
+
+  metadata:
+    range: json
+    required: false
+    description: Metadata linh hoạt cho các thuộc tính mở rộng
+
+  effective_start:
+    range: date
+    required: true
+    description: Ngày bắt đầu hiệu lực
+
+  effective_end:
+    range: date
+    required: false
+    description: Ngày kết thúc hiệu lực (null = vô thời hạn)
+
+relationships:
+  leave_type:
+    target: LeaveType
+    cardinality: many_to_one
+    description: LeaveType áp dụng policy này
+    required: true
+
+  leave_classes:
+    target: LeaveClass
+    cardinality: one_to_many
+    description: Các LeaveClass sử dụng policy này
+    required: false
+
+  event_defs:
+    target: LeaveEventDef
+    cardinality: one_to_many
+    description: Các LeaveEventDef reference đến policy này
+    required: false
+
+  assignments:
+    target: PolicyAssignment
+    cardinality: one_to_many
+    description: Các PolicyAssignment (gán cho employee/BU/LE/grade)
+    required: false
+
+lifecycle:
+  reference: LeavePolicyLifecycle
+  initial_state: DRAFT
+
+states:
+  - DRAFT
+  - ACTIVE
+  - INACTIVE
+
+business_rules:
+  - rule_policy_unique_code
+  - rule_policy_must_have_type
+  - rule_policy_cannot_deactivate_if_in_use
+  - rule_accrual_requires_freq_and_amount
+  - rule_carry_requires_max_or_expire
+  - rule_overdraft_limit_requires_allowed_true
+
+examples:
+  - code: ANL_VN_ACCRUAL
+    name: Annual Leave Vietnam Accrual Policy
+    leave_type_id: ANL
+    accrual_rule_json:
+      freq: MONTH
+      hours: 1.75
+      basis: WORKDAYS
+      prorated: true
+    proration_json:
+      basis: WORK_SCHEDULE
+      hoursPerDay: 8
+      method: DAILY
+
+  - code: ANL_VN_CARRY
+    name: Annual Leave Vietnam Carry Policy
+    leave_type_id: ANL
+    carry_rule_json:
+      maxCarry: 10
+      expireMonths: 3
+      minBalance: 5
+
+  - code: ANL_VN_LIMIT
+    name: Annual Leave Vietnam Limit Policy
+    leave_type_id: ANL
+    limit_rule_json:
+      yearly: 96
+      monthlyCap: 8
+      perCase: 8
+    validation_json:
+      requireEvidence: false
+      minNoticeDays: 3
+      maxConsecutiveDays: 10
+
+  - code: SL_VN_LIMIT
+    name: Sick Leave Vietnam Limit Policy
+    leave_type_id: SL
+    limit_rule_json:
+      yearly: 30
+      perCase: 5
+    validation_json:
+      requireEvidence: true
+      evidenceTypes: [MEDICAL_CERT]
+
+  - code: ANL_VN_OVERDRAFT
+    name: Annual Leave Vietnam Overdraft Policy
+    leave_type_id: ANL
+    overdraft_rule_json:
+      allowed: true
+      limitHours: 40
+      recoveryMethod: NEXT_ACCRUAL

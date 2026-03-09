@@ -1,0 +1,299 @@
+id: odsa.ta.concept.leave_class
+type: concept
+name: LeaveClass
+version: 1.0.0
+description: >
+  Lớp vận hành trừu tượng cho một LeaveType. LeaveClass định nghĩa mode vận hành
+  (ACCOUNT/LIMIT), period profile, posting map, eligibility rules, và các rules
+  vận hành khác. Một LeaveType có thể có nhiều LeaveClass (biến thể theo quốc gia,
+  BU, grade, v.v.). LeaveClass sinh ra LeaveInstant cho nhân viên đủ điều kiện.
+
+prefixes:
+  ta: https://xtalent.com/ta/
+  xsd: http://www.w3.org/2001/XMLSchema#
+
+default_range: string
+
+attributes:
+  id:
+    identifier: true
+    required: true
+    range: string
+    description: Unique identifier (UUID) cho LeaveClass
+
+  leave_type_id:
+    required: true
+    range: string
+    description: Reference đến LeaveType parent
+    comments: FK đến LeaveType - đây là hierarchy đúng (LeaveClass thuộc về LeaveType)
+
+  code:
+    required: true
+    range: string
+    unique: true
+    description: >
+      Mã định danh duy nhất cho LeaveClass (ví dụ: ANL_VN_FT, ANL_VN_PT).
+      Thường kết hợp: {LEAVE_TYPE_CODE}_{COUNTRY}_{VARIANT}
+    constraints:
+      pattern: '^[A-Z][A-Z0-9_]{0,49}$'
+
+  name:
+    required: true
+    range: string
+    description: Tên hiển thị của LeaveClass
+    constraints:
+      max_length: 100
+
+  status_code:
+    range: string
+    required: true
+    default: ACTIVE
+    description: Trạng thái của LeaveClass
+    constraints:
+      permitted_values:
+        - ACTIVE
+        - INACTIVE
+
+  mode_code:
+    range: string
+    required: true
+    description: >
+      Mode vận hành xác định cách thức quản lý số dư:
+      - ACCOUNT: Balance-based, yêu cầu accrual trước khi sử dụng
+      - LIMIT: Cap-based, theo hạn mức (YTD/MTD), không cần accrual
+      - UNPAID: Không lương, không cần quota
+      - CUSTOM: Custom logic
+    constraints:
+      permitted_values:
+        - ACCOUNT     # Balance-based (Annual Leave)
+        - LIMIT       # Cap-based (Sick Leave)
+        - UNPAID      # Unpaid leave
+        - CUSTOM      # Custom logic
+
+  unit_code:
+    range: string
+    required: true
+    description: 'Đơn vị tính: DAY hoặc HOUR (có thể override từ LeaveType)'
+    constraints:
+      permitted_values:
+        - DAY
+        - HOUR
+
+  period_profile:
+    range: json
+    required: true
+    description: >
+      Cấu hình kỳ vận hành của LeaveClass. Xác định cấu trúc period và
+      các hành vi khi đóng kỳ (carry forward, expire, reset).
+    examples:
+      - type: CALENDAR_YEAR           # Kỳ theo năm dương lịch
+        closeBehaviors:               # Hành vi khi đóng kỳ
+          - CARRY_FORWARD             # Chuyển số dư sang kỳ sau
+          - EXPIRE                    # Hết hạn số dư cũ
+        carryCap: 10                  # Tối đa 10 ngày được chuyển
+        expireMonths: 3               # Hết hạn sau 3 tháng
+
+      - type: ROLLING_YEAR            # Kỳ rolling (12 tháng từ ngày bắt đầu)
+        rollingMonths: 12
+
+      - type: FISCAL_YEAR             # Kỳ tài chính
+        fiscalStartMonth: 4           # Bắt đầu từ tháng 4
+
+  posting_map:
+    range: json
+    required: true
+    description: >
+      Bản đồ mapping event → công thức ±qty để sinh LeaveMovements.
+      Mỗi entry định nghĩa event code và cách tính quantity.
+    examples:
+      - event: ACCRUAL
+        qtyFormula: "+fixedRate"      # Cộng cố định
+        target: INSTANT
+      - event: START_POST
+        qtyFormula: "-requestedQty"   # Trừ theo request
+        target: INSTANT
+      - event: CARRY
+        qtyFormula: "+remainingQty"   # Chuyển số dư còn lại
+        target: INSTANT
+
+  eligibility_json:
+    range: json
+    required: false
+    description: >
+      Điều kiện để tự động mở LeaveInstant cho nhân viên.
+      Có thể dựa vào: grade, tenure, country, BU, LE, v.v.
+    examples:
+      - condition: tenure >= 12       # Thâm niên >= 12 tháng
+        gradeIn: ["G10", "G11", "G12"]
+        countryIn: ["VN", "SG"]
+
+  rules_json:
+    range: json
+    required: false
+    description: >
+      Gói rules/policies vận hành. Có thể reference đến LeavePolicy codes
+      hoặc inline rules tối giản.
+    examples:
+      - policyCode: ANL_VN_ACCRUAL
+      - policyCode: ANL_VN_CARRY
+      - inline:
+          accrual:
+            freq: MONTH
+            hours: 1.75
+          carry:
+            maxCarry: 10
+            expireMonths: 3
+          limit:
+            yearly: 120
+            monthlyCap: 10
+
+  emit_expire_turnover:
+    range: boolean
+    required: false
+    default: false
+    description: >
+      Flag cho phép tạo movement EXPIRE khi lot hết hạn.
+      Mặc định: false (silent expiry).
+      true = tạo movement EXPIRE để báo cáo.
+
+  bu_id:
+    range: string
+    required: false
+    description: Business Unit dimension context (nullable)
+
+  le_id:
+    range: string
+    required: false
+    description: Legal Entity dimension context (nullable)
+
+  country_code:
+    range: string
+    required: false
+    description: Country code dimension context (nullable)
+
+  effective_start:
+    range: date
+    required: true
+    description: Ngày bắt đầu hiệu lực
+
+  effective_end:
+    range: date
+    required: false
+    description: Ngày kết thúc hiệu lực (null = vô thời hạn)
+
+  metadata:
+    range: json
+    required: false
+    description: Metadata linh hoạt cho các thuộc tính mở rộng
+
+relationships:
+  leave_type:
+    target: LeaveType
+    cardinality: many_to_one
+    description: LeaveType parent của LeaveClass này
+    required: true
+
+  instants:
+    target: LeaveInstant
+    cardinality: one_to_many
+    description: Các LeaveInstant được sinh ra từ LeaveClass này
+    required: false
+
+  policies:
+    target: LeavePolicy
+    cardinality: many_to_many
+    description: Các LeavePolicy áp dụng cho LeaveClass này
+    required: false
+
+  events:
+    target: LeaveEventDef
+    cardinality: many_to_many
+    description: Các LeaveEventDef liên quan đến LeaveClass này
+    required: false
+
+  class_events:
+    target: LeaveClassEvent
+    cardinality: one_to_many
+    description: Mapping LeaveClass → LeaveEventDef với công thức
+    required: false
+
+  movements:
+    target: LeaveMovement
+    cardinality: one_to_many
+    description: Các LeaveMovement liên quan đến LeaveClass này
+    required: false
+
+  requests:
+    target: LeaveRequest
+    cardinality: one_to_many
+    description: Các LeaveRequest sử dụng LeaveClass này
+    required: false
+
+lifecycle:
+  reference: LeaveClassLifecycle
+  initial_state: DRAFT
+
+states:
+  - DRAFT
+  - ACTIVE
+  - INACTIVE
+
+business_rules:
+  - rule_leave_class_unique_code
+  - rule_leave_class_must_have_type
+  - rule_leave_class_mode_requires_period_profile
+  - rule_leave_class_cannot_deactivate_with_active_instants
+
+examples:
+  - code: ANL_VN_FT
+    name: Annual Leave Vietnam Full-time
+    leave_type_id: ANL
+    mode_code: ACCOUNT
+    unit_code: DAY
+    period_profile:
+      type: CALENDAR_YEAR
+      closeBehaviors: [CARRY_FORWARD, EXPIRE]
+      carryCap: 10
+      expireMonths: 3
+    posting_map:
+      - event: ACCRUAL
+        qtyFormula: "+fixedRate"
+        target: INSTANT
+      - event: START_POST
+        qtyFormula: "-requestedQty"
+        target: INSTANT
+    eligibility_json:
+      gradeIn: ["G10", "G11", "G12"]
+      countryIn: ["VN"]
+    country_code: VN
+
+  - code: SL_VN_ALL
+    name: Sick Leave Vietnam All
+    leave_type_id: SL
+    mode_code: LIMIT
+    unit_code: DAY
+    period_profile:
+      type: CALENDAR_YEAR
+      closeBehaviors: [RESET]
+    posting_map:
+      - event: START_POST
+        qtyFormula: "-requestedQty"
+        target: INSTANT
+    rules_json:
+      limit:
+        yearly: 30
+        perCase: 5
+    country_code: VN
+
+  - code: MAT_VN_ALL
+    name: Maternity Leave Vietnam All
+    leave_type_id: MAT
+    mode_code: UNPAID
+    unit_code: DAY
+    period_profile:
+      type: CUSTOM
+    posting_map:
+      - event: START_POST
+        qtyFormula: "-requestedQty"
+        target: INSTANT
+    country_code: VN

@@ -1,0 +1,306 @@
+id: odsa.ta.metadata
+type: governance
+name: TA Module Metadata
+version: 1.0.0
+description: |
+  Governance metadata cho TA Module - Absence Ontology.
+  Tài liệu này chứa thông tin versioning, ownership, reviewers, và change history.
+
+prefixes:
+  ta: https://xtalent.com/ta/
+  xsd: http://www.w3.org/2001/XMLSchema#
+
+# ============================================================================
+# MODULE INFORMATION
+# ============================================================================
+
+module:
+  id: odsa.ta
+  name: Time & Attendance - Absence Module
+  short_name: TA-Absence
+  version: 1.0.0
+  status: ACTIVE
+
+  description: |
+    Module quản lý nghỉ phép (Leave Management) trong hệ thống xTalent.
+    Cung cấp khả năng cấu hình leave types, classes, policies; quản lý
+    leave accounts, movements, requests; và tự động hóa accrual, carry-forward,
+    expiry thông qua event-driven architecture.
+
+  domain: Human Capital Management (HCM)
+  sub_domain: Time & Attendance
+
+# ============================================================================
+# OWNERSHIP
+# ============================================================================
+
+ownership:
+  product_owner:
+    name: [Product Owner Name]
+    email: po@xtalent.com
+    role: Product Owner
+
+  domain_owner:
+    name: [Domain Architect Name]
+    email: architect@xtalent.com
+    role: Domain Architect
+
+  technical_owner:
+    name: [Tech Lead Name]
+    email: techlead@xtalent.com
+    role: Technical Lead
+
+  development_team:
+    - name: [Dev 1]
+      role: Backend Developer
+    - name: [Dev 2]
+      role: Backend Developer
+    - name: [Dev 3]
+      role: Full-stack Developer
+
+# ============================================================================
+# REVIEWERS
+# ============================================================================
+
+reviewers:
+  ontology:
+    - name: [Ontology Expert]
+      role: Ontology Reviewer
+      focus: LinkML schema validation, concept relationships
+
+  architecture:
+    - name: [Solution Architect]
+      role: Architecture Reviewer
+      focus: System design, integration patterns
+
+  security:
+    - name: [Security Engineer]
+      role: Security Reviewer
+      focus: Data privacy, access control
+
+  compliance:
+    - name: [Compliance Officer]
+      role: Compliance Reviewer
+      focus: Labor law compliance, audit requirements
+
+# ============================================================================
+# VERSION HISTORY
+# ============================================================================
+
+version_history:
+  - version: 1.0.0
+    date: 2026-03-09
+    status: CURRENT
+    author: AI Assistant
+    description: |
+      Initial release of ODDS v1 compliant Absence Ontology.
+
+      **Changes:**
+      - Created 16 entity LinkML YAML files in ontology/concepts/
+      - Created ontology/relationships.yaml (cross-entity relationships)
+      - Created ontology/lifecycle.yaml (state machines)
+      - Created ontology/rules.yaml (business rules)
+      - Created design/purpose.md (module purpose & scope)
+      - Created design/use_cases.md (13 use cases)
+      - Created design/workflows.md (6 core workflows)
+      - Created design/api_intent.md (canonical API design)
+      - Created system/canonical_api.openapi.yaml (OpenAPI 3.0 spec)
+      - Created system/events.yaml (domain events)
+      - Created governance/metadata.yaml (this file)
+
+      **Key Fixes from Previous Version:**
+      - Fixed hierarchy: LeaveType → LeaveClass (was inverted)
+      - Restored LeavePolicy entity (was removed)
+      - Added missing entities: LeaveInstant, LeaveInstantDetail, LeaveEventDef,
+        LeaveEventRun, LeaveClassEvent, LeaveBalanceHistory, TeamLeaveLimit,
+        LeaveWallet
+      - Aligned all attributes with FSD+DBML canonical model
+      - Added proper cardinality to all relationships
+      - Defined complete lifecycle state machines
+      - Documented 8 leave business rules
+
+  - version: 0.9.0
+    date: 2025-11-xx
+    status: SUPERSEDED
+    author: Previous Team
+    description: |
+      Legacy ontology (entities v1) - archived to _archive/00-ontology/
+
+      **Known Issues:**
+      - Inverted hierarchy: LeaveClass → LeaveType (incorrect)
+      - Missing entities: LeaveInstant, LeaveInstantDetail, Events, etc.
+      - Attribute mismatches with FSD+DBML
+      - Incomplete relationships and lifecycle definitions
+
+# ============================================================================
+# STANDARDS COMPLIANCE
+# ============================================================================
+
+standards:
+  - name: ODDS v1
+    full_name: Ontology-Driven Documentation System v1
+    description: LinkML YAML standard for ontology artifacts
+    compliance: FULL
+    reference: _research/ODSA/02_odds_standard.md
+
+  - name: LinkML 2.0
+    full_name: LinkML Schema Language 2.0
+    description: Schema definition language for ontologies
+    compliance: FULL
+    reference: https://linkml.io/
+
+  - name: FSD Absence
+    full_name: Functional Specification Document - Absence Module
+    description: Canonical functional specification
+    compliance: FULL
+    reference: 99-old-docs/01-concept/fsd-absence-ov.md
+
+  - name: DBML v4
+    full_name: Database Markup Language v4
+    description: Canonical database schema
+    compliance: FULL
+    reference: 99-old-docs/03-design/3.Absence.v4.dbml
+
+# ============================================================================
+# ARTIFACT INVENTORY
+# ============================================================================
+
+artifacts:
+  ontology_concepts:
+    location: ontology/concepts/
+    count: 16
+    files:
+      - leave-type.yaml
+      - leave-class.yaml
+      - leave-policy.yaml
+      - leave-instant.yaml
+      - leave-instant-detail.yaml
+      - leave-movement.yaml
+      - leave-balance-history.yaml
+      - leave-wallet.yaml
+      - leave-event-def.yaml
+      - leave-event-run.yaml
+      - leave-class-event.yaml
+      - leave-request.yaml
+      - leave-reservation.yaml
+      - leave-period.yaml
+      - holiday-calendar.yaml
+      - team-leave-limit.yaml
+
+  ontology_cross_cutting:
+    location: ontology/
+    count: 3
+    files:
+      - relationships.yaml
+      - lifecycle.yaml
+      - rules.yaml
+
+  design_docs:
+    location: design/
+    count: 4
+    files:
+      - purpose.md
+      - use_cases.md
+      - workflows.md
+      - api_intent.md
+
+  system_artifacts:
+    location: system/
+    count: 2
+    files:
+      - canonical_api.openapi.yaml
+      - events.yaml
+
+  governance:
+    location: governance/
+    count: 1
+    files:
+      - metadata.yaml
+
+# ============================================================================
+# DEPENDENCIES
+# ============================================================================
+
+dependencies:
+  upstream_modules:
+    - module: Employment
+      description: Employee master data, assignments
+      dependency_type: REQUIRED
+
+    - module: Organization
+      description: Org unit hierarchy, BU/LE structure
+      dependency_type: REQUIRED
+
+    - module: Common/Holiday
+      description: Holiday calendar definitions
+      dependency_type: OPTIONAL
+
+  downstream_modules:
+    - module: Payroll
+      description: Leave data for payroll processing
+      dependency_type: CONSUMER
+
+    - module: Time & Attendance
+      description: Timesheet integration
+      dependency_type: CONSUMER
+
+    - module: Analytics/BI
+      description: Leave analytics and reporting
+      dependency_type: CONSUMER
+
+# ============================================================================
+# CHANGE MANAGEMENT
+# ============================================================================
+
+change_management:
+  modification_process: |
+    1. Create change request with business justification
+    2. Review by ontology reviewer (LinkML validation)
+    3. Review by domain owner (business impact)
+    4. Review by technical owner (technical feasibility)
+    5. Update version in this metadata file
+    6. Run linkml-validate on all YAML files
+    7. Update change history below
+    8. Merge to main branch
+
+  validation_commands: |
+    # Validate all LinkML YAML files
+    linkml-validate TA/ontology/concepts/*.yaml
+    linkml-lint TA/ontology/concepts/*.yaml
+
+    # Validate OpenAPI spec
+    openapi-validate TA/system/canonical_api.openapi.yaml
+
+  approval_required_for:
+    - New entity creation
+    - Entity deletion
+    - Relationship changes
+    - Lifecycle state changes
+    - Business rule additions/removals
+    - API contract changes
+
+# ============================================================================
+# CONTACT
+# ============================================================================
+
+contact:
+  support_email: hcm-support@xtalent.com
+  documentation_url: https://docs.xtalent.com/modules/ta/absence
+  issue_tracker: https://github.com/xtalent/ta-absence/issues
+  slack_channel: #hcm-ta-absence
+
+# ============================================================================
+# LICENSE
+# ============================================================================
+
+license:
+  type: PROPRIETARY
+  copyright: Copyright (c) 2026 xTalent Platform. All rights reserved.
+  notice: |
+    This document and the ontology definitions contained herein are
+    proprietary and confidential information of xTalent Platform.
+    Unauthorized use, reproduction, or distribution is prohibited.
+
+---
+# End of metadata
+# Last updated: 2026-03-09

@@ -1,0 +1,542 @@
+id: odsa.ta.events
+type: events
+name: TA Module Domain Events
+version: 1.0.0
+description: |
+  Định nghĩa tất cả domain events trong TA Module - Absence Ontology.
+  Events được phân loại theo nguồn trigger và mục đích nghiệp vụ.
+
+prefixes:
+  ta: https://xtalent.com/ta/
+  xsd: http://www.w3.org/2001/XMLSchema#
+
+# ============================================================================
+# EVENT CATEGORIES
+# ============================================================================
+
+event_categories:
+  ACCRUAL_EVENTS:
+    description: Events related to leave accrual and grant
+  USAGE_EVENTS:
+    description: Events related to leave usage and consumption
+  PERIOD_EVENTS:
+    description: Events related to period boundaries (close, carry, reset)
+  REQUEST_EVENTS:
+    description: Events triggered by leave request actions
+  ADJUSTMENT_EVENTS:
+    description: Events for manual adjustments and corrections
+  SYSTEM_EVENTS:
+    description: Internal system events (snapshot, cleanup)
+
+# ============================================================================
+# EVENT DEFINITIONS
+# ============================================================================
+
+events:
+  # --- ACCRUAL EVENTS ---
+  LeaveAccrued:
+    id: ta.event.leave_accrued
+    category: ACCRUAL_EVENTS
+    description: >
+      Emitted when leave balance is accrued for an employee.
+      Triggered by scheduled ACCRUAL event run.
+
+    payload:
+      instant_id: string
+      employee_id: string
+      class_id: string
+      leave_type_code: string
+      accrued_qty: decimal
+      unit_code: string
+      period_id: string
+      effective_date: date
+      lot_created:
+        id: string
+        eff_date: date
+        expire_date: date
+        lot_qty: decimal
+      event_run_id: string
+
+    consumers:
+      - LeaveBalanceHistory (create snapshot)
+      - LeaveWallet (refresh aggregated balance)
+      - Notification Service (notify employee)
+
+  LeaveGrantCreated:
+    id: ta.event.leave_grant_created
+    category: ACCRUAL_EVENTS
+    description: >
+      Emitted when a new grant lot is created (special grant, bonus).
+
+    payload:
+      detail_id: string
+      instant_id: string
+      employee_id: string
+      lot_kind: GRANT|BONUS|TRANSFER
+      lot_qty: decimal
+      eff_date: date
+      expire_date: date
+      tag: string
+      created_by: string
+
+    consumers:
+      - LeaveBalanceHistory
+      - Audit Log
+
+  # --- USAGE EVENTS ---
+  LeaveRequested:
+    id: ta.event.leave_requested
+    category: USAGE_EVENTS
+    description: >
+      Emitted when employee submits a leave request.
+
+    payload:
+      request_id: string
+      employee_id: string
+      class_id: string
+      instant_id: string
+      start_dt: datetime
+      end_dt: datetime
+      qty_hours_req: decimal
+      status_code: SUBMITTED
+      submitted_at: datetime
+
+    consumers:
+      - LeaveReservation (create hold)
+      - Approval Workflow (route to manager)
+      - Notification Service (notify manager)
+
+  LeaveReservationCreated:
+    id: ta.event.leave_reservation_created
+    category: USAGE_EVENTS
+    description: >
+      Emitted when quota is reserved (held) for approved request.
+
+    payload:
+      reservation_id: string
+      request_id: string
+      instant_id: string
+      employee_id: string
+      reserved_qty: decimal
+      hold_start_date: date
+      hold_end_date: date
+      expires_at: datetime
+
+    consumers:
+      - LeaveInstant (update hold_qty)
+      - LeaveBalanceHistory
+
+  LeaveStarted:
+    id: ta.event.leave_started
+    category: USAGE_EVENTS
+    description: >
+      Emitted when employee's leave starts (START_POST event).
+
+    payload:
+      request_id: string
+      instant_id: string
+      employee_id: string
+      class_id: string
+      used_qty: decimal
+      start_dt: datetime
+      movement_id: string
+      lot_consumed:
+        - detail_id: string
+          qty: decimal
+
+    consumers:
+      - LeaveInstant (update current_qty, hold_qty)
+      - LeaveInstantDetail (update used_qty)
+      - LeaveMovement (create USED movement)
+      - Timesheet Module (mark as on leave)
+      - LeaveBalanceHistory
+
+  LeaveReservationReleased:
+    id: ta.event.leave_reservation_released
+    category: USAGE_EVENTS
+    description: >
+      Emitted when reservation is released (cancel/reject/withdraw).
+
+    payload:
+      reservation_id: string
+      request_id: string
+      instant_id: string
+      employee_id: string
+      released_qty: decimal
+      released_reason: CANCELLED|REJECTED|WITHDRAWN|EXPIRED
+      released_at: datetime
+
+    consumers:
+      - LeaveInstant (decrement hold_qty)
+      - LeaveBalanceHistory
+
+  # --- PERIOD EVENTS ---
+  PeriodClosing:
+    id: ta.event.period_closing
+    category: PERIOD_EVENTS
+    description: >
+      Emitted when period close is initiated.
+
+    payload:
+      period_id: string
+      period_code: string
+      level_code: string
+      start_date: date
+      end_date: date
+      closing_initiated_at: datetime
+      closing_initiated_by: string
+
+    consumers:
+      - LeaveEventRun (run pending events)
+      - Validation Service (check pending requests)
+
+  PeriodClosed:
+    id: ta.event.period_closed
+    category: PERIOD_EVENTS
+    description: >
+      Emitted when period is successfully closed.
+
+    payload:
+      period_id: string
+      period_code: string
+      closed_at: datetime
+      carry_forward_executed: boolean
+      movements_created: integer
+      stats:
+        processed: integer
+        carried: integer
+        expired: integer
+
+    consumers:
+      - LeavePeriod (update status to CLOSED)
+      - LeaveBalanceHistory (finalize snapshots)
+      - Analytics (update period reports)
+
+  CarryForwardExecuted:
+    id: ta.event.carry_forward_executed
+    category: PERIOD_EVENTS
+    description: >
+      Emitted when carry forward is executed for an instant.
+
+    payload:
+      instant_id: string
+      employee_id: string
+      class_id: string
+      previous_period_id: string
+      new_period_id: string
+      carried_qty: decimal
+      max_carry_allowed: decimal
+      expired_qty: decimal
+      new_lot_id: string
+      new_expire_date: date
+
+    consumers:
+      - LeaveInstantDetail (create new lot)
+      - LeaveMovement (create CARRY movement)
+      - LeaveBalanceHistory
+
+  PeriodLocked:
+    id: ta.event.period_locked
+    category: PERIOD_EVENTS
+    description: >
+      Emitted when period is locked (no further modifications).
+
+    payload:
+      period_id: string
+      period_code: string
+      locked_at: datetime
+      locked_by: string
+
+    consumers:
+      - LeavePeriod (update status to LOCKED)
+      - Audit Log
+
+  # --- REQUEST EVENTS ---
+  LeaveRequestApproved:
+    id: ta.event.leave_request_approved
+    category: REQUEST_EVENTS
+    description: >
+      Emitted when leave request is approved.
+
+    payload:
+      request_id: string
+      employee_id: string
+      class_id: string
+      instant_id: string
+      approved_at: datetime
+      approved_by: string
+      approver_comment: string
+      workflow_state: object
+
+    consumers:
+      - LeaveReservation (confirm hold)
+      - Notification Service (notify employee)
+      - Team Calendar (add to calendar)
+
+  LeaveRequestRejected:
+    id: ta.event.leave_request_rejected
+    category: REQUEST_EVENTS
+    description: >
+      Emitted when leave request is rejected.
+
+    payload:
+      request_id: string
+      employee_id: string
+      rejected_at: datetime
+      rejected_by: string
+      rejection_reason: string
+
+    consumers:
+      - LeaveReservation (release hold if exists)
+      - Notification Service (notify employee)
+
+  LeaveRequestCancelled:
+    id: ta.event.leave_request_cancelled
+    category: REQUEST_EVENTS
+    description: >
+      Emitted when employee cancels approved request.
+
+    payload:
+      request_id: string
+      employee_id: string
+      cancelled_at: datetime
+      cancellation_reason: string
+
+    consumers:
+      - LeaveReservation (release hold)
+      - Team Calendar (remove from calendar)
+      - Notification Service (notify manager)
+
+  LeaveRequestWithdrawn:
+    id: ta.event.leave_request_withdrawn
+    category: REQUEST_EVENTS
+    description: >
+      Emitted when employee withdraws approved request.
+
+    payload:
+      request_id: string
+      employee_id: string
+      withdrawn_at: datetime
+
+    consumers:
+      - LeaveReservation (release hold)
+      - Notification Service
+
+  # --- ADJUSTMENT EVENTS ---
+  LeaveBalanceAdjusted:
+    id: ta.event.leave_balance_adjusted
+    category: ADJUSTMENT_EVENTS
+    description: >
+      Emitted when balance is manually adjusted.
+
+    payload:
+      adjustment_id: string
+      instant_id: string
+      employee_id: string
+      class_id: string
+      adjustment_qty: decimal
+      adjustment_reason: string
+      movement_id: string
+      event_code: ADJUST|REVERSE
+      adjusted_by: string
+      adjusted_at: datetime
+
+    consumers:
+      - LeaveInstant (update current_qty)
+      - LeaveMovement (create movement)
+      - LeaveBalanceHistory
+      - Audit Log
+
+  LeaveMovementReversed:
+    id: ta.event.leave_movement_reversed
+    category: ADJUSTMENT_EVENTS
+    description: >
+      Emitted when a movement is reversed.
+
+    payload:
+      original_movement_id: string
+      reversal_movement_id: string
+      instant_id: string
+      employee_id: string
+      original_qty: decimal
+      reversal_qty: decimal
+      reversed_at: datetime
+      reversed_by: string
+      reason: string
+
+    consumers:
+      - LeaveInstant (recalculate balance)
+      - LeaveBalanceHistory
+      - Audit Log
+
+  # --- SYSTEM EVENTS ---
+  BalanceSnapshotCreated:
+    id: ta.event.balance_snapshot_created
+    category: SYSTEM_EVENTS
+    description: >
+      Emitted when EOD balance snapshot is created.
+
+    payload:
+      snapshot_id: string
+      instant_id: string
+      employee_id: string
+      as_of_date: date
+      opening_qty: decimal
+      turnover_dr: decimal
+      turnover_cr: decimal
+      closing_qty: decimal
+      movements_count: integer
+
+    consumers:
+      - LeaveBalanceHistory (create record)
+      - Analytics (update dashboards)
+
+  LeaveInstantCreated:
+    id: ta.event.leave_instant_created
+    category: SYSTEM_EVENTS
+    description: >
+      Emitted when new LeaveInstant is auto-created (eligibility met).
+
+    payload:
+      instant_id: string
+      employee_id: string
+      class_id: string
+      created_at: datetime
+      eligibility_criteria: object
+      auto_created: boolean
+
+    consumers:
+      - LeaveWallet (initialize wallet)
+      - Notification Service (notify employee/HR)
+
+  LeaveInstantSuspended:
+    id: ta.event.leave_instant_suspended
+    category: SYSTEM_EVENTS
+    description: >
+      Emitted when LeaveInstant is suspended.
+
+    payload:
+      instant_id: string
+      employee_id: string
+      suspended_at: datetime
+      suspension_reason: string
+
+    consumers:
+      - LeaveInstant (update state_code)
+      - Notification Service
+
+  LeaveInstantClosed:
+    id: ta.event.leave_instant_closed
+    category: SYSTEM_EVENTS
+    description: >
+      Emitted when LeaveInstant is closed (employee terminated).
+
+    payload:
+      instant_id: string
+      employee_id: string
+      closed_at: datetime
+      closing_reason: TERMINATION|TRANSFER|OTHER
+      final_balance: decimal
+      payout_amount: decimal
+
+    consumers:
+      - LeaveInstant (update state_code)
+      - Payroll Module (calculate payout)
+      - Audit Log
+
+  ReservationExpired:
+    id: ta.event.reservation_expired
+    category: SYSTEM_EVENTS
+    description: >
+      Emitted when reservation expires (not started by expires_at).
+
+    payload:
+      reservation_id: string
+      request_id: string
+      instant_id: string
+      expired_at: datetime
+      reserved_qty: decimal
+
+    consumers:
+      - LeaveReservation (update status to EXPIRED)
+      - LeaveInstant (release hold)
+      - Notification Service
+
+# ============================================================================
+# EVENT FLOW DIAGRAMS
+# ============================================================================
+
+event_flows:
+  AccrualFlow:
+    description: Monthly accrual event flow
+    sequence:
+      - LeaveAccrued
+      - LeaveGrantCreated
+      - BalanceSnapshotCreated
+
+  RequestApprovalFlow:
+    description: Leave request and approval flow
+    sequence:
+      - LeaveRequested
+      - LeaveReservationCreated
+      - LeaveRequestApproved
+      - LeaveStarted
+      - LeaveReservationReleased
+
+  PeriodCloseFlow:
+    description: Period close and carry forward flow
+    sequence:
+      - PeriodClosing
+      - CarryForwardExecuted
+      - PeriodClosed
+      - PeriodLocked
+
+  CancellationFlow:
+    description: Request cancellation flow
+    sequence:
+      - LeaveRequestCancelled
+      - LeaveReservationReleased
+
+# ============================================================================
+# EVENT SCHEMA (JSON Schema)
+# ============================================================================
+
+event_envelope:
+  type: object
+  properties:
+    event_id:
+      type: string
+      format: uuid
+    event_type:
+      type: string
+    event_version:
+      type: string
+    occurred_at:
+      type: string
+      format: date-time
+    aggregate_id:
+      type: string
+    aggregate_type:
+      type: string
+    payload:
+      type: object
+    metadata:
+      type: object
+      properties:
+        correlation_id: string
+        causation_id: string
+        user_id: string
+        source: string
+
+# ============================================================================
+# EVENT STORAGE
+# ============================================================================
+
+event_store:
+  table: ta.event_log
+  retention_days: 2555  # 7 years
+  partitioning: by occurred_at (monthly)
+  indexing:
+    - aggregate_id
+    - event_type
+    - occurred_at

@@ -1,0 +1,136 @@
+id: odsa.ta.concept.leave_balance_history
+type: concept
+name: LeaveBalanceHistory
+version: 1.0.0
+description: >
+  Daily EOD (End Of Day) snapshot của LeaveInstant balance.
+  LeaveBalanceHistory lưu lại số dư mở đầu, biến động trong ngày,
+  và số dư closing để phục vụ reporting và audit.
+
+  Công thức: closing_qty = opening_qty + turnover_cr - turnover_dr
+
+  Snapshot được tạo tự động bởi job EOD hàng ngày.
+
+prefixes:
+  ta: https://xtalent.com/ta/
+  xsd: http://www.w3.org/2001/XMLSchema#
+
+default_range: string
+
+attributes:
+  instant_id:
+    identifier: true
+    required: true
+    range: string
+    description: Reference đến LeaveInstant
+    comments: FK đến leave_instant, part of PK
+
+  as_of_date:
+    identifier: true
+    required: true
+    range: date
+    description: Ngày snapshot (EOD)
+    comments: Part of PK, unique với instant_id
+
+  opening_qty:
+    range: decimal
+    required: true
+    default: 0.0
+    description: >
+      Số dư mở đầu ngày (BOD - Beginning Of Day).
+      Bằng closing_qty của ngày trước đó.
+
+  turnover_dr:
+    range: decimal
+    required: true
+    default: 0.0
+    description: >
+      Tổng biến động giảm (debit turnover) trong ngày.
+      Sum của tất cả movements với qty < 0.
+
+  turnover_cr:
+    range: decimal
+    required: true
+    default: 0.0
+    description: >
+      Tổng biến động tăng (credit turnover) trong ngày.
+      Sum của tất cả movements với qty > 0.
+
+  closing_qty:
+    range: decimal
+    required: true
+    description: >
+      Số dư closing (EOD - End Of Day).
+      Công thức: closing_qty = opening_qty + turnover_cr - turnover_dr
+    constraints:
+      computed: true
+
+  metadata:
+    range: json
+    required: false
+    description: Metadata linh hoạt cho các thuộc tính mở rộng
+
+relationships:
+  instant:
+    target: LeaveInstant
+    cardinality: many_to_one
+    description: LeaveInstant được snapshot
+    required: true
+
+constraints:
+  - primary_key: [instant_id, as_of_date]
+  - unique: [instant_id, as_of_date]
+  - index: [as_of_date]
+  - check: closing_qty = opening_qty + turnover_cr - turnover_dr
+
+business_rules:
+  - rule_history_unique_instant_date
+  - rule_history_closing_formula
+  - rule_history_must_be_daily
+  - rule_history_turnover_from_movements
+  - rule_history_cannot_modify_past_date
+
+examples:
+  - instant_id: INST_EMP001_ANL
+    as_of_date: '2025-04-01'
+    opening_qty: 80.0
+    turnover_dr: 0.0
+    turnover_cr: 1.75        # Accrual movement
+    closing_qty: 81.75
+    metadata:
+      movementsCount: 1
+      accrualMovement: MOVE_2025_001
+
+  - instant_id: INST_EMP001_ANL
+    as_of_date: '2025-04-15'
+    opening_qty: 96.0
+    turnover_dr: 8.0         # Used movement
+    turnover_cr: 0.0
+    closing_qty: 88.0
+    metadata:
+      movementsCount: 1
+      usedMovement: MOVE_2025_100
+      relatedRequest: REQ_2025_001
+
+  - instant_id: INST_EMP001_ANL
+    as_of_date: '2025-04-16'
+    opening_qty: 88.0        # = closing của 2025-04-15
+    turnover_dr: 8.0         # Used movement (ngày thứ 2)
+    turnover_cr: 0.0
+    closing_qty: 80.0
+    metadata:
+      movementsCount: 1
+      usedMovement: MOVE_2025_101
+      relatedRequest: REQ_2025_001
+
+  - instant_id: INST_EMP001_ANL
+    as_of_date: '2025-04-17'
+    opening_qty: 80.0
+    turnover_dr: 0.0
+    turnover_cr: 0.0
+    closing_qty: 80.0
+    metadata:
+      movementsCount: 0
+      noActivity: true
+
+# EOD Snapshot Job logic được define chi tiết trong ontology/lifecycle.yaml

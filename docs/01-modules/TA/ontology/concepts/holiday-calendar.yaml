@@ -1,0 +1,126 @@
+id: odsa.ta.concept.holiday_calendar
+type: concept
+name: HolidayCalendar
+version: 1.0.0
+description: >
+  Định nghĩa lịch nghỉ lễ theo quốc gia/vùng miền. HolidayCalendar bao gồm
+  các ngày lễ chính thức và ngày làm việc đặc biệt. Được sử dụng để:
+  - Tính toán số ngày nghỉ thực tế (holiday_handling trong LeaveType)
+  - Validation khi tạo LeaveRequest
+  - Tính toán accrual dựa trên working days
+
+prefixes:
+  ta: https://xtalent.com/ta/
+  xsd: http://www.w3.org/2001/XMLSchema#
+
+default_range: string
+
+attributes:
+  id:
+    identifier: true
+    required: true
+    range: string
+    description: Unique identifier (UUID) cho HolidayCalendar
+
+  code:
+    required: true
+    range: string
+    unique: true
+    description: >
+      Mã định danh duy nhất cho calendar (ví dụ: VN_GENERAL, US FEDERAL, SG_GENERAL).
+    constraints:
+      pattern: '^[A-Z][A-Z0-9_]{0,49}$'
+
+  name:
+    required: true
+    range: string
+    description: Tên hiển thị của calendar
+    constraints:
+      max_length: 100
+
+  region_code:
+    required: true
+    range: string
+    description: >
+      Mã vùng miền áp dụng (ví dụ: VN, US, SG, VN-N, VN-S).
+      Có thể là country code hoặc region sub-code.
+
+  deduct_flag:
+    range: boolean
+    required: true
+    default: false
+    description: >
+      Nếu true, ngày lễ trong calendar sẽ được trừ vào quota khi xin phép.
+      Áp dụng cho các loại nghỉ có holiday_handling = EXCLUDE_HOLIDAYS.
+
+  metadata:
+    range: json
+    required: false
+    description: Metadata linh hoạt cho các thuộc tính mở rộng
+
+relationships:
+  dates:
+    target: HolidayDate
+    cardinality: one_to_many
+    description: Các ngày lễ trong calendar này
+    required: true
+
+  leave_types:
+    target: LeaveType
+    cardinality: one_to_many
+    description: Các LeaveType sử dụng calendar này
+    required: false
+
+  leave_periods:
+    target: LeavePeriod
+    cardinality: one_to_many
+    description: Các LeavePeriod reference đến calendar này
+    required: false
+
+  requests:
+    target: LeaveRequest
+    cardinality: one_to_many
+    description: Các LeaveRequest được validate qua calendar này
+    required: false
+
+business_rules:
+  - rule_calendar_unique_code
+  - rule_calendar_cannot_delete_if_in_use
+  - rule_date_unique_within_calendar
+  - rule_holiday_date_cannot_overlap
+
+examples:
+  - code: VN_GENERAL
+    name: Vietnam General Holidays
+    region_code: VN
+    deduct_flag: false
+    dates:
+      - date: '2025-01-01'
+        name: New Year's Day
+        is_half_day: false
+      - date: '2025-01-29'
+        name: Tet Holiday
+        is_half_day: false
+      - date: '2025-04-30'
+        name: Reunification Day
+        is_half_day: false
+      - date: '2025-05-01'
+        name: Labour Day
+        is_half_day: false
+      - date: '2025-09-02'
+        name: National Day
+        is_half_day: false
+
+  - code: US_FEDERAL
+    name: US Federal Holidays
+    region_code: US
+    deduct_flag: false
+
+  - code: SG_GENERAL
+    name: Singapore General Holidays
+    region_code: SG
+    deduct_flag: false
+
+# Ghi chú: HolidayDate là dependent entity
+# Được định nghĩa qua relationship trong HolidayCalendar
+# Primary key: (calendar_id, holiday_date)

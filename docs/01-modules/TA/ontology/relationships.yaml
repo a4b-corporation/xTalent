@@ -1,0 +1,487 @@
+id: odsa.ta.relationships
+type: relationships
+name: TA Module Relationships
+version: 1.0.0
+description: >
+  Định nghĩa tất cả relationships giữa các entities trong TA Module - Absence Ontology.
+  Relationships được define với cardinality rõ ràng và semantics đầy đủ.
+
+prefixes:
+  ta: https://xtalent.com/ta/
+  xsd: http://www.w3.org/2001/XMLSchema#
+
+# ============================================================================
+# CORE CONFIGURATION RELATIONSHIPS
+# ============================================================================
+
+relationships:
+  # --- LeaveType Relationships ---
+  leave_type__leave_class:
+    subject: LeaveType
+    predicate: hasLeaveClasses
+    object: LeaveClass
+    cardinality: one_to_many
+    description: Một LeaveType có thể có nhiều LeaveClass (biến thể vận hành)
+    inverse:
+      subject: LeaveClass
+      predicate: hasLeaveType
+      object: LeaveType
+      cardinality: many_to_one
+    required: false
+    comments: >
+      Hierarchy đúng: LeaveType → LeaveClass (không phải ngược lại như entities v1 cũ)
+
+  leave_type__leave_policy:
+    subject: LeaveType
+    predicate: hasPolicies
+    object: LeavePolicy
+    cardinality: one_to_many
+    description: Một LeaveType có thể có nhiều LeavePolicies
+    inverse:
+      subject: LeavePolicy
+      predicate: hasLeaveType
+      object: LeaveType
+      cardinality: many_to_one
+    required: false
+
+  leave_type__leave_wallet:
+    subject: LeaveType
+    predicate: hasWallets
+    object: LeaveWallet
+    cardinality: one_to_many
+    description: Một LeaveType có thể có nhiều LeaveWallets (mỗi employee một cái)
+    inverse:
+      subject: LeaveWallet
+      predicate: hasLeaveType
+      object: LeaveType
+      cardinality: many_to_one
+    required: false
+
+  leave_type__team_leave_limit:
+    subject: LeaveType
+    predicate: hasTeamLimits
+    object: TeamLeaveLimit
+    cardinality: one_to_many
+    description: Một LeaveType có thể có nhiều TeamLeaveLimits
+    inverse:
+      subject: TeamLeaveLimit
+      predicate: hasLeaveType
+      object: LeaveType
+      cardinality: many_to_one
+    required: false
+
+  # --- LeaveClass Relationships ---
+  leave_class__leave_instant:
+    subject: LeaveClass
+    predicate: hasInstants
+    object: LeaveInstant
+    cardinality: one_to_many
+    description: Một LeaveClass sinh ra nhiều LeaveInstants (mỗi employee một cái)
+    inverse:
+      subject: LeaveInstant
+      predicate: hasLeaveClass
+      object: LeaveClass
+      cardinality: many_to_one
+    required: false
+    comments: >
+      Instant được tạo tự động khi employee đủ eligibility
+
+  leave_class__leave_class_event:
+    subject: LeaveClass
+    predicate: hasClassEvents
+    object: LeaveClassEvent
+    cardinality: one_to_many
+    description: Một LeaveClass có nhiều LeaveClassEvents (mapping tới EventDefs)
+    inverse:
+      subject: LeaveClassEvent
+      predicate: hasLeaveClass
+      object: LeaveClass
+      cardinality: many_to_one
+    required: false
+
+  leave_class__leave_event_def:
+    subject: LeaveClass
+    predicate: hasEventDefs
+    object: LeaveEventDef
+    cardinality: many_to_many
+    description: Một LeaveClass có thể có nhiều LeaveEventDefs và ngược lại
+    comments: >
+      Qua bảng trung gian LeaveClassEvent
+
+  leave_class__leave_policy:
+    subject: LeaveClass
+    predicate: hasPolicies
+    object: LeavePolicy
+    cardinality: many_to_many
+    description: Một LeaveClass có thể áp dụng nhiều LeavePolicies
+    comments: >
+      Qua rules_json reference
+
+  # --- LeavePolicy Relationships ---
+  leave_policy__policy_assignment:
+    subject: LeavePolicy
+    predicate: hasAssignments
+    object: PolicyAssignment
+    cardinality: one_to_many
+    description: Một LeavePolicy có thể được gán cho nhiều entities
+    inverse:
+      subject: PolicyAssignment
+      predicate: hasPolicy
+      object: LeavePolicy
+      cardinality: many_to_one
+    required: false
+
+  # --- LeavePeriod Relationships ---
+  leave_period__leave_period:
+    subject: LeavePeriod
+    predicate: hasChildren
+    object: LeavePeriod
+    cardinality: one_to_many
+    description: Một LeavePeriod cha có thể có nhiều period con
+    inverse:
+      subject: LeavePeriod
+      predicate: hasParent
+      object: LeavePeriod
+      cardinality: many_to_one
+    required: false
+    comments: >
+      Self-referential: YEAR → QUARTER → MONTH
+
+  leave_period__leave_event_run:
+    subject: LeavePeriod
+    predicate: hasEventRuns
+    object: LeaveEventRun
+    cardinality: one_to_many
+    description: Một LeavePeriod có thể có nhiều EventRuns
+    inverse:
+      subject: LeaveEventRun
+      predicate: hasPeriod
+      object: LeavePeriod
+      cardinality: many_to_one
+    required: false
+
+  leave_period__leave_movement:
+    subject: LeavePeriod
+    predicate: hasMovements
+    object: LeaveMovement
+    cardinality: one_to_many
+    description: Một LeavePeriod chứa nhiều LeaveMovements
+    inverse:
+      subject: LeaveMovement
+      predicate: hasPeriod
+      object: LeavePeriod
+      cardinality: many_to_one
+    required: false
+
+  # ============================================================================
+  # INSTANT & DETAIL RELATIONSHIPS
+  # ============================================================================
+
+  # --- LeaveInstant Relationships ---
+  leave_instant__leave_instant_detail:
+    subject: LeaveInstant
+    predicate: hasDetails
+    object: LeaveInstantDetail
+    cardinality: one_to_many
+    description: Một LeaveInstant có nhiều LeaveInstantDetails (lots)
+    inverse:
+      subject: LeaveInstantDetail
+      predicate: hasInstant
+      object: LeaveInstant
+      cardinality: many_to_one
+    required: false
+
+  leave_instant__leave_movement:
+    subject: LeaveInstant
+    predicate: hasMovements
+    object: LeaveMovement
+    cardinality: one_to_many
+    description: Một LeaveInstant có nhiều LeaveMovements
+    inverse:
+      subject: LeaveMovement
+      predicate: hasInstant
+      object: LeaveInstant
+      cardinality: many_to_one
+    required: false
+
+  leave_instant__leave_balance_history:
+    subject: LeaveInstant
+    predicate: hasBalanceHistory
+    object: LeaveBalanceHistory
+    cardinality: one_to_many
+    description: Một LeaveInstant có nhiều BalanceHistory snapshots
+    inverse:
+      subject: LeaveBalanceHistory
+      predicate: hasInstant
+      object: LeaveInstant
+      cardinality: many_to_one
+    required: false
+
+  leave_instant__leave_reservation:
+    subject: LeaveInstant
+    predicate: hasReservations
+    object: LeaveReservation
+    cardinality: one_to_many
+    description: Một LeaveInstant có thể có nhiều Reservations (active hoặc historical)
+    inverse:
+      subject: LeaveReservation
+      predicate: hasInstant
+      object: LeaveInstant
+      cardinality: many_to_one
+    required: false
+
+  leave_instant__leave_request:
+    subject: LeaveInstant
+    predicate: hasRequests
+    object: LeaveRequest
+    cardinality: one_to_many
+    description: Một LeaveInstant có thể có nhiều LeaveRequests
+    inverse:
+      subject: LeaveRequest
+      predicate: hasInstant
+      object: LeaveInstant
+      cardinality: many_to_one
+    required: false
+
+  leave_instant__employee:
+    subject: LeaveInstant
+    predicate: hasEmployee
+    object: Employee
+    cardinality: many_to_one
+    description: Một LeaveInstant thuộc về một Employee
+    inverse:
+      subject: Employee
+      predicate: hasInstants
+      object: LeaveInstant
+      cardinality: one_to_many
+    required: true
+    comments: >
+      Employee là external entity (từ Employment module)
+
+  # --- LeaveInstantDetail Relationships ---
+  leave_instant_detail__leave_movement:
+    subject: LeaveInstantDetail
+    predicate: hasMovements
+    object: LeaveMovement
+    cardinality: one_to_many
+    description: Một lot có thể bị trừ bởi nhiều movements (FEFO consumption)
+    inverse:
+      subject: LeaveMovement
+      predicate: hasLot
+      object: LeaveInstantDetail
+      cardinality: many_to_one
+    required: false
+    comments: >
+      FEFO: lot nào hết hạn trước được trừ trước
+
+  # ============================================================================
+  # EVENT RELATIONSHIPS
+  # ============================================================================
+
+  # --- LeaveEventDef Relationships ---
+  leave_event_def__leave_class_event:
+    subject: LeaveEventDef
+    predicate: hasClassEvents
+    object: LeaveClassEvent
+    cardinality: one_to_many
+    description: Một EventDef có thể được map vào nhiều LeaveClasses
+    inverse:
+      subject: LeaveClassEvent
+      predicate: hasEventDef
+      object: LeaveEventDef
+      cardinality: many_to_one
+    required: false
+
+  leave_event_def__leave_event_run:
+    subject: LeaveEventDef
+    predicate: hasRuns
+    object: LeaveEventRun
+    cardinality: one_to_many
+    description: Một EventDef có thể có nhiều EventRuns (execution instances)
+    inverse:
+      subject: LeaveEventRun
+      predicate: hasEventDef
+      object: LeaveEventDef
+      cardinality: many_to_one
+    required: false
+
+  leave_event_def__leave_movement:
+    subject: LeaveEventDef
+    predicate: hasMovements
+    object: LeaveMovement
+    cardinality: one_to_many
+    description: Một EventDef sinh ra nhiều LeaveMovements
+    inverse:
+      subject: LeaveMovement
+      predicate: hasEventDef
+      object: LeaveEventDef
+      cardinality: many_to_one
+    required: false
+
+  # --- LeaveEventRun Relationships ---
+  leave_event_run__leave_movement:
+    subject: LeaveEventRun
+    predicate: hasMovements
+    object: LeaveMovement
+    cardinality: one_to_many
+    description: Một EventRun sinh ra nhiều LeaveMovements
+    inverse:
+      subject: LeaveMovement
+      predicate: hasEventRun
+      object: LeaveEventRun
+      cardinality: many_to_one
+    required: false
+
+  # --- LeaveClassEvent Relationships ---
+  leave_class_event__leave_movement:
+    subject: LeaveClassEvent
+    predicate: hasMovements
+    object: LeaveMovement
+    cardinality: one_to_many
+    description: Một ClassEvent mapping sinh ra nhiều LeaveMovements
+    inverse:
+      subject: LeaveMovement
+      predicate: hasClassEvent
+      object: LeaveClassEvent
+      cardinality: many_to_one
+    required: false
+
+  # ============================================================================
+  # WORKFLOW RELATIONSHIPS
+  # ============================================================================
+
+  # --- LeaveRequest Relationships ---
+  leave_request__leave_reservation:
+    subject: LeaveRequest
+    predicate: hasReservation
+    object: LeaveReservation
+    cardinality: one_to_one
+    description: Một LeaveRequest tạo ra một LeaveReservation (khi approved)
+    inverse:
+      subject: LeaveReservation
+      predicate: hasRequest
+      object: LeaveRequest
+      cardinality: one_to_one
+    required: false
+    comments: >
+      1:1 relationship - reservation lifecycle follows request
+
+  leave_request__leave_movement:
+    subject: LeaveRequest
+    predicate: hasMovements
+    object: LeaveMovement
+    cardinality: one_to_many
+    description: Một LeaveRequest có thể sinh ra nhiều movements (multi-day leave)
+    inverse:
+      subject: LeaveMovement
+      predicate: hasRequest
+      object: LeaveRequest
+      cardinality: many_to_one
+    required: false
+
+  leave_request__employee:
+    subject: LeaveRequest
+    predicate: hasEmployee
+    object: Employee
+    cardinality: many_to_one
+    description: Một LeaveRequest thuộc về một Employee
+    inverse:
+      subject: Employee
+      predicate: hasRequests
+      object: LeaveRequest
+      cardinality: one_to_many
+    required: true
+
+  leave_request__leave_class:
+    subject: LeaveRequest
+    predicate: hasLeaveClass
+    object: LeaveClass
+    cardinality: many_to_one
+    description: Một LeaveRequest áp dụng một LeaveClass
+    inverse:
+      subject: LeaveClass
+      predicate: hasRequests
+      object: LeaveRequest
+      cardinality: one_to_many
+    required: true
+
+  # --- LeaveReservation Relationships ---
+  # (Already defined above with LeaveRequest)
+
+  # ============================================================================
+  # SUPPORTING ENTITIES
+  # ============================================================================
+
+  # --- HolidayCalendar Relationships ---
+  holiday_calendar__holiday_date:
+    subject: HolidayCalendar
+    predicate: hasDates
+    object: HolidayDate
+    cardinality: one_to_many
+    description: Một Calendar có nhiều HolidayDates
+    inverse:
+      subject: HolidayDate
+      predicate: hasCalendar
+      object: HolidayCalendar
+      cardinality: many_to_one
+    required: true
+
+  holiday_calendar__leave_period:
+    subject: HolidayCalendar
+    predicate: hasPeriods
+    object: LeavePeriod
+    cardinality: one_to_many
+    description: Một Calendar có thể được reference bởi nhiều LeavePeriods
+    inverse:
+      subject: LeavePeriod
+      predicate: hasCalendar
+      object: HolidayCalendar
+      cardinality: many_to_one
+    required: false
+
+  # --- LeaveWallet Relationships ---
+  leave_wallet__employee:
+    subject: LeaveWallet
+    predicate: hasEmployee
+    object: Employee
+    cardinality: many_to_one
+    description: Một LeaveWallet thuộc về một Employee
+    inverse:
+      subject: Employee
+      predicate: hasWallets
+      object: LeaveWallet
+      cardinality: one_to_many
+    required: true
+
+  # --- TeamLeaveLimit Relationships ---
+  team_leave_limit__leave_request:
+    subject: TeamLeaveLimit
+    predicate: validatesRequests
+    object: LeaveRequest
+    cardinality: one_to_many
+    description: Một TeamLimit validate nhiều LeaveRequests
+    inverse:
+      subject: LeaveRequest
+      predicate: validatedBy
+      object: TeamLeaveLimit
+      cardinality: many_to_one
+    required: false
+
+  # ============================================================================
+  # MOVEMENT RELATIONSHIPS (SELF-REFERENTIAL)
+  # ============================================================================
+
+  leave_movement__leave_movement:
+    subject: LeaveMovement
+    predicate: reversedBy
+    object: LeaveMovement
+    cardinality: one_to_one
+    description: Một LeaveMovement có thể bị reversal bởi một movement khác
+    inverse:
+      subject: LeaveMovement
+      predicate: reverses
+      object: LeaveMovement
+      cardinality: one_to_one
+    required: false
+    comments: >
+      Self-referential: correction via reversal, not edit

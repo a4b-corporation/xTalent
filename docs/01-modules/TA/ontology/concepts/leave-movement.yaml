@@ -1,0 +1,298 @@
+id: odsa.ta.concept.leave_movement
+type: concept
+name: LeaveMovement
+version: 1.0.0
+description: >
+  Giao dịch nghỉ phép (ledger entry) ghi nhận biến động số dư ±qty.
+  LeaveMovement là immutable (không sửa, chỉ reversal), được sinh ra từ
+  các sự kiện (LeaveEventRun) hoặc từ LeaveRequest (START_POST).
+
+  Mỗi movement có:
+  - instant_id: tài khoản nghỉ bị ảnh hưởng
+  - class_id: LeaveClass vận hành
+  - event_code: loại sự kiện sinh ra movement
+  - qty: số lượng ± (dương = tăng, âm = giảm)
+  - effective_date: ngày hiệu lực
+
+  LeaveMovement là bảng ledger trung tâm của module Absence, tương tự
+  khái niệm "sổ cái" trong kế toán.
+
+prefixes:
+  ta: https://xtalent.com/ta/
+  xsd: http://www.w3.org/2001/XMLSchema#
+
+default_range: string
+
+attributes:
+  id:
+    identifier: true
+    required: true
+    range: string
+    description: Unique identifier (UUID) cho LeaveMovement
+
+  instant_id:
+    required: true
+    range: string
+    description: Reference đến LeaveInstant bị ảnh hưởng
+    comments: FK đến leave_instant
+
+  class_id:
+    required: true
+    range: string
+    description: Reference đến LeaveClass vận hành
+    comments: FK đến leave_class
+
+  event_code:
+    required: true
+    range: string
+    description: >
+      Mã sự kiện sinh ra movement này.
+      Reference đến LeaveEventDef.code.
+    constraints:
+      permitted_values:
+        - ACCRUAL       # Cấp phát phép định kỳ
+        - CARRY         # Chuyển phép từ kỳ trước
+        - EXPIRE        # Hết hạn lot (nếu emit_expire_turnover = true)
+        - USED          # Sử dụng phép (START_POST)
+        - ADJUST        # Điều chỉnh (tăng/giảm)
+        - REVERSE       # Reversal movement (sửa sai)
+        - BOOK_HOLD     # Block quota (reservation)
+        - RELEASE_HOLD  # Release quota (cancel/reservation expire)
+        - RESET         # Reset số dư cuối kỳ
+        - TRANSFER_IN   # Chuyển từ tài khoản khác vào
+        - TRANSFER_OUT  # Chuyển sang tài khoản khác
+        - OTHER         # Khác
+
+  qty:
+    range: decimal
+    required: true
+    description: >
+      Số lượng biến động.
+      Dương (+) = tăng số dư (accrual, carry, adjust up, reverse)
+      Âm (-) = giảm số dư (used, expire, adjust down)
+    constraints:
+      can_be_negative: true
+
+  unit_code:
+    range: string
+    required: true
+    description: Đơn vị tính tại thời điểm post
+    constraints:
+      permitted_values:
+        - DAY
+        - HOUR
+
+  period_id:
+    range: string
+    required: false
+    description: Reference đến LeavePeriod liên quan
+    comments: FK đến leave_period (nullable)
+
+  effective_date:
+    range: date
+    required: true
+    description: Ngày hiệu lực của movement (ngày ghi sổ)
+
+  expire_date:
+    range: date
+    required: false
+    description: >
+      Ngày hết hạn của movement (nếu có).
+      Thường dùng cho các movement đặc biệt có thời hạn.
+
+  posted_at:
+    range: datetime
+    required: true
+    default: now
+    description: Thời điểm thực tế post movement vào hệ thống
+
+  request_id:
+    range: string
+    required: false
+    description: Reference đến LeaveRequest (nếu movement sinh ra từ request)
+    comments: FK đến leave_request (nullable)
+
+  lot_id:
+    range: string
+    required: false
+    description: Reference đến LeaveInstantDetail lot bị trừ (FEFO consumption)
+    comments: FK đến leave_instant_detail (nullable)
+
+  run_id:
+    range: string
+    required: false
+    description: Reference đến LeaveEventRun (nếu movement sinh ra từ batch run)
+    comments: FK đến leave_event_run (nullable)
+
+  idempotency_key:
+    range: string
+    required: false
+    description: >
+      Khóa chống trùng khi rerun batch/event.
+      Thường là hash của: event_code + instant_id + effective_date + seq
+    comments: Dùng để đảm bảo idempotency khi retry
+
+  metadata:
+    range: json
+    required: false
+    description: Metadata linh hoạt cho các thuộc tính mở rộng
+
+  # === CONTEXT DIMENSIONS (snapshot tại thời điểm post) ===
+  bu_id:
+    range: string
+    required: false
+    description: Business Unit dimension snapshot
+
+  le_id:
+    range: string
+    required: false
+    description: Legal Entity dimension snapshot
+
+  country_code:
+    range: string
+    required: false
+    description: Country code dimension snapshot
+
+relationships:
+  instant:
+    target: LeaveInstant
+    cardinality: many_to_one
+    description: LeaveInstant bị ảnh hưởng bởi movement này
+    required: true
+
+  leave_class:
+    target: LeaveClass
+    cardinality: many_to_one
+    description: LeaveClass vận hành
+    required: true
+
+  event_def:
+    target: LeaveEventDef
+    cardinality: many_to_one
+    description: LeaveEventDef sinh ra movement này
+    required: false
+
+  period:
+    target: LeavePeriod
+    cardinality: many_to_one
+    description: LeavePeriod chứa movement này
+    required: false
+
+  request:
+    target: LeaveRequest
+    cardinality: many_to_one
+    description: LeaveRequest liên quan (nếu có)
+    required: false
+
+  lot:
+    target: LeaveInstantDetail
+    cardinality: many_to_one
+    description: LeaveInstantDetail lot bị trừ (FEFO)
+    required: false
+
+  event_run:
+    target: LeaveEventRun
+    cardinality: many_to_one
+    description: LeaveEventRun sinh ra movement này
+    required: false
+
+  reversal_movement:
+    target: LeaveMovement
+    cardinality: one_to_one
+    description: Movement reversal (nếu có) cho movement này
+    required: false
+
+  reversed_by:
+    target: LeaveMovement
+    cardinality: one_to_one
+    description: Movement này bị reversal bởi movement khác
+    required: false
+
+lifecycle:
+  reference: LeaveMovementLifecycle
+  initial_state: POSTED
+
+states:
+  - POSTED      # Đã post (immutable)
+  - REVERSED    # Đã bị reversal
+
+business_rules:
+  - rule_movement_immutable
+  - rule_movement_correction_via_reversal
+  - rule_movement_must_have_event_code
+  - rule_movement_idempotency_key_unique
+  - rule_movement_effective_date_must_be_valid
+  - rule_movement_qty_sign_by_event
+  - rule_movement_cannot_duplicate_with_idempotency_key
+
+constraints:
+  - index: [instant_id, effective_date]
+  - index: [class_id, event_code, effective_date]
+  - index: [request_id]
+  - index: [run_id]
+  - unique: [idempotency_key]  # nullable unique
+  - check: qty != 0
+  - check: posted_at >= effective_date (thường đúng)
+
+examples:
+  # Accrual movement (tăng số dư)
+  - instant_id: INST_EMP001_ANL
+    class_id: ANL_VN_FT
+    event_code: ACCRUAL
+    qty: 1.75
+    unit_code: HOUR
+    period_id: FY2025M04
+    effective_date: '2025-04-01'
+    posted_at: '2025-04-01T00:00:00Z'
+    run_id: RUN_ACCRUAL_202504
+    idempotency_key: ACCRUAL|INST_EMP001_ANL|2025-04-01|001
+    metadata:
+      batchRun: true
+      source: MONTHLY_ACCRUAL_JOB
+
+  # Used movement (giảm số dư - START_POST)
+  - instant_id: INST_EMP001_ANL
+    class_id: ANL_VN_FT
+    event_code: USED
+    qty: -8.0
+    unit_code: HOUR
+    period_id: FY2025M04
+    effective_date: '2025-04-15'
+    posted_at: '2025-04-15T00:00:00Z'
+    request_id: REQ_2025_001
+    lot_id: LOT_EMP001_2025
+    idempotency_key: USED|INST_EMP001_ANL|2025-04-15|001
+    metadata:
+      leaveDays: 1
+      source: START_POST_EVENT
+
+  # Carry forward movement
+  - instant_id: INST_EMP001_ANL
+    class_id: ANL_VN_FT
+    event_code: CARRY
+    qty: 10.0
+    unit_code: DAY
+    period_id: FY2025
+    effective_date: '2025-01-01'
+    posted_at: '2025-01-01T00:00:00Z'
+    run_id: RUN_CARRY_2025
+    idempotency_key: CARRY|INST_EMP001_ANL|2025-01-01|001
+    lot_id: LOT_CARRY_2024
+    metadata:
+      carriedFrom: FY2024
+      originalLotId: LOT_EMP001_2024
+
+  # Reversal movement (sửa sai)
+  - instant_id: INST_EMP001_ANL
+    class_id: ANL_VN_FT
+    event_code: REVERSE
+    qty: 8.0
+    unit_code: HOUR
+    period_id: FY2025M04
+    effective_date: '2025-04-15'
+    posted_at: '2025-04-16T10:00:00Z'
+    request_id: REQ_2025_001
+    idempotency_key: REVERSE|REQ_2025_001|2025-04-16|001
+    metadata:
+      reversesMovementId: MOVE_2025_001
+      reason: Employee cancelled leave after approval

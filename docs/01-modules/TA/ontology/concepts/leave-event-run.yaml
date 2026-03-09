@@ -1,0 +1,260 @@
+id: odsa.ta.concept.leave_event_run
+type: concept
+name: LeaveEventRun
+version: 1.0.0
+description: >
+  Ghi nhận một lần thực thi (execution instance) của LeaveEventDef.
+  LeaveEventRun track tiến độ, kết quả, và idempotency của batch run.
+
+  Mỗi khi event được trigger (scheduled/manual/API), một LeaveEventRun
+  được tạo để ghi nhận:
+  - started_at: thời điểm bắt đầu
+  - finished_at: thời điểm kết thúc
+  - run_status: RUNNING/DONE/ERROR/CANCELED
+  - stats_json: thống kê kết quả (processed, posted, skipped, failed)
+  - idempotency_key: chống double-run
+
+prefixes:
+  ta: https://xtalent.com/ta/
+  xsd: http://www.w3.org/2001/XMLSchema#
+
+default_range: string
+
+attributes:
+  id:
+    identifier: true
+    required: true
+    range: string
+    description: Unique identifier (UUID) cho LeaveEventRun
+
+  event_def_id:
+    required: true
+    range: string
+    description: Reference đến LeaveEventDef được thực thi
+    comments: FK đến leave_event_def
+
+  class_id:
+    range: string
+    required: false
+    description: >
+      Reference đến LeaveClass (nếu run áp dụng cho specific class).
+      Null = run cho tất cả classes của event.
+    comments: FK đến leave_class (nullable)
+
+  period_id:
+    range: string
+    required: false
+    description: Reference đến LeavePeriod liên quan
+    comments: FK đến leave_period (nullable)
+
+  schedule_key:
+    range: string
+    required: false
+    description: >
+      Key định danh đợt chạy (kết hợp class/period).
+      Dùng để phân biệt các run khác nhau của cùng event.
+    examples:
+      - ACCRUAL|ANL_VN_FT|FY2025M04
+      - CARRY|ALL|FY2024
+
+  idempotency_key:
+    range: string
+    required: false
+    description: >
+      Khóa chống trùng khi rerun.
+      Nếu run lại với cùng key, system sẽ skip hoặc retry an toàn.
+    comments: Unique constraint (nullable)
+
+  started_at:
+    range: datetime
+    required: true
+    description: Thời điểm bắt đầu run
+
+  finished_at:
+    range: datetime
+    required: false
+    description: Thời điểm kết thúc run (null nếu đang chạy)
+
+  run_status:
+    range: string
+    required: true
+    default: RUNNING
+    description: Trạng thái thực thi
+    constraints:
+      permitted_values:
+        - RUNNING     # Đang thực thi
+        - DONE        # Hoàn tất thành công
+        - ERROR       # Lỗi (xem metadata/error_json)
+        - CANCELED    # Bị hủy (admin cancel)
+        - PARTIAL     # Một phần thành công, một phần lỗi
+
+  stats_json:
+    range: json
+    required: false
+    description: >
+      Thống kê kết quả thực thi.
+    examples:
+      - processed: 1234       # Số records đã xử lý
+        posted: 1200          # Số movements đã post
+        skipped: 30           # Số records skip (không đủ điều kiện)
+        failed: 4             # Số records lỗi
+        totalQty: 4567.89     # Tổng qty xử lý
+
+      - processed: 500
+        posted: 480
+        skipped: 20
+        failed: 0
+        accrualsByType:
+          ANL: 300
+          SL: 180
+
+  error_json:
+    range: json
+    required: false
+    description: >
+      Chi tiết lỗi (nếu run_status = ERROR).
+    examples:
+      - code: CLASS_NOT_FOUND
+        message: LeaveClass ANL_XX not found
+        stackTrace: "..."
+
+      - code: POLICY_ERROR
+        message: Invalid accrual rule JSON
+        affectedIds: [INST_001, INST_002]
+
+  metadata:
+    range: json
+    required: false
+    description: Metadata linh hoạt cho các thuộc tính mở rộng
+
+relationships:
+  event_def:
+    target: LeaveEventDef
+    cardinality: many_to_one
+    description: LeaveEventDef được thực thi
+    required: true
+
+  leave_class:
+    target: LeaveClass
+    cardinality: many_to_one
+    description: LeaveClass áp dụng (nếu có)
+    required: false
+
+  period:
+    target: LeavePeriod
+    cardinality: many_to_one
+    description: LeavePeriod liên quan
+    required: false
+
+  movements:
+    target: LeaveMovement
+    cardinality: one_to_many
+    description: Các LeaveMovements sinh ra từ run này
+    required: false
+
+lifecycle:
+  reference: LeaveEventRunLifecycle
+  initial_state: RUNNING
+
+states:
+  - RUNNING
+  - DONE
+  - ERROR
+  - CANCELED
+  - PARTIAL
+
+business_rules:
+  - rule_run_unique_id
+  - rule_run_must_have_event_def
+  - rule_run_started_at_required
+  - rule_run_finished_at_required_if_not_running
+  - rule_run_idempotency_key_unique
+  - rule_run_cannot_restart_if_done
+  - rule_run_stats_must_be_valid_json
+
+constraints:
+  - index: [event_def_id, class_id, period_id]
+  - unique: [idempotency_key]  # nullable unique
+  - check: finished_at >= started_at (nếu cả hai đều có)
+
+examples:
+  # Monthly accrual run
+  - event_def_id: EVT_ACCRUAL
+    class_id: ANL_VN_FT
+    period_id: FY2025M04
+    schedule_key: ACCRUAL|ANL_VN_FT|FY2025M04
+    idempotency_key: ACCRUAL|ANL_VN_FT|2025-04-01|001
+    started_at: '2025-04-01T00:00:00Z'
+    finished_at: '2025-04-01T00:05:23Z'
+    run_status: DONE
+    stats_json:
+      processed: 500
+      posted: 485
+      skipped: 15
+      failed: 0
+      totalQty: 848.75
+    metadata:
+      triggerType: SCHEDULED
+      cronExpression: '0 0 1 * *'
+
+  # Carry forward run
+  - event_def_id: EVT_CARRY
+    class_id: null
+    period_id: FY2024
+    schedule_key: CARRY|ALL|FY2024
+    idempotency_key: CARRY|ALL|2025-01-01|001
+    started_at: '2025-01-01T00:00:00Z'
+    finished_at: '2025-01-01T00:45:00Z'
+    run_status: DONE
+    stats_json:
+      processed: 2500
+      posted: 2100
+      skipped: 400       # Không eligible cho carry
+      failed: 0
+      carriedTotal: 15678.50
+    metadata:
+      triggerType: SCHEDULED
+      carryPolicy: ANL_VN_CARRY
+
+  # Failed run example
+  - event_def_id: EVT_ACCRUAL
+    class_id: ANL_XX_INVALID
+    period_id: FY2025M04
+    schedule_key: ACCRUAL|ANL_XX_INVALID|FY2025M04
+    idempotency_key: ACCRUAL|ANL_XX_INVALID|2025-04-01|001
+    started_at: '2025-04-01T00:00:00Z'
+    finished_at: '2025-04-01T00:00:05Z'
+    run_status: ERROR
+    stats_json:
+      processed: 0
+      posted: 0
+      skipped: 0
+      failed: 0
+    error_json:
+      code: CLASS_NOT_FOUND
+      message: LeaveClass ANL_XX_INVALID not found
+      timestamp: '2025-04-01T00:00:05Z'
+    metadata:
+      triggerType: SCHEDULED
+      retryable: true
+
+  # Partial success run
+  - event_def_id: EVT_START_POST
+    class_id: null
+    period_id: null
+    schedule_key: START_POST|ALL|2025-04-15
+    idempotency_key: START_POST|ALL|2025-04-15|001
+    started_at: '2025-04-15T00:00:00Z'
+    finished_at: '2025-04-15T00:15:00Z'
+    run_status: PARTIAL
+    stats_json:
+      processed: 350
+      posted: 340
+      skipped: 5
+      failed: 5
+    error_json:
+      code: PARTIAL_FAILURE
+      message: 5 requests failed due to insufficient balance
+      affectedRequestIds: [REQ_001, REQ_002, REQ_003, REQ_004, REQ_005]
+    metadata:
+      triggerType: SCHEDULED

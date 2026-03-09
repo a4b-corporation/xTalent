@@ -1,0 +1,160 @@
+id: odsa.ta.concept.leave_period
+type: concept
+name: LeavePeriod
+version: 1.0.0
+description: >
+  Quản lý kỳ hoạt động của hệ thống nghỉ (năm, quý, tháng, custom).
+  LeavePeriod dùng để trigger các event như accrual, carry forward, reset limit.
+  Period có thể lồng nhau (năm → tháng) và có status OPEN/CLOSED/LOCKED.
+  LeavePeriod độc lập với kỳ Payroll.
+
+prefixes:
+  ta: https://xtalent.com/ta/
+  xsd: http://www.w3.org/2001/XMLSchema#
+
+default_range: string
+
+attributes:
+  id:
+    identifier: true
+    required: true
+    range: string
+    description: Unique identifier (UUID) cho LeavePeriod
+
+  code:
+    required: true
+    range: string
+    unique: true
+    description: >
+      Mã định danh duy nhất cho period (ví dụ: FY2025, FY2025M04, Q1-2025).
+    constraints:
+      pattern: '^[A-Z][A-Z0-9_-]{0,49}$'
+
+  parent_id:
+    range: string
+    required: false
+    description: >
+      Reference đến period cha (nếu có).
+      Ví dụ: FY2025M04 → parent = FY2025
+
+  level_code:
+    range: string
+    required: true
+    description: Cấp độ của period
+    constraints:
+      permitted_values:
+        - YEAR
+        - QUARTER
+        - MONTH
+        - CUSTOM
+
+  start_date:
+    range: date
+    required: true
+    description: Ngày bắt đầu của kỳ
+
+  end_date:
+    range: date
+    required: true
+    description: Ngày kết thúc của kỳ
+    constraints:
+      must_be: '> start_date'
+
+  status_code:
+    range: string
+    required: true
+    default: OPEN
+    description: Trạng thái của period
+    constraints:
+      permitted_values:
+        - OPEN      # Đang mở, cho phép post movements
+        - CLOSED    # Đã đóng, không post nữa
+        - LOCKED    # Đã khóa cứng, không thể thay đổi
+
+  calendar_code:
+    range: string
+    required: false
+    description: >
+      Calendar profile để tính toán ngày làm việc/ngày lễ.
+      Reference đến HolidayCalendar.
+
+  metadata:
+    range: json
+    required: false
+    description: Metadata linh hoạt cho các thuộc tính mở rộng
+
+relationships:
+  parent:
+    target: LeavePeriod
+    cardinality: many_to_one
+    description: Period cha (nếu có)
+    required: false
+
+  children:
+    target: LeavePeriod
+    cardinality: one_to_many
+    description: Các period con
+    required: false
+
+  class_events:
+    target: LeaveClassEvent
+    cardinality: one_to_many
+    description: Các LeaveClassEvent liên quan đến period này
+    required: false
+
+  event_runs:
+    target: LeaveEventRun
+    cardinality: one_to_many
+    description: Các LeaveEventRun được thực thi trong period này
+    required: false
+
+  movements:
+    target: LeaveMovement
+    cardinality: one_to_many
+    description: Các LeaveMovement được post trong period này
+    required: false
+
+lifecycle:
+  reference: LeavePeriodLifecycle
+  initial_state: OPEN
+
+states:
+  - OPEN
+  - CLOSED
+  - LOCKED
+
+business_rules:
+  - rule_period_unique_code
+  - rule_period_must_have_valid_date_range
+  - rule_period_cannot_close_with_pending_requests
+  - rule_period_parent_child_consistency
+  - rule_period_cannot_reopen_if_locked
+
+examples:
+  - code: FY2025
+    level_code: YEAR
+    start_date: '2025-01-01'
+    end_date: '2025-12-31'
+    status_code: OPEN
+    calendar_code: VN_GENERAL
+
+  - code: FY2025M04
+    parent_id: FY2025
+    level_code: MONTH
+    start_date: '2025-04-01'
+    end_date: '2025-04-30'
+    status_code: OPEN
+    calendar_code: VN_GENERAL
+
+  - code: FY2025Q1
+    parent_id: FY2025
+    level_code: QUARTER
+    start_date: '2025-01-01'
+    end_date: '2025-03-31'
+    status_code: CLOSED
+
+  - code: ROLLING-2025-03
+    level_code: CUSTOM
+    start_date: '2025-03-01'
+    end_date: '2025-03-31'
+    status_code: OPEN

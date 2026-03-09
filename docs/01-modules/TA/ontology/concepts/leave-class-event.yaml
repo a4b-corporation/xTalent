@@ -1,0 +1,161 @@
+id: odsa.ta.concept.leave_class_event
+type: concept
+name: LeaveClassEvent
+version: 1.0.0
+description: >
+  Mapping table giữa LeaveClass và LeaveEventDef. LeaveClassEvent định nghĩa
+  cách một LeaveClass cụ thể phản ứng với một event type:
+  - qty_formula: công thức tính ±qty
+  - target_override: target entity để post movement
+  - idempotent: có áp dụng idempotency không
+
+  Đây là bridge entity cho phép cùng một event definition nhưng mỗi
+  LeaveClass có thể có cách xử lý khác nhau.
+
+prefixes:
+  ta: https://xtalent.com/ta/
+  xsd: http://www.w3.org/2001/XMLSchema#
+
+default_range: string
+
+attributes:
+  class_id:
+    identifier: true
+    required: true
+    range: string
+    description: Reference đến LeaveClass
+    comments: FK đến leave_class, part of PK
+
+  event_def_id:
+    identifier: true
+    required: true
+    range: string
+    description: Reference đến LeaveEventDef
+    comments: FK đến leave_event_def, part of PK
+
+  qty_formula:
+    range: string
+    required: true
+    description: >
+      Công thức tính quantity cho event này trong context của class này.
+      Override công thức mặc định từ LeaveEventDef.
+    examples:
+      - '+fixedRate'            # Cộng cố định
+      - '-requestedQty'         # Trừ theo request
+      - '+remainingBalance'     # Số dư còn lại
+      - '+prorate(tenure)'      # Theo thâm niên proration
+      - '0'                     # Không tạo movement (silent)
+
+  target_override:
+    range: string
+    required: true
+    default: INSTANT
+    description: >
+      Target entity để post movement. Override từ LeaveEventDef.
+    constraints:
+      permitted_values:
+        - INSTANT       # Post vào LeaveInstant
+        - DETAIL        # Post vào LeaveInstantDetail (tạo lot)
+        - BOTH          # Post vào cả hai
+
+  idempotent:
+    range: boolean
+    required: true
+    default: true
+    description: >
+      Nếu true, áp dụng idempotency khi thực thi event này.
+      Sử dụng idempotency_key để chống trùng.
+
+  metadata:
+    range: json
+    required: false
+    description: Metadata linh hoạt cho các thuộc tính mở rộng
+
+relationships:
+  leave_class:
+    target: LeaveClass
+    cardinality: many_to_one
+    description: LeaveClass áp dụng event này
+    required: true
+
+  event_def:
+    target: LeaveEventDef
+    cardinality: many_to_one
+    description: LeaveEventDef được map
+    required: true
+
+  movements:
+    target: LeaveMovement
+    cardinality: one_to_many
+    description: Các LeaveMovements sinh ra từ mapping này
+    required: false
+
+constraints:
+  - primary_key: [class_id, event_def_id]
+  - unique: [class_id, event_def_id]
+  - foreign_key: class_id → leave_class.id
+  - foreign_key: event_def_id → leave_event_def.id
+
+business_rules:
+  - rule_class_event_unique_pair
+  - rule_class_event_must_have_valid_class
+  - rule_class_event_must_have_valid_event_def
+  - rule_class_event_formula_required
+  - rule_class_event_cannot_delete_if_in_use
+
+examples:
+  # ANL_VN_FT với ACCRUAL event
+  - class_id: ANL_VN_FT
+    event_def_id: ACCRUAL
+    qty_formula: '+fixedRate'
+    target_override: BOTH       # Post vào cả Instant và Detail (lot)
+    idempotent: true
+    metadata:
+      fixedRate: 1.75           # 1.75 giờ/tháng
+      unit: HOUR
+
+  # ANL_VN_FT với START_POST event
+  - class_id: ANL_VN_FT
+    event_def_id: START_POST
+    qty_formula: '-requestedQty'
+    target_override: INSTANT
+    idempotent: true
+    metadata:
+      consumeLot: true          # Trừ từ lot (FEFO)
+
+  # ANL_VN_FT với CARRY event
+  - class_id: ANL_VN_FT
+    event_def_id: CARRY
+    qty_formula: '+remainingBalance'
+    target_override: BOTH
+    idempotent: true
+    metadata:
+      carryCap: 10              # Tối đa 10 ngày
+      expireMonths: 3           # Hết hạn sau 3 tháng
+
+  # SL_VN_ALL với START_POST event (LIMIT mode)
+  - class_id: SL_VN_ALL
+    event_def_id: START_POST
+    qty_formula: '-requestedQty'
+    target_override: INSTANT
+    idempotent: true
+    metadata:
+      updateCounters: true      # Cập nhật used_ytd, used_mtd
+
+  # MAT_VN_ALL với START_POST event (UNPAID mode)
+  - class_id: MAT_VN_ALL
+    event_def_id: START_POST
+    qty_formula: '-requestedQty'
+    target_override: INSTANT
+    idempotent: true
+    metadata:
+      trackOnly: true           # Chỉ track, không trừ quota
+
+  # ANL_VN_FT với EXPIRE event (silent expiry)
+  - class_id: ANL_VN_FT
+    event_def_id: EXPIRE
+    qty_formula: '0'            # Không tạo movement
+    target_override: DETAIL     # Chỉ mark lot expired
+    idempotent: true
+    metadata:
+      silentExpiry: true        # Default behavior

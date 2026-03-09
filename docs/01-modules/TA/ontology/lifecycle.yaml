@@ -1,0 +1,567 @@
+id: odsa.ta.lifecycle
+type: lifecycle
+name: TA Module Lifecycle State Machines
+version: 1.0.0
+description: >
+  Định nghĩa tất cả lifecycle state machines cho các entities trong TA Module - Absence Ontology.
+  Mỗi state machine define các states, transitions, guards, và actions.
+
+prefixes:
+  ta: https://xtalent.com/ta/
+  xsd: http://www.w3.org/2001/XMLSchema#
+
+# ============================================================================
+# CONFIGURATION ENTITIES LIFECYCLES
+# ============================================================================
+
+lifecycles:
+  # --- LeaveType Lifecycle ---
+  leave_type_lifecycle:
+    id: LeaveTypeLifecycle
+    name: LeaveType Lifecycle
+    description: Lifecycle của LeaveType từ khi tạo đến khi ngưng hoạt động
+    entity: LeaveType
+    initial_state: DRAFT
+
+    states:
+      - id: DRAFT
+        description: Đang soạn thảo, chưa publish
+        entry_actions: []
+        exit_actions: [validateCompleteness]
+
+      - id: ACTIVE
+        description: Đang hoạt động, có thể sử dụng
+        entry_actions: [publishToAPI, notifyStakeholders]
+        exit_actions: [checkActiveDependants]
+
+      - id: INACTIVE
+        description: Ngưng hoạt động, không thể tạo mới dependants
+        entry_actions: [unpublishFromAPI, archiveRelatedData]
+        exit_actions: []
+
+    transitions:
+      - from: DRAFT
+        to: ACTIVE
+        trigger: publish
+        guard: hasRequiredFields AND hasNoConflicts
+        actions: [setEffectiveDate, validateUniqueness]
+
+      - from: ACTIVE
+        to: INACTIVE
+        trigger: deactivate
+        guard: hasNoActiveBalances OR forceDeactivate
+        actions: [setEndDate, notifyUsers]
+
+      - from: INACTIVE
+        to: ACTIVE
+        trigger: reactivate
+        guard: canReactivate
+        actions: [clearEndDate, validateCurrent]
+
+    business_rules:
+      - "Cannot deactivate if there are active LeaveInstants with pending requests"
+      - "Cannot deactivate if there are active LeaveClasses"
+      - "Must have unique code within active LeaveTypes"
+
+  # --- LeaveClass Lifecycle ---
+  leave_class_lifecycle:
+    id: LeaveClassLifecycle
+    name: LeaveClass Lifecycle
+    entity: LeaveClass
+    initial_state: DRAFT
+
+    states:
+      - id: DRAFT
+        description: Đang cấu hình
+        entry_actions: []
+        exit_actions: [validateConfig]
+
+      - id: ACTIVE
+        description: Đang vận hành, có thể tạo Instants
+        entry_actions: [enableEventProcessing, publishConfig]
+        exit_actions: [checkActiveInstants]
+
+      - id: INACTIVE
+        description: Ngưng vận hành
+        entry_actions: [disableEventProcessing, suspendInstantCreation]
+        exit_actions: []
+
+    transitions:
+      - from: DRAFT
+        to: ACTIVE
+        trigger: activate
+        guard: hasValidPeriodProfile AND hasValidPostingMap
+        actions: [validateEligibility, publishToEventBus]
+
+      - from: ACTIVE
+        to: INACTIVE
+        trigger: deactivate
+        guard: hasNoActiveInstants OR forceDeactivate
+        actions: [notifyEmployees, suspendAccruals]
+
+    business_rules:
+      - "Cannot deactivate if there are active LeaveInstants"
+      - "Must have valid period_profile before activation"
+      - "Must have at least one event mapping before activation"
+
+  # --- LeavePolicy Lifecycle ---
+  leave_policy_lifecycle:
+    id: LeavePolicyLifecycle
+    name: LeavePolicy Lifecycle
+    entity: LeavePolicy
+    initial_state: DRAFT
+
+    states:
+      - id: DRAFT
+        description: Đang soạn thảo rules
+      - id: ACTIVE
+        description: Đang áp dụng
+      - id: INACTIVE
+        description: Ngưng áp dụng
+
+    transitions:
+      - from: DRAFT
+        to: ACTIVE
+        trigger: publish
+        guard: hasValidRulesJson
+        actions: [validateRules, publishToAPI]
+
+      - from: ACTIVE
+        to: INACTIVE
+        trigger: deactivate
+        guard: canDeactivate
+        actions: [notifyAffectedClasses]
+
+  # --- LeavePeriod Lifecycle ---
+  leave_period_lifecycle:
+    id: LeavePeriodLifecycle
+    name: LeavePeriod Lifecycle
+    entity: LeavePeriod
+    initial_state: OPEN
+
+    states:
+      - id: OPEN
+        description: Đang mở, cho phép post movements
+        entry_actions: [allowPosting]
+        exit_actions: [validateNoPendingTransactions]
+
+      - id: CLOSED
+        description: Đã đóng, không post nữa
+        entry_actions: [rejectNewPostings, runCarryForward]
+        exit_actions: []
+
+      - id: LOCKED
+        description: Đã khóa cứng, không thể thay đổi
+        entry_actions: [preventAllModifications, archiveData]
+        exit_actions: []
+
+    transitions:
+      - from: OPEN
+        to: CLOSED
+        trigger: close
+        guard: hasNoPendingRequests OR forceClose
+        actions: [runPendingEvents, notifyUsers]
+
+      - from: CLOSED
+        to: LOCKED
+        trigger: lock
+        guard: allEventsCompleted
+        actions: [finalizeBalances, archivePeriod]
+
+      - from: CLOSED
+        to: OPEN
+        trigger: reopen
+        guard: notLocked AND canReopen
+        actions: [revertCarryForward, notifyUsers]
+
+    business_rules:
+      - "Cannot close if there are pending approved requests"
+      - "Cannot reopen if period is LOCKED"
+      - "Must run carry forward before locking"
+
+# ============================================================================
+# INSTANT & TRANSACTION ENTITIES LIFECYCLES
+# ============================================================================
+
+  # --- LeaveInstant Lifecycle ---
+  leave_instant_lifecycle:
+    id: LeaveInstantLifecycle
+    name: LeaveInstant Lifecycle
+    entity: LeaveInstant
+    initial_state: ACTIVE
+
+    states:
+      - id: ACTIVE
+        description: Đang hoạt động, có thể nhận movements
+        entry_actions: [enablePosting]
+        exit_actions: [checkHoldQty]
+
+      - id: SUSPENDED
+        description: Tạm ngưng (nhân viên unpaid leave dài hạn)
+        entry_actions: [suspendPosting, notifyManager]
+        exit_actions: []
+
+      - id: CLOSED
+        description: Đã đóng (nhân viên nghỉ việc)
+        entry_actions: [closeAllReservations, finalizeBalance]
+        exit_actions: []
+
+      - id: EXPIRED
+        description: Hết hạn (tất cả lots expired)
+        entry_actions: [markExpired, notifyEmployee]
+        exit_actions: []
+
+    transitions:
+      - from: ACTIVE
+        to: SUSPENDED
+        trigger: suspend
+        guard: canSuspend
+        actions: [setSuspensionReason, notifyStakeholders]
+
+      - from: SUSPENDED
+        to: ACTIVE
+        trigger: resume
+        guard: canResume
+        actions: [clearSuspension, resumePosting]
+
+      - from: ACTIVE
+        to: CLOSED
+        trigger: close
+        guard: employeeTerminated OR allRequestsCompleted
+        actions: [releaseAllHolds, payoutRemainingBalance]
+
+      - from: ACTIVE
+        to: EXPIRED
+        trigger: expire
+        guard: allLotsExpired AND currentQtyIsZero
+        actions: [notifyEmployee, archiveData]
+
+    business_rules:
+      - "Cannot close if there are active holds"
+      - "Cannot suspend if there are pending requests"
+      - "Auto-expire when all lots expired and balance is zero"
+
+  # --- LeaveInstantDetail Lifecycle ---
+  leave_instant_detail_lifecycle:
+    id: LeaveInstantDetailLifecycle
+    name: LeaveInstantDetail (Lot) Lifecycle
+    entity: LeaveInstantDetail
+    initial_state: ACTIVE
+
+    states:
+      - id: ACTIVE
+        description: Còn可用, chưa hết hạn
+        entry_actions: []
+        exit_actions: []
+
+      - id: PARTIALLY_USED
+        description: Đã dùng một phần
+        entry_actions: []
+        exit_actions: []
+
+      - id: EXHAUSTED
+        description: Đã dùng hết (used_qty = lot_qty)
+        entry_actions: [markAsExhausted]
+        exit_actions: []
+
+      - id: EXPIRED
+        description: Hết hạn (expire_date < today)
+        entry_actions: [markAsExpired, removeFromAvailable]
+        exit_actions: []
+
+    transitions:
+      - from: ACTIVE
+        to: PARTIALLY_USED
+        trigger: consume
+        guard: usedQty < lotQty
+        actions: [updateUsedQty, updatePriority]
+
+      - from: PARTIALLY_USED
+        to: EXHAUSTED
+        trigger: consume
+        guard: usedQty = lotQty
+        actions: [markExhausted]
+
+      - from: ACTIVE
+        to: EXPIRED
+        trigger: expire
+        guard: expireDate < today
+        actions: [markExpired, silentExpiry]
+
+      - from: PARTIALLY_USED
+        to: EXPIRED
+        trigger: expire
+        guard: expireDate < today
+        actions: [markExpired, silentExpiry]
+
+    business_rules:
+      - "FEFO: lots with earliest expire_date consumed first"
+      - "Silent expiry by default (no movement unless flag set)"
+      - "Cannot consume from EXPIRED or EXHAUSTED lots"
+
+  # --- LeaveMovement Lifecycle ---
+  leave_movement_lifecycle:
+    id: LeaveMovementLifecycle
+    name: LeaveMovement Lifecycle
+    entity: LeaveMovement
+    initial_state: POSTED
+
+    states:
+      - id: POSTED
+        description: Đã post (immutable)
+        entry_actions: [updateBalance, notifySubscribers]
+        exit_actions: []
+
+      - id: REVERSED
+        description: Đã bị reversal
+        entry_actions: [markReversed, updateBalance]
+        exit_actions: []
+
+    transitions:
+      - from: POSTED
+        to: REVERSED
+        trigger: reverse
+        guard: canReverse
+        actions: [createReversalMovement, linkReversal]
+
+    business_rules:
+      - "Movement is immutable - cannot edit after POSTED"
+      - "Correction must be done via REVERSE movement"
+      - "Cannot reverse if already reversed"
+
+# ============================================================================
+# EVENT ENTITIES LIFECYCLES
+# ============================================================================
+
+  # --- LeaveEventRun Lifecycle ---
+  leave_event_run_lifecycle:
+    id: LeaveEventRunLifecycle
+    name: LeaveEventRun Lifecycle
+    entity: LeaveEventRun
+    initial_state: RUNNING
+
+    states:
+      - id: RUNNING
+        description: Đang thực thi
+        entry_actions: [setStartTime, logStart]
+        exit_actions: []
+
+      - id: DONE
+        description: Hoàn tất thành công
+        entry_actions: [setEndTime, logSuccess, sendNotification]
+        exit_actions: []
+
+      - id: ERROR
+        description: Lỗi khi thực thi
+        entry_actions: [setEndTime, logError, sendAlert]
+        exit_actions: []
+
+      - id: CANCELED
+        description: Bị hủy (admin)
+        entry_actions: [setEndTime, logCancel, rollback]
+        exit_actions: []
+
+      - id: PARTIAL
+        description: Một phần thành công
+        entry_actions: [setEndTime, logPartial, sendPartialReport]
+        exit_actions: []
+
+    transitions:
+      - from: RUNNING
+        to: DONE
+        trigger: complete
+        guard: allProcessed
+        actions: [finalizeStats, releaseLocks]
+
+      - from: RUNNING
+        to: ERROR
+        trigger: fail
+        guard: hasError
+        actions: [logError, rollbackOnError]
+
+      - from: RUNNING
+        to: CANCELED
+        trigger: cancel
+        guard: canCancel
+        actions: [rollback, releaseLocks]
+
+      - from: RUNNING
+        to: PARTIAL
+        trigger: complete
+        guard: hasErrors AND hasSuccesses
+        actions: [logPartialResults, notifyFailures]
+
+    business_rules:
+      - "Cannot restart if status is DONE (idempotent)"
+      - "Must log error details when status is ERROR"
+      - "Must complete within timeout or auto-cancel"
+
+# ============================================================================
+# WORKFLOW ENTITIES LIFECYCLES
+# ============================================================================
+
+  # --- LeaveRequest Lifecycle ---
+  leave_request_lifecycle:
+    id: LeaveRequestLifecycle
+    name: LeaveRequest Lifecycle
+    entity: LeaveRequest
+    initial_state: DRAFT
+
+    states:
+      - id: DRAFT
+        description: Nháp, chưa submit
+        entry_actions: []
+        exit_actions: [validateBeforeSubmit]
+
+      - id: SUBMITTED
+        description: Đã submit, chờ duyệt
+        entry_actions: [createReservation, notifyManager]
+        exit_actions: []
+
+      - id: PENDING
+        description: Đang duyệt (escalated)
+        entry_actions: [escalate, notifyNextApprover]
+        exit_actions: []
+
+      - id: APPROVED
+        description: Đã duyệt, chờ start date
+        entry_actions: [confirmReservation, notifyEmployee]
+        exit_actions: []
+
+      - id: REJECTED
+        description: Từ chối
+        entry_actions: [releaseReservation, notifyEmployee, logRejection]
+        exit_actions: []
+
+      - id: CANCELLED
+        description: Hủy (trước khi start)
+        entry_actions: [releaseReservation, notifyManager]
+        exit_actions: []
+
+      - id: WITHDRAWN
+        description: Rút lại (sau khi approve)
+        entry_actions: [releaseReservation, notifyManager]
+        exit_actions: []
+
+    transitions:
+      - from: DRAFT
+        to: SUBMITTED
+        trigger: submit
+        guard: hasRequiredFields AND hasAvailableBalance
+        actions: [validateOverlap, checkTeamLimit, createReservation]
+
+      - from: SUBMITTED
+        to: PENDING
+        trigger: escalate
+        guard: requiresEscalation
+        actions: [incrementEscalationLevel, notifyNextApprover]
+
+      - from: SUBMITTED
+        to: APPROVED
+        trigger: approve
+        guard: approverHasPermission
+        actions: [confirmApproval, updateWorkflowState]
+
+      - from: SUBMITTED
+        to: REJECTED
+        trigger: reject
+        guard: approverHasPermission
+        actions: [logReason, releaseReservation]
+
+      - from: PENDING
+        to: APPROVED
+        trigger: approve
+        guard: allApproversApproved
+        actions: [confirmApproval, notifyEmployee]
+
+      - from: PENDING
+        to: REJECTED
+        trigger: reject
+        guard: anyApproverRejected
+        actions: [logReason, releaseReservation]
+
+      - from: APPROVED
+        to: CANCELLED
+        trigger: cancel
+        guard: notYetStarted
+        actions: [releaseReservation, notifyManager]
+
+      - from: APPROVED
+        to: WITHDRAWN
+        trigger: withdraw
+        guard: employeeRequest
+        actions: [releaseReservation, notifyManager]
+
+    business_rules:
+      - "Cannot submit without available balance"
+      - "Cannot cancel after start date"
+      - "Must create reservation on submit (hold quota)"
+      - "Must release reservation on reject/cancel/withdraw"
+
+  # --- LeaveReservation Lifecycle ---
+  leave_reservation_lifecycle:
+    id: LeaveReservationLifecycle
+    name: LeaveReservation Lifecycle
+    entity: LeaveReservation
+    initial_state: ACTIVE
+
+    states:
+      - id: ACTIVE
+        description: Đang hold quota
+        entry_actions: [addToHoldQty]
+        exit_actions: []
+
+      - id: RELEASED
+        description: Đã release (cancel/reject)
+        entry_actions: [removeFromHoldQty, notifyInstant]
+        exit_actions: []
+
+      - id: USED
+        description: Đã used (start_post chạy)
+        entry_actions: [removeFromHoldQty, postMovement]
+        exit_actions: []
+
+      - id: EXPIRED
+        description: Hết hạn (không start)
+        entry_actions: [removeFromHoldQty, notifyEmployee]
+        exit_actions: []
+
+    transitions:
+      - from: ACTIVE
+        to: RELEASED
+        trigger: release
+        guard: requestCancelled OR requestRejected
+        actions: [decrementHold, updateReservationStatus]
+
+      - from: ACTIVE
+        to: USED
+        trigger: startPost
+        guard: startDateReached
+        actions: [decrementHold, postMovement, consumeLots]
+
+      - from: ACTIVE
+        to: EXPIRED
+        trigger: expire
+        guard: expiresAtReached AND notStarted
+        actions: [decrementHold, notifyEmployee]
+
+    business_rules:
+      - "Must hold quota immediately on creation"
+      - "Must release hold on reject/cancel"
+      - "Auto-expire if not started by expires_at"
+
+# ============================================================================
+# STATE TRANSITION SUMMARY
+# ============================================================================
+
+state_transition_summary:
+  LeaveType: [DRAFT, ACTIVE, INACTIVE]
+  LeaveClass: [DRAFT, ACTIVE, INACTIVE]
+  LeavePolicy: [DRAFT, ACTIVE, INACTIVE]
+  LeavePeriod: [OPEN, CLOSED, LOCKED]
+  LeaveInstant: [ACTIVE, SUSPENDED, CLOSED, EXPIRED]
+  LeaveInstantDetail: [ACTIVE, PARTIALLY_USED, EXHAUSTED, EXPIRED]
+  LeaveMovement: [POSTED, REVERSED]
+  LeaveEventRun: [RUNNING, DONE, ERROR, CANCELED, PARTIAL]
+  LeaveRequest: [DRAFT, SUBMITTED, PENDING, APPROVED, REJECTED, CANCELLED, WITHDRAWN]
+  LeaveReservation: [ACTIVE, RELEASED, USED, EXPIRED]

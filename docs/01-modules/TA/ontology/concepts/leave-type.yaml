@@ -1,0 +1,228 @@
+id: odsa.ta.concept.leave_type
+type: concept
+name: LeaveType
+version: 1.0.0
+description: >
+  Định nghĩa loại nghỉ cụ thể (Annual Leave, Sick Leave, Maternity Leave, v.v.).
+  LeaveType là entity cấu hình cấp cao nhất, xác định đơn vị đo lường, cách xử lý ngày lễ,
+  và các thuộc tính cốt lõi của loại nghỉ. LeaveType có thể có nhiều LeaveClass (biến thể vận hành).
+
+prefixes:
+  ta: https://xtalent.com/ta/
+  xsd: http://www.w3.org/2001/XMLSchema#
+
+default_range: string
+
+attributes:
+  id:
+    identifier: true
+    required: true
+    range: string
+    description: Unique identifier (UUID) cho LeaveType
+
+  code:
+    required: true
+    range: string
+    description: >
+      Mã định danh duy nhất cho loại nghỉ (ví dụ: ANL, SL, MAT, UNPAID).
+      Phải là uppercase, alphanumeric + underscore, max 50 ký tự.
+    constraints:
+      pattern: '^[A-Z][A-Z0-9_]{0,49}$'
+
+  name:
+    required: true
+    range: string
+    description: 'Tên hiển thị của loại nghỉ (ví dụ: Annual Leave, Sick Leave)'
+    constraints:
+      max_length: 100
+
+  description:
+    required: false
+    range: string
+    description: Mô tả chi tiết về loại nghỉ
+
+  is_paid:
+    range: boolean
+    required: true
+    default: true
+    description: Loại nghỉ có hưởng lương hay không
+
+  is_quota_based:
+    range: boolean
+    required: true
+    default: true
+    description: >
+      Loại nghỉ có giới hạn số dư (quota) hay không.
+      false = unlimited (không cần account/limit tracking)
+
+  requires_approval:
+    range: boolean
+    required: true
+    default: true
+    description: Loại nghỉ có yêu cầu phê duyệt hay không
+
+  unit_code:
+    range: string
+    required: true
+    default: DAY
+    description: 'Đơn vị tính: DAY hoặc HOUR'
+    constraints:
+      permitted_values:
+        - DAY
+        - HOUR
+
+  core_min_unit:
+    range: decimal
+    required: false
+    default: 1.0
+    description: >
+      Đơn vị tối thiểu khi đặt nghỉ (ví dụ: 1.0 = nguyên ngày, 0.5 = nửa ngày)
+      Chỉ áp dụng khi unit_code = DAY
+
+  holiday_handling:
+    range: string
+    required: true
+    default: EXCLUDE_HOLIDAYS
+    description: Cách xử lý ngày lễ trong khoảng nghỉ
+    constraints:
+      permitted_values:
+        - EXCLUDE_HOLIDAYS      # Không tính ngày lễ vào số ngày nghỉ
+        - INCLUDE_HOLIDAYS      # Tính cả ngày lễ vào số ngày nghỉ
+        - STOP_AT_HOLIDAY       # Dừng request tại ngày lễ
+
+  overlap_policy:
+    range: string
+    required: true
+    default: ALLOW
+    description: Chính sách cho phép trùng với nghỉ khác
+    constraints:
+      permitted_values:
+        - ALLOW     # Cho phép trùng
+        - DENY      # Từ chối nếu trùng
+        - OVERRIDE  # Cho phép nếu có override
+
+  support_scope:
+    range: string
+    required: false
+    description: >
+      Phạm vi BU/LE áp dụng theo quốc gia/khu vực.
+      Định dạng: 'VN:LE,SG:BU,KH:ALL'
+
+  metadata:
+    range: json
+    required: false
+    description: >
+      Metadata linh hoạt cho các thuộc tính mở rộng:
+      - doctor_note_req: yêu cầu giấy khám bệnh
+      - encashable: có thể quy đổi ra tiền
+      - color: màu hiển thị trên calendar
+      - icon: icon identifier
+
+  is_active:
+    range: boolean
+    required: true
+    default: true
+    description: Loại nghỉ đang hoạt động hay không
+
+  effective_start:
+    range: date
+    required: true
+    description: Ngày bắt đầu hiệu lực
+
+  effective_end:
+    range: date
+    required: false
+    description: Ngày kết thúc hiệu lực (null = vô thời hạn)
+
+relationships:
+  leave_classes:
+    target: LeaveClass
+    cardinality: one_to_many
+    description: Các LeaveClass (biến thể vận hành) của LeaveType này
+    required: false
+
+  policies:
+    target: LeavePolicy
+    cardinality: one_to_many
+    description: Các LeavePolicy áp dụng cho LeaveType này
+    required: false
+
+  movements:
+    target: LeaveMovement
+    cardinality: one_to_many
+    description: Các LeaveMovement liên quan đến LeaveType này
+    required: false
+
+  requests:
+    target: LeaveRequest
+    cardinality: one_to_many
+    description: Các LeaveRequest sử dụng LeaveType này
+    required: false
+
+  wallets:
+    target: LeaveWallet
+    cardinality: one_to_many
+    description: LeaveWallet tổng hợp theo LeaveType
+    required: false
+
+  team_limits:
+    target: TeamLeaveLimit
+    cardinality: one_to_many
+    description: TeamLeaveLimit áp dụng cho LeaveType này
+    required: false
+
+lifecycle:
+  reference: LeaveTypeLifecycle
+  initial_state: DRAFT
+
+states:
+  - DRAFT
+  - ACTIVE
+  - INACTIVE
+
+business_rules:
+  - rule_leave_type_unique_code
+  - rule_leave_type_cannot_deactivate_with_active_balances
+  - rule_half_day_requires_day_unit
+  - rule_hourly_requires_hour_unit
+
+examples:
+  - code: ANL
+    name: Annual Leave
+    is_paid: true
+    is_quota_based: true
+    unit_code: DAY
+    core_min_unit: 0.5
+    holiday_handling: EXCLUDE_HOLIDAYS
+    overlap_policy: DENY
+    support_scope: 'VN:LE,SG:BU'
+
+  - code: SL
+    name: Sick Leave
+    is_paid: true
+    is_quota_based: true
+    unit_code: DAY
+    core_min_unit: 1.0
+    holiday_handling: EXCLUDE_HOLIDAYS
+    overlap_policy: ALLOW
+    support_scope: ALL
+
+  - code: MAT
+    name: Maternity Leave
+    is_paid: true
+    is_quota_based: false
+    unit_code: DAY
+    core_min_unit: 1.0
+    holiday_handling: INCLUDE_HOLIDAYS
+    overlap_policy: DENY
+    support_scope: ALL
+
+  - code: UNPAID
+    name: Unpaid Leave
+    is_paid: false
+    is_quota_based: false
+    unit_code: DAY
+    core_min_unit: 1.0
+    holiday_handling: EXCLUDE_HOLIDAYS
+    overlap_policy: ALLOW
+    support_scope: ALL

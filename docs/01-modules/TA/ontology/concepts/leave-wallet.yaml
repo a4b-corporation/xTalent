@@ -1,0 +1,170 @@
+id: odsa.ta.concept.leave_wallet
+type: concept
+name: LeaveWallet
+version: 1.0.0
+description: >
+  LeaveWallet là aggregated view của total available balance cho một
+  employee + leave_type combination. Wallet gộp số dư từ nhiều
+  LeaveClasses/LeaveInstants của cùng một LeaveType.
+
+  Ví dụ: Employee có thể có nhiều LeaveClasses cho Annual Leave
+  (ANL_VN_FT, ANL_VN_PT, ANL_SG_FT), nhưng LeaveWallet gộp tất cả
+  thành một "ví" duy nhất để hiển thị cho employee.
+
+  LeaveWallet là materialized view (tính sẵn) để tăng performance
+  cho ESS/MSS portal queries.
+
+prefixes:
+  ta: https://xtalent.com/ta/
+  xsd: http://www.w3.org/2001/XMLSchema#
+
+default_range: string
+
+attributes:
+  employee_id:
+    identifier: true
+    required: true
+    range: string
+    description: Reference đến Employee owner của wallet
+    comments: FK đến employment.employee, part of PK
+
+  leave_type_code:
+    identifier: true
+    required: true
+    range: string
+    description: Reference đến LeaveType
+    comments: FK đến leave_type.code, part of PK
+
+  available_hours:
+    range: decimal
+    required: true
+    default: 0.0
+    description: >
+      Tổng số giờ khả dụng (đã quy đổi ra giờ).
+      Gộp từ available_qty của tất cả LeaveInstants.
+
+  balance_hours:
+    range: decimal
+    required: true
+    default: 0.0
+    description: >
+      Tổng số giờ hiện hành (current_qty từ tất cả instants).
+      Balance hours = available + hold - overdraft
+
+  overdraft_limit:
+    range: decimal
+    required: false
+    default: 0.0
+    description: >
+      Giới hạn overdraft (ứng trước) tối đa.
+      Từ LeavePolicy.overdraft_rule_json.
+
+  hold_hours:
+    range: decimal
+    required: false
+    default: 0.0
+    description: >
+      Tổng số giờ đang bị hold (reservations).
+      computed từ tất cả active reservations.
+
+  pending_hours:
+    range: decimal
+    required: false
+    default: 0.0
+    description: >
+      Tổng số giờ từ pending requests (chưa approved).
+      Để hiển thị "pending approval" trên ESS portal.
+
+  last_calc_at:
+    range: datetime
+    required: true
+    default: now
+    description: Thời điểm tính toán cuối cùng
+
+  note:
+    range: string
+    required: false
+    description: Ghi chú (nếu có)
+
+  metadata:
+    range: json
+    required: false
+    description: Metadata linh hoạt cho các thuộc tính mở rộng
+
+relationships:
+  employee:
+    target: Employee
+    cardinality: many_to_one
+    description: Employee owner của wallet
+    required: true
+
+  leave_type:
+    target: LeaveType
+    cardinality: many_to_one
+    description: LeaveType của wallet
+    required: true
+
+  instants:
+    target: LeaveInstant
+    cardinality: one_to_many
+    description: Các LeaveInstants contribute vào wallet này
+    required: false
+
+constraints:
+  - primary_key: [employee_id, leave_type_code]
+  - unique: [employee_id, leave_type_code]
+  - check: available_hours >= 0 (thường đúng)
+  - check: balance_hours >= available_hours
+
+business_rules:
+  - rule_wallet_unique_employee_type
+  - rule_wallet_available_hours_formula
+  - rule_wallet_must_refresh_on_movement
+  - rule_wallet_must_refresh_on_reservation
+  - rule_wallet_unit_conversion_from_days_to_hours
+
+examples:
+  # Employee có Annual Leave wallet
+  - employee_id: EMP001
+    leave_type_code: ANL
+    available_hours: 88.0     # 11 ngày × 8 giờ
+    balance_hours: 96.0       # 12 ngày × 8 giờ
+    overdraft_limit: 40.0     # 5 ngày ứng trước
+    hold_hours: 8.0           # 1 ngày đã giữ chỗ
+    pending_hours: 0.0
+    last_calc_at: '2025-04-15T00:00:00Z'
+    metadata:
+      instantsCount: 1
+      instants:
+        - instantId: INST_EMP001_ANL
+          classCode: ANL_VN_FT
+          availableQty: 88.0
+
+  # Employee có Sick Leave wallet (LIMIT mode)
+  - employee_id: EMP001
+    leave_type_code: SL
+    available_hours: 232.0    # 29 days × 8 giờ (30 - 1 đã dùng)
+    balance_hours: 240.0      # 30 days limit
+    overdraft_limit: 0.0
+    hold_hours: 0.0
+    pending_hours: 8.0        # Pending request
+    last_calc_at: '2025-04-15T00:00:00Z'
+    metadata:
+      isLimitMode: true
+      limitYearly: 240.0
+      usedYtd: 8.0
+
+  # Employee có Unpaid Leave wallet (không quota)
+  - employee_id: EMP001
+    leave_type_code: UNPAID
+    available_hours: 0.0
+    balance_hours: 0.0
+    overdraft_limit: 0.0
+    hold_hours: 0.0
+    pending_hours: 0.0
+    last_calc_at: '2025-04-15T00:00:00Z'
+    metadata:
+      isUnpaid: true
+      requiresApproval: true
+
+# Wallet Aggregation logic được define chi tiết trong ontology/rules.yaml

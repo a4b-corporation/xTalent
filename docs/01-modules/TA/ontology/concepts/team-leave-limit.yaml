@@ -1,0 +1,166 @@
+id: odsa.ta.concept.team_leave_limit
+type: concept
+name: TeamLeaveLimit
+version: 1.0.0
+description: >
+  Giới hạn số người được phép nghỉ đồng thời trong một đơn vị (BU/Team/Cost Center).
+  TeamLeaveLimit đảm bảo staffing level không bị ảnh hưởng khi nhiều người nghỉ cùng lúc.
+
+  Ví dụ: Team không được quá 20% người nghỉ cùng lúc, hoặc tối đa 3 người nghỉ cùng ngày.
+
+prefixes:
+  ta: https://xtalent.com/ta/
+  xsd: http://www.w3.org/2001/XMLSchema#
+
+default_range: string
+
+attributes:
+  id:
+    identifier: true
+    required: true
+    range: string
+    description: Unique identifier (UUID) cho TeamLeaveLimit
+
+  org_unit_id:
+    required: true
+    range: string
+    description: >
+      Reference đến đơn vị tổ chức (BU/Team/Cost Center).
+      Có thể là BU_id, LE_id, hoặc custom org unit.
+    comments: FK đến organization_unit
+
+  leave_type_code:
+    required: true
+    range: string
+    description: Reference đến LeaveType áp dụng giới hạn này
+    comments: FK đến leave_type.code
+
+  limit_pct:
+    range: decimal
+    required: false
+    description: >
+      Giới hạn phần trăm người được phép nghỉ cùng lúc.
+      0-100%. Ví dụ: 20.0 = 20% người có thể nghỉ cùng ngày.
+    constraints:
+      min_value: 0
+      max_value: 100
+
+  limit_abs_cnt:
+    range: integer
+    required: false
+    description: >
+      Giới hạn số người cố định được phép nghỉ cùng lúc.
+      Nếu null = không giới hạn số lượng cố định.
+    constraints:
+      min_value: 1
+
+  escalation_level:
+    range: integer
+    required: true
+    default: 1
+    description: >
+      Cấp độ escalation khi vượt giới hạn.
+      1 = manager approval, 2 = senior manager, v.v.
+
+  active:
+    range: boolean
+    required: true
+    default: true
+    description: Giới hạn này đang active hay không
+
+  effective_start:
+    range: date
+    required: true
+    description: Ngày bắt đầu hiệu lực
+
+  effective_end:
+    range: date
+    required: false
+    description: Ngày kết thúc hiệu lực (null = vô thời hạn)
+
+  metadata:
+    range: json
+    required: false
+    description: Metadata linh hoạt cho các thuộc tính mở rộng
+
+relationships:
+  org_unit:
+    target: OrganizationUnit
+    cardinality: many_to_one
+    description: Organization unit áp dụng giới hạn này
+    required: true
+
+  leave_type:
+    target: LeaveType
+    cardinality: many_to_one
+    description: LeaveType bị giới hạn
+    required: true
+
+  requests:
+    target: LeaveRequest
+    cardinality: one_to_many
+    description: Các LeaveRequest bị validate bởi giới hạn này
+    required: false
+
+business_rules:
+  - rule_limit_unique_org_type
+  - rule_limit_must_have_pct_or_abs
+  - rule_limit_pct_cannot_exceed_100
+  - rule_limit_validation_on_submit
+  - rule_limit_escalation_on_override
+
+constraints:
+  - unique: [org_unit_id, leave_type_code, effective_start]
+  - check: limit_pct BETWEEN 0 AND 100 (nếu có)
+  - check: limit_abs_cnt > 0 (nếu có)
+  - check: must_have_either_pct_or_abs
+
+examples:
+  # Team giới hạn 20% người nghỉ
+  - org_unit_id: TEAM_DEV_001
+    leave_type_code: ANL
+    limit_pct: 20.0
+    limit_abs_cnt: null
+    escalation_level: 1
+    active: true
+    effective_start: '2025-01-01'
+    metadata:
+      teamSize: 15          # 20% của 15 = 3 người
+      calculatedLimit: 3
+
+  # Team giới hạn 3 người nghỉ maximum
+  - org_unit_id: TEAM_HR_001
+    leave_type_code: ANL
+    limit_pct: null
+    limit_abs_cnt: 3
+    escalation_level: 2
+    active: true
+    effective_start: '2025-01-01'
+    metadata:
+      reason: Small team, critical operations
+
+  # BU giới hạn theo phần trăm cho Sick Leave
+  - org_unit_id: BU_IT_001
+    leave_type_code: SL
+    limit_pct: 30.0
+    limit_abs_cnt: null
+    escalation_level: 1
+    active: true
+    effective_start: '2025-01-01'
+    metadata:
+      teamSize: 100
+      calculatedLimit: 30
+
+  # Cost Center với giới hạn chặt (unpaid leave)
+  - org_unit_id: CC_SUPPORT_001
+    leave_type_code: UNPAID
+    limit_pct: null
+    limit_abs_cnt: 1
+    escalation_level: 3      # Cần VP approval
+    active: true
+    effective_start: '2025-01-01'
+    effective_end: '2025-12-31'
+    metadata:
+      reason: Critical support coverage required
+
+# Team Limit Validation logic được define chi tiết trong ontology/rules.yaml

@@ -1,0 +1,786 @@
+id: odsa.ta.rules
+type: rules
+name: TA Module Business Rules
+version: 1.0.0
+description: >
+  Định nghĩa tất cả business rules cho TA Module - Absence Ontology.
+  Rules được define với condition, action, và error message rõ ràng.
+
+prefixes:
+  ta: https://xtalent.com/ta/
+  xsd: http://www.w3.org/2001/XMLSchema#
+
+# ============================================================================
+# LEAVE TYPE RULES
+# ============================================================================
+
+rules:
+  # --- LeaveType Rules ---
+  rule_leave_type_unique_code:
+    id: rule_leave_type_unique_code
+    name: LeaveType Code Must Be Unique
+    entity: LeaveType
+    severity: ERROR
+    condition: >
+      EXISTS(SELECT 1 FROM LeaveType lt2
+             WHERE lt2.code = lt1.code
+             AND lt2.id != lt1.id
+             AND lt2.is_active = true)
+    action: REJECT
+    error_message: "LeaveType code must be unique among active types"
+    category: VALIDATION
+
+  rule_leave_type_cannot_deactivate_with_active_balances:
+    id: rule_leave_type_cannot_deactivate_with_active_balances
+    name: Cannot Deactivate LeaveType With Active Balances
+    entity: LeaveType
+    severity: ERROR
+    condition: >
+      EXISTS(SELECT 1 FROM LeaveClass lc
+             WHERE lc.leave_type_id = lt1.id
+             AND lc.status_code = 'ACTIVE')
+      OR
+      EXISTS(SELECT 1 FROM LeaveInstant li
+             JOIN LeaveClass lc ON li.class_id = lc.id
+             WHERE lc.leave_type_id = lt1.id
+             AND li.state_code = 'ACTIVE')
+    action: REJECT
+    error_message: "Cannot deactivate LeaveType while there are active LeaveClasses or LeaveInstants"
+    category: LIFECYCLE
+
+  rule_half_day_requires_day_unit:
+    id: rule_half_day_requires_day_unit
+    name: Half-Day Leave Requires DAY Unit
+    entity: LeaveType
+    severity: ERROR
+    condition: >
+      allows_half_day = true AND unit_code != 'DAY'
+    action: REJECT
+    error_message: "allows_half_day can only be true when unit_code is DAY"
+    category: VALIDATION
+
+  rule_hourly_requires_hour_unit:
+    id: rule_hourly_requires_hour_unit
+    name: Hourly Leave Requires HOUR Unit
+    entity: LeaveType
+    severity: ERROR
+    condition: >
+      allows_hourly = true AND unit_code != 'HOUR'
+    action: REJECT
+    error_message: "allows_hourly can only be true when unit_code is HOUR"
+    category: VALIDATION
+
+  # --- LeaveClass Rules ---
+  rule_leave_class_unique_code:
+    id: rule_leave_class_unique_code
+    name: LeaveClass Code Must Be Unique
+    entity: LeaveClass
+    severity: ERROR
+    condition: >
+      EXISTS(SELECT 1 FROM LeaveClass lc2
+             WHERE lc2.code = lc1.code
+             AND lc2.id != lc1.id)
+    action: REJECT
+    error_message: "LeaveClass code must be unique"
+    category: VALIDATION
+
+  rule_leave_class_must_have_type:
+    id: rule_leave_class_must_have_type
+    name: LeaveClass Must Have LeaveType
+    entity: LeaveClass
+    severity: ERROR
+    condition: >
+      leave_type_id IS NULL
+      OR NOT EXISTS(SELECT 1 FROM LeaveType lt WHERE lt.id = lc1.leave_type_id)
+    action: REJECT
+    error_message: "LeaveClass must reference a valid LeaveType"
+    category: VALIDATION
+
+  rule_leave_class_mode_requires_period_profile:
+    id: rule_leave_class_mode_requires_period_profile
+    name: LeaveClass Mode Requires Period Profile
+    entity: LeaveClass
+    severity: ERROR
+    condition: >
+      mode_code IN ('ACCOUNT', 'LIMIT') AND period_profile IS NULL
+    action: REJECT
+    error_message: "LeaveClass with mode ACCOUNT or LIMIT must have period_profile"
+    category: VALIDATION
+
+  rule_leave_class_cannot_deactivate_with_active_instants:
+    id: rule_leave_class_cannot_deactivate_with_active_instants
+    name: Cannot Deactivate LeaveClass With Active Instants
+    entity: LeaveClass
+    severity: ERROR
+    condition: >
+      EXISTS(SELECT 1 FROM LeaveInstant li
+             WHERE li.class_id = lc1.id
+             AND li.state_code = 'ACTIVE')
+    action: REJECT
+    error_message: "Cannot deactivate LeaveClass while there are active LeaveInstants"
+    category: LIFECYCLE
+
+  # --- LeavePolicy Rules ---
+  rule_policy_unique_code:
+    id: rule_policy_unique_code
+    name: LeavePolicy Code Must Be Unique
+    entity: LeavePolicy
+    severity: ERROR
+    condition: >
+      EXISTS(SELECT 1 FROM LeavePolicy p2
+             WHERE p2.code = p1.code
+             AND p2.id != p1.id)
+    action: REJECT
+    error_message: "LeavePolicy code must be unique"
+    category: VALIDATION
+
+  rule_policy_must_have_type:
+    id: rule_policy_must_have_type
+    name: LeavePolicy Must Have LeaveType
+    entity: LeavePolicy
+    severity: ERROR
+    condition: >
+      leave_type_id IS NULL
+      OR NOT EXISTS(SELECT 1 FROM LeaveType lt WHERE lt.id = p1.leave_type_id)
+    action: REJECT
+    error_message: "LeavePolicy must reference a valid LeaveType"
+    category: VALIDATION
+
+  rule_policy_cannot_deactivate_if_in_use:
+    id: rule_policy_cannot_deactivate_if_in_use
+    name: Cannot Deactivate Policy If In Use
+    entity: LeavePolicy
+    severity: ERROR
+    condition: >
+      EXISTS(SELECT 1 FROM LeaveClass lc
+             WHERE lc.rules_json ? p1.code)
+    action: REJECT
+    error_message: "Cannot deactivate LeavePolicy while it is referenced by LeaveClasses"
+    category: LIFECYCLE
+
+  rule_accrual_requires_freq_and_amount:
+    id: rule_accrual_requires_freq_and_amount
+    name: Accrual Rule Requires Frequency and Amount
+    entity: LeavePolicy
+    severity: ERROR
+    condition: >
+      accrual_rule_json IS NOT NULL
+      AND (accrual_rule_json->>'freq' IS NULL
+           OR (accrual_rule_json->>'hours' IS NULL
+               AND accrual_rule_json->>'days' IS NULL))
+    action: REJECT
+    error_message: "Accrual rule must have freq and hours/days"
+    category: VALIDATION
+
+  rule_carry_requires_max_or_expire:
+    id: rule_carry_requires_max_or_expire
+    name: Carry Rule Requires Max or Expiry
+    entity: LeavePolicy
+    severity: ERROR
+    condition: >
+      carry_rule_json IS NOT NULL
+      AND carry_rule_json->>'allowed' = true
+      AND carry_rule_json->>'maxCarry' IS NULL
+      AND carry_rule_json->>'expireMonths' IS NULL
+    action: REJECT
+    error_message: "Carry rule must have maxCarry or expireMonths when allowed"
+    category: VALIDATION
+
+  rule_overdraft_limit_requires_allowed_true:
+    id: rule_overdraft_limit_requires_allowed_true
+    name: Overdraft Limit Requires Allowed True
+    entity: LeavePolicy
+    severity: ERROR
+    condition: >
+      overdraft_rule_json IS NOT NULL
+      AND overdraft_rule_json->>'allowed' = false
+      AND overdraft_rule_json->>'limitHours' IS NOT NULL
+    action: REJECT
+    error_message: "Cannot set overdraft limit when allowed is false"
+    category: VALIDATION
+
+# ============================================================================
+# INSTANT & MOVEMENT RULES
+# ============================================================================
+
+  # --- LeaveInstant Rules ---
+  rule_instant_unique_employee_class:
+    id: rule_instant_unique_employee_class
+    name: LeaveInstant Unique Per Employee+Class
+    entity: LeaveInstant
+    severity: ERROR
+    condition: >
+      EXISTS(SELECT 1 FROM LeaveInstant li2
+             WHERE li2.employee_id = li1.employee_id
+             AND li2.class_id = li1.class_id
+             AND li2.id != li1.id)
+    action: REJECT
+    error_message: "LeaveInstant must be unique per employee and class combination"
+    category: VALIDATION
+
+  rule_instant_available_qty_formula:
+    id: rule_instant_available_qty_formula
+    name: Available Qty Must Equal Current - Hold
+    entity: LeaveInstant
+    severity: ERROR
+    condition: >
+      available_qty != (current_qty - hold_qty)
+    action: REJECT
+    error_message: "available_qty must equal current_qty - hold_qty"
+    category: INTEGRITY
+
+  rule_instant_cannot_go_negative_if_no_overdraft:
+    id: rule_instant_cannot_go_negative_if_no_overdraft
+    name: Cannot Go Negative Without Overdraft
+    entity: LeaveInstant
+    severity: ERROR
+    condition: >
+      current_qty < 0
+      AND NOT EXISTS(SELECT 1 FROM LeavePolicy p
+                     JOIN LeaveClass lc ON p.leave_type_id = lc.leave_type_id
+                     WHERE lc.id = li1.class_id
+                     AND p.overdraft_rule_json->>'allowed' = true)
+    action: REJECT
+    error_message: "Cannot have negative balance without overdraft policy"
+    category: BUSINESS
+
+  rule_instant_hold_cannot_exceed_current:
+    id: rule_instant_hold_cannot_exceed_current
+    name: Hold Cannot Exceed Current
+    entity: LeaveInstant
+    severity: ERROR
+    condition: >
+      hold_qty > current_qty
+    action: REJECT
+    error_message: "hold_qty cannot exceed current_qty"
+    category: BUSINESS
+
+  rule_instant_must_have_class:
+    id: rule_instant_must_have_class
+    name: LeaveInstant Must Have LeaveClass
+    entity: LeaveInstant
+    severity: ERROR
+    condition: >
+      class_id IS NULL
+      OR NOT EXISTS(SELECT 1 FROM LeaveClass lc WHERE lc.id = li1.class_id)
+    action: REJECT
+    error_message: "LeaveInstant must reference a valid LeaveClass"
+    category: VALIDATION
+
+  rule_instant_auto_create_on_eligibility:
+    id: rule_instant_auto_create_on_eligibility
+    name: Auto-Create Instant on Eligibility
+    entity: LeaveInstant
+    severity: INFO
+    condition: >
+      Employee meets eligibility criteria for LeaveClass
+      AND NOT EXISTS(SELECT 1 FROM LeaveInstant li
+                     WHERE li.employee_id = :employeeId
+                     AND li.class_id = :classId)
+    action: CREATE
+    auto_action: >
+      INSERT INTO LeaveInstant (employee_id, class_id, state_code, current_qty, hold_qty, available_qty)
+      VALUES (:employeeId, :classId, 'ACTIVE', 0, 0, 0)
+    category: AUTOMATION
+
+  # --- LeaveInstantDetail Rules ---
+  rule_detail_used_cannot_exceed_lot:
+    id: rule_detail_used_cannot_exceed_lot
+    name: Used Qty Cannot Exceed Lot Qty
+    entity: LeaveInstantDetail
+    severity: ERROR
+    condition: >
+      used_qty > lot_qty
+    action: REJECT
+    error_message: "used_qty cannot exceed lot_qty"
+    category: INTEGRITY
+
+  rule_detail_fefo_consumption:
+    id: rule_detail_fefo_consumption
+    name: FEFO Consumption Priority
+    entity: LeaveInstantDetail
+    severity: ERROR
+    condition: >
+      Consumption must follow expire_date ASC order
+    action: ENFORCE
+    enforcement_logic: >
+      ORDER BY expire_date ASC, eff_date ASC, priority ASC
+    category: BUSINESS
+
+  rule_detail_silent_expiry_default:
+    id: rule_detail_silent_expiry_default
+    name: Silent Expiry By Default
+    entity: LeaveInstantDetail
+    severity: INFO
+    condition: >
+      expire_date < CURRENT_DATE
+      AND state_code != 'EXPIRED'
+    action: UPDATE
+    auto_action: >
+      UPDATE LeaveInstantDetail SET state_code = 'EXPIRED' WHERE id = :detailId
+    category: AUTOMATION
+
+  rule_detail_must_have_positive_qty:
+    id: rule_detail_must_have_positive_qty
+    name: Lot Must Have Positive Qty
+    entity: LeaveInstantDetail
+    severity: ERROR
+    condition: >
+      lot_qty <= 0
+    action: REJECT
+    error_message: "lot_qty must be positive"
+    category: VALIDATION
+
+  # --- LeaveMovement Rules ---
+  rule_movement_immutable:
+    id: rule_movement_immutable
+    name: Movement Is Immutable After Post
+    entity: LeaveMovement
+    severity: ERROR
+    condition: >
+      UPDATE attempt on posted movement
+    action: REJECT
+    error_message: "Cannot modify posted movement. Use reversal instead."
+    category: INTEGRITY
+
+  rule_movement_correction_via_reversal:
+    id: rule_movement_correction_via_reversal
+    name: Correction Must Use Reversal
+    entity: LeaveMovement
+    severity: ERROR
+    condition: >
+      Correction needed for posted movement
+    action: ENFORCE
+    enforcement_logic: >
+      Create new movement with event_code='REVERSE' and negated qty
+    category: BUSINESS
+
+  rule_movement_must_have_event_code:
+    id: rule_movement_must_have_event_code
+    name: Movement Must Have Event Code
+    entity: LeaveMovement
+    severity: ERROR
+    condition: >
+      event_code IS NULL
+    action: REJECT
+    error_message: "event_code is required"
+    category: VALIDATION
+
+  rule_movement_idempotency_key_unique:
+    id: rule_movement_idempotency_key_unique
+    name: Movement Idempotency Key Must Be Unique
+    entity: LeaveMovement
+    severity: ERROR
+    condition: >
+      EXISTS(SELECT 1 FROM LeaveMovement m2
+             WHERE m2.idempotency_key = m1.idempotency_key
+             AND m2.id != m1.id)
+    action: REJECT
+    error_message: "Duplicate movement detected (idempotency key violation)"
+    category: INTEGRITY
+
+  rule_movement_qty_sign_by_event:
+    id: rule_movement_qty_sign_by_event
+    name: Movement Qty Sign Must Match Event
+    entity: LeaveMovement
+    severity: ERROR
+    condition: >
+      (event_code IN ('ACCRUAL', 'CARRY', 'ADJUST', 'REVERSE') AND qty < 0)
+      OR (event_code IN ('USED', 'EXPIRE') AND qty > 0)
+    action: REJECT
+    error_message: "Movement qty sign does not match event type"
+    category: BUSINESS
+
+# ============================================================================
+# REQUEST & RESERVATION RULES
+# ============================================================================
+
+  # --- LeaveRequest Rules ---
+  rule_request_must_have_employee:
+    id: rule_request_must_have_employee
+    name: Request Must Have Employee
+    entity: LeaveRequest
+    severity: ERROR
+    condition: >
+      employee_id IS NULL
+    action: REJECT
+    error_message: "employee_id is required"
+    category: VALIDATION
+
+  rule_request_must_have_class:
+    id: rule_request_must_have_class
+    name: Request Must Have LeaveClass
+    entity: LeaveRequest
+    severity: ERROR
+    condition: >
+      class_id IS NULL
+    action: REJECT
+    error_message: "class_id is required"
+    category: VALIDATION
+
+  rule_request_end_must_be_after_start:
+    id: rule_request_end_must_be_after_start
+    name: Request End Must Be After Start
+    entity: LeaveRequest
+    severity: ERROR
+    condition: >
+      end_dt <= start_dt
+    action: REJECT
+    error_message: "end_dt must be after start_dt"
+    category: VALIDATION
+
+  rule_request_cannot_overlap_approved:
+    id: rule_request_cannot_overlap_approved
+    name: Request Cannot Overlap Approved Requests
+    entity: LeaveRequest
+    severity: ERROR
+    condition: >
+      EXISTS(SELECT 1 FROM LeaveRequest lr2
+             WHERE lr2.employee_id = lr1.employee_id
+             AND lr2.status_code = 'APPROVED'
+             AND lr2.id != lr1.id
+             AND (lr2.start_dt, lr2.end_dt) OVERLAPS (lr1.start_dt, lr1.end_dt))
+    action: REJECT
+    error_message: "Cannot overlap with existing approved leave request"
+    category: BUSINESS
+
+  rule_request_must_have_available_balance:
+    id: rule_request_must_have_available_balance
+    name: Request Must Have Available Balance
+    entity: LeaveRequest
+    severity: ERROR
+    condition: >
+      NOT EXISTS(SELECT 1 FROM LeaveInstant li
+                 WHERE li.employee_id = lr1.employee_id
+                 AND li.class_id = lr1.class_id
+                 AND li.available_qty >= lr1.qty_hours_req)
+    action: REJECT
+    error_message: "Insufficient available balance for this request"
+    category: BUSINESS
+
+  rule_request_cannot_cancel_after_start:
+    id: rule_request_cannot_cancel_after_start
+    name: Cannot Cancel Request After Start Date
+    entity: LeaveRequest
+    severity: ERROR
+    condition: >
+      status_code = 'APPROVED' AND CURRENT_DATE >= start_dt::date
+    action: RESTRICT
+    alternative_action: >
+      Create adjustment request instead
+    error_message: "Cannot cancel after start date. Create adjustment request instead."
+    category: LIFECYCLE
+
+  rule_request_status_transition_valid:
+    id: rule_request_status_transition_valid
+    name: Request Status Transition Must Be Valid
+    entity: LeaveRequest
+    severity: ERROR
+    condition: >
+      Invalid status transition per lifecycle
+    action: REJECT
+    error_message: "Invalid status transition"
+    category: LIFECYCLE
+
+  # --- LeaveReservation Rules ---
+  rule_reservation_unique_request:
+    id: rule_reservation_unique_request
+    name: Reservation Unique Per Request
+    entity: LeaveReservation
+    severity: ERROR
+    condition: >
+      EXISTS(SELECT 1 FROM LeaveReservation r2
+             WHERE r2.request_id = r1.request_id
+             AND r2.id != r1.id)
+    action: REJECT
+    error_message: "Reservation must be unique per request"
+    category: VALIDATION
+
+  rule_reservation_cannot_exceed_available:
+    id: rule_reservation_cannot_exceed_available
+    name: Reservation Cannot Exceed Available
+    entity: LeaveReservation
+    severity: ERROR
+    condition: >
+      EXISTS(SELECT 1 FROM LeaveInstant li
+             WHERE li.id = r1.instant_id
+             AND r1.reserved_qty > li.available_qty)
+    action: REJECT
+    error_message: "Reservation cannot exceed available balance"
+    category: BUSINESS
+
+  rule_reservation_auto_release_on_reject:
+    id: rule_reservation_auto_release_on_reject
+    name: Auto-Release Reservation on Request Reject
+    entity: LeaveReservation
+    severity: INFO
+    condition: >
+      LeaveRequest.status_code = 'REJECTED'
+      AND Reservation.status_code = 'ACTIVE'
+    action: UPDATE
+    auto_action: >
+      UPDATE LeaveReservation SET status_code = 'RELEASED', released_reason = 'REJECTED'
+      WHERE request_id = :requestId
+    category: AUTOMATION
+
+  rule_reservation_auto_release_on_cancel:
+    id: rule_reservation_auto_release_on_cancel
+    name: Auto-Release Reservation on Request Cancel
+    entity: LeaveReservation
+    severity: INFO
+    condition: >
+      LeaveRequest.status_code IN ('CANCELLED', 'WITHDRAWN')
+      AND Reservation.status_code = 'ACTIVE'
+    action: UPDATE
+    auto_action: >
+      UPDATE LeaveReservation SET status_code = 'RELEASED', released_reason = :status
+      WHERE request_id = :requestId
+    category: AUTOMATION
+
+  rule_reservation_auto_expire_if_not_started:
+    id: rule_reservation_auto_expire_if_not_started
+    name: Auto-Expire Reservation If Not Started
+    entity: LeaveReservation
+    severity: INFO
+    condition: >
+      expires_at < CURRENT_TIMESTAMP
+      AND status_code = 'ACTIVE'
+      AND NOT EXISTS(SELECT 1 FROM LeaveMovement m
+                     WHERE m.request_id = r1.request_id
+                     AND m.event_code = 'USED')
+    action: UPDATE
+    auto_action: >
+      UPDATE LeaveReservation SET status_code = 'EXPIRED'
+      WHERE id = :reservationId
+    category: AUTOMATION
+
+  rule_reservation_unhold_on_start_post:
+    id: rule_reservation_unhold_on_start_post
+    name: Unhold Reservation on Start Post
+    entity: LeaveReservation
+    severity: INFO
+    condition: >
+      START_POST event executed for request
+    action: UPDATE
+    auto_action: >
+      UPDATE LeaveReservation SET status_code = 'USED'
+      WHERE request_id = :requestId
+    category: AUTOMATION
+
+# ============================================================================
+# TEAM LIMIT & VALIDATION RULES
+# ============================================================================
+
+  # --- TeamLeaveLimit Rules ---
+  rule_limit_unique_org_type:
+    id: rule_limit_unique_org_type
+    name: Team Limit Unique Per Org+Type
+    entity: TeamLeaveLimit
+    severity: ERROR
+    condition: >
+      EXISTS(SELECT 1 FROM TeamLeaveLimit t2
+             WHERE t2.org_unit_id = t1.org_unit_id
+             AND t2.leave_type_code = t1.leave_type_code
+             AND t2.id != t1.id
+             AND t2.active = true
+             AND t2.effective_start <= CURRENT_DATE
+             AND (t2.effective_end IS NULL OR t2.effective_end >= CURRENT_DATE))
+    action: REJECT
+    error_message: "Team limit must be unique per org unit and leave type"
+    category: VALIDATION
+
+  rule_limit_must_have_pct_or_abs:
+    id: rule_limit_must_have_pct_or_abs
+    name: Team Limit Must Have Pct or Abs Count
+    entity: TeamLeaveLimit
+    severity: ERROR
+    condition: >
+      limit_pct IS NULL AND limit_abs_cnt IS NULL
+    action: REJECT
+    error_message: "Team limit must have either limit_pct or limit_abs_cnt"
+    category: VALIDATION
+
+  rule_limit_pct_cannot_exceed_100:
+    id: rule_limit_pct_cannot_exceed_100
+    name: Team Limit Pct Cannot Exceed 100
+    entity: TeamLeaveLimit
+    severity: ERROR
+    condition: >
+      limit_pct > 100 OR limit_pct < 0
+    action: REJECT
+    error_message: "limit_pct must be between 0 and 100"
+    category: VALIDATION
+
+  rule_limit_validation_on_submit:
+    id: rule_limit_validation_on_submit
+    name: Team Limit Validation on Request Submit
+    entity: TeamLeaveLimit
+    severity: ERROR
+    condition: >
+      Concurrent leaves exceed limit for requested dates
+    action: REJECT_OR_ESCALATE
+    enforcement_logic: >
+      Count approved+pending requests overlapping with new request dates.
+      If count >= max_allowed, reject or escalate based on escalation_level.
+    error_message: "Team staffing limit exceeded for requested dates"
+    category: BUSINESS
+
+  # --- HolidayCalendar Rules ---
+  rule_calendar_unique_code:
+    id: rule_calendar_unique_code
+    name: Holiday Calendar Code Must Be Unique
+    entity: HolidayCalendar
+    severity: ERROR
+    condition: >
+      EXISTS(SELECT 1 FROM HolidayCalendar hc2
+             WHERE hc2.code = hc1.code
+             AND hc2.id != hc1.id)
+    action: REJECT
+    error_message: "Holiday calendar code must be unique"
+    category: VALIDATION
+
+  rule_date_unique_within_calendar:
+    id: rule_date_unique_within_calendar
+    name: Holiday Date Unique Within Calendar
+    entity: HolidayDate
+    severity: ERROR
+    condition: >
+      EXISTS(SELECT 1 FROM HolidayDate hd2
+             WHERE hd2.calendar_id = hd1.calendar_id
+             AND hd2.holiday_date = hd1.holiday_date
+             AND hd2.id != hd1.id)
+    action: REJECT
+    error_message: "Holiday date must be unique within calendar"
+    category: VALIDATION
+
+# ============================================================================
+# PERIOD & EVENT RULES
+# ============================================================================
+
+  # --- LeavePeriod Rules ---
+  rule_period_unique_code:
+    id: rule_period_unique_code
+    name: LeavePeriod Code Must Be Unique
+    entity: LeavePeriod
+    severity: ERROR
+    condition: >
+      EXISTS(SELECT 1 FROM LeavePeriod p2
+             WHERE p2.code = p1.code
+             AND p2.id != p1.id)
+    action: REJECT
+    error_message: "LeavePeriod code must be unique"
+    category: VALIDATION
+
+  rule_period_must_have_valid_date_range:
+    id: rule_period_must_have_valid_date_range
+    name: LeavePeriod Must Have Valid Date Range
+    entity: LeavePeriod
+    severity: ERROR
+    condition: >
+      end_date <= start_date
+    action: REJECT
+    error_message: "Period end_date must be after start_date"
+    category: VALIDATION
+
+  rule_period_cannot_close_with_pending_requests:
+    id: rule_period_cannot_close_with_pending_requests
+    name: Cannot Close Period With Pending Requests
+    entity: LeavePeriod
+    severity: ERROR
+    condition: >
+      EXISTS(SELECT 1 FROM LeaveRequest lr
+             JOIN LeaveInstant li ON lr.instant_id = li.id
+             JOIN LeaveClass lc ON lr.class_id = lc.id
+             WHERE lc.period_profile->>'type' = p1.code
+             AND lr.status_code IN ('SUBMITTED', 'PENDING', 'APPROVED')
+             AND (lr.start_dt, lr.end_dt) OVERLAPS (p1.start_date, p1.end_date))
+    action: REJECT
+    error_message: "Cannot close period with pending or approved requests"
+    category: LIFECYCLE
+
+  rule_period_parent_child_consistency:
+    id: rule_period_parent_child_consistency
+    name: Period Parent-Child Date Consistency
+    entity: LeavePeriod
+    severity: ERROR
+    condition: >
+      parent_id IS NOT NULL
+      AND (start_date < (SELECT start_date FROM LeavePeriod WHERE id = parent_id)
+           OR end_date > (SELECT end_date FROM LeavePeriod WHERE id = parent_id))
+    action: REJECT
+    error_message: "Child period must be within parent period dates"
+    category: VALIDATION
+
+  # --- Event Rules ---
+  rule_event_def_unique_code:
+    id: rule_event_def_unique_code
+    name: Event Definition Code Must Be Unique
+    entity: LeaveEventDef
+    severity: ERROR
+    condition: >
+      EXISTS(SELECT 1 FROM LeaveEventDef ed2
+             WHERE ed2.code = ed1.code
+             AND ed2.id != ed1.id)
+    action: REJECT
+    error_message: "Event definition code must be unique"
+    category: VALIDATION
+
+  rule_event_run_idempotency:
+    id: rule_event_run_idempotency
+    name: Event Run Idempotency
+    entity: LeaveEventRun
+    severity: ERROR
+    condition: >
+      EXISTS(SELECT 1 FROM LeaveEventRun r2
+             WHERE r2.idempotency_key = r1.idempotency_key
+             AND r2.id != r1.id
+             AND r2.run_status = 'DONE')
+    action: SKIP
+    info_message: "Duplicate run detected (idempotency key match). Skipping."
+    category: IDEMPOTENCY
+
+# ============================================================================
+# WALLET RULES
+# ============================================================================
+
+  rule_wallet_unique_employee_type:
+    id: rule_wallet_unique_employee_type
+    name: LeaveWallet Unique Per Employee+Type
+    entity: LeaveWallet
+    severity: ERROR
+    condition: >
+      EXISTS(SELECT 1 FROM LeaveWallet w2
+             WHERE w2.employee_id = w1.employee_id
+             AND w2.leave_type_code = w1.leave_type_code
+             AND w2.id != w1.id)
+    action: REJECT
+    error_message: "LeaveWallet must be unique per employee and leave type"
+    category: VALIDATION
+
+  rule_wallet_available_hours_formula:
+    id: rule_wallet_available_hours_formula
+    name: Wallet Available Hours Formula
+    entity: LeaveWallet
+    severity: ERROR
+    condition: >
+      available_hours != (SELECT SUM(li.available_qty * conversionFactor)
+                          FROM LeaveInstant li
+                          JOIN LeaveClass lc ON li.class_id = lc.id
+                          WHERE li.employee_id = w1.employee_id
+                          AND lc.leave_type_id = w1.leave_type_code)
+    action: RECALCULATE
+    auto_action: >
+      Refresh wallet from source instants
+    category: INTEGRITY
+
+# ============================================================================
+# RULE CATEGORIES SUMMARY
+# ============================================================================
+
+rule_categories:
+  VALIDATION: Input/field validation rules
+  INTEGRITY: Data integrity constraints
+  BUSINESS: Business logic rules
+  LIFECYCLE: State transition rules
+  AUTOMATION: Auto-action rules
+  IDEMPOTENCY: Duplicate prevention rules

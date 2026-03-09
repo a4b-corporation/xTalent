@@ -1,0 +1,236 @@
+id: odsa.ta.concept.leave_event_def
+type: concept
+name: LeaveEventDef
+version: 1.0.0
+description: >
+  Định nghĩa các loại sự kiện (event types) trong hệ thống Absence.
+  LeaveEventDef quy định trigger kind (scheduled/request/manual/API),
+  schedule expression (nếu scheduled), và các policy references áp dụng.
+
+  Các event types phổ biến:
+  - ACCRUAL: Tích lũy phép định kỳ
+  - CARRY: Chuyển phép sang kỳ sau
+  - EXPIRE: Hết hạn lots
+  - START_POST: Bắt đầu nghỉ (trừ phép)
+  - ADJUST: Điều chỉnh số dư
+  - RESET: Reset số dư cuối kỳ
+
+prefixes:
+  ta: https://xtalent.com/ta/
+  xsd: http://www.w3.org/2001/XMLSchema#
+
+default_range: string
+
+attributes:
+  id:
+    identifier: true
+    required: true
+    range: string
+    description: Unique identifier (UUID) cho LeaveEventDef
+
+  code:
+    required: true
+    range: string
+    unique: true
+    description: >
+      Mã định danh duy nhất cho event definition.
+      Ví dụ: ACCRUAL, CARRY, EXPIRE, START_POST, ADJUST, RESET
+    constraints:
+      pattern: '^[A-Z][A-Z0-9_]{0,49}$'
+
+  name:
+    required: true
+    range: string
+    description: Tên hiển thị của event
+    constraints:
+      max_length: 100
+
+  description:
+    range: string
+    required: false
+    description: Mô tả chi tiết về event
+
+  trigger_kind:
+    range: string
+    required: true
+    description: Loại trigger để thực thi event
+    constraints:
+      permitted_values:
+        - SCHEDULED       # Chạy theo lịch (cron/iso)
+        - REQUEST_BASED   # Trigger từ LeaveRequest
+        - MANUAL          # Chạy thủ công (admin click)
+        - API             # Trigger qua API external
+
+  schedule_expr:
+    range: string
+    required: false
+    description: >
+      Biểu thức lịch chạy (nếu trigger_kind = SCHEDULED).
+      Cron format hoặc ISO 8601 duration.
+    examples:
+      - '0 0 1 * *'        # Monthly - 00:00 ngày 1 hàng tháng
+      - '0 0 * * 1'        # Weekly - 00:00 thứ 2 hàng tuần
+      - 'P1M'              # ISO 8601 - Every month
+      - '0 0 1 1 *'        # Yearly - 00:00 ngày 1/1
+
+  policy_refs:
+    range: json
+    required: false
+    description: >
+      Danh sách policy codes/IDs áp dụng cho event này.
+      Dùng để lookup rules khi thực thi.
+    examples:
+      - type: POLICY_CODE
+        values: [ANL_VN_ACCRUAL, ANL_VN_CARRY]
+      - type: LEAVE_TYPE
+        values: [ANL, SL]
+
+  qty_formula:
+    range: string
+    required: false
+    description: >
+      Công thức tính qty mặc định cho event.
+      Có thể override bởi LeaveClassEvent.
+    examples:
+      - '+fixedRate'           # Cộng cố định
+      - '-requestedQty'        # Trừ theo request
+      - '+remainingBalance'    # Chuyển số dư còn lại
+      - '-holdQty'             # Trừ amount đã hold
+
+  target_override:
+    range: string
+    required: false
+    default: INSTANT
+    description: >
+      Target entity để post movement.
+      Luôn là INSTANT (LeaveInstant) theo thiết kế hiện tại.
+    constraints:
+      permitted_values:
+        - INSTANT
+        - DETAIL        # Post vào LeaveInstantDetail
+        - BOTH          # Post vào cả hai
+
+  idempotent:
+    range: boolean
+    required: true
+    default: true
+    description: >
+      Nếu true, event có tính idempotent (chạy lại không tạo duplicate).
+      Sử dụng idempotency_key để kiểm tra.
+
+  is_active:
+    range: boolean
+    required: true
+    default: true
+    description: Event definition đang hoạt động hay không
+
+  metadata:
+    range: json
+    required: false
+    description: Metadata linh hoạt cho các thuộc tính mở rộng
+
+relationships:
+  policies:
+    target: LeavePolicy
+    cardinality: many_to_many
+    description: Các LeavePolicy áp dụng cho event này
+    required: false
+
+  class_events:
+    target: LeaveClassEvent
+    cardinality: one_to_many
+    description: Mapping LeaveClass → LeaveEventDef
+    required: false
+
+  event_runs:
+    target: LeaveEventRun
+    cardinality: one_to_many
+    description: Các lần thực thi (runs) của event này
+    required: false
+
+  movements:
+    target: LeaveMovement
+    cardinality: one_to_many
+    description: Các LeaveMovements sinh ra từ event này
+    required: false
+
+business_rules:
+  - rule_event_def_unique_code
+  - rule_event_def_schedule_required_if_scheduled
+  - rule_event_def_cannot_deactivate_if_in_use
+  - rule_event_def_idempotent_by_default
+
+examples:
+  - code: ACCRUAL
+    name: Accrual Event
+    description: Monthly/Yearly accrual of leave balance
+    trigger_kind: SCHEDULED
+    schedule_expr: '0 0 1 * *'    # Monthly
+    policy_refs:
+      type: LEAVE_TYPE
+      values: [ANL, SL]
+    qty_formula: '+fixedRate'
+    target_override: BOTH         # Post vào cả Instant và Detail (lot)
+    idempotent: true
+    is_active: true
+
+  - code: START_POST
+    name: Start Posting Event
+    description: Post leave usage when request start date arrives
+    trigger_kind: SCHEDULED
+    schedule_expr: '0 0 * * *'    # Daily
+    qty_formula: '-requestedQty'
+    target_override: INSTANT
+    idempotent: true
+    is_active: true
+
+  - code: CARRY
+    name: Carry Forward Event
+    description: Carry forward unused balance to next period
+    trigger_kind: SCHEDULED
+    schedule_expr: '0 0 1 1 *'    # Yearly - Jan 1
+    policy_refs:
+      type: POLICY_CODE
+      values: [ANL_VN_CARRY, ANL_SG_CARRY]
+    qty_formula: '+remainingBalance'
+    target_override: BOTH
+    idempotent: true
+    is_active: true
+
+  - code: EXPIRE
+    name: Expiry Event
+    description: Mark lots as expired (optional movement for reporting)
+    trigger_kind: SCHEDULED
+    schedule_expr: '0 0 * * *'    # Daily check
+    qty_formula: '0'              # Silent expiry, no qty movement
+    target_override: DETAIL
+    idempotent: true
+    is_active: false              # Only if emit_expire_turnover = true
+
+  - code: RESET
+    name: Reset Event
+    description: Reset balance at period close (no carry)
+    trigger_kind: SCHEDULED
+    schedule_expr: '0 0 1 1 *'    # Yearly
+    qty_formula: '0'              # Just mark, no movement
+    target_override: INSTANT
+    idempotent: true
+    is_active: true
+
+  - code: ADJUST
+    name: Adjustment Event
+    description: Manual adjustment of balance
+    trigger_kind: MANUAL
+    qty_formula: '±adjustmentQty'
+    target_override: INSTANT
+    idempotent: false
+    is_active: true
+
+  - code: REVERSE
+    name: Reversal Event
+    description: Reverse a previously posted movement
+    trigger_kind: MANUAL
+    qty_formula: '-originalQty'   # Negate original
+    target_override: INSTANT
+    idempotent: true
+    is_active: true
