@@ -1,0 +1,1277 @@
+Project xTalent_ECR {
+  database_type: 'PostgreSQL'
+  Note: 'Event-Centric Recruitment Module - Mass Hiring Solution\nVersion: 1.0.0\nLast Updated: 2026-03-10'
+}
+
+// ============================================================================
+// ENUM DEFINITIONS (15+ Enums)
+// ============================================================================
+
+Enum event_status {
+  draft
+  published
+  ongoing
+  completed
+  archived
+}
+
+Enum track_type {
+  technical
+  business
+  creative
+  operations
+  management_trainee
+}
+
+Enum stage_type {
+  registration
+  screening
+  written_test
+  interview
+  offer
+  hired
+  rejected
+}
+
+Enum question_type {
+  mcq
+  multi_select
+  text
+  file_upload
+  code_editor
+  video_response
+  essay
+}
+
+Enum difficulty_level {
+  easy
+  medium
+  hard
+}
+
+Enum candidate_status {
+  registered
+  confirmed
+  attended
+  no_show
+  withdrawn
+}
+
+Enum slot_status {
+  available
+  locked
+  reserved
+  blocked
+  completed
+}
+
+Enum reservation_status {
+  pending
+  confirmed
+  cancelled
+  rescheduled
+  no_show
+}
+
+Enum test_status {
+  not_started
+  in_progress
+  submitted
+  auto_graded
+  manual_graded
+  reviewed
+}
+
+Enum grading_status {
+  pending
+  auto_graded
+  manual_graded
+  reviewed
+  disputed
+}
+
+Enum checkin_status {
+  pending
+  checked_in
+  no_show
+  late
+  early
+}
+
+Enum message_type {
+  invitation
+  reminder
+  confirmation
+  thank_you
+  result
+  reschedule
+}
+
+Enum channel_type {
+  email
+  sms
+  push
+  in_app
+}
+
+Enum mission_status {
+  pending
+  completed
+  expired
+  claimed
+}
+
+Enum duplicate_action {
+  remove
+  replace
+  merge
+  allow
+}
+
+Enum blueprint_status {
+  draft
+  locked
+  active
+  archived
+}
+
+// ============================================================================
+// SYSTEM COLUMNS TEMPLATE (Applied to all tables)
+// Note: DBML doesn't support templates, so we repeat these columns
+// id uuid [pk, default: `gen_random_uuid()`]
+// created_at timestamp [not null, default: `now()`]
+// updated_at timestamp [not null, default: `now()`]
+// deleted_at timestamp [null, note: 'Soft delete']
+// ============================================================================
+
+// ============================================================================
+// 1. EVENT MANAGEMENT CONTEXT
+// ============================================================================
+
+Table events {
+  id uuid [pk, default: `gen_random_uuid()`]
+  code varchar(50) [not null, note: 'Event code e.g., FRE2026']
+  name varchar(255) [not null]
+  description text [null]
+  status event_status [not null, default: 'draft']
+  start_date timestamp [not null]
+  end_date timestamp [not null]
+  registration_start timestamp [not null]
+  registration_end timestamp [not null]
+  location varchar(255) [null, note: 'Main venue location']
+  metadata jsonb [null, note: 'Flexible event settings']
+  created_by uuid [null, note: 'User who created event']
+  updated_by uuid [null]
+  created_at timestamp [not null, default: `now()`]
+  updated_at timestamp [not null, default: `now()`]
+  deleted_at timestamp [null]
+
+  indexes {
+    code [unique]
+    (status, start_date)
+    (deleted_at, status) [note: 'Partial: deleted_at IS NULL']
+  }
+}
+
+Table tracks {
+  id uuid [pk, default: `gen_random_uuid()`]
+  event_id uuid [not null]
+  code varchar(50) [not null, note: 'Track code e.g., JAVA-DEV']
+  name varchar(255) [not null]
+  description text [null]
+  type track_type [not null, default: 'technical']
+  quota int [null, note: 'Max candidates for this track']
+  blueprint_id uuid [null, note: 'Default assessment blueprint']
+  status event_status [not null, default: 'draft']
+  metadata jsonb [null]
+  created_at timestamp [not null, default: `now()`]
+  updated_at timestamp [not null, default: `now()`]
+  deleted_at timestamp [null]
+
+  indexes {
+    event_id
+    code
+    (event_id, code) [unique]
+    (event_id, deleted_at) [note: 'Partial: deleted_at IS NULL']
+  }
+}
+
+Table stages {
+  id uuid [pk, default: `gen_random_uuid()`]
+  track_id uuid [not null]
+  name varchar(100) [not null]
+  type stage_type [not null]
+  order_index int [not null, note: 'Sequence in workflow']
+  is_required bool [not null, default: true]
+  config jsonb [null, note: 'Stage-specific configuration']
+  created_at timestamp [not null, default: `now()`]
+  updated_at timestamp [not null, default: `now()`]
+  deleted_at timestamp [null]
+
+  indexes {
+    track_id
+    (track_id, order_index) [unique]
+  }
+}
+
+Table request_mappings {
+  id uuid [pk, default: `gen_random_uuid()`]
+  track_id uuid [not null]
+  requisition_id uuid [not null, note: 'ATS Job Requisition ID']
+  requisition_code varchar(50) [not null]
+  mapping_type varchar(50) [not null, default: 'one_to_one', note: 'one_to_one, one_to_many']
+  status varchar(50) [not null, default: 'pending', note: 'pending, approved, rejected']
+  mapped_at timestamp [null]
+  mapped_by uuid [null]
+  metadata jsonb [null]
+  created_at timestamp [not null, default: `now()`]
+  updated_at timestamp [not null, default: `now()`]
+  deleted_at timestamp [null]
+
+  indexes {
+    track_id
+    requisition_id
+    (track_id, requisition_id) [unique]
+  }
+}
+
+// ============================================================================
+// 2. FORM & DATA MANAGEMENT CONTEXT
+// ============================================================================
+
+Table question_banks {
+  id uuid [pk, default: `gen_random_uuid()`]
+  code varchar(50) [not null]
+  title varchar(255) [not null]
+  description text [null]
+  category varchar(100) [null, note: 'Topic/Domain category']
+  difficulty difficulty_level [not null, default: 'medium']
+  tags text[] [null]
+  metadata jsonb [null]
+  created_by uuid [null]
+  updated_by uuid [null]
+  created_at timestamp [not null, default: `now()`]
+  updated_at timestamp [not null, default: `now()`]
+  deleted_at timestamp [null]
+
+  indexes {
+    code [unique]
+    category
+    difficulty
+    tags [type: gin]
+  }
+}
+
+Table question_items {
+  id uuid [pk, default: `gen_random_uuid()`]
+  question_bank_id uuid [not null]
+  type question_type [not null]
+  content text [not null, note: 'Question content (JSON for MCQ options)']
+  correct_answer text [null, note: 'For auto-grading']
+  score_weight decimal(5,2) [not null, default: 1.0]
+  time_limit_seconds int [null, note: 'Time limit per question']
+  config jsonb [null, note: 'Type-specific config']
+  created_at timestamp [not null, default: `now()`]
+  updated_at timestamp [not null, default: `now()`]
+  deleted_at timestamp [null]
+
+  indexes {
+    question_bank_id
+    type
+  }
+}
+
+Table field_blueprints {
+  id uuid [pk, default: `gen_random_uuid()`]
+  code varchar(50) [not null]
+  name varchar(255) [not null]
+  track_id uuid [null, note: 'Associated track (null for global)']
+  status blueprint_status [not null, default: 'draft']
+  fields jsonb [not null, note: 'Array of field definitions']
+  validation_rules jsonb [null]
+  locked_at timestamp [null]
+  locked_by uuid [null]
+  created_at timestamp [not null, default: `now()`]
+  updated_at timestamp [not null, default: `now()`]
+  deleted_at timestamp [null]
+
+  indexes {
+    code [unique]
+    track_id
+    status
+  }
+}
+
+Table rendering_schemas {
+  id uuid [pk, default: `gen_random_uuid()`]
+  blueprint_id uuid [not null]
+  track_id uuid [not null]
+  version int [not null, default: 1]
+  schema jsonb [not null, note: 'Full UI rendering schema']
+  is_active bool [not null, default: false]
+  created_at timestamp [not null, default: `now()`]
+  updated_at timestamp [not null, default: `now()`]
+
+  indexes {
+    blueprint_id
+    track_id
+    (track_id, version) [unique]
+    (track_id, is_active) [note: 'Partial: is_active = true']
+  }
+}
+
+Table validators {
+  id uuid [pk, default: `gen_random_uuid()`]
+  blueprint_id uuid [not null]
+  field_name varchar(100) [not null]
+  validator_type varchar(50) [not null, note: 'regex, min_length, max_length, custom']
+  rule_expression text [not null]
+  error_message text [null]
+  created_at timestamp [not null, default: `now()`]
+
+  indexes {
+    blueprint_id
+    (blueprint_id, field_name)
+  }
+}
+
+// ============================================================================
+// 3. IDENTITY & PROFILE CONTEXT
+// ============================================================================
+
+Table candidates {
+  id uuid [pk, default: `gen_random_uuid()`]
+  sbd varchar(50) [not null, note: 'So Bao Danh - Official candidate code']
+  phone varchar(20) [not null]
+  student_id varchar(50) [null, note: 'University Student ID']
+  email varchar(255) [null]
+  full_name varchar(255) [not null]
+  date_of_birth date [null]
+  gender varchar(20) [null]
+  university varchar(255) [null]
+  major varchar(255) [null]
+  graduation_year int [null]
+  primary_profile_id uuid [null, note: 'Link to merged profile']
+  status candidate_status [not null, default: 'registered']
+  metadata jsonb [null]
+  created_at timestamp [not null, default: `now()`]
+  updated_at timestamp [not null, default: `now()`]
+  deleted_at timestamp [null]
+
+  indexes {
+    sbd [unique]
+    phone
+    student_id
+    (phone, student_id) [unique, note: 'BRS-ID-001: Primary identifier']
+    (phone, deleted_at) [note: 'Partial: deleted_at IS NULL']
+    (student_id, deleted_at) [note: 'Partial: deleted_at IS NULL']
+  }
+}
+
+Table profiles {
+  id uuid [pk, default: `gen_random_uuid()`]
+  candidate_id uuid [not null]
+  event_id uuid [null, note: 'Event-specific profile']
+  track_id uuid [null]
+  attributes jsonb [not null, note: 'Dynamic form answers']
+  cv_url text [null]
+  portfolio_url text [null]
+  photo_url text [null]
+  checkin_photo_url text [null, note: 'Photo taken at check-in']
+  is_primary bool [not null, default: false]
+  created_at timestamp [not null, default: `now()`]
+  updated_at timestamp [not null, default: `now()`]
+  deleted_at timestamp [null]
+
+  indexes {
+    candidate_id
+    event_id
+    track_id
+    (candidate_id, event_id) [unique]
+    attributes [type: gin]
+  }
+}
+
+Table duplicate_records {
+  id uuid [pk, default: `gen_random_uuid()`]
+  candidate_id uuid [not null, note: 'Existing candidate']
+  new_candidate_id uuid [not null, note: 'Incoming duplicate']
+  match_type varchar(50) [not null, note: 'full_match, partial_phone, partial_student_id']
+  confidence_score decimal(5,2) [not null]
+  suggested_action duplicate_action [not null]
+  resolved_action duplicate_action [null]
+  resolved_at timestamp [null]
+  resolved_by uuid [null]
+  audit_data jsonb [not null, note: 'Before/after merge data']
+  created_at timestamp [not null, default: `now()`]
+
+  indexes {
+    candidate_id
+    new_candidate_id
+    (candidate_id, resolved_at) [note: 'Partial: resolved_at IS NULL']
+  }
+}
+
+Table merge_rules {
+  id uuid [pk, default: `gen_random_uuid()`]
+  name varchar(100) [not null]
+  priority int [not null, default: 100]
+  match_conditions jsonb [not null, note: 'Conditions for triggering merge']
+  action duplicate_action [not null]
+  field_mapping jsonb [null, note: 'How to merge specific fields']
+  is_active bool [not null, default: true]
+  created_at timestamp [not null, default: `now()`]
+  updated_at timestamp [not null, default: `now()`]
+
+  indexes {
+    priority
+    is_active
+  }
+}
+
+// ============================================================================
+// 4. SCHEDULING & RESOURCE CONTEXT
+// ============================================================================
+
+Table capacities {
+  id bigint [pk, default: `nextval('capacities_id_seq'::regclass)`]
+  event_id uuid [not null]
+  track_id uuid [null]
+  date date [not null]
+  shift_id bigint [not null]
+  total_capacity int [not null]
+  confirmed_count int [not null, default: 0]
+  locked_count int [not null, default: 0]
+  available_count int [not null, note: 'Computed: total - confirmed - locked']
+  metadata jsonb [null]
+  created_at timestamp [not null, default: `now()`]
+  updated_at timestamp [not null, default: `now()`]
+
+  indexes {
+    event_id
+    shift_id
+    (event_id, date, shift_id) [unique]
+    (event_id, track_id, date, shift_id) [unique, name: 'idx_capacity_track_date_shift']
+  }
+}
+
+Table shifts {
+  id bigint [pk, default: `nextval('shifts_id_seq'::regclass)`]
+  event_id uuid [not null]
+  code varchar(50) [not null]
+  name varchar(100) [not null]
+  date date [not null]
+  start_time time [not null]
+  end_time time [not null]
+  total_capacity int [not null, default: 0]
+  status varchar(50) [not null, default: 'active']
+  metadata jsonb [null]
+  created_at timestamp [not null, default: `now()`]
+  updated_at timestamp [not null, default: `now()`]
+
+  indexes {
+    event_id
+    date
+    (event_id, date)
+    (date, start_time)
+  }
+}
+
+Table slots {
+  id bigint [pk, default: `nextval('slots_id_seq'::regclass)`]
+  shift_id bigint [not null]
+  room_id bigint [null]
+  panel_id bigint [null]
+  slot_number int [not null, note: 'Sequence within shift']
+  start_time time [not null]
+  end_time time [not null]
+  status slot_status [not null, default: 'available']
+  locked_until timestamp [null, note: 'BRS-SCH-003: TTL for optimistic lock']
+  reserved_by uuid [null, note: 'Candidate ID when reserved']
+  metadata jsonb [null]
+  created_at timestamp [not null, default: `now()`]
+  updated_at timestamp [not null, default: `now()`]
+
+  indexes {
+    shift_id
+    room_id
+    panel_id
+    status
+    (shift_id, status)
+    (status, locked_until) [note: 'Partial: status = locked']
+  }
+}
+
+Table reservations {
+  id uuid [pk, default: `gen_random_uuid()`]
+  candidate_id uuid [not null]
+  slot_id bigint [not null]
+  event_id uuid [not null]
+  track_id uuid [not null]
+  status reservation_status [not null, default: 'pending']
+  confirmed_at timestamp [null]
+  cancelled_at timestamp [null]
+  cancel_reason text [null]
+  rescheduled_from uuid [null, note: 'Previous reservation if rescheduled']
+  check_in_record_id uuid [null]
+  metadata jsonb [null]
+  created_at timestamp [not null, default: `now()`]
+  updated_at timestamp [not null, default: `now()`]
+
+  indexes {
+    candidate_id
+    slot_id
+    event_id
+    track_id
+    status
+    (candidate_id, event_id)
+    (slot_id, status)
+  }
+}
+
+Table waitlists {
+  id uuid [pk, default: `gen_random_uuid()`]
+  event_id uuid [not null]
+  track_id uuid [not null]
+  candidate_id uuid [not null]
+  priority int [not null, note: 'FIFO priority (lower = earlier)']
+  status varchar(50) [not null, default: 'waiting', note: 'waiting, assigned, expired, cancelled']
+  assigned_slot_id bigint [null]
+  notified_at timestamp [null]
+  expires_at timestamp [null]
+  created_at timestamp [not null, default: `now()`]
+  updated_at timestamp [not null, default: `now()`]
+
+  indexes {
+    event_id
+    track_id
+    candidate_id
+    status
+    (event_id, track_id, status, priority)
+    (status, expires_at) [note: 'Partial: status = waiting']
+  }
+}
+
+Table rooms {
+  id bigint [pk, default: `nextval('rooms_id_seq'::regclass)`]
+  event_id uuid [not null]
+  code varchar(50) [not null]
+  name varchar(100) [not null]
+  location varchar(255) [null, note: 'Building, floor details']
+  max_capacity int [not null]
+  room_type varchar(50) [not null, default: 'interview', note: 'interview, test, waiting']
+  is_active bool [not null, default: true]
+  metadata jsonb [null]
+  created_at timestamp [not null, default: `now()`]
+  updated_at timestamp [not null, default: `now()`]
+
+  indexes {
+    event_id
+    code
+    (event_id, code) [unique]
+    (event_id, is_active) [note: 'Partial: is_active = true']
+  }
+}
+
+Table panels {
+  id bigint [pk, default: `nextval('panels_id_seq'::regclass)`]
+  event_id uuid [not null]
+  room_id bigint [not null]
+  code varchar(50) [not null]
+  name varchar(100) [not null]
+  lead_interviewer uuid [null, note: 'Hiring Manager ID']
+  interviewers uuid[] [null, note: 'Array of interviewer IDs']
+  max_capacity int [not null, default: 1]
+  is_active bool [not null, default: true]
+  metadata jsonb [null]
+  created_at timestamp [not null, default: `now()`]
+  updated_at timestamp [not null, default: `now()`]
+
+  indexes {
+    event_id
+    room_id
+    code
+    (event_id, room_id, code) [unique]
+  }
+}
+
+// ============================================================================
+// 5. ASSESSMENT & EXAMINATION CONTEXT
+// ============================================================================
+
+Table blueprints {
+  id uuid [pk, default: `gen_random_uuid()`]
+  code varchar(50) [not null]
+  name varchar(255) [not null]
+  track_id uuid [null]
+  event_id uuid [null]
+  status blueprint_status [not null, default: 'draft']
+  test_type varchar(50) [not null, default: 'mixed', note: 'mcq, coding, essay, mixed']
+  duration_minutes int [not null]
+  passing_score decimal(5,2) [null]
+  question_matrix jsonb [not null, note: '{difficulty: {easy: 3, medium: 2, hard: 1}}']
+  total_score decimal(5,2) [not null]
+  config jsonb [null, note: 'Proctoring, lockdown settings']
+  locked_at timestamp [null]
+  locked_by uuid [null]
+  created_at timestamp [not null, default: `now()`]
+  updated_at timestamp [not null, default: `now()`]
+  deleted_at timestamp [null]
+
+  indexes {
+    code [unique]
+    track_id
+    event_id
+    status
+  }
+}
+
+Table test_instances {
+  id uuid [pk, default: `gen_random_uuid()`]
+  blueprint_id uuid [not null]
+  candidate_id uuid [not null]
+  event_id uuid [not null]
+  track_id uuid [not null]
+  status test_status [not null, default: 'not_started']
+  started_at timestamp [null]
+  submitted_at timestamp [null]
+  expires_at timestamp [null]
+  score decimal(5,2) [null]
+  proctor_session_id uuid [null]
+  browser_fingerprint text [null]
+  metadata jsonb [null]
+  created_at timestamp [not null, default: `now()`]
+  updated_at timestamp [not null, default: `now()`]
+
+  indexes {
+    blueprint_id
+    candidate_id
+    event_id
+    track_id
+    status
+    (candidate_id, event_id) [unique]
+    (status, expires_at) [note: 'Partial: status = in_progress']
+  }
+}
+
+Table test_items {
+  id uuid [pk, default: `gen_random_uuid()`]
+  test_instance_id uuid [not null]
+  question_item_id uuid [not null]
+  question_bank_id uuid [not null]
+  order_index int [not null]
+  score_weight decimal(5,2) [not null, default: 1.0]
+  content_snapshot jsonb [not null, note: 'Snapshot of question at test time']
+  created_at timestamp [not null, default: `now()`]
+
+  indexes {
+    test_instance_id
+    question_item_id
+    (test_instance_id, order_index) [unique]
+  }
+}
+
+Table submissions {
+  id uuid [pk, default: `gen_random_uuid()`]
+  test_instance_id uuid [not null]
+  test_item_id uuid [not null]
+  answer_content text [not null, note: 'Answer JSON/text/code']
+  submitted_at timestamp [not null, default: `now()`]
+  auto_score decimal(5,2) [null]
+  manual_score decimal(5,2) [null]
+  final_score decimal(5,2) [null]
+  grading_status grading_status [not null, default: 'pending']
+  graded_by uuid [null]
+  graded_at timestamp [null]
+  feedback text [null]
+  plagiarism_check jsonb [null, note: 'Similarity score, matched sources']
+  metadata jsonb [null]
+  created_at timestamp [not null, default: `now()`]
+  updated_at timestamp [not null, default: `now()`]
+
+  indexes {
+    test_instance_id
+    test_item_id
+    grading_status
+    (test_instance_id, test_item_id) [unique]
+  }
+}
+
+Table proctor_sessions {
+  id uuid [pk, default: `gen_random_uuid()`]
+  test_instance_id uuid [not null]
+  status varchar(50) [not null, default: 'monitoring']
+  browser_lockdown_enabled bool [not null, default: true]
+  tab_switch_count int [not null, default: 0]
+  screenshots text[] [null, note: 'Array of screenshot URLs']
+  violations jsonb [null, note: 'Logged violations']
+  webcam_photos text[] [null]
+  started_at timestamp [not null]
+  ended_at timestamp [null]
+  created_at timestamp [not null, default: `now()`]
+  updated_at timestamp [not null, default: `now()`]
+
+  indexes {
+    test_instance_id
+    status
+  }
+}
+
+Table assignments {
+  id uuid [pk, default: `gen_random_uuid()`]
+  blueprint_id uuid [not null]
+  candidate_id uuid [not null]
+  event_id uuid [not null]
+  track_id uuid [not null]
+  title varchar(255) [not null]
+  description text [not null]
+  submission_url text [null, note: 'File upload URL']
+  submission_filename varchar(255) [null, note: 'Auto-generated: {FullName}__{Date}']
+  status varchar(50) [not null, default: 'assigned']
+  score decimal(5,2) [null]
+  feedback text [null]
+  graded_by uuid [null]
+  submitted_at timestamp [null]
+  graded_at timestamp [null]
+  created_at timestamp [not null, default: `now()`]
+  updated_at timestamp [not null, default: `now()`]
+
+  indexes {
+    blueprint_id
+    candidate_id
+    event_id
+    status
+  }
+}
+
+// ============================================================================
+// 6. ONSITE OPERATIONS CONTEXT
+// ============================================================================
+
+Table kiosk_sessions {
+  id uuid [pk, default: `gen_random_uuid()`]
+  device_id varchar(100) [not null]
+  event_id uuid [not null]
+  location varchar(255) [null]
+  status varchar(50) [not null, default: 'active', note: 'active, inactive, offline']
+  last_sync_at timestamp [null]
+  ip_address varchar(50) [null]
+  metadata jsonb [null]
+  started_at timestamp [not null, default: `now()`]
+  ended_at timestamp [null]
+  created_at timestamp [not null, default: `now()`]
+  updated_at timestamp [not null, default: `now()`]
+
+  indexes {
+    device_id
+    event_id
+    status
+  }
+}
+
+Table checkin_records {
+  id uuid [pk, default: `gen_random_uuid()`]
+  candidate_id uuid [not null]
+  event_id uuid [not null]
+  reservation_id uuid [not null]
+  kiosk_session_id uuid [not null]
+  status checkin_status [not null, default: 'pending']
+  checkin_time timestamp [null]
+  scheduled_shift_id bigint [null]
+  actual_shift_id bigint [null]
+  photo_url text [null, note: 'Check-in photo']
+  badge_printed bool [not null, default: false]
+  is_override bool [not null, default: false]
+  override_by uuid [null]
+  override_reason text [null]
+  metadata jsonb [null]
+  created_at timestamp [not null, default: `now()`]
+  updated_at timestamp [not null, default: `now()`]
+
+  indexes {
+    candidate_id
+    event_id
+    reservation_id
+    kiosk_session_id
+    status
+    (event_id, checkin_time)
+    (candidate_id, event_id) [unique]
+  }
+}
+
+Table qr_tokens {
+  id uuid [pk, default: `gen_random_uuid()`]
+  candidate_id uuid [not null]
+  event_id uuid [not null]
+  token_hash varchar(255) [not null, note: 'Hashed token value']
+  token_type varchar(50) [not null, default: 'checkin', note: 'checkin, payment, access']
+  status varchar(50) [not null, default: 'active']
+  expires_at timestamp [not null]
+  used_at timestamp [null]
+  usage_count int [not null, default: 0]
+  max_usage int [not null, default: 1]
+  created_at timestamp [not null, default: `now()`]
+  updated_at timestamp [not null, default: `now()`]
+
+  indexes {
+    candidate_id
+    event_id
+    token_hash [unique]
+    (candidate_id, event_id, status)
+    (expires_at, status) [note: 'Partial: status = active']
+  }
+}
+
+Table badges {
+  id uuid [pk, default: `gen_random_uuid()`]
+  candidate_id uuid [not null]
+  event_id uuid [not null]
+  checkin_record_id uuid [not null]
+  badge_number varchar(50) [not null]
+  qr_code_data text [not null]
+  printed_at timestamp [null]
+  printed_by uuid [null]
+  reprint_count int [not null, default: 0]
+  metadata jsonb [null]
+  created_at timestamp [not null, default: `now()`]
+
+  indexes {
+    candidate_id
+    event_id
+    badge_number [unique]
+  }
+}
+
+Table cv_scan_records {
+  id uuid [pk, default: `gen_random_uuid()`]
+  candidate_id uuid [null, note: 'Linked after processing']
+  event_id uuid [not null]
+  kiosk_session_id uuid [not null]
+  original_file_url text [not null]
+  ocr_text text [null]
+  extracted_data jsonb [null, note: 'Parsed name, phone, university, etc.']
+  processing_status varchar(50) [not null, default: 'pending', note: 'pending, processing, completed, failed']
+  linked_candidate_sbd varchar(50) [null]
+  metadata jsonb [null]
+  created_at timestamp [not null, default: `now()`]
+  updated_at timestamp [not null, default: `now()`]
+
+  indexes {
+    candidate_id
+    event_id
+    processing_status
+    linked_candidate_sbd
+  }
+}
+
+// ============================================================================
+// 7. COMMUNICATION & NOTIFICATION CONTEXT
+// ============================================================================
+
+Table message_templates {
+  id uuid [pk, default: `gen_random_uuid()`]
+  code varchar(50) [not null]
+  name varchar(255) [not null]
+  message_type message_type [not null]
+  channel channel_type [not null]
+  subject_template varchar(500) [null]
+  body_template text [not null]
+  variables text[] [null, note: 'Available placeholders']
+  locale varchar(10) [not null, default: 'vi-VN']
+  is_active bool [not null, default: true]
+  created_at timestamp [not null, default: `now()`]
+  updated_at timestamp [not null, default: `now()`]
+
+  indexes {
+    code [unique]
+    (message_type, channel, locale)
+    is_active
+  }
+}
+
+Table trigger_rules {
+  id uuid [pk, default: `gen_random_uuid()`]
+  code varchar(50) [not null]
+  name varchar(255) [not null]
+  event_id uuid [not null]
+  track_id uuid [null]
+  trigger_event varchar(100) [not null, note: 'Domain event name']
+  template_id uuid [not null]
+  conditions jsonb [null, note: 'Filter conditions']
+  delay_seconds int [not null, default: 0]
+  is_active bool [not null, default: true]
+  created_at timestamp [not null, default: `now()`]
+  updated_at timestamp [not null, default: `now()`]
+
+  indexes {
+    code [unique]
+    event_id
+    trigger_event
+    is_active
+  }
+}
+
+Table campaigns {
+  id uuid [pk, default: `gen_random_uuid()`]
+  event_id uuid [not null]
+  track_id uuid [null]
+  name varchar(255) [not null]
+  message_type message_type [not null]
+  template_id uuid [not null]
+  status varchar(50) [not null, default: 'draft', note: 'draft, scheduled, sending, completed, failed']
+  recipient_criteria jsonb [not null]
+  scheduled_at timestamp [null]
+  started_at timestamp [null]
+  completed_at timestamp [null]
+  total_recipients int [not null, default: 0]
+  success_count int [not null, default: 0]
+  failed_count int [not null, default: 0]
+  metadata jsonb [null]
+  created_by uuid [null]
+  created_at timestamp [not null, default: `now()`]
+  updated_at timestamp [not null, default: `now()`]
+
+  indexes {
+    event_id
+    track_id
+    status
+    scheduled_at
+  }
+}
+
+Table notification_logs {
+  id uuid [pk, default: `gen_random_uuid()`]
+  campaign_id uuid [null]
+  candidate_id uuid [null]
+  message_type message_type [not null]
+  channel channel_type [not null]
+  recipient varchar(255) [not null, note: 'Email/Phone']
+  subject varchar(500) [null]
+  status varchar(50) [not null, note: 'pending, sent, delivered, failed, bounced']
+  error_message text [null]
+  sent_at timestamp [null]
+  delivered_at timestamp [null]
+  metadata jsonb [null]
+  created_at timestamp [not null, default: `now()`]
+
+  indexes {
+    campaign_id
+    candidate_id
+    status
+    (candidate_id, created_at)
+    (status, created_at)
+  }
+}
+
+// ============================================================================
+// 8. GAMIFICATION & ENGAGEMENT CONTEXT
+// ============================================================================
+
+Table missions {
+  id uuid [pk, default: `gen_random_uuid()`]
+  event_id uuid [not null]
+  code varchar(50) [not null]
+  name varchar(255) [not null]
+  description text [null]
+  mission_type varchar(50) [not null, note: 'checkin, test_complete, referral, etc.']
+  points int [not null]
+  requirements jsonb [null, note: 'Completion criteria']
+  is_repeatable bool [not null, default: false]
+  max_completions int [null]
+  start_date timestamp [null]
+  end_date timestamp [null]
+  is_active bool [not null, default: true]
+  created_at timestamp [not null, default: `now()`]
+  updated_at timestamp [not null, default: `now()`]
+
+  indexes {
+    event_id
+    code [unique]
+    (event_id, is_active)
+  }
+}
+
+Table point_ledgers {
+  id uuid [pk, default: `gen_random_uuid()`]
+  candidate_id uuid [not null]
+  event_id uuid [not null]
+  mission_id uuid [null]
+  points int [not null]
+  balance_after int [not null]
+  transaction_type varchar(50) [not null, note: 'earn, redeem, adjust, expire']
+  reference_type varchar(50) [null, note: 'Reference entity type']
+  reference_id uuid [null, note: 'Reference entity ID']
+  description text [null]
+  expires_at timestamp [null]
+  created_by uuid [null, note: 'System or admin user']
+  created_at timestamp [not null, default: `now()`]
+
+  indexes {
+    candidate_id
+    event_id
+    mission_id
+    transaction_type
+    (candidate_id, event_id, created_at)
+  }
+}
+
+Table lucky_draw_sessions {
+  id uuid [pk, default: `gen_random_uuid()`]
+  event_id uuid [not null]
+  name varchar(255) [not null]
+  status varchar(50) [not null, default: 'draft', note: 'draft, running, completed, cancelled']
+  eligibility_criteria jsonb [not null, note: 'Filter for eligible candidates']
+  total_prizes int [not null]
+  draw_method varchar(50) [not null, default: 'random']
+  drawn_winners uuid[] [null, note: 'Array of winner candidate IDs']
+  drawn_at timestamp [null]
+  drawn_by uuid [null]
+  metadata jsonb [null]
+  created_at timestamp [not null, default: `now()`]
+  updated_at timestamp [not null, default: `now()`]
+
+  indexes {
+    event_id
+    status
+  }
+}
+
+Table rewards {
+  id uuid [pk, default: `gen_random_uuid()`]
+  event_id uuid [not null]
+  candidate_id uuid [not null]
+  reward_type varchar(50) [not null, note: 'voucher, badge, certificate']
+  reward_name varchar(255) [not null]
+  reward_value varchar(100) [null, note: 'Voucher amount or badge code']
+  status varchar(50) [not null, default: 'pending', note: 'pending, issued, delivered, expired']
+  issued_at timestamp [null]
+  delivered_at timestamp [null]
+  expires_at timestamp [null]
+  metadata jsonb [null]
+  created_at timestamp [not null, default: `now()`]
+  updated_at timestamp [not null, default: `now()`]
+
+  indexes {
+    event_id
+    candidate_id
+    status
+  }
+}
+
+// ============================================================================
+// 9. ANALYTICS & REPORTING CONTEXT
+// ============================================================================
+
+Table report_schemas {
+  id uuid [pk, default: `gen_random_uuid()`]
+  event_id uuid [not null]
+  track_id uuid [null]
+  code varchar(50) [not null]
+  name varchar(255) [not null]
+  report_type varchar(50) [not null, note: 'candidate_list, funnel, score, custom']
+  columns jsonb [not null, note: 'Column definitions (static + dynamic)']
+  filters jsonb [null]
+  is_default bool [not null, default: false]
+  is_active bool [not null, default: true]
+  created_by uuid [null]
+  created_at timestamp [not null, default: `now()`]
+  updated_at timestamp [not null, default: `now()`]
+
+  indexes {
+    event_id
+    track_id
+    code [unique]
+  }
+}
+
+Table dashboard_widgets {
+  id uuid [pk, default: `gen_random_uuid()`]
+  event_id uuid [not null]
+  code varchar(50) [not null]
+  name varchar(255) [not null]
+  widget_type varchar(50) [not null, note: 'funnel, kpi, chart, table']
+  config jsonb [not null]
+  position_x int [not null, default: 0]
+  position_y int [not null, default: 0]
+  width int [not null, default: 1]
+  height int [not null, default: 1]
+  is_active bool [not null, default: true]
+  created_at timestamp [not null, default: `now()`]
+  updated_at timestamp [not null, default: `now()`]
+
+  indexes {
+    event_id
+    code [unique]
+    (event_id, is_active)
+  }
+}
+
+Table funnel_stages {
+  id uuid [pk, default: `gen_random_uuid()`]
+  event_id uuid [not null]
+  track_id uuid [not null]
+  stage_name varchar(100) [not null]
+  stage_order int [not null]
+  candidate_count int [not null, default: 0]
+  conversion_rate decimal(5,2) [null]
+  avg_time_hours decimal(10,2) [null]
+  calculated_at timestamp [not null, default: `now()`]
+
+  indexes {
+    event_id
+    track_id
+    (event_id, track_id, stage_order) [unique]
+  }
+}
+
+// ============================================================================
+// JUNCTION TABLES
+// ============================================================================
+
+Table blueprint_question_items {
+  id uuid [pk, default: `gen_random_uuid()`]
+  blueprint_id uuid [not null]
+  question_item_id uuid [not null]
+  question_bank_id uuid [not null]
+  min_count int [not null, default: 1]
+  max_count int [not null, default: 1]
+  priority int [not null, default: 100]
+  created_at timestamp [not null, default: `now()`]
+
+  indexes {
+    blueprint_id
+    question_item_id
+    (blueprint_id, question_item_id) [unique]
+  }
+}
+
+Table panel_interviewers {
+  id uuid [pk, default: `gen_random_uuid()`]
+  panel_id bigint [not null]
+  interviewer_id uuid [not null, note: 'User ID']
+  role varchar(50) [not null, default: 'member', note: 'lead, member, observer']
+  created_at timestamp [not null, default: `now()`]
+
+  indexes {
+    panel_id
+    interviewer_id
+    (panel_id, interviewer_id) [unique]
+  }
+}
+
+Table event_documents {
+  id uuid [pk, default: `gen_random_uuid()`]
+  event_id uuid [not null]
+  track_id uuid [null]
+  document_type varchar(50) [not null]
+  document_url text [not null]
+  title varchar(255) [not null]
+  is_public bool [not null, default: false]
+  uploaded_by uuid [null]
+  created_at timestamp [not null, default: `now()`]
+
+  indexes {
+    event_id
+    track_id
+    document_type
+  }
+}
+
+// ============================================================================
+// RELATIONSHIPS (Ref declarations)
+// ============================================================================
+
+Ref: tracks.event_id > events.id
+Ref: stages.track_id > tracks.id
+Ref: request_mappings.track_id > tracks.id
+
+Ref: question_items.question_bank_id > question_banks.id
+Ref: field_blueprints.track_id > tracks.id
+Ref: rendering_schemas.blueprint_id > field_blueprints.id
+Ref: rendering_schemas.track_id > tracks.id
+Ref: validators.blueprint_id > field_blueprints.id
+
+Ref: profiles.candidate_id > candidates.id
+Ref: profiles.event_id > events.id
+Ref: profiles.track_id > tracks.id
+Ref: duplicate_records.candidate_id > candidates.id
+Ref: duplicate_records.new_candidate_id > candidates.id
+
+Ref: capacities.event_id > events.id
+Ref: capacities.shift_id > shifts.id
+Ref: shifts.event_id > events.id
+Ref: slots.shift_id > shifts.id
+Ref: slots.room_id > rooms.id
+Ref: slots.panel_id > panels.id
+Ref: reservations.candidate_id > candidates.id
+Ref: reservations.slot_id > slots.id
+Ref: reservations.event_id > events.id
+Ref: reservations.track_id > tracks.id
+Ref: waitlists.event_id > events.id
+Ref: waitlists.track_id > tracks.id
+Ref: waitlists.candidate_id > candidates.id
+Ref: rooms.event_id > events.id
+Ref: panels.event_id > events.id
+Ref: panels.room_id > rooms.id
+
+Ref: blueprints.track_id > tracks.id
+Ref: blueprints.event_id > events.id
+Ref: test_instances.blueprint_id > blueprints.id
+Ref: test_instances.candidate_id > candidates.id
+Ref: test_instances.event_id > events.id
+Ref: test_instances.track_id > tracks.id
+Ref: test_items.test_instance_id > test_instances.id
+Ref: test_items.question_item_id > question_items.id
+Ref: test_items.question_bank_id > question_banks.id
+Ref: submissions.test_instance_id > test_instances.id
+Ref: submissions.test_item_id > test_items.id
+Ref: proctor_sessions.test_instance_id > test_instances.id
+Ref: assignments.blueprint_id > blueprints.id
+Ref: assignments.candidate_id > candidates.id
+Ref: assignments.event_id > events.id
+Ref: assignments.track_id > tracks.id
+
+Ref: kiosk_sessions.event_id > events.id
+Ref: checkin_records.candidate_id > candidates.id
+Ref: checkin_records.event_id > events.id
+Ref: checkin_records.reservation_id > reservations.id
+Ref: checkin_records.kiosk_session_id > kiosk_sessions.id
+Ref: qr_tokens.candidate_id > candidates.id
+Ref: qr_tokens.event_id > events.id
+Ref: badges.candidate_id > candidates.id
+Ref: badges.event_id > events.id
+Ref: badges.checkin_record_id > checkin_records.id
+Ref: cv_scan_records.candidate_id > candidates.id
+Ref: cv_scan_records.event_id > events.id
+Ref: cv_scan_records.kiosk_session_id > kiosk_sessions.id
+
+Ref: trigger_rules.event_id > events.id
+Ref: trigger_rules.track_id > tracks.id
+Ref: trigger_rules.template_id > message_templates.id
+Ref: campaigns.event_id > events.id
+Ref: campaigns.track_id > tracks.id
+Ref: campaigns.template_id > message_templates.id
+Ref: notification_logs.campaign_id > campaigns.id
+Ref: notification_logs.candidate_id > candidates.id
+
+Ref: missions.event_id > events.id
+Ref: point_ledgers.candidate_id > candidates.id
+Ref: point_ledgers.event_id > events.id
+Ref: point_ledgers.mission_id > missions.id
+Ref: lucky_draw_sessions.event_id > events.id
+Ref: rewards.event_id > events.id
+Ref: rewards.candidate_id > candidates.id
+
+Ref: report_schemas.event_id > events.id
+Ref: report_schemas.track_id > tracks.id
+Ref: dashboard_widgets.event_id > events.id
+Ref: funnel_stages.event_id > events.id
+Ref: funnel_stages.track_id > tracks.id
+
+Ref: blueprint_question_items.blueprint_id > blueprints.id
+Ref: blueprint_question_items.question_item_id > question_items.id
+Ref: blueprint_question_items.question_bank_id > question_banks.id
+Ref: panel_interviewers.panel_id > panels.id
+
+Ref: event_documents.event_id > events.id
+Ref: event_documents.track_id > tracks.id
