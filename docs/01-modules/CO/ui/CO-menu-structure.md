@@ -90,15 +90,16 @@ Core HR
 │   │   └── Job Tree                         Cây job: hierarchy with parent/child relationships
 │   │
 │   ├── 3.2 Job Definitions                  ─── Định nghĩa công việc
-│   │   ├── Job List                         Danh sách jobs: code, title, family, level, grade
+│   │   ├── Job List                         Danh sách jobs: code, title, family, level
 │   │   ├── Create/Edit Job                  Tạo/sửa: title, description, qualifications, scope
 │   │   ├── Job Profiles                     Profile: skills, competencies, certifications required
+│   │   ├── Job Levels                       Structural levels: L1-L10, per scope (CORP/LE/BU)
+│   │   ├── Level Policies                   Chính sách per level: benefits, leave, approval thresholds
 │   │   └── Job Cross-References             Job mapping → external systems
 │   │
-│   ├── 3.3 Grade & Level                    ─── Cấp bậc & mức độ
-│   │   ├── Job Levels                       Levels: L1-L10, per scope (CORP/LE/BU)
-│   │   ├── Job Grades                       Grades: pay band assignment, per scope
-│   │   └── Level Policies                   Chính sách per level: benefits, leave, approval thresholds
+│   │   Note: Grade & Career Ladder CONFIG chính thuộc TR module
+│   │         (comp_core.grade_v, grade_ladder, pay_range — SCD-2 versioned)
+│   │         Core chỉ lưu grade_code reference trên job (jobpos.job_grade)
 │   │
 │   └── 3.4 Position Management              ─── Quản lý vị trí
 │       ├── Position List                    Danh sách positions: filled, vacant, frozen
@@ -263,7 +264,8 @@ Core HR
 
 ### Compensation Manager
 ```
-3.3 Grade & Level > Job Levels, Grades, Level Policies
+3.2 Job Definitions > Job Levels, Level Policies
 5. Employee Compensation > Overview, History, Basis Lines
 7.2 Country Config > Working hours, tax/SI system
+Note: Grade/Ladder/Pay Range config → use TR module
 ```
