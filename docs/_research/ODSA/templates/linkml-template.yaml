@@ -1,0 +1,123 @@
+# id: https://example.com/schemas/<context-name>
+# Thay thế <context-name> bằng tên bounded context (lowercase, kebab-case)
+# Xóa tất cả comments (#) khi đã điền xong
+
+id: https://example.com/schemas/<context-name>
+name: <context-name>-domain
+description: >-
+  Schema cho [Context Name] Bounded Context.
+  Derived từ: glossary.md
+
+imports:
+  - linkml:types
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  schema: https://example.com/schemas/<context-name>/
+
+default_prefix: schema
+default_range: string
+
+# =============================================
+# ENUMS — Trạng thái và loại phân loại
+# =============================================
+
+enums:
+  # Thêm enum cho mỗi entity có trạng thái
+  ExampleStatus:
+    description: Các trạng thái của Example
+    permissible_values:
+      PENDING:
+        description: Đang chờ xử lý
+      ACTIVE:
+        description: Đang hoạt động
+      INACTIVE:
+        description: Không còn hoạt động
+
+# =============================================
+# CLASSES — Entity definitions
+# =============================================
+
+classes:
+  # --- BASE ENTITY (optional, dùng nếu muốn share common fields) ---
+  # BaseEntity:
+  #   abstract: true
+  #   attributes:
+  #     id:
+  #       range: string
+  #       identifier: true
+  #       description: Unique identifier
+  #     created_at:
+  #       range: datetime
+  #       required: true
+  #     updated_at:
+  #       range: datetime
+
+  # --- ENTITY 1 ---
+  # Sao chép block này cho mỗi entity trong Glossary
+  ExampleEntity:
+    description: >-
+      [Sao chép định nghĩa từ Glossary]
+      Khác với: [những entity tương tự nhưng khác]
+
+    # is_a: BaseEntity  # uncomment nếu dùng BaseEntity
+
+    attributes:
+      id:
+        range: string
+        identifier: true
+        description: Unique ID
+
+      # Thuộc tính bắt buộc
+      status:
+        range: ExampleStatus
+        required: true
+        description: Trạng thái hiện tại
+
+      # Thuộc tính string
+      name:
+        range: string
+        required: true
+        description: Tên
+
+      # Thuộc tính số
+      amount:
+        range: float
+        description: Giá trị
+
+      # Thuộc tính ngày tháng
+      start_date:
+        range: date
+        required: true
+
+      # Quan hệ 1-nhiều (có nhiều)
+      items:
+        range: RelatedEntity      # <- class name của entity con
+        multivalued: true
+        minimum_cardinality: 1   # <- minimum: ít nhất 1
+        # maximum_cardinality: 10  # <- uncomment nếu có giới hạn trên
+        inlined: true            # <- embedded (không có ID riêng) hay false (có ID, chỉ store FK)
+        description: Danh sách items
+
+      # Quan hệ nhiều-1 (foreign key)
+      parent_id:
+        range: string
+        required: true
+        description: ID của entity cha (FK to ParentContext)
+
+      created_at:
+        range: datetime
+        required: true
+
+  # --- ENTITY 2 (Value Object, không có ID riêng) ---
+  RelatedEntity:
+    description: >-
+      [Value Object — embedded trong ExampleEntity, không tồn tại độc lập]
+    attributes:
+      quantity:
+        range: integer
+        required: true
+        minimum_value: 1
+      unit_price:
+        range: float
+        required: true
