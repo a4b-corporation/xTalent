@@ -1,0 +1,163 @@
+id: https://xtalent.io/ontology/ats/event-management/track
+name: track_ontology
+version: "1.0.0"
+description: "Track chuyên ngành trong Event tuyển dụng (VD: Game Development, Game Design, Game QC)"
+
+prefixes:
+  xt: https://xtalent.io/ontology/
+  oracle: https://oracle.com/hcm/
+  sap: https://successfactors.sap.com/
+  workday: https://workday.com/
+
+imports:
+  - ./question-set.yaml
+
+default_range: string
+
+slots:
+  # --- Identifier ---
+  track_id:
+    description: "Unique identifier cho Track"
+    identifier: true
+    required: true
+    pattern: "^TRK-\\d{6}$"
+    annotations:
+      example: "TRK-000001"
+
+  # --- Core Fields ---
+  event_id:
+    description: "Event ID mà Track thuộc về"
+    required: true
+    annotations:
+      reference: "Event.event_id"
+
+  track_name:
+    description: "Tên Track (VD: Game Development, Game Design, Game QC)"
+    required: true
+
+  description:
+    description: "Mô tả Track"
+    required: false
+
+  question_set_id:
+    description: "Bộ câu hỏi áp dụng cho Track"
+    required: false
+    annotations:
+      reference: "QuestionSet.question_set_id"
+
+  status:
+    description: "Trạng thái Track"
+    range: TrackStatusEnum
+    required: true
+
+  # --- Audit Fields ---
+  created_by:
+    description: "User ID tạo Track"
+    required: true
+    annotations:
+      reference: "User.user_id"
+
+  created_at:
+    description: "Timestamp tạo Track"
+    range: datetime
+    required: true
+
+  updated_at:
+    description: "Timestamp cập nhật Track"
+    range: datetime
+    required: false
+
+classes:
+  Track:
+    description: |
+      Track chuyên ngành trong Event tuyển dụng.
+      Mỗi Track có bộ câu hỏi riêng áp dụng cho applications.
+      Aggregate Root trong Event Management context.
+
+    annotations:
+      oracle_hcm_term: "RecruitingStream"
+      sap_term: "RecruitingStream"
+      workday_term: "RecruitingStream"
+      disambiguation: "xTalent: Track = Chuyên ngành tuyển dụng. Oracle: RecruitingStream. SAP: RecruitingStream. Workday: RecruitingStream. Xem docs.xtalent.io/ats/event-management/track."
+
+      module: "ats"
+      sub_module: "event-management"
+      version: "1.0.0"
+      bounded_context: "Event Management"
+      aggregate_root: true
+
+      ouroboros_evolution:
+        iteration: "1.0.0"
+        parent_version: null
+        evaluation_status: "pending"
+        last_evaluated: null
+        evolution_notes: "Initial version"
+
+      validation_hooks:
+        odds_system_builder:
+          required_for: true
+          validates: ["table_generation", "fk_references"]
+
+      see_also: "https://docs.xtalent.io/ats/event-management/track"
+
+    slots:
+      - track_id
+      - event_id
+      - track_name
+      - description
+      - question_set_id
+      - status
+      - created_by
+      - created_at
+      - updated_at
+
+    slot_usage:
+      track_id:
+        required: true
+        identifier: true
+
+      event_id:
+        required: true
+
+      track_name:
+        required: true
+
+      status:
+        required: true
+
+      created_by:
+        required: true
+
+      created_at:
+        required: true
+
+    rules:
+      - description: "BRS-EM-TRK-001: Track phải thuộc về 1 Event"
+        preconditions:
+          slot_conditions: {}
+        postconditions:
+          slot_conditions:
+            event_id:
+              slot_value_conditions:
+                must_exist: true
+
+      - description: "BRS-EM-TRK-002: Không được xóa Track đã có applications"
+        preconditions:
+          slot_conditions:
+            application_count:
+              minimum_value: 1
+        postconditions:
+          slot_conditions:
+            status:
+              not_equals_string: "DELETED"
+
+enums:
+  TrackStatusEnum:
+    description: "Trạng thái Track"
+    permissible_values:
+      ACTIVE:
+        description: "Track đang active"
+      INACTIVE:
+        description: "Track không còn active"
+      CANCELLED:
+        description: "Track đã hủy"

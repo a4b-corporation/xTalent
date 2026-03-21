@@ -1,0 +1,670 @@
+openapi: 3.0.3
+info:
+  title: Screening Context - Canonical API
+  description: |
+    Screening Context API for managing candidate screening decisions.
+
+    ## Overview
+    This API handles the screening process where applications are reviewed
+    and decisions are made (Pass/Fail).
+
+    - **Pass**: Auto-creates Candidate RR record
+    - **Fail**: Auto-creates Failed Applicant record, optional Thank You email
+
+    ## Aggregate Roots
+    - Screening
+    - CandidateRR
+    - FailedApplicant
+
+    ## Business Rules
+    - BRS-SCR-001: Auto tạo Candidate RR khi Screening = Pass
+    - BRS-SCR-002: KHÔNG tạo Candidate RR khi Screening = Fail
+    - BRS-CRR-001: Candidate RR chỉ được tạo khi Screening = Pass
+    - BRS-FAIL-001: FailedApplicant chỉ được tạo khi Screening = Fail
+    - BRS-FAIL-003: Thank You Letter chỉ được gửi 1 lần per stage
+  version: 1.0.0
+  contact:
+    name: xTalent ATS Team
+  license:
+    name: Proprietary
+
+servers:
+  - url: /api/v1/ats/screening
+    description: Screening Context API
+
+tags:
+  - name: Screenings
+    description: Screening decision operations
+  - name: Candidates
+    description: Candidate RR operations
+  - name: Failed Applicants
+    description: Failed applicant operations
+
+paths:
+  /applications/{applicationId}/screen:
+    post:
+      tags:
+        - Screenings
+      summary: Complete Screening
+      description: |
+        Submit a screening decision for an application.
+
+        **Business Rules:**
+        - BRS-SCR-001: Auto tạo Candidate RR khi Screening = Pass
+        - BRS-SCR-002: KHÔNG tạo Candidate RR khi Screening = Fail
+        - BRS-SCR-005: Screening result có thể update trước khi qua vòng sau
+
+        **Post-conditions:**
+        - If result=PASS: Auto-creates Candidate RR record
+        - If result=FAIL: Auto-creates Failed Applicant record
+      operationId: completeScreening
+      parameters:
+        - name: applicationId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^APP-\d{6}$'
+          description: Application ID to screen
+          example: APP-000001
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CompleteScreeningRequest'
+            examples:
+              pass:
+                summary: Pass Screening
+                value:
+                  result: PASS
+                  notes: "Strong candidate, good communication skills"
+                  decidedBy: USR-000001
+              fail:
+                summary: Fail Screening
+                value:
+                  result: FAIL
+                  notes: "Does not meet minimum qualifications"
+                  failReason: NOT_QUALIFIED
+                  decidedBy: USR-000001
+      responses:
+        '201':
+          description: Screening completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScreeningResponse'
+          headers:
+            Location:
+              description: URL to the created Screening resource
+              schema:
+                type: string
+                format: uri
+              example: /api/v1/ats/screening/screenings/SCR-000001
+        '400':
+          description: Invalid request (e.g., application not in SCREENING status)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Application not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflict (screening already exists)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /screenings/{screeningId}:
+    get:
+      tags:
+        - Screenings
+      summary: View Screening
+      description: Retrieve a screening record by ID
+      operationId: getScreening
+      parameters:
+        - name: screeningId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^SCR-\d{6}$'
+          description: Screening ID
+          example: SCR-000001
+      responses:
+        '200':
+          description: Screening details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScreeningResponse'
+        '404':
+          description: Screening not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      tags:
+        - Screenings
+      summary: Update Screening
+      description: |
+        Update a screening record.
+
+        **Constraints:**
+        - Can only update before application moves to next stage
+        - BRS-SCR-005: Screening result có thể update trước khi qua vòng sau
+      operationId: updateScreening
+      parameters:
+        - name: screeningId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^SCR-\d{6}$'
+          description: Screening ID
+          example: SCR-000001
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateScreeningRequest'
+            examples:
+              updateNotes:
+                summary: Update notes
+                value:
+                  notes: "Updated: Candidate has strong technical background"
+              updateResult:
+                summary: Change result
+                value:
+                  result: PASS
+                  notes: "Re-evaluated: Candidate meets requirements"
+      responses:
+        '200':
+          description: Screening updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScreeningResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Screening not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflict (application already moved to next stage)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /applications/shortlist:
+    post:
+      tags:
+        - Candidates
+      summary: Shortlist Candidates
+      description: |
+        Shortlist multiple candidates from screened applications.
+        Only applications with Screening=PASS can be shortlisted.
+      operationId: shortlistCandidates
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                applicationIds:
+                  type: array
+                  items:
+                    type: string
+                    pattern: '^APP-\d{6}$'
+                  minItems: 1
+                  description: List of application IDs to shortlist
+                sourceEventId:
+                  type: string
+                  pattern: '^EVT-\d{6}$'
+                  description: Event ID for the shortlist
+              required:
+                - applicationIds
+                - sourceEventId
+            example:
+              applicationIds:
+                - APP-000001
+                - APP-000002
+                - APP-000003
+              sourceEventId: EVT-000001
+      responses:
+        '201':
+          description: Candidates shortlisted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  shortlistedCandidates:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CandidateRRResponse'
+          links:
+            GetCandidate:
+              operationId: getCandidateRR
+              parameters:
+                candidateRrId: $response.body#/shortlistedCandidates/0/candidateRrId
+        '400':
+          description: Invalid request (e.g., application not screened or failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Application(s) not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /candidates/{candidateRrId}/rank:
+    post:
+      tags:
+        - Candidates
+      summary: Rank Candidates
+      description: |
+        Assign or update ranking for a candidate.
+        Used to prioritize candidates for next stages.
+      operationId: rankCandidate
+      parameters:
+        - name: candidateRrId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^CRR-\d{6}$'
+          description: Candidate RR ID
+          example: CRR-000001
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                rank:
+                  type: integer
+                  minimum: 1
+                  description: Rank position (1 = highest priority)
+                notes:
+                  type: string
+                  description: Notes for ranking decision
+              required:
+                - rank
+            example:
+              rank: 1
+              notes: "Top candidate - excellent interview performance"
+      responses:
+        '200':
+          description: Candidate ranked successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CandidateRRResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Candidate not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /failed-applicants/{failedId}:
+    get:
+      tags:
+        - Failed Applicants
+      summary: View Failed Applicant
+      description: Retrieve a failed applicant record by ID
+      operationId: getFailedApplicant
+      parameters:
+        - name: failedId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^FAIL-\d{6}$'
+          description: Failed Applicant ID
+          example: FAIL-000001
+      responses:
+        '200':
+          description: Failed applicant details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FailedApplicantResponse'
+        '404':
+          description: Failed applicant not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /failed-applicants/{failedId}/thank-you-email:
+    post:
+      tags:
+        - Failed Applicants
+      summary: Send Thank You Email
+      description: |
+        Send a Thank You email to a failed applicant.
+
+        **Business Rules:**
+        - BRS-FAIL-003: Thank You Letter chỉ được gửi 1 lần per stage
+
+        **Constraints:**
+        - Can only be sent once per failed applicant per stage
+        - thank_you_sent flag will be set to true after sending
+      operationId: sendThankYouEmail
+      parameters:
+        - name: failedId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^FAIL-\d{6}$'
+          description: Failed Applicant ID
+          example: FAIL-000001
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                templateId:
+                  type: string
+                  description: Email template ID to use
+                customMessage:
+                  type: string
+                  description: Optional custom message
+            example:
+              templateId: TMPL-THANKYOU-001
+      responses:
+        '200':
+          description: Thank You email sent successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  sentAt:
+                    type: string
+                    format: date-time
+                  thankYouSent:
+                    type: boolean
+                    example: true
+        '400':
+          description: Invalid request (e.g., already sent)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Failed applicant not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    # === Request Schemas ===
+    CompleteScreeningRequest:
+      type: object
+      properties:
+        result:
+          $ref: '#/components/schemas/ScreeningResult'
+        notes:
+          type: string
+          description: Ghi chú của TA khi screening
+          example: "Strong candidate with excellent communication skills"
+        failReason:
+          $ref: '#/components/schemas/FailReason'
+          description: Required when result=FAIL
+        decidedBy:
+          type: string
+          pattern: '^USR-\d{6}$'
+          description: User ID of the Talent Acquisition specialist
+          example: USR-000001
+      required:
+        - result
+        - decidedBy
+      oneOf:
+        - properties:
+            result:
+              const: PASS
+          required:
+            - result
+        - properties:
+            result:
+              const: FAIL
+          required:
+            - result
+            - failReason
+
+    UpdateScreeningRequest:
+      type: object
+      properties:
+        result:
+          $ref: '#/components/schemas/ScreeningResult'
+        notes:
+          type: string
+          description: Updated notes
+
+    # === Response Schemas ===
+    ScreeningResponse:
+      type: object
+      properties:
+        screeningId:
+          type: string
+          pattern: '^SCR-\d{6}$'
+          example: SCR-000001
+        applicationId:
+          type: string
+          pattern: '^APP-\d{6}$'
+          example: APP-000001
+        result:
+          $ref: '#/components/schemas/ScreeningResult'
+        notes:
+          type: string
+          nullable: true
+        decidedBy:
+          type: string
+          example: USR-000001
+        decidedAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+          example: USR-000001
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        candidateRrId:
+          type: string
+          pattern: '^CRR-\d{6}$'
+          nullable: true
+          description: Created when result=PASS
+          example: CRR-000001
+        failedId:
+          type: string
+          pattern: '^FAIL-\d{6}$'
+          nullable: true
+          description: Created when result=FAIL
+          example: FAIL-000001
+
+    CandidateRRResponse:
+      type: object
+      properties:
+        candidateRrId:
+          type: string
+          pattern: '^CRR-\d{6}$'
+          example: CRR-000001
+        applicationId:
+          type: string
+          pattern: '^APP-\d{6}$'
+          example: APP-000001
+        studentId:
+          type: string
+          pattern: '^STU-\d{6}$'
+          example: STU-000001
+        status:
+          $ref: '#/components/schemas/CandidateStatus'
+        currentStage:
+          $ref: '#/components/schemas/CandidateStage'
+        sourceEvent:
+          type: string
+          pattern: '^EVT-\d{6}$'
+          example: EVT-000001
+        screeningId:
+          type: string
+          pattern: '^SCR-\d{6}$'
+          example: SCR-000001
+        createdBy:
+          type: string
+          default: SYSTEM
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    FailedApplicantResponse:
+      type: object
+      properties:
+        failedId:
+          type: string
+          pattern: '^FAIL-\d{6}$'
+          example: FAIL-000001
+        applicationId:
+          type: string
+          pattern: '^APP-\d{6}$'
+          example: APP-000001
+        screeningId:
+          type: string
+          pattern: '^SCR-\d{6}$'
+          example: SCR-000001
+        failReason:
+          $ref: '#/components/schemas/FailReason'
+          nullable: true
+        thankYouSent:
+          type: boolean
+          example: false
+        endedAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+          default: SYSTEM
+        createdAt:
+          type: string
+          format: date-time
+
+    # === Enum Schemas ===
+    ScreeningResult:
+      type: string
+      enum:
+        - PASS
+        - FAIL
+        - PENDING
+      description: Kết quả screening
+
+    CandidateStatus:
+      type: string
+      enum:
+        - ACTIVE
+        - HIRED
+        - REJECTED
+        - WITHDRAWN
+      description: Trạng thái candidate trong pipeline
+
+    CandidateStage:
+      type: string
+      enum:
+        - SCREENING
+        - ONLINE_TEST
+        - ONSITE_TEST
+        - INTERVIEW
+        - OFFER
+        - HIRE
+      description: Vòng hiện tại của candidate
+
+    FailReason:
+      type: string
+      enum:
+        - NOT_QUALIFIED
+        - POOR_FIT
+        - INSUFFICIENT_SKILLS
+        - OTHER
+      description: Lý do fail
+
+    # === Error Schemas ===
+    Error:
+      type: object
+      properties:
+        code:
+          type: string
+          description: Error code
+        message:
+          type: string
+          description: Human-readable error message
+        details:
+          type: object
+          description: Additional error details
+      required:
+        - code
+        - message
+
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Conflict:
+      description: Resource conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

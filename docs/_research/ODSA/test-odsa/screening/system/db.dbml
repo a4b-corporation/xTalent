@@ -1,0 +1,109 @@
+// Screening Context DBML
+// Generated from ontology concepts: Screening, CandidateRR, FailedApplicant
+// Bounded Context: Screening (ATS Module)
+
+// === ENUMS ===
+
+// Screening Result Enum - from ScreeningResultEnum
+enum screening_result {
+  PASS    // Đạt, qua vòng tiếp theo
+  FAIL    // Không đạt, không qua vòng tiếp theo
+  PENDING // Chưa quyết định
+}
+
+// Candidate Status Enum - from CandidateStatusEnum
+enum candidate_status {
+  ACTIVE    // Đang trong pipeline
+  HIRED     // Đã hire (accept offer)
+  REJECTED  // Bị reject
+  WITHDRAWN // Rút lui
+}
+
+// Candidate Stage Enum - from CandidateStageEnum
+enum candidate_stage {
+  SCREENING    // Vòng screening
+  ONLINE_TEST  // Vòng Online Test
+  ONSITE_TEST  // Vòng Onsite Test
+  INTERVIEW    // Vòng phỏng vấn
+  OFFER        // Vòng offer
+  HIRE         // Đã hire
+}
+
+// Fail Reason Enum - from FailReasonEnum
+enum fail_reason {
+  NOT_QUALIFIED        // Không đủ qualifications
+  POOR_FIT            // Không phù hợp văn hóa
+  INSUFFICIENT_SKILLS // Kỹ năng không đạt
+  OTHER               // Lý do khác
+}
+
+// === TABLES ===
+
+// Screening - Kết quả screening decision cho Application (Pass/Fail)
+// Ontology: screening.yaml - Screening class
+// Aggregate Root in Screening Context
+Table screenings {
+  screening_id      varchar [pk, not null, note: 'Unique identifier - pattern: ^SCR-\\d{6}$']
+  application_id    varchar [not null, ref: > applications.application_id, note: 'Application ID được screening']
+  result            screening_result [not null, note: 'Kết quả screening (Pass/Fail)']
+  notes             text [null, note: 'Ghi chú của TA khi screening']
+  decided_by        varchar [not null, ref: > users.user_id, note: 'User ID quyết định (TA)']
+  decided_at        timestamp [not null, note: 'Thời điểm quyết định']
+
+  // Audit Fields
+  created_by        varchar [not null, ref: > users.user_id, note: 'User ID tạo Screening record']
+  created_at        timestamp [not null, default: `CURRENT_TIMESTAMP`, note: 'Timestamp tạo Screening record']
+  updated_at        timestamp [null, default: `CURRENT_TIMESTAMP`, note: 'Timestamp cập nhật Screening record']
+
+  // Relationships (logical - created by business rules)
+  candidate_rr_id   varchar [null, ref: - candidate_rrs.candidate_rr_id, note: 'Auto-created when result=PASS']
+  failed_id         varchar [null, ref: - failed_applicants.failed_id, note: 'Created when result=FAIL']
+
+  Note: "Screening - Aggregate Root. Khi Pass: auto tạo Candidate RR. Khi Fail: auto tạo FailedApplicant."
+}
+
+// CandidateRR - Candidate record trong ATS được tạo khi Pass Screening
+// Ontology: candidate-rr.yaml - CandidateRR class
+// Aggregate Root in Screening Context
+Table candidate_rrs {
+  candidate_rr_id   varchar [pk, not null, note: 'Unique identifier - pattern: ^CRR-\\d{6}$']
+  application_id    varchar [not null, ref: > applications.application_id, note: 'Application ID mà Candidate RR được tạo từ']
+  student_id        varchar [not null, ref: > students.student_id, note: 'Student ID của candidate']
+  status            candidate_status [not null, default: `ACTIVE`, note: 'Trạng thái candidate trong pipeline']
+  current_stage     candidate_stage [not null, default: `SCREENING`, note: 'Vòng hiện tại của candidate']
+  source_event      varchar [not null, ref: > events.event_id, note: 'Event ID mà Candidate apply vào']
+  screening_id      varchar [not null, ref: > screenings.screening_id, note: 'Screening ID mà Candidate RR được tạo từ']
+
+  // Audit Fields
+  created_by        varchar [not null, default: `SYSTEM`, note: 'System auto tạo']
+  created_at        timestamp [not null, default: `CURRENT_TIMESTAMP`, note: 'Timestamp tạo Candidate RR']
+  updated_at        timestamp [null, default: `CURRENT_TIMESTAMP`, note: 'Timestamp cập nhật Candidate RR']
+
+  Note: "CandidateRR - Aggregate Root. Chỉ được tạo khi Screening = PASS (BRS-CRR-001). Status cập nhật theo tiến độ pipeline (BRS-CRR-002)."
+}
+
+// FailedApplicant - Record theo dõi applications Failed
+// Ontology: failed-applicant.yaml - FailedApplicant class
+// Aggregate Root in Screening Context
+Table failed_applicants {
+  failed_id         varchar [pk, not null, note: 'Unique identifier - pattern: ^FAIL-\\d{6}$']
+  application_id    varchar [not null, ref: > applications.application_id, note: 'Application ID bị fail']
+  screening_id      varchar [not null, ref: > screenings.screening_id, note: 'Screening ID quyết định fail']
+  fail_reason       fail_reason [null, note: 'Lý do fail']
+  thank_you_sent    boolean [not null, default: `false`, note: 'Đã gửi Thank You email chưa']
+  ended_at          timestamp [not null, note: 'Thời điểm kết thúc (fail)']
+
+  // Audit Fields
+  created_by        varchar [not null, default: `SYSTEM`, note: 'System auto tạo']
+  created_at        timestamp [not null, default: `CURRENT_TIMESTAMP`, note: 'Timestamp tạo FailedApplicant record']
+
+  Note: "FailedApplicant - Aggregate Root. Chỉ được tạo khi Screening = FAIL (BRS-FAIL-001). Thank You Letter chỉ được gửi 1 lần per stage (BRS-FAIL-003)."
+}
+
+// === RELATIONSHIPS NOTES ===
+// Note: DBML relationships use ref notation
+// screenings ||--o| candidate_rrs : "creates when PASS"
+// screenings ||--o| failed_applicants : "creates when FAIL"
+// applications ||--o{ screenings : "has"
+// candidate_rrs }o--|| students : "belongs to"
+// candidate_rrs }o--|| events : "applied from"

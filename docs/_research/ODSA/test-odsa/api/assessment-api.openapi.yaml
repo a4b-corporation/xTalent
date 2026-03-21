@@ -1,0 +1,1470 @@
+# Assessment API - OpenAPI 3.0 Specification
+# Derived from: assessment.md (glossary), flows/assessment-flow.md, 5.ontology/assessment/*.yaml
+# Version: 1.0.0
+
+openapi: "3.0.3"
+info:
+  title: Assessment API
+  description: |
+    API cho Assessment Bounded Context — Tạo Assignment, nhận Submissions,
+    phân công GradingTasks, chấm bài và ghi nhận kết quả.
+
+    ## Context Boundaries
+    - **Upstream**: Event Management Context, Application Context, Screening Context
+    - **Downstream**: Test Session Context
+    - **Integration**: File Storage (ACL)
+
+    ## Business Rules
+    - BR-ASM-001: Chỉ Managers được TA phân công mới chấm được Assignment
+    - BR-ASM-002: Assignment phải có link làm bài hợp lệ (Google Form, TestGorilla, etc.)
+    - BR-ASM-003: File submission phải đúng format (Word/PDF/Excel/PPT)
+    - BR-ASM-004: Submission chỉ được nộp trước deadline (configurable grace period)
+    - BR-ASM-005: Student được nộp nhiều file (không cần zip)
+    - BR-GRD-001: Score phải trong khoảng 0-100
+    - BR-GRD-002: PassFail = PASS khi score >= threshold (configurable per Event)
+    - BR-GTK-001: GradingTask auto-complete khi TA import kết quả chấm hàng loạt
+
+    ## Lifecycle States
+    - Assignment: DRAFT → ACTIVE → CLOSED → GRADING → COMPLETED (terminal: COMPLETED, CANCELLED)
+    - Submission: SUBMITTED → GRADING → GRADED (terminal: GRADED)
+    - GradingTask: PENDING → IN_PROGRESS → COMPLETED (terminal: COMPLETED, CANCELLED)
+
+    ## Compliance
+    - Vietnam PDPL: Bảo vệ thông tin cá nhân ứng viên (blind grading)
+    - Vietnam Labor Law: Lưu trữ hồ sơ tuyển dụng tối thiểu 1 năm
+    - Fair Hiring: Đánh giá công bằng, không bias (blind grading)
+
+    Source: 6.glossary/assessment.md, 7.flows/assessment-flow.md, 5.ontology/assessment/
+  version: "1.0.0"
+  contact:
+    name: TA Operations Team + Tech Lead
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://api.xtalent.io/ats/v1
+    description: Production server
+  - url: https://staging-api.xtalent.io/ats/v1
+    description: Staging server
+  - url: https://dev-api.xtalent.io/ats/v1
+    description: Development server
+
+tags:
+  - name: Assessments
+    description: Quản lý Assignment (Online Tests)
+  - name: Submissions
+    description: Quản lý bài nộp của Students
+  - name: Grading
+    description: Quản lý kết quả chấm bài
+  - name: GradingTasks
+    description: Quản lý task phân công chấm bài
+
+paths:
+  # =============================================================================
+  # USE CASE: Create Online Test
+  # Source: assessment-flow.md — Create Assignment
+  # Command: CreateAssignment (from glossary)
+  # =============================================================================
+  /assessments/create:
+    post:
+      tags:
+        - Assessments
+      summary: Create Online Test
+      description: |
+        Tạo Assignment (Online Test) mới với thông tin cơ bản.
+
+        ## Use Case
+        TA tạo Assignment để gửi cho Students làm bài kiểm tra online.
+
+        ## Pre-conditions
+        - Event đã publish (EventPublished event đã xảy ra)
+        - TA có quyền tạo Assignment
+
+        ## Post-conditions
+        - Assignment created ở status DRAFT
+        - AssignmentPublished event được trigger khi publish
+
+        ## Business Rules
+        - BR-ASM-002: Assignment phải có link làm bài hợp lệ
+        - BR-ASM-003: allowed_file_types phải chứa ít nhất [PDF, DOC, DOCX, XLS, XLSX, PPT, PPTX]
+        - BR-ASM-005: multiple_files_allowed = true (default)
+
+        ## Related Documents
+        - Flow: 7.flows/assessment-flow.md
+        - Glossary: 6.glossary/assessment.md#commands
+        - Ontology: 5.ontology/assessment/assignment.yaml
+      operationId: createAssessment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAssessmentRequest"
+            examples:
+              default:
+                summary: Create OOP Knowledge Test
+                value:
+                  event_id: "EVT-000001"
+                  title: "OOP Knowledge Test"
+                  description: "Kiểm tra kiến thức về OOP principles"
+                  link: "https://testgorilla.com/abc123"
+                  deadline: "2026-04-25T23:59:00Z"
+                  allowed_file_types:
+                    - "PDF"
+                    - "DOCX"
+                    - "PPT"
+                  max_file_size: 10485760
+                  multiple_files_allowed: true
+                  graders:
+                    - "MGR-001"
+                    - "MGR-002"
+      responses:
+        "201":
+          description: Assignment created successfully
+          headers:
+            Location:
+              description: URL to the created Assignment resource
+              schema:
+                type: string
+                format: uri
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Assessment"
+              examples:
+                default:
+                  summary: Assignment created
+                  value:
+                    assignment_id: "ASMNT-000001"
+                    event_id: "EVT-000001"
+                    title: "OOP Knowledge Test"
+                    description: "Kiểm tra kiến thức về OOP principles"
+                    link: "https://testgorilla.com/abc123"
+                    deadline: "2026-04-25T23:59:00Z"
+                    status: "DRAFT"
+                    allowed_file_types:
+                      - "PDF"
+                      - "DOCX"
+                      - "PPT"
+                    max_file_size: 10485760
+                    multiple_files_allowed: true
+                    graders:
+                      - "MGR-001"
+                      - "MGR-002"
+                    created_by: "TA-001"
+                    created_at: "2026-03-20T10:00:00Z"
+        "400":
+          description: Bad Request — Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                missing_link:
+                  summary: Missing required link field
+                  value:
+                    error_code: "VALIDATION_ERROR"
+                    message: "Link làm bài là bắt buộc"
+                    details:
+                      - field: "link"
+                        message: "Link làm bài (Google Form, TestGorilla, etc.) là bắt buộc"
+                invalid_file_types:
+                  summary: Invalid file types
+                  value:
+                    error_code: "VALIDATION_ERROR"
+                    message: "File types không hợp lệ"
+                    details:
+                      - field: "allowed_file_types"
+                        message: "Phải chứa ít nhất một trong các loại: PDF, DOC, DOCX, XLS, XLSX, PPT, PPTX"
+        "401":
+          description: Unauthorized — User không có quyền tạo Assignment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not Found — Event không tồn tại
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                event_not_found:
+                  summary: Event not found
+                  value:
+                    error_code: "EVENT_NOT_FOUND"
+                    message: "Event EVT-000001 không tồn tại"
+        "409":
+          description: Conflict — Assignment đã tồn tại cho Event này
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # =============================================================================
+  # USE CASE: Submit Assignment
+  # Source: assessment-flow.md — Submit Assignment (Online Test)
+  # Command: SubmitAssignment (from glossary)
+  # =============================================================================
+  /assessments/{assignment_id}/submit:
+    post:
+      tags:
+        - Submissions
+      summary: Submit Assignment
+      description: |
+        Student nộp bài Assignment qua link (TestGorilla, Google Form, etc.)
+
+        ## Use Case
+        Student submit bài qua link Assignment với attachments.
+
+        ## Pre-conditions
+        - Assignment tồn tại với status = ACTIVE
+        - CandidateRR tồn tại với current_stage = ONLINE_TEST
+        - Assignment.deadline chưa qua (hoặc trong grace period)
+        - Student đã nhận được Assignment link qua email
+
+        ## Post-conditions
+        - Submission tồn tại với status = SUBMITTED, is_late = false
+        - Attachments được lưu trong FileStorage với IDs
+        - GradingTask được tạo (hoặc update) với submissions[] includes mới submission
+        - SubmissionReceived event được publish
+
+        ## Business Rules
+        - BR-ASM-003: File submission phải đúng format
+        - BR-ASM-004: Submission chỉ được nộp trước deadline (configurable grace period)
+        - BR-ASM-005: Student được nộp nhiều file (không cần zip)
+
+        ## Error Handling
+        - Late Submission: Set is_late = true, status = LATE (nếu trong grace period)
+        - Invalid file type: Reject upload, hiển thị lỗi
+        - File size exceeded: Reject upload, gợi ý compress file
+
+        ## Related Documents
+        - Flow: 7.flows/assessment-flow.md
+        - Glossary: 6.glossary/assessment.md#commands
+        - Ontology: 5.ontology/assessment/submission.yaml
+      operationId: submitAssessment
+      parameters:
+        - name: assignment_id
+          in: path
+          required: true
+          description: Assignment ID mà Student nộp bài
+          schema:
+            type: string
+            pattern: "^ASMNT-\\d{6}$"
+          example: "ASMNT-000001"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmitAssessmentRequest"
+            examples:
+              default:
+                summary: Submit với 2 attachments
+                value:
+                  application_id: "APP-000001"
+                  candidate_rr_id: "CRR-000001"
+                  attachments:
+                    - "ATT-001"
+                    - "ATT-002"
+      responses:
+        "201":
+          description: Submission created successfully
+          headers:
+            Location:
+              description: URL to the created Submission resource
+              schema:
+                type: string
+                format: uri
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Submission"
+              examples:
+                on_time:
+                  summary: Submission on time
+                  value:
+                    submission_id: "SUB-000001"
+                    assignment_id: "ASMNT-000001"
+                    application_id: "APP-000001"
+                    candidate_rr_id: "CRR-000001"
+                    attachments:
+                      - "ATT-001"
+                      - "ATT-002"
+                    submitted_at: "2026-04-24T10:30:00Z"
+                    is_late: false
+                    status: "SUBMITTED"
+                    created_by: "STU-001"
+                    created_at: "2026-04-24T10:30:00Z"
+                late:
+                  summary: Late submission (trong grace period)
+                  value:
+                    submission_id: "SUB-000002"
+                    assignment_id: "ASMNT-000001"
+                    application_id: "APP-000002"
+                    candidate_rr_id: "CRR-000002"
+                    attachments:
+                      - "ATT-003"
+                    submitted_at: "2026-04-26T00:15:00Z"
+                    is_late: true
+                    status: "LATE"
+                    created_by: "STU-002"
+                    created_at: "2026-04-26T00:15:00Z"
+        "400":
+          description: Bad Request — Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                invalid_file_type:
+                  summary: File type không đúng format
+                  value:
+                    error_code: "INVALID_FILE_TYPE"
+                    message: "File type không được chấp nhận. Chỉ chấp nhận: PDF, DOCX, PPT"
+                    details:
+                      - field: "attachments"
+                        message: "File .exe không được chấp nhận"
+                file_size_exceeded:
+                  summary: File size vượt quá limit
+                  value:
+                    error_code: "FILE_SIZE_EXCEEDED"
+                    message: "File size vượt quá 10MB. Vui lòng giảm kích thước file"
+                    details:
+                      - field: "attachments[0]"
+                        message: "File size: 15MB, Max allowed: 10MB"
+        "401":
+          description: Unauthorized — Student chưa đăng nhập
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden — Student không có quyền nộp bài này
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not Found — Assignment không tồn tại
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                assignment_not_found:
+                  summary: Assignment not found
+                  value:
+                    error_code: "ASSIGNMENT_NOT_FOUND"
+                    message: "Assignment ASMNT-000001 không tồn tại"
+                candidate_rr_not_found:
+                  summary: CandidateRR not found
+                  value:
+                    error_code: "CANDIDATE_RR_NOT_FOUND"
+                    message: "Candidate RR không tồn tại cho application này"
+        "409":
+          description: Conflict — Assignment đã đóng hoặc đã submit rồi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                assignment_closed:
+                  summary: Assignment đã đóng
+                  value:
+                    error_code: "ASSIGNMENT_CLOSED"
+                    message: "Assignment đã đóng. Vui lòng liên hệ TA."
+                    details:
+                      - field: "assignment_id"
+                        message: "Assignment status = CLOSED/CANCELLED"
+                already_submitted:
+                  summary: Đã submit rồi (resubmit không enabled)
+                  value:
+                    error_code: "ALREADY_SUBMITTED"
+                    message: "Bạn đã submit bài này. Resubmit không được enabled."
+        "410":
+          description: Gone — Deadline đã qua (không trong grace period)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                deadline_passed:
+                  summary: Deadline đã qua
+                  value:
+                    error_code: "DEADLINE_PASSED"
+                    message: "Deadline đã qua. Không thể submit bài."
+                    details:
+                      - field: "deadline"
+                        message: "Deadline: 2026-04-25T23:59:00Z, Current: 2026-04-27T10:00:00Z"
+
+  # =============================================================================
+  # USE CASE: Auto-grade Submission (Create GradingTask)
+  # Source: assessment-flow.md — Auto create GradingTask
+  # Command: CreateGradingTask (from glossary)
+  # =============================================================================
+  /assessments/{assignment_id}/grading-tasks/create:
+    post:
+      tags:
+        - GradingTasks
+      summary: Create Grading Task
+      description: |
+        TA tạo GradingTask và phân công cho Manager chấm bài.
+
+        ## Use Case
+        TA phân công Manager chấm các Submissions cho Assignment.
+
+        ## Pre-conditions
+        - Assignment có submissions cần chấm
+        - Manager được chỉ định tồn tại và có quyền chấm
+
+        ## Post-conditions
+        - GradingTask created ở status PENDING
+        - GradingTaskCreated event được publish
+
+        ## Business Rules
+        - BR-ASM-001: Chỉ Managers được TA phân công mới chấm được Assignment
+        - BR-GTK-001: GradingTask auto-complete khi TA import kết quả chấm hàng loạt
+
+        ## Related Documents
+        - Flow: 7.flows/assessment-flow.md
+        - Glossary: 6.glossary/assessment.md#commands
+        - Ontology: 5.ontology/assessment/grading-task.yaml
+      operationId: createGradingTask
+      parameters:
+        - name: assignment_id
+          in: path
+          required: true
+          description: Assignment ID mà grading task thuộc về
+          schema:
+            type: string
+            pattern: "^ASMNT-\\d{6}$"
+          example: "ASMNT-000001"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateGradingTaskRequest"
+            examples:
+              default:
+                summary: Create grading task cho Manager
+                value:
+                  grader_id: "MGR-001"
+                  submission_ids:
+                    - "SUB-000001"
+                    - "SUB-000002"
+                    - "SUB-000003"
+                  deadline: "2026-04-28T17:00:00Z"
+      responses:
+        "201":
+          description: GradingTask created successfully
+          headers:
+            Location:
+              description: URL to the created GradingTask resource
+              schema:
+                type: string
+                format: uri
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GradingTask"
+              examples:
+                default:
+                  summary: GradingTask created
+                  value:
+                    task_id: "GTK-000001"
+                    assignment_id: "ASMNT-000001"
+                    grader_id: "MGR-001"
+                    submissions:
+                      - "SUB-000001"
+                      - "SUB-000002"
+                      - "SUB-000003"
+                    status: "PENDING"
+                    deadline: "2026-04-28T17:00:00Z"
+                    created_by: "TA-001"
+                    created_at: "2026-04-26T10:00:00Z"
+        "400":
+          description: Bad Request — Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                no_submissions:
+                  summary: Không có submissions nào được chọn
+                  value:
+                    error_code: "VALIDATION_ERROR"
+                    message: "Phải chọn ít nhất một submission để chấm"
+                    details:
+                      - field: "submission_ids"
+                        message: "Danh sách submissions không được rỗng"
+                invalid_grader:
+                  summary: Grader không phải Manager
+                  value:
+                    error_code: "INVALID_GRADER"
+                    message: "Grader phải là Manager"
+                    details:
+                      - field: "grader_id"
+                        message: "User MGR-001 không phải Manager"
+        "401":
+          description: Unauthorized — User không có quyền tạo GradingTask
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not Found — Assignment hoặc Grader không tồn tại
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                assignment_not_found:
+                  summary: Assignment not found
+                  value:
+                    error_code: "ASSIGNMENT_NOT_FOUND"
+                    message: "Assignment ASMNT-000001 không tồn tại"
+                grader_not_found:
+                  summary: Grader not found
+                  value:
+                    error_code: "GRADER_NOT_FOUND"
+                    message: "Grader MGR-001 không tồn tại"
+                submission_not_found:
+                  summary: Submission not found
+                  value:
+                    error_code: "SUBMISSION_NOT_FOUND"
+                    message: "Submission SUB-000001 không tồn tại"
+        "409":
+          description: Conflict — GradingTask đã tồn tại
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                task_already_exists:
+                  summary: GradingTask đã tồn tại cho grader này
+                  value:
+                    error_code: "GRADING_TASK_EXISTS"
+                    message: "GradingTask đã tồn tại cho grader MGR-001 và assignment ASMNT-000001"
+
+  # =============================================================================
+  # USE CASE: Score Submission (Complete Grading)
+  # Source: assessment-flow.md — Grading completion
+  # Command: CompleteGrading (from glossary)
+  # =============================================================================
+  /assessments/{submission_id}/grade:
+    post:
+      tags:
+        - Grading
+      summary: Score Submission
+      description: |
+        Manager hoàn thành chấm một Submission với score, comment và pass_fail decision.
+
+        ## Use Case
+        Grader (Manager) được phân công chấm bài và đưa ra kết quả.
+
+        ## Pre-conditions
+        - GradingTask status = IN_PROGRESS
+        - Submission chưa được chấm
+        - Grader là Manager được phân công (BRS-GRD-001)
+
+        ## Post-conditions
+        - Grading created với score, comment, pass_fail
+        - GradingCompleted event được publish
+        - Submission status = GRADED
+
+        ## Business Rules
+        - BR-GRD-001: Score phải trong khoảng 0-100
+        - BR-GRD-002: PassFail = PASS khi score >= threshold (configurable per Event)
+        - BR-ASM-001: Chỉ Managers được TA phân công mới chấm được Assignment
+
+        ## Error Handling
+        - Unauthorized grader: Reject grading attempt, log security event
+        - Score out of range: Validation error
+
+        ## Related Documents
+        - Flow: 7.flows/assessment-flow.md
+        - Glossary: 6.glossary/assessment.md#commands
+        - Ontology: 5.ontology/assessment/grading.yaml
+      operationId: scoreSubmission
+      parameters:
+        - name: submission_id
+          in: path
+          required: true
+          description: Submission ID được chấm
+          schema:
+            type: string
+            pattern: "^SUB-\\d{6}$"
+          example: "SUB-000001"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScoreSubmissionRequest"
+            examples:
+              pass:
+                summary: Chấm PASS
+                value:
+                  score: 85.5
+                  comment: "Good understanding of OOP principles"
+                  pass_fail: "PASS"
+              fail:
+                summary: Chấm FAIL
+                value:
+                  score: 45.0
+                  comment: "Need to review OOP fundamentals"
+                  pass_fail: "FAIL"
+              needs_discussion:
+                summary: Cần thảo luận thêm
+                value:
+                  score: 58.0
+                  comment: "Borderline case — cần thảo luận với TA"
+                  pass_fail: "NEEDS_DISCUSSION"
+      responses:
+        "201":
+          description: Grading completed successfully
+          headers:
+            Location:
+              description: URL to the created Grading resource
+              schema:
+                type: string
+                format: uri
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Grading"
+              examples:
+                default:
+                  summary: Grading completed
+                  value:
+                    grading_id: "GRD-000001"
+                    submission_id: "SUB-000001"
+                    grader_id: "MGR-001"
+                    score: 85.5
+                    comment: "Good understanding of OOP principles"
+                    pass_fail: "PASS"
+                    graded_at: "2026-04-26T14:00:00Z"
+                    created_by: "MGR-001"
+                    created_at: "2026-04-26T14:00:00Z"
+        "400":
+          description: Bad Request — Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                score_out_of_range:
+                  summary: Score ngoài khoảng 0-100
+                  value:
+                    error_code: "VALIDATION_ERROR"
+                    message: "Score phải trong khoảng 0-100"
+                    details:
+                      - field: "score"
+                        message: "Score 150 không hợp lệ. Range: 0-100"
+                missing_comment:
+                  summary: Thiếu comment (nếu required)
+                  value:
+                    error_code: "VALIDATION_ERROR"
+                    message: "Comment là bắt buộc"
+                    details:
+                      - field: "comment"
+                        message: "Nhận xét là bắt buộc"
+        "401":
+          description: Unauthorized — Grader chưa đăng nhập
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden — Grader không được phân công chấm submission này
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                unauthorized_grader:
+                  summary: Grader không được phân công
+                  value:
+                    error_code: "UNAUTHORIZED_GRADER"
+                    message: "Bạn không được phân công chấm submission này"
+                    details:
+                      - field: "grader_id"
+                        message: "Grader MGR-002 không nằm trong grader_id của GradingTask"
+        "404":
+          description: Not Found — Submission không tồn tại
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                submission_not_found:
+                  summary: Submission not found
+                  value:
+                    error_code: "SUBMISSION_NOT_FOUND"
+                    message: "Submission SUB-000001 không tồn tại"
+        "409":
+          description: Conflict — Submission đã được chấm rồi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                already_graded:
+                  summary: Submission đã được chấm
+                  value:
+                    error_code: "ALREADY_GRADED"
+                    message: "Submission đã được chấm rồi"
+                    details:
+                      - field: "submission_id"
+                        message: "Grading đã tồn tại: GRD-000001"
+        "422":
+          description: Unprocessable Entity — GradingTask không ở status IN_PROGRESS
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                task_not_in_progress:
+                  summary: GradingTask chưa bắt đầu
+                  value:
+                    error_code: "INVALID_TASK_STATUS"
+                    message: "GradingTask chưa ở status IN_PROGRESS"
+                    details:
+                      - field: "task_id"
+                        message: "Task status = PENDING, phải bắt đầu trước"
+
+  # =============================================================================
+  # USE CASE: Get Assessment Result
+  # Source: assessment-flow.md — Post-conditions
+  # Query: Get Submission result với Grading information
+  # =============================================================================
+  /assessments/{submission_id}/result:
+    get:
+      tags:
+        - Assessments
+      summary: Get Assessment Result
+      description: |
+        Lấy kết quả Assessment Result cho một Submission (bao gồm Grading information).
+
+        ## Use Case
+        Student hoặc TA xem kết quả bài nộp với score, comment, pass_fail decision.
+
+        ## Pre-conditions
+        - Submission tồn tại
+        - Submission status = GRADED
+
+        ## Post-conditions
+        - Trả về Submission + Grading information
+
+        ## Business Rules
+        - Blind grading: Khi enabled, Grading.comment không hiển thị PII
+        - Score visibility: Student chỉ thấy kết quả khi Assignment status = COMPLETED
+
+        ## Related Documents
+        - Flow: 7.flows/assessment-flow.md
+        - Glossary: 6.glossary/assessment.md#entities
+        - Ontology: 5.ontology/assessment/submission.yaml, grading.yaml
+      operationId: getAssessmentResult
+      parameters:
+        - name: submission_id
+          in: path
+          required: true
+          description: Submission ID để lấy kết quả
+          schema:
+            type: string
+            pattern: "^SUB-\\d{6}$"
+          example: "SUB-000001"
+      responses:
+        "200":
+          description: Assessment result retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssessmentResult"
+              examples:
+                pass:
+                  summary: Result — PASS
+                  value:
+                    submission_id: "SUB-000001"
+                    assignment_id: "ASMNT-000001"
+                    application_id: "APP-000001"
+                    candidate_rr_id: "CRR-000001"
+                    submitted_at: "2026-04-24T10:30:00Z"
+                    is_late: false
+                    status: "GRADED"
+                    grading:
+                      grading_id: "GRD-000001"
+                      grader_id: "MGR-001"
+                      score: 85.5
+                      comment: "Good understanding of OOP principles"
+                      pass_fail: "PASS"
+                      graded_at: "2026-04-26T14:00:00Z"
+                fail:
+                  summary: Result — FAIL
+                  value:
+                    submission_id: "SUB-000002"
+                    assignment_id: "ASMNT-000001"
+                    application_id: "APP-000002"
+                    candidate_rr_id: "CRR-000002"
+                    submitted_at: "2026-04-24T11:00:00Z"
+                    is_late: false
+                    status: "GRADED"
+                    grading:
+                      grading_id: "GRD-000002"
+                      grader_id: "MGR-001"
+                      score: 45.0
+                      comment: "Need to review OOP fundamentals"
+                      pass_fail: "FAIL"
+                      graded_at: "2026-04-26T15:00:00Z"
+                pending_grading:
+                  summary: Result — Pending grading
+                  value:
+                    submission_id: "SUB-000003"
+                    assignment_id: "ASMNT-000001"
+                    application_id: "APP-000003"
+                    candidate_rr_id: "CRR-000003"
+                    submitted_at: "2026-04-24T12:00:00Z"
+                    is_late: false
+                    status: "GRADING"
+                    grading: null
+        "401":
+          description: Unauthorized — User chưa đăng nhập
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden — User không có quyền xem kết quả này
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                not_owner:
+                  summary: Không phải owner của submission
+                  value:
+                    error_code: "FORBIDDEN"
+                    message: "Bạn không có quyền xem kết quả submission này"
+                    details:
+                      - field: "submission_id"
+                        message: "Chỉ Student hoặc TA mới xem được"
+                result_not_ready:
+                  summary: Kết quả chưa sẵn sàng
+                  value:
+                    error_code: "RESULT_NOT_READY"
+                    message: "Kết quả chưa sẵn sàng. Submission chưa được chấm xong."
+        "404":
+          description: Not Found — Submission không tồn tại
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                submission_not_found:
+                  summary: Submission not found
+                  value:
+                    error_code: "SUBMISSION_NOT_FOUND"
+                    message: "Submission SUB-000001 không tồn tại"
+        "410":
+          description: Gone — Assignment đã bị hủy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                assignment_cancelled:
+                  summary: Assignment đã hủy
+                  value:
+                    error_code: "ASSIGNMENT_CANCELLED"
+                    message: "Assignment đã bị hủy. Kết quả không hợp lệ."
+
+components:
+  schemas:
+    # ==========================================================================
+    # REQUEST SCHEMAS
+    # ==========================================================================
+
+    CreateAssessmentRequest:
+      description: Request schema để tạo Assignment mới
+      type: object
+      required:
+        - event_id
+        - title
+        - link
+        - deadline
+      properties:
+        event_id:
+          description: Event ID mà Assignment thuộc về
+          type: string
+          pattern: "^EVT-\\d{6}$"
+          example: "EVT-000001"
+        title:
+          description: Tiêu đề Assignment
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: "OOP Knowledge Test"
+        description:
+          description: Mô tả chi tiết Assignment
+          type: string
+          maxLength: 2000
+          example: "Kiểm tra kiến thức về OOP principles"
+        link:
+          description: Link làm bài (Google Form, TestGorilla, etc.)
+          type: string
+          format: uri
+          example: "https://testgorilla.com/abc123"
+        attachment_id:
+          description: Attachment ID (file đính kèm nếu có)
+          type: string
+          pattern: "^ATT-\\d{6}$"
+          example: "ATT-001"
+        deadline:
+          description: Deadline nộp bài
+          type: string
+          format: date-time
+          example: "2026-04-25T23:59:00Z"
+        allowed_file_types:
+          description: Các loại file được phép nộp
+          type: array
+          items:
+            type: string
+            enum: ["PDF", "DOC", "DOCX", "XLS", "XLSX", "PPT", "PPTX"]
+          example: ["PDF", "DOCX", "PPT"]
+        max_file_size:
+          description: Kích thước file tối đa (bytes)
+          type: integer
+          minimum: 0
+          maximum: 52428800
+          example: 10485760
+        multiple_files_allowed:
+          description: Cho phép nộp nhiều file
+          type: boolean
+          default: true
+          example: true
+        graders:
+          description: Danh sách Grader IDs được phân công chấm
+          type: array
+          items:
+            type: string
+            pattern: "^MGR-\\d{3}$"
+          example: ["MGR-001", "MGR-002"]
+      additionalProperties: false
+
+    SubmitAssessmentRequest:
+      description: Request schema để Student submit Assignment
+      type: object
+      required:
+        - application_id
+        - candidate_rr_id
+        - attachments
+      properties:
+        application_id:
+          description: Application ID của Student nộp bài
+          type: string
+          pattern: "^APP-\\d{6}$"
+          example: "APP-000001"
+        candidate_rr_id:
+          description: Candidate RR ID
+          type: string
+          pattern: "^CRR-\\d{6}$"
+          example: "CRR-000001"
+        attachments:
+          description: Danh sách attachment IDs nộp lên
+          type: array
+          minItems: 1
+          items:
+            type: string
+            pattern: "^ATT-\\d{6}$"
+          example: ["ATT-001", "ATT-002"]
+      additionalProperties: false
+
+    CreateGradingTaskRequest:
+      description: Request schema để TA tạo GradingTask
+      type: object
+      required:
+        - grader_id
+        - submission_ids
+      properties:
+        grader_id:
+          description: Manager ID được phân công chấm
+          type: string
+          pattern: "^MGR-\\d{3}$"
+          example: "MGR-001"
+        submission_ids:
+          description: Danh sách submission IDs được phân công chấm
+          type: array
+          minItems: 1
+          items:
+            type: string
+            pattern: "^SUB-\\d{6}$"
+          example: ["SUB-000001", "SUB-000002", "SUB-000003"]
+        deadline:
+          description: Deadline hoàn thành chấm
+          type: string
+          format: date-time
+          example: "2026-04-28T17:00:00Z"
+      additionalProperties: false
+
+    ScoreSubmissionRequest:
+      description: Request schema để Manager score Submission
+      type: object
+      required:
+        - score
+        - pass_fail
+      properties:
+        score:
+          description: Điểm số (0-100)
+          type: number
+          format: float
+          minimum: 0
+          maximum: 100
+          example: 85.5
+        comment:
+          description: Nhận xét của grader
+          type: string
+          maxLength: 2000
+          example: "Good understanding of OOP principles"
+        pass_fail:
+          description: Kết quả Đạt/Không đạt
+          type: string
+          enum:
+            - PASS
+            - FAIL
+            - NEEDS_DISCUSSION
+          example: "PASS"
+      additionalProperties: false
+
+    # ==========================================================================
+    # RESPONSE SCHEMAS (Entities từ LinkML Ontology)
+    # ==========================================================================
+
+    Assessment:
+      description: |
+        Assignment — Bài kiểm tra Online được TA tạo và gửi cho Students.
+        Source: 5.ontology/assessment/assignment.yaml
+      type: object
+      required:
+        - assignment_id
+        - event_id
+        - title
+        - link
+        - deadline
+        - status
+        - created_by
+        - created_at
+      properties:
+        assignment_id:
+          description: Unique identifier cho Assignment
+          type: string
+          pattern: "^ASMNT-\\d{6}$"
+          example: "ASMNT-000001"
+        event_id:
+          description: Event ID mà Assignment thuộc về
+          type: string
+          pattern: "^EVT-\\d{6}$"
+          example: "EVT-000001"
+        title:
+          description: Tiêu đề Assignment
+          type: string
+          example: "OOP Knowledge Test"
+        description:
+          description: Mô tả chi tiết Assignment
+          type: string
+          example: "Kiểm tra kiến thức về OOP principles"
+        link:
+          description: Link làm bài (Google Form, TestGorilla, etc.)
+          type: string
+          format: uri
+          example: "https://testgorilla.com/abc123"
+        attachment_id:
+          description: Attachment ID (file đính kèm nếu có)
+          type: string
+          pattern: "^ATT-\\d{6}$"
+          nullable: true
+          example: "ATT-001"
+        deadline:
+          description: Deadline nộp bài
+          type: string
+          format: date-time
+          example: "2026-04-25T23:59:00Z"
+        status:
+          description: Trạng thái Assignment
+          type: string
+          enum:
+            - DRAFT
+            - ACTIVE
+            - CLOSED
+            - GRADING
+            - COMPLETED
+            - CANCELLED
+          example: "DRAFT"
+        graders:
+          description: Danh sách Grader IDs được phân công chấm
+          type: array
+          items:
+            type: string
+            pattern: "^MGR-\\d{3}$"
+          example: ["MGR-001", "MGR-002"]
+        allowed_file_types:
+          description: Các loại file được phép nộp
+          type: array
+          items:
+            type: string
+          example: ["PDF", "DOCX", "PPT"]
+        max_file_size:
+          description: Kích thước file tối đa (bytes)
+          type: integer
+          minimum: 0
+          example: 10485760
+        multiple_files_allowed:
+          description: Cho phép nộp nhiều file
+          type: boolean
+          example: true
+        created_by:
+          description: User ID tạo Assignment (TA)
+          type: string
+          example: "TA-001"
+        created_at:
+          description: Timestamp tạo Assignment
+          type: string
+          format: date-time
+          example: "2026-03-20T10:00:00Z"
+        updated_at:
+          description: Timestamp cập nhật Assignment
+          type: string
+          format: date-time
+          nullable: true
+          example: "2026-03-20T11:00:00Z"
+      additionalProperties: false
+
+    Submission:
+      description: |
+        Submission — Bài nộp của Student cho Assignment.
+        Source: 5.ontology/assessment/submission.yaml
+      type: object
+      required:
+        - submission_id
+        - assignment_id
+        - application_id
+        - candidate_rr_id
+        - attachments
+        - submitted_at
+        - status
+        - created_by
+        - created_at
+      properties:
+        submission_id:
+          description: Unique identifier cho Submission
+          type: string
+          pattern: "^SUB-\\d{6}$"
+          example: "SUB-000001"
+        assignment_id:
+          description: Assignment ID mà Student nộp bài
+          type: string
+          pattern: "^ASMNT-\\d{6}$"
+          example: "ASMNT-000001"
+        application_id:
+          description: Application ID của Student nộp bài
+          type: string
+          pattern: "^APP-\\d{6}$"
+          example: "APP-000001"
+        candidate_rr_id:
+          description: Candidate RR ID
+          type: string
+          pattern: "^CRR-\\d{6}$"
+          example: "CRR-000001"
+        attachments:
+          description: Danh sách attachment IDs nộp lên
+          type: array
+          items:
+            type: string
+            pattern: "^ATT-\\d{6}$"
+          example: ["ATT-001", "ATT-002"]
+        submitted_at:
+          description: Thời điểm nộp bài
+          type: string
+          format: date-time
+          example: "2026-04-24T10:30:00Z"
+        is_late:
+          description: Nộp muộn (sau deadline)
+          type: boolean
+          example: false
+        status:
+          description: Trạng thái Submission
+          type: string
+          enum:
+            - SUBMITTED
+            - GRADING
+            - GRADED
+            - LATE
+            - RESUBMITTED
+          example: "SUBMITTED"
+        created_by:
+          description: Student ID người nộp
+          type: string
+          example: "STU-001"
+        created_at:
+          description: Timestamp tạo Submission
+          type: string
+          format: date-time
+          example: "2026-04-24T10:30:00Z"
+      additionalProperties: false
+
+    GradingTask:
+      description: |
+        GradingTask — Task chấm bài cho Manager được TA tạo.
+        Source: 5.ontology/assessment/grading-task.yaml
+      type: object
+      required:
+        - task_id
+        - assignment_id
+        - grader_id
+        - submissions
+        - status
+        - created_by
+        - created_at
+      properties:
+        task_id:
+          description: Unique identifier cho GradingTask
+          type: string
+          pattern: "^GTK-\\d{6}$"
+          example: "GTK-000001"
+        assignment_id:
+          description: Assignment ID mà task chấm thuộc về
+          type: string
+          pattern: "^ASMNT-\\d{6}$"
+          example: "ASMNT-000001"
+        grader_id:
+          description: Manager ID được phân công chấm
+          type: string
+          pattern: "^MGR-\\d{3}$"
+          example: "MGR-001"
+        submissions:
+          description: Danh sách submission IDs được phân công chấm
+          type: array
+          items:
+            type: string
+            pattern: "^SUB-\\d{6}$"
+          example: ["SUB-000001", "SUB-000002", "SUB-000003"]
+        status:
+          description: Trạng thái task
+          type: string
+          enum:
+            - PENDING
+            - IN_PROGRESS
+            - COMPLETED
+            - CANCELLED
+          example: "PENDING"
+        completed_at:
+          description: Thời điểm hoàn thành task
+          type: string
+          format: date-time
+          nullable: true
+          example: "2026-04-28T15:00:00Z"
+        deadline:
+          description: Deadline hoàn thành chấm
+          type: string
+          format: date-time
+          example: "2026-04-28T17:00:00Z"
+        created_by:
+          description: User ID tạo task (TA)
+          type: string
+          example: "TA-001"
+        created_at:
+          description: Timestamp tạo task
+          type: string
+          format: date-time
+          example: "2026-04-26T10:00:00Z"
+      additionalProperties: false
+
+    Grading:
+      description: |
+        Grading — Kết quả chấm bài Assignment/Submission.
+        Source: 5.ontology/assessment/grading.yaml
+      type: object
+      required:
+        - grading_id
+        - submission_id
+        - grader_id
+        - score
+        - pass_fail
+        - graded_at
+        - created_by
+        - created_at
+      properties:
+        grading_id:
+          description: Unique identifier cho Grading
+          type: string
+          pattern: "^GRD-\\d{6}$"
+          example: "GRD-000001"
+        submission_id:
+          description: Submission ID được chấm
+          type: string
+          pattern: "^SUB-\\d{6}$"
+          example: "SUB-000001"
+        grader_id:
+          description: User ID người chấm (Manager)
+          type: string
+          pattern: "^MGR-\\d{3}$"
+          example: "MGR-001"
+        score:
+          description: Điểm số (0-100)
+          type: number
+          format: float
+          minimum: 0
+          maximum: 100
+          example: 85.5
+        comment:
+          description: Nhận xét của grader
+          type: string
+          nullable: true
+          example: "Good understanding of OOP principles"
+        pass_fail:
+          description: Kết quả Đạt/Không đạt
+          type: string
+          enum:
+            - PASS
+            - FAIL
+            - NEEDS_DISCUSSION
+          example: "PASS"
+        graded_at:
+          description: Thời điểm chấm xong
+          type: string
+          format: date-time
+          example: "2026-04-26T14:00:00Z"
+        created_by:
+          description: Grader ID
+          type: string
+          example: "MGR-001"
+        created_at:
+          description: Timestamp tạo Grading record
+          type: string
+          format: date-time
+          example: "2026-04-26T14:00:00Z"
+      additionalProperties: false
+
+    AssessmentResult:
+      description: |
+        Assessment Result — Kết quả Assessment bao gồm Submission + Grading information.
+        Composite schema cho use case "Get Assessment Result"
+      type: object
+      required:
+        - submission_id
+        - assignment_id
+        - application_id
+        - candidate_rr_id
+        - submitted_at
+        - status
+      properties:
+        submission_id:
+          description: Unique identifier cho Submission
+          type: string
+          pattern: "^SUB-\\d{6}$"
+          example: "SUB-000001"
+        assignment_id:
+          description: Assignment ID mà Student nộp bài
+          type: string
+          pattern: "^ASMNT-\\d{6}$"
+          example: "ASMNT-000001"
+        application_id:
+          description: Application ID của Student nộp bài
+          type: string
+          pattern: "^APP-\\d{6}$"
+          example: "APP-000001"
+        candidate_rr_id:
+          description: Candidate RR ID
+          type: string
+          pattern: "^CRR-\\d{6}$"
+          example: "CRR-000001"
+        submitted_at:
+          description: Thời điểm nộp bài
+          type: string
+          format: date-time
+          example: "2026-04-24T10:30:00Z"
+        is_late:
+          description: Nộp muộn (sau deadline)
+          type: boolean
+          example: false
+        status:
+          description: Trạng thái Submission
+          type: string
+          enum:
+            - SUBMITTED
+            - GRADING
+            - GRADED
+            - LATE
+            - RESUBMITTED
+          example: "GRADED"
+        grading:
+          description: Grading information (null nếu chưa được chấm)
+          type: object
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/Grading"
+
+    # ==========================================================================
+    # ERROR SCHEMAS
+    # ==========================================================================
+
+    ErrorResponse:
+      description: Error response schema
+      type: object
+      required:
+        - error_code
+        - message
+      properties:
+        error_code:
+          description: Error code
+          type: string
+          example: "VALIDATION_ERROR"
+        message:
+          description: Error message
+          type: string
+          example: "Invalid input"
+        details:
+          description: Chi tiết lỗi
+          type: array
+          items:
+            $ref: "#/components/schemas/ErrorDetail"
+      additionalProperties: false
+
+    ErrorDetail:
+      description: Chi tiết lỗi
+      type: object
+      required:
+        - field
+        - message
+      properties:
+        field:
+          description: Field bị lỗi
+          type: string
+          example: "link"
+        message:
+          description: Mô tả lỗi
+          type: string
+          example: "Link làm bài là bắt buộc"
+      additionalProperties: false
+
+  # ==========================================================================
+  # SECURITY SCHEMAS
+  # ==========================================================================
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token lấy từ auth service
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API Key cho service-to-service communication
+
+security:
+  - bearerAuth: []
+  - apiKeyAuth: []

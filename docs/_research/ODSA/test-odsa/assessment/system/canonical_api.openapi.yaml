@@ -1,0 +1,694 @@
+openapi: 3.0.3
+info:
+  title: Assessment Context - Canonical API
+  description: |
+    Assessment Context API for xTalent ATS.
+
+    This API manages the Assessment bounded context including:
+    - Assignment: Online tests created by TA and sent to Students
+    - Submission: Student submissions for Assignments
+    - Grading: Grading results from Managers
+    - GradingTask: Grading tasks assigned to Managers
+
+    ## Ontology Reference
+    - Assignment: https://xtalent.io/ontology/ats/assessment/assignment
+    - Submission: https://xtalent.io/ontology/ats/assessment/submission
+    - Grading: https://xtalent.io/ontology/ats/assessment/grading
+    - GradingTask: https://xtalent.io/ontology/ats/assessment/grading-task
+
+    ## Lifecycle States
+
+    ### Assignment Status
+    - DRAFT: Đang nháp
+    - ACTIVE: Đang mở nộp bài
+    - CLOSED: Đã đóng (qua deadline)
+    - GRADING: Đang chấm
+    - COMPLETED: Hoàn tất chấm
+    - CANCELLED: Đã hủy
+
+    ### Submission Status
+    - SUBMITTED: Đã nộp
+    - GRADING: Đang chấm
+    - GRADED: Đã chấm xong
+    - LATE: Nộp muộn
+    - RESUBMITTED: Nộp lại
+
+    ### Grading Pass/Fail
+    - PASS: Đạt
+    - FAIL: Không đạt
+    - NEEDS_DISCUSSION: Cần thảo luận thêm
+
+    ### GradingTask Status
+    - PENDING: Chưa bắt đầu
+    - IN_PROGRESS: Đang chấm
+    - COMPLETED: Hoàn thành
+    - CANCELLED: Đã hủy
+  version: 1.0.0
+  contact:
+    name: xTalent ATS Team
+    url: https://docs.xtalent.io/ats/assessment
+
+servers:
+  - url: https://api.xtalent.io/ats/v1
+    description: Production server
+  - url: https://staging-api.xtalent.io/ats/v1
+    description: Staging server
+  - url: http://localhost:8080/ats/v1
+    description: Local development server
+
+tags:
+  - name: Assessments
+    description: Operations on Assignment (Online Test) aggregate root
+  - name: Submissions
+    description: Operations on Submission aggregate root
+  - name: Grading
+    description: Operations on Grading aggregate root
+  - name: GradingTasks
+    description: Operations on GradingTask aggregate root
+
+paths:
+  /assessments/create:
+    post:
+      tags:
+        - Assessments
+      summary: Create Online Test (Assignment)
+      description: |
+        Create a new Assignment (Online Test) to be sent to Students.
+
+        ## Use Case
+        TA creates an Online Test assignment with a link to an external assessment
+        platform (Google Form, TestGorilla, etc.) and configures submission settings.
+
+        ## Business Rules
+        - BRS-ASM-001: Only Managers assigned as graders can grade the Assignment
+        - BRS-ASM-003: Submission files must match allowed formats (PDF/DOC/DOCX/XLS/XLSX/PPT/PPTX)
+        - BRS-ASM-005: Students can submit multiple files (no zip required)
+
+        ## Ontology Trace
+        - Source: 5.ontology/assessment/assignment.yaml#Assignment
+        - Aggregate Root: true
+      operationId: createAssignment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAssignmentRequest'
+      responses:
+        '201':
+          description: Assignment created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignmentResponse'
+        '400':
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - User not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - User not authorized to create assignments
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /assessments/{id}/submit:
+    post:
+      tags:
+        - Submissions
+      summary: Submit Assignment
+      description: |
+        Submit an Assignment (Student submits their work).
+
+        ## Use Case
+        Student submits their assignment by providing attachments before the deadline.
+        System validates file types against allowed formats and checks if submission
+        is before deadline (with configurable grace period).
+
+        ## Business Rules
+        - BRS-SUB-001: Submission must be before deadline (configurable grace period)
+        - BRS-SUB-002: File attachments must match allowed file types
+
+        ## Ontology Trace
+        - Source: 5.ontology/assessment/submission.yaml#Submission
+        - Aggregate Root: true
+      operationId: submitAssignment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: "Assignment ID (format: ASMNT-XXXXXX)"
+          schema:
+            type: string
+            pattern: "^ASMNT-\\d{6}$"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitAssignmentRequest'
+      responses:
+        '201':
+          description: Assignment submitted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmissionResponse'
+        '400':
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - Cannot submit (assignment closed or not authorized)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflict - Already submitted or past deadline
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /assessments/{id}/grading-tasks/create:
+    post:
+      tags:
+        - GradingTasks
+      summary: Create Grading Task
+      description: |
+        Create a GradingTask for a Manager to grade submissions.
+
+        ## Use Case
+        TA creates a grading task and assigns it to a Manager. The task includes
+        a list of submissions that the Manager needs to grade.
+
+        ## Business Rules
+        - BRS-GTK-001: Task auto-completes when TA imports results
+        - BRS-GTK-002: Only assigned Managers can grade
+
+        ## Ontology Trace
+        - Source: 5.ontology/assessment/grading-task.yaml#GradingTask
+        - Aggregate Root: true
+      operationId: createGradingTask
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: "Assignment ID (format: ASMNT-XXXXXX)"
+          schema:
+            type: string
+            pattern: "^ASMNT-\\d{6}$"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateGradingTaskRequest'
+      responses:
+        '201':
+          description: GradingTask created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GradingTaskResponse'
+        '400':
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - User not authorized to create grading tasks
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Assignment not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /assessments/{submission_id}/grade:
+    post:
+      tags:
+        - Grading
+      summary: Score Submission
+      description: |
+        Grade a Submission and record the score.
+
+        ## Use Case
+        Manager (grader) grades a submission by providing a score (0-100),
+        pass/fail result, and optional comments.
+
+        ## Business Rules
+        - BRS-GRD-001: Only Managers assigned to the Assignment can grade
+        - BRS-GRD-002: Score must be in range 0-100
+
+        ## Ontology Trace
+        - Source: 5.ontology/assessment/grading.yaml#Grading
+        - Aggregate Root: true
+      operationId: gradeSubmission
+      parameters:
+        - name: submission_id
+          in: path
+          required: true
+          description: "Submission ID (format: SUB-XXXXXX)"
+          schema:
+            type: string
+            pattern: "^SUB-\\d{6}$"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GradeSubmissionRequest'
+      responses:
+        '201':
+          description: Submission graded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GradingResponse'
+        '400':
+          description: Invalid request body (e.g., score out of range)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - Grader not assigned to this assignment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Submission not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflict - Already graded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /assessments/{submission_id}/result:
+    get:
+      tags:
+        - Assessments
+      summary: Get Assessment Result
+      description: |
+        Get the assessment result for a specific submission.
+
+        ## Use Case
+        Retrieve the grading result (score, pass/fail, comments) for a submission.
+        Used by Students to view their results or by other systems to fetch
+        assessment outcomes.
+
+        ## Ontology Trace
+        - Source: 5.ontology/assessment/grading.yaml#Grading
+        - Related: Submission
+      operationId: getAssessmentResult
+      parameters:
+        - name: submission_id
+          in: path
+          required: true
+          description: "Submission ID (format: SUB-XXXXXX)"
+          schema:
+            type: string
+            pattern: "^SUB-\\d{6}$"
+      responses:
+        '200':
+          description: Assessment result retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssessmentResultResponse'
+        '404':
+          description: Submission or Grading not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - User not authorized to view this result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    # === Request Schemas ===
+
+    CreateAssignmentRequest:
+      description: Request to create a new Assignment (Online Test)
+      type: object
+      required:
+        - event_id
+        - title
+        - link
+        - deadline
+        - graders
+      properties:
+        event_id:
+          type: string
+          description: Event ID that this Assignment belongs to
+        title:
+          type: string
+          maxLength: 255
+          description: Assignment title
+        description:
+          type: string
+          description: Detailed description of the assignment
+        link:
+          type: string
+          format: uri
+          maxLength: 500
+          description: Link to complete the assignment (Google Form, TestGorilla, etc.)
+        attachment_id:
+          type: string
+          description: Attachment ID for supplementary files
+        deadline:
+          type: string
+          format: date-time
+          description: Submission deadline
+        graders:
+          type: array
+          items:
+            type: string
+          description: List of Grader user IDs assigned to grade this assignment
+          minItems: 1
+        allowed_file_types:
+          type: array
+          items:
+            type: string
+            enum: [PDF, DOC, DOCX, XLS, XLSX, PPT, PPTX]
+          description: Allowed file types for submission
+          default: [PDF, DOC, DOCX, XLS, XLSX, PPT, PPTX]
+        max_file_size:
+          type: integer
+          minimum: 0
+          description: Maximum file size in bytes
+        multiple_files_allowed:
+          type: boolean
+          description: Allow multiple file submissions without zipping
+          default: true
+
+    SubmitAssignmentRequest:
+      description: Request to submit an Assignment
+      type: object
+      required:
+        - application_id
+        - candidate_rr_id
+        - attachments
+      properties:
+        application_id:
+          type: string
+          description: Application ID of the submitting Student
+        candidate_rr_id:
+          type: string
+          description: Candidate Record Reference ID
+        attachments:
+          type: array
+          items:
+            type: string
+          description: List of attachment IDs being submitted
+          minItems: 1
+
+    CreateGradingTaskRequest:
+      description: Request to create a GradingTask
+      type: object
+      required:
+        - grader_id
+        - submissions
+      properties:
+        grader_id:
+          type: string
+          description: Manager user ID assigned to grade
+        submissions:
+          type: array
+          items:
+            type: string
+          description: List of Submission IDs to be graded
+          minItems: 1
+        deadline:
+          type: string
+          format: date-time
+          description: Deadline for completing the grading task
+
+    GradeSubmissionRequest:
+      description: Request to grade a Submission
+      type: object
+      required:
+        - grader_id
+        - score
+        - pass_fail
+      properties:
+        grader_id:
+          type: string
+          description: User ID of the grader (Manager)
+        score:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 100
+          description: Score from 0 to 100
+        pass_fail:
+          type: string
+          enum: [PASS, FAIL, NEEDS_DISCUSSION]
+          description: Pass/Fail result
+        comment:
+          type: string
+          description: Grader's comments and feedback
+
+    # === Response Schemas ===
+
+    AssignmentResponse:
+      description: Assignment response with full details
+      type: object
+      properties:
+        assignment_id:
+          type: string
+          description: "Unique identifier (format: ASMNT-XXXXXX)"
+        event_id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        link:
+          type: string
+          format: uri
+        attachment_id:
+          type: string
+        deadline:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [DRAFT, ACTIVE, CLOSED, GRADING, COMPLETED, CANCELLED]
+        graders:
+          type: array
+          items:
+            type: string
+        allowed_file_types:
+          type: array
+          items:
+            type: string
+        max_file_size:
+          type: integer
+        multiple_files_allowed:
+          type: boolean
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    SubmissionResponse:
+      description: Submission response with full details
+      type: object
+      properties:
+        submission_id:
+          type: string
+          description: "Unique identifier (format: SUB-XXXXXX)"
+        assignment_id:
+          type: string
+        application_id:
+          type: string
+        candidate_rr_id:
+          type: string
+        attachments:
+          type: array
+          items:
+            type: string
+        submitted_at:
+          type: string
+          format: date-time
+        is_late:
+          type: boolean
+        status:
+          type: string
+          enum: [SUBMITTED, GRADING, GRADED, LATE, RESUBMITTED]
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    GradingTaskResponse:
+      description: GradingTask response with full details
+      type: object
+      properties:
+        task_id:
+          type: string
+          description: "Unique identifier (format: GTK-XXXXXX)"
+        assignment_id:
+          type: string
+        grader_id:
+          type: string
+        submissions:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum: [PENDING, IN_PROGRESS, COMPLETED, CANCELLED]
+        completed_at:
+          type: string
+          format: date-time
+        deadline:
+          type: string
+          format: date-time
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    GradingResponse:
+      description: Grading response with full details
+      type: object
+      properties:
+        grading_id:
+          type: string
+          description: "Unique identifier (format: GRD-XXXXXX)"
+        submission_id:
+          type: string
+        grader_id:
+          type: string
+        score:
+          type: number
+          format: float
+        comment:
+          type: string
+        pass_fail:
+          type: string
+          enum: [PASS, FAIL, NEEDS_DISCUSSION]
+        graded_at:
+          type: string
+          format: date-time
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    AssessmentResultResponse:
+      description: Complete assessment result including submission and grading info
+      type: object
+      properties:
+        submission:
+          $ref: '#/components/schemas/SubmissionResponse'
+        grading:
+          $ref: '#/components/schemas/GradingResponse'
+        assignment:
+          type: object
+          properties:
+            assignment_id:
+              type: string
+            title:
+              type: string
+            deadline:
+              type: string
+              format: date-time
+
+    Error:
+      description: Error response
+      type: object
+      required:
+        - error
+        - message
+        - status
+      properties:
+        error:
+          type: string
+          description: Error code
+        message:
+          type: string
+          description: Detailed error message
+        status:
+          type: integer
+          description: HTTP status code
+        details:
+          type: object
+          description: Additional error details
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT bearer token for authentication
+
+security:
+  - bearerAuth: []

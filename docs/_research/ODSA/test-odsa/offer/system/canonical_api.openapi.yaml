@@ -1,0 +1,637 @@
+openapi: 3.0.3
+info:
+  title: ODDS System - Offer Context Canonical API
+  description: |
+    Canonical API cho Offer Context - Quản lý thư mời nhận việc (Offer).
+
+    ## Entities
+    - **Offer**: Thư mời nhận việc với lương, phúc lợi, deadline
+    - **OfferResponse**: Phản hồi của Student (Accept/Reject)
+    - **OfferReminder**: Reminder record (24h/2h trước deadline)
+    - **CandidateScan**: Scan documents sau khi Accept Offer
+    - **CandidateTransfer**: Transfer Candidate sang hệ thống CnB
+
+    ## Lifecycle
+    DRAFT → SENT → ACCEPTED/REJECTED/EXPIRED → CANCELLED
+
+    ## Business Rules
+    - Offer chỉ được tạo cho Candidates Pass Interview
+    - Student chỉ có Accept/Reject options (không Negotiate)
+    - Auto-remind 24h + 2h trước deadline (configurable)
+    - Auto-Expire sau deadline, grace period cho TA reassign
+    - Auto-Reject sau grace period nếu TA không action
+  version: 1.0.0
+  contact:
+    name: xTalent ATS
+    url: https://docs.xtalent.io/ats/offer
+
+servers:
+  - url: /api/v1/offer
+    description: Offer Context API
+
+tags:
+  - name: Offers
+    description: CRUD operations cho Offer
+  - name: Offer Lifecycle
+    description: Lifecycle transitions (Send, Accept, Reject, Expire)
+  - name: Document Scanning
+    description: Scan documents sau khi Accept Offer
+  - name: Candidate Transfer
+    description: Transfer sang hệ thống CnB
+
+paths:
+  /offers/create:
+    post:
+      tags:
+        - Offers
+      summary: Create Offer
+      description: |
+        Tạo Offer mới cho Candidate.
+
+        **Preconditions:**
+        - Candidate phải ở stage INTERVIEW
+        - Interview result = PASS
+        - Request phải được map trong Event
+
+        **Traceability:**
+        - Use Case: UC-ATS-OFFER-001
+        - Ontology: Offer
+      operationId: createOffer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOfferRequest'
+      responses:
+        '201':
+          description: Offer created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Offer'
+        '400':
+          description: Invalid input (Candidate not Pass Interview)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Application or Request not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Offer already exists for this Application
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /offers/{id}/send:
+    post:
+      tags:
+        - Offer Lifecycle
+      summary: Send Offer
+      description: |
+        Gửi Offer cho Candidate.
+        Transition: DRAFT → SENT
+
+        **Traceability:**
+        - Use Case: UC-ATS-OFFER-002
+        - Event: OfferSent
+      operationId: sendOffer
+      parameters:
+        - $ref: '#/components/parameters/OfferId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                send_by:
+                  type: string
+                  description: User ID gửi Offer
+      responses:
+        '200':
+          description: Offer sent successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Offer'
+        '400':
+          description: Invalid state (Offer not in DRAFT)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Offer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /offers/{id}/accept:
+    post:
+      tags:
+        - Offer Lifecycle
+      summary: Accept Offer
+      description: |
+        Candidate chấp nhận Offer.
+        Transition: SENT → ACCEPTED
+
+        **Traceability:**
+        - Use Case: UC-ATS-OFFER-003
+        - Event: OfferAccepted
+      operationId: acceptOffer
+      parameters:
+        - $ref: '#/components/parameters/OfferId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AcceptOfferRequest'
+      responses:
+        '200':
+          description: Offer accepted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Offer'
+        '400':
+          description: Invalid state (Offer not in SENT)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Offer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /offers/{id}/reject:
+    post:
+      tags:
+        - Offer Lifecycle
+      summary: Reject Offer
+      description: |
+        Candidate từ chối Offer.
+        Transition: SENT → REJECTED
+
+        **Traceability:**
+        - Use Case: UC-ATS-OFFER-004
+        - Event: OfferRejected
+      operationId: rejectOffer
+      parameters:
+        - $ref: '#/components/parameters/OfferId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RejectOfferRequest'
+      responses:
+        '200':
+          description: Offer rejected successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Offer'
+        '400':
+          description: Invalid state (Offer not in SENT)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Offer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /offers/{id}/expire:
+    post:
+      tags:
+        - Offer Lifecycle
+      summary: Expire Offer
+      description: |
+        Auto-expire Offer khi deadline qua.
+        Transition: SENT → EXPIRED
+
+        **Traceability:**
+        - Use Case: UC-ATS-OFFER-005
+        - Event: OfferExpired
+      operationId: expireOffer
+      parameters:
+        - $ref: '#/components/parameters/OfferId'
+      responses:
+        '200':
+          description: Offer expired successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Offer'
+        '400':
+          description: Invalid state (Offer not in SENT or deadline not passed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Offer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /offers/{id}/cancel:
+    post:
+      tags:
+        - Offer Lifecycle
+      summary: Cancel Offer
+      description: |
+        Hủy Offer (bởi TA).
+        Transition: ANY → CANCELLED
+
+        **Traceability:**
+        - Use Case: UC-ATS-OFFER-006
+        - Event: OfferCancelled
+      operationId: cancelOffer
+      parameters:
+        - $ref: '#/components/parameters/OfferId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - reason
+                - cancelled_by
+              properties:
+                reason:
+                  type: string
+                  description: Lý do hủy
+                cancelled_by:
+                  type: string
+                  description: User ID hủy Offer
+      responses:
+        '200':
+          description: Offer cancelled successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Offer'
+        '400':
+          description: Invalid state transition
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Offer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /offers/{id}/scan-documents:
+    post:
+      tags:
+        - Document Scanning
+      summary: Scan Documents
+      description: |
+        Scan documents của Candidate sau khi Accept Offer.
+
+        **Preconditions:**
+        - Offer status = ACCEPTED
+
+        **Traceability:**
+        - Use Case: UC-ATS-OFFER-007
+        - Event: DocumentsScanned
+      operationId: scanDocuments
+      parameters:
+        - $ref: '#/components/parameters/OfferId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScanDocumentsRequest'
+      responses:
+        '201':
+          description: Documents scanned successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CandidateScan'
+        '400':
+          description: Offer not accepted or invalid documents
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Offer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /offers/{id}/transfer:
+    post:
+      tags:
+        - Candidate Transfer
+      summary: Transfer to CnB
+      description: |
+        Transfer Candidate sang hệ thống CnB.
+
+        **Preconditions:**
+        - Offer status = ACCEPTED
+        - Documents scanned = COMPLETED
+
+        **Traceability:**
+        - Use Case: UC-ATS-OFFER-008
+        - Event: CandidateTransferred
+      operationId: transferToCnB
+      parameters:
+        - $ref: '#/components/parameters/OfferId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                force:
+                  type: boolean
+                  default: false
+                  description: Force transfer即使 có lỗi
+      responses:
+        '201':
+          description: Transfer initiated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CandidateTransfer'
+        '400':
+          description: Preconditions not met
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Offer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  parameters:
+    OfferId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^OFR-\d{6}$'
+      description: Offer ID (OFR-XXXXXX)
+
+  schemas:
+    # =====================
+    # Request Schemas
+    # =====================
+    CreateOfferRequest:
+      type: object
+      required:
+        - application_id
+        - candidate_rr_id
+        - request_id
+        - salary
+        - deadline
+        - created_by
+      properties:
+        application_id:
+          type: string
+          description: Application ID mà Offer được tạo cho
+        candidate_rr_id:
+          type: string
+          description: Candidate RR ID
+        request_id:
+          type: string
+          description: Request ID từ Request tuyển dụng
+        salary:
+          type: number
+          format: float
+          minimum: 0
+          description: Mức lương đề xuất
+        benefits:
+          type: string
+          description: Phúc lợi (mô tả chi tiết)
+        deadline:
+          type: string
+          format: date-time
+          description: Deadline phản hồi Offer
+        template_id:
+          type: string
+          description: Offer Template ID từ library
+        auto_remind_enabled:
+          type: boolean
+          default: true
+          description: Auto remind 24h + 2h trước deadline
+        grace_period_hours:
+          type: integer
+          default: 24
+          minimum: 0
+          maximum: 168
+          description: Grace period sau deadline (giờ)
+        created_by:
+          type: string
+          description: User ID tạo Offer (TA)
+
+    AcceptOfferRequest:
+      type: object
+      required:
+        - accepted_by
+      properties:
+        accepted_by:
+          type: string
+          description: Student ID chấp nhận Offer
+
+    RejectOfferRequest:
+      type: object
+      required:
+        - rejected_by
+        - reason
+      properties:
+        rejected_by:
+          type: string
+          description: Student ID từ chối Offer
+        reason:
+          type: string
+          description: Lý do từ chối
+
+    ScanDocumentsRequest:
+      type: object
+      required:
+        - documents
+        - scanned_by
+      properties:
+        documents:
+          type: array
+          items:
+            type: string
+          description: Danh sách document IDs đã scan
+        scanned_by:
+          type: string
+          description: User ID thực hiện scan
+
+    # =====================
+    # Entity Schemas
+    # =====================
+    Offer:
+      type: object
+      properties:
+        offer_id:
+          type: string
+          pattern: '^OFR-\d{6}$'
+          example: 'OFR-000001'
+        application_id:
+          type: string
+        candidate_rr_id:
+          type: string
+        request_id:
+          type: string
+        salary:
+          type: number
+          format: float
+        benefits:
+          type: string
+        deadline:
+          type: string
+          format: date-time
+        status:
+          $ref: '#/components/schemas/OfferStatus'
+        template_id:
+          type: string
+        reoffer_count:
+          type: integer
+          minimum: 0
+          maximum: 3
+        auto_remind_enabled:
+          type: boolean
+        grace_period_hours:
+          type: integer
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        expired_at:
+          type: string
+          format: date-time
+
+    OfferStatus:
+      type: string
+      enum:
+        - DRAFT
+        - SENT
+        - ACCEPTED
+        - REJECTED
+        - EXPIRED
+        - CANCELLED
+
+    CandidateScan:
+      type: object
+      properties:
+        scan_id:
+          type: string
+          pattern: '^OSCN-\d{6}$'
+          example: 'OSCN-000001'
+        candidate_rr_id:
+          type: string
+        documents:
+          type: array
+          items:
+            type: string
+        status:
+          $ref: '#/components/schemas/ScanStatus'
+        scanned_at:
+          type: string
+          format: date-time
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    ScanStatus:
+      type: string
+      enum:
+        - PENDING
+        - IN_PROGRESS
+        - COMPLETED
+        - FAILED
+
+    CandidateTransfer:
+      type: object
+      properties:
+        transfer_id:
+          type: string
+          pattern: '^OTRF-\d{6}$'
+          example: 'OTRF-000001'
+        candidate_rr_id:
+          type: string
+        cnb_reference_id:
+          type: string
+        transferred_at:
+          type: string
+          format: date-time
+        status:
+          $ref: '#/components/schemas/TransferStatus'
+        error_message:
+          type: string
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    TransferStatus:
+      type: string
+      enum:
+        - PENDING
+        - IN_PROGRESS
+        - COMPLETED
+        - FAILED
+        - RETRY
+
+    # =====================
+    # Error Schema
+    # =====================
+    Error:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          description: Error code
+        message:
+          type: string
+          description: Error message
+        details:
+          type: object
+          description: Additional error details

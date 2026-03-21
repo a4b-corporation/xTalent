@@ -1,0 +1,146 @@
+id: https://xtalent.io/ontology/ats/offer/candidate-scan
+name: candidate_scan_ontology
+version: "1.0.0"
+description: "CandidateScan - Scan documents sau khi Accept Offer"
+
+prefixes:
+  xt: https://xtalent.io/ontology/
+  oracle: https://oracle.com/hcm/
+  sap: https://successfactors.sap.com/
+  workday: https://workday.com/
+
+default_range: string
+
+slots:
+  # --- Identifier ---
+  scan_id:
+    description: "Unique identifier cho CandidateScan"
+    identifier: true
+    required: true
+    pattern: "^OSCN-\\d{6}$"
+    annotations:
+      example: "OSCN-000001"
+
+  # --- Core Fields ---
+  candidate_rr_id:
+    description: "Candidate RR ID"
+    required: true
+    annotations:
+      reference: "CandidateRR.candidate_rr_id"
+
+  documents:
+    description: "Danh sách document IDs đã scan"
+    range: string
+    multivalued: true
+    required: true
+
+  status:
+    description: "Trạng thái scan"
+    range: ScanStatusEnum
+    required: true
+
+  scanned_at:
+    description: "Thời điểm scan"
+    range: datetime
+    required: true
+
+  # --- Audit Fields ---
+  created_by:
+    description: "User ID thực hiện scan"
+    required: true
+    annotations:
+      reference: "User.user_id"
+
+  created_at:
+    description: "Timestamp tạo CandidateScan"
+    range: datetime
+    required: true
+
+classes:
+  CandidateScan:
+    description: |
+      CandidateScan - Scan documents sau khi Accept Offer.
+      Aggregate Root trong Offer context.
+
+    annotations:
+      oracle_hcm_term: "CandidateScan"
+      sap_term: "CandidateScan"
+      workday_term: "CandidateScan"
+      disambiguation: "xTalent: CandidateScan = Scan documents. Oracle: CandidateScan. SAP: CandidateScan. Workday: CandidateScan. Xem docs.xtalent.io/ats/offer/candidate-scan."
+
+      module: "ats"
+      sub_module: "offer"
+      version: "1.0.0"
+      bounded_context: "Offer"
+      aggregate_root: true
+
+      ouroboros_evolution:
+        iteration: "1.0.0"
+        parent_version: null
+        evaluation_status: "pending"
+        last_evaluated: null
+        evolution_notes: "Initial version"
+
+      validation_hooks:
+        odds_system_builder:
+          required_for: true
+          validates: ["table_generation", "fk_references"]
+
+      see_also: "https://docs.xtalent.io/ats/offer/candidate-scan"
+
+    slots:
+      - scan_id
+      - candidate_rr_id
+      - documents
+      - status
+      - scanned_at
+      - created_by
+      - created_at
+
+    slot_usage:
+      scan_id:
+        required: true
+        identifier: true
+
+      candidate_rr_id:
+        required: true
+
+      documents:
+        required: true
+
+      status:
+        required: true
+
+      scanned_at:
+        required: true
+
+      created_by:
+        required: true
+
+      created_at:
+        required: true
+
+    rules:
+      - description: "BRS-OSCN-001: Scan chỉ được thực hiện sau khi Accept Offer"
+        preconditions:
+          slot_conditions:
+            candidate_rr_id:
+              slot_value_conditions:
+                offer_response:
+                  equals_string: "ACCEPT"
+        postconditions:
+          slot_conditions: {}
+
+# === ENUMS ===
+enums:
+  ScanStatusEnum:
+    description: "Trạng thái scan"
+    permissible_values:
+      PENDING:
+        description: "Chưa scan"
+      IN_PROGRESS:
+        description: "Đang scan"
+      COMPLETED:
+        description: "Hoàn tất"
+      FAILED:
+        description: "Thất bại"

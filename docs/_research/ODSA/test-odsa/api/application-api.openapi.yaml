@@ -1,0 +1,1418 @@
+# API Contract: Application Context
+# Derived from:
+#   - Glossary: 6.glossary/application.md
+#   - Flows: 7.flows/application-flow.md
+#   - Ontology: 5.ontology/application/*.yaml
+openapi: "3.0.3"
+info:
+  title: Application API
+  description: |
+    API cho Application Bounded Context - Quản lý đơn ứng tuyển (Application) của Student vào Event/Track.
+
+    ## Overview
+    API này cung cấp các endpoints để:
+    - Submit applications vào Event/Track
+    - Fill application forms với dynamic form fields
+    - Withdraw applications
+    - Get application status
+    - Duplicate detection (internal use)
+
+    ## Business Rules
+    - **BR-APP-001**: Chỉ được apply khi Event đang active (startDate ≤ now ≤ endDate)
+    - **BR-APP-002**: Student chỉ được apply 1 Track/Event
+    - **BR-APP-003**: Student không được apply cùng 1 Event nhiều lần
+    - **BR-APP-004**: Duplicate detection dựa trên SĐT HOẶC StudentID match
+    - **BR-APP-005**: Application phải có đầy đủ form fields bắt buộc
+    - **BR-APP-006**: Attachments phải đúng format cho phép (PDF, Word, Image)
+    - **BR-APP-007**: File size tối đa cho attachments (configurable, default: 10MB)
+
+    ## References
+    - Flow Document: [application-flow.md](../7.flows/application-flow.md)
+    - Glossary: [application.md](../6.glossary/application.md)
+    - Ontology: [5.ontology/application/](../5.ontology/application/)
+  version: "1.0.0"
+  contact:
+    name: xTalent ATS Team
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://api.xtalent.io/ats/v1
+    description: Production server
+  - url: https://staging-api.xtalent.io/ats/v1
+    description: Staging server
+  - url: https://dev-api.xtalent.io/ats/v1
+    description: Development server
+
+tags:
+  - name: Applications
+    description: Application submission and management
+  - name: Application Forms
+    description: Dynamic form fields for applications
+  - name: Attachments
+    description: File attachments (CV, certificates, etc.)
+  - name: Internal
+    description: Internal endpoints (duplicate detection, admin operations)
+
+paths:
+  /applications/submit:
+    post:
+      tags:
+        - Applications
+      summary: Submit Application
+      description: |
+        Submit a new application to an Event/Track.
+
+        ## Flow Reference
+        [Submit Application Flow](../7.flows/application-flow.md#phase-2-student-submit-application)
+
+        ## Preconditions
+        - Event must exist with status = PUBLISHED or ACTIVE
+        - Application window must be open (startDate ≤ now ≤ endDate)
+        - Student must have a valid student_id
+        - Student must not have applied to this Event before (BR-APP-003)
+        - Student must not have applied to another Track in the same Event (BR-APP-002)
+
+        ## Postconditions
+        - Application created with status = SUBMITTED
+        - Application ID generated (pattern: APP-YYYYNNNN)
+        - FormFieldValues saved (if any)
+        - QuestionAnswers saved
+        - Attachments metadata saved
+        - ApplicationSubmitted event published
+        - Confirmation email sent to Student
+        - Duplicate detection triggered automatically
+
+        ## Business Rules Enforced
+        - BR-APP-001: Event must be active
+        - BR-APP-002: One Track per Event per Student
+        - BR-APP-003: No duplicate applications to same Event
+        - BR-APP-005: Required form fields must be filled
+        - BR-APP-006: Attachments must be correct format
+        - BR-APP-007: File size must be within limit
+      operationId: submitApplication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmitApplicationRequest"
+            examples:
+              standard:
+                summary: Standard Application Submission
+                value:
+                  student_id: "STU-000001"
+                  event_id: "EVT-000001"
+                  track_id: "TRK-000001"
+                  form_fields:
+                    - field_name: "expected_salary"
+                      field_value: "10000000"
+                      field_type: "NUMBER"
+                    - field_name: "availability"
+                      field_value: "2026-06-01"
+                      field_type: "DATE"
+                  question_answers:
+                    - question_id: "Q-001"
+                      question_text: "Describe your OOP knowledge"
+                      question_type: "LONG_TEXT"
+                      answer_text: "I have 2 years of experience with OOP principles..."
+                    - question_id: "Q-002"
+                      question_text: "Are you willing to relocate?"
+                      question_type: "YES_NO"
+                      answer_text: "YES"
+                  attachments:
+                    - file_name: "NguyenVanA_CV.pdf"
+                      file_type: "PDF"
+                      file_size: 2048000
+                      attachment_type: "CV"
+                      file_url: "s3://xtalent-attachments/cv/APP-000001_CV.pdf"
+                    - file_name: "NguyenVanA_Transcript.pdf"
+                      file_type: "PDF"
+                      file_size: 1024000
+                      attachment_type: "TRANSCRIPT"
+                      file_url: "s3://xtalent-attachments/transcript/APP-000001_Transcript.pdf"
+      responses:
+        "201":
+          description: Application submitted successfully
+          headers:
+            Location:
+              description: URI of the created Application
+              schema:
+                type: string
+                format: uri
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Application"
+              examples:
+                success:
+                  summary: Application Created Successfully
+                  value:
+                    application_id: "APP-20260001"
+                    event_id: "EVT-000001"
+                    track_id: "TRK-000001"
+                    student_id: "STU-000001"
+                    status: "SUBMITTED"
+                    submitted_at: "2026-04-15T10:30:00Z"
+                    created_by: "STU-000001"
+                    created_at: "2026-04-15T10:30:00Z"
+                    updated_at: "2026-04-15T10:30:00Z"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /applications/{application_id}:
+    get:
+      tags:
+        - Applications
+      summary: Get Application Status
+      description: |
+        Retrieve application details and current status.
+
+        ## Flow Reference
+        [Get Application Status](../7.flows/application-flow.md#postconditions-happy-path)
+
+        ## Use Cases
+        - Student checks their application status
+        - TA views application details for screening
+        - System retrieves application for duplicate detection
+
+        ## Application Lifecycle States
+        - DRAFT: Đang nháp, chưa submit
+        - SUBMITTED: Đã submit
+        - SCREENING: Đang screening
+        - TEST: Đã qua vòng screening, chờ test
+        - INTERVIEW: Đã qua vòng test, chờ interview
+        - OFFER: Đã qua vòng interview, chờ offer
+        - ACCEPTED: Đã accept offer
+        - REJECTED: Bị reject
+        - WITHDRAWN: Rút đơn
+      operationId: getApplication
+      parameters:
+        - $ref: "#/components/parameters/ApplicationId"
+        - name: include
+          in: query
+          description: Additional details to include
+          required: false
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [form_fields, question_answers, attachments, student]
+          style: form
+          explode: false
+      responses:
+        "200":
+          description: Application details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplicationDetail"
+              examples:
+                standard:
+                  summary: Application with Full Details
+                  value:
+                    application_id: "APP-20260001"
+                    event_id: "EVT-000001"
+                    track_id: "TRK-000001"
+                    student_id: "STU-000001"
+                    status: "SCREENING"
+                    submitted_at: "2026-04-15T10:30:00Z"
+                    created_by: "STU-000001"
+                    created_at: "2026-04-15T10:30:00Z"
+                    updated_at: "2026-04-15T11:00:00Z"
+                    student:
+                      full_name: "NGUYEN VAN A"
+                      email: "nguyenvana@gmail.com"
+                      phone: "0901234567"
+                      university: "Đại học Bách Khoa Hà Nội"
+                      major: "Computer Science"
+                      gpa: 3.5
+                    form_fields:
+                      - field_name: "expected_salary"
+                        field_label: "Expected Salary"
+                        field_type: "NUMBER"
+                        field_value: "10000000"
+                        is_required: true
+                      - field_name: "availability"
+                        field_label: "Availability Date"
+                        field_type: "DATE"
+                        field_value: "2026-06-01"
+                        is_required: true
+                    question_answers:
+                      - answer_id: "ANS-000001"
+                        question_id: "Q-001"
+                        question_text: "Describe your OOP knowledge"
+                        question_type: "LONG_TEXT"
+                        answer_text: "I have 2 years of experience with OOP principles..."
+                    attachments:
+                      - attachment_id: "ATT-000001"
+                        file_name: "NguyenVanA_CV.pdf"
+                        file_type: "PDF"
+                        file_size: 2048000
+                        attachment_type: "CV"
+                        upload_status: "COMPLETED"
+                        file_url: "s3://xtalent-attachments/cv/APP-000001_CV.pdf"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /applications/{application_id}/form:
+    put:
+      tags:
+        - Application Forms
+      summary: Update Application Form
+      description: |
+        Update form fields for a DRAFT application.
+
+        ## Flow Reference
+        [Fill Application Form](../7.flows/application-flow.md#phase-1-student-dien-application-form)
+
+        ## Preconditions
+        - Application must be in DRAFT status
+        - Event must allow application updates (configurable per Event)
+
+        ## Business Rules
+        - BR-APP-005: Required form fields must be filled
+      operationId: updateApplicationForm
+      parameters:
+        - $ref: "#/components/parameters/ApplicationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                form_fields:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/FormFieldValueInput"
+              required: [form_fields]
+            examples:
+              update:
+                summary: Update Form Fields
+                value:
+                  form_fields:
+                    - field_name: "expected_salary"
+                      field_value: "12000000"
+                      field_type: "NUMBER"
+                    - field_name: "availability"
+                      field_value: "2026-07-01"
+                      field_type: "DATE"
+      responses:
+        "200":
+          description: Form updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Application"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /applications/{application_id}/withdraw:
+    post:
+      tags:
+        - Applications
+      summary: Withdraw Application
+      description: |
+        Withdraw a submitted application.
+
+        ## Flow Reference
+        [Application Withdraw](../7.flows/application-flow.md#notes)
+
+        ## Preconditions
+        - Application must be in SUBMITTED or SCREENING status
+        - Student can only withdraw before Screening begins (configurable)
+
+        ## Postconditions
+        - Application status changed to WITHDRAWN
+        - ApplicationWithdrawn event published
+        - Application cannot be resubmitted
+
+        ## Business Rules
+        - Terminal state: WITHDRAWN applications cannot be modified
+      operationId: withdrawApplication
+      parameters:
+        - $ref: "#/components/parameters/ApplicationId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  description: Optional reason for withdrawal
+                  maxLength: 500
+                  example: "Accepted another offer"
+            examples:
+              with_reason:
+                summary: Withdraw with Reason
+                value:
+                  reason: "Accepted another offer"
+      responses:
+        "200":
+          description: Application withdrawn successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Application"
+              examples:
+                withdrawn:
+                  summary: Application Withdrawn
+                  value:
+                    application_id: "APP-20260001"
+                    event_id: "EVT-000001"
+                    track_id: "TRK-000001"
+                    student_id: "STU-000001"
+                    status: "WITHDRAWN"
+                    submitted_at: "2026-04-15T10:30:00Z"
+                    updated_at: "2026-04-15T14:00:00Z"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Application cannot be withdrawn (already in terminal state)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                already_withdrawn:
+                  summary: Already Withdrawn
+                  value:
+                    error_code: "APPLICATION_ALREADY_WITHDRAWN"
+                    message: "Application APP-20260001 has already been withdrawn"
+                    details:
+                      current_status: "WITHDRAWN"
+
+  /applications/{application_id}/attachments:
+    post:
+      tags:
+        - Attachments
+      summary: Upload Attachment
+      description: |
+        Upload a file attachment to an application.
+
+        ## Flow Reference
+        [Attachments Upload](../7.flows/application-flow.md#phase-1-student-dien-application-form)
+
+        ## Business Rules
+        - BR-APP-006: Attachments must be correct format (PDF, Word, Image)
+        - BR-APP-007: File size must be within limit (default: 10MB)
+
+        ## Allowed File Types
+        - PDF, DOC, DOCX, XLS, XLSX, PPT, PPTX, JPG, PNG
+
+        ## Retry Policy
+        - File Storage Upload Failure: Exponential Backoff
+          - Attempt 1: 500ms delay
+          - Attempt 2: 2 seconds
+          - Attempt 3: 10 seconds
+      operationId: uploadAttachment
+      parameters:
+        - $ref: "#/components/parameters/ApplicationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AttachmentInput"
+            examples:
+              cv_upload:
+                summary: Upload CV
+                value:
+                  file_name: "NguyenVanA_CV.pdf"
+                  file_type: "PDF"
+                  file_size: 2048000
+                  attachment_type: "CV"
+                  file_url: "s3://xtalent-attachments/cv/APP-000001_CV.pdf"
+      responses:
+        "201":
+          description: Attachment uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Attachment"
+              examples:
+                uploaded:
+                  summary: Attachment Uploaded
+                  value:
+                    attachment_id: "ATT-000001"
+                    application_id: "APP-20260001"
+                    file_name: "NguyenVanA_CV.pdf"
+                    file_type: "PDF"
+                    file_size: 2048000
+                    file_url: "s3://xtalent-attachments/cv/APP-000001_CV.pdf"
+                    attachment_type: "CV"
+                    upload_status: "COMPLETED"
+                    uploaded_by: "STU-000001"
+                    uploaded_at: "2026-04-15T10:25:00Z"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "413":
+          description: File size exceeds maximum limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                file_too_large:
+                  summary: File Too Large
+                  value:
+                    error_code: "FILE_SIZE_EXCEEDED"
+                    message: "File size 15MB exceeds maximum allowed size of 10MB"
+                    details:
+                      max_size_bytes: 10485760
+                      actual_size_bytes: 15728640
+        "415":
+          description: Unsupported file format
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                unsupported_format:
+                  summary: Unsupported File Format
+                  value:
+                    error_code: "UNSUPPORTED_FILE_FORMAT"
+                    message: "File format 'EXE' is not allowed. Allowed formats: PDF, DOC, DOCX, XLS, XLSX, PPT, PPTX, JPG, PNG"
+                    details:
+                      allowed_types: ["PDF", "DOC", "DOCX", "XLS", "XLSX", "PPT", "PPTX", "JPG", "PNG"]
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /internal/duplicates/detect:
+    post:
+      tags:
+        - Internal
+      summary: Trigger Duplicate Detection
+      description: |
+        Internal endpoint to trigger duplicate detection after application submission.
+
+        ## Flow Reference
+        [Duplicate Detection](../7.flows/application-flow.md#phase-3-duplicate-detection-auto)
+
+        ## Duplicate Match Types
+        - PHONE: Match theo số điện thoại
+        - STUDENT_ID: Match theo Student ID
+        - EMAIL: Match theo email (optional, configurable)
+        - BOTH: Match cả SĐT và Student ID
+
+        ## Postconditions
+        - If duplicate found:
+          - Duplicate record created with status = PENDING
+          - Applications linked
+          - TA notified for review
+          - DuplicateDetected event published
+        - If no duplicate:
+          - Application moved to Screening queue
+
+        ## Business Rules
+        - BR-APP-004: Duplicate detection based on phone OR StudentID match
+      operationId: triggerDuplicateDetection
+      security:
+        - internalApiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                application_id:
+                  type: string
+                  description: Application ID to check for duplicates
+                  example: "APP-20260001"
+                student_id:
+                  type: string
+                  description: Student ID for duplicate matching
+                  example: "STU-000001"
+              required: [application_id, student_id]
+            examples:
+              detect:
+                summary: Trigger Duplicate Detection
+                value:
+                  application_id: "APP-20260001"
+                  student_id: "STU-000001"
+      responses:
+        "200":
+          description: Duplicate detection completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  duplicate_found:
+                    type: boolean
+                  duplicate_id:
+                    type: string
+                    nullable: true
+                  match_type:
+                    type: string
+                    nullable: true
+                    enum: [PHONE, STUDENT_ID, EMAIL, BOTH]
+                  matched_applications:
+                    type: array
+                    items:
+                      type: string
+                    nullable: true
+              examples:
+                duplicate_found:
+                  summary: Duplicate Found
+                  value:
+                    duplicate_found: true
+                    duplicate_id: "DUP-000001"
+                    match_type: "PHONE"
+                    matched_applications: ["APP-20260001", "APP-20260002"]
+                no_duplicate:
+                  summary: No Duplicate Found
+                  value:
+                    duplicate_found: false
+                    duplicate_id: null
+                    match_type: null
+                    matched_applications: []
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /internal/duplicates/{duplicate_id}/resolve:
+    post:
+      tags:
+        - Internal
+      summary: Resolve Duplicate
+      description: |
+        Internal endpoint for TA to resolve a duplicate record.
+
+        ## Flow Reference
+        [Duplicate Resolution](../7.flows/application-flow.md#case-duplicate-detected)
+
+        ## Resolution Methods
+        - REMOVE: Xóa 1 application
+        - MERGE: Merge thông tin 2 applications
+        - NO_ACTION: Không phải duplicate
+
+        ## Duplicate Lifecycle
+        - PENDING → REVIEWING: TA bắt đầu review
+        - REVIEWING → RESOLVED: TA quyết định remove/merge
+        - REVIEWING → IGNORED: TA quyết định không phải duplicate
+      operationId: resolveDuplicate
+      security:
+        - internalApiKey: []
+      parameters:
+        - $ref: "#/components/parameters/DuplicateId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                resolution_method:
+                  type: string
+                  enum: [REMOVE, MERGE, NO_ACTION]
+                  description: Phương thức resolve duplicate
+                notes:
+                  type: string
+                  description: TA notes for resolution
+                  maxLength: 1000
+              required: [resolution_method]
+            examples:
+              remove:
+                summary: Remove Duplicate
+                value:
+                  resolution_method: "REMOVE"
+                  notes: "Keep first application, remove duplicate"
+              merge:
+                summary: Merge Duplicates
+                value:
+                  resolution_method: "MERGE"
+                  notes: "Merge attachments from both applications"
+              no_action:
+                summary: Not a Duplicate
+                value:
+                  resolution_method: "NO_ACTION"
+                  notes: "Different candidates with similar phone numbers"
+      responses:
+        "200":
+          description: Duplicate resolved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Duplicate"
+              examples:
+                resolved:
+                  summary: Duplicate Resolved
+                  value:
+                    duplicate_id: "DUP-000001"
+                    application_id_1: "APP-20260001"
+                    application_id_2: "APP-20260002"
+                    match_type: "PHONE"
+                    status: "RESOLVED"
+                    resolved_at: "2026-04-15T15:00:00Z"
+                    resolved_by: "TA-000001"
+                    resolution_method: "REMOVE"
+                    created_by: "SYSTEM"
+                    created_at: "2026-04-15T10:35:00Z"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+components:
+  parameters:
+    ApplicationId:
+      name: application_id
+      in: path
+      required: true
+      description: Application ID (pattern: APP-NNNNNN)
+      schema:
+        type: string
+        pattern: "^APP-\\d{6}$"
+        example: "APP-20260001"
+
+    DuplicateId:
+      name: duplicate_id
+      in: path
+      required: true
+      description: Duplicate ID (pattern: DUP-NNNNNN)
+      schema:
+        type: string
+        pattern: "^DUP-\\d{6}$"
+        example: "DUP-000001"
+
+  schemas:
+    # === Request Schemas ===
+    SubmitApplicationRequest:
+      type: object
+      description: Request to submit a new application
+      properties:
+        student_id:
+          type: string
+          description: Student ID của người apply
+          pattern: "^STU-\\d{6}$"
+          example: "STU-000001"
+        event_id:
+          type: string
+          description: Event ID mà Student apply vào
+          pattern: "^EVT-\\d{6}$"
+          example: "EVT-000001"
+        track_id:
+          type: string
+          description: Track ID mà Student apply vào
+          pattern: "^TRK-\\d{6}$"
+          example: "TRK-000001"
+        form_fields:
+          type: array
+          description: Dynamic form field values (tùy Event config)
+          items:
+            $ref: "#/components/schemas/FormFieldValueInput"
+        question_answers:
+          type: array
+          description: Câu trả lời cho questions trong QuestionSet của Track
+          items:
+            $ref: "#/components/schemas/QuestionAnswerInput"
+        attachments:
+          type: array
+          description: File attachments metadata (CV, certificates, etc.)
+          items:
+            $ref: "#/components/schemas/AttachmentInput"
+      required:
+        - student_id
+        - event_id
+        - track_id
+
+    FormFieldValueInput:
+      type: object
+      description: Giá trị của dynamic form field
+      properties:
+        field_name:
+          type: string
+          description: Tên field (dynamic theo Event config)
+          example: "expected_salary"
+        field_value:
+          type: string
+          description: Giá trị của field
+          example: "10000000"
+        field_type:
+          $ref: "#/components/schemas/FieldTypeEnum"
+      required:
+        - field_name
+        - field_value
+        - field_type
+
+    QuestionAnswerInput:
+      type: object
+      description: Câu trả lời cho question
+      properties:
+        question_id:
+          type: string
+          description: Question ID từ QuestionSet
+          pattern: "^Q-\\d{3,}$"
+          example: "Q-001"
+        question_text:
+          type: string
+          description: Nội dung câu hỏi
+          example: "Describe your OOP knowledge"
+        question_type:
+          $ref: "#/components/schemas/QuestionTypeEnum"
+        answer_text:
+          type: string
+          description: Câu trả lời
+          example: "I have 2 years of experience with OOP principles..."
+      required:
+        - question_id
+        - question_text
+        - question_type
+        - answer_text
+
+    AttachmentInput:
+      type: object
+      description: File attachment metadata
+      properties:
+        file_name:
+          type: string
+          description: Tên file gốc
+          example: "NguyenVanA_CV.pdf"
+        file_type:
+          type: string
+          description: Loại file (PDF, DOC, DOCX, etc.)
+          example: "PDF"
+        file_size:
+          type: integer
+          description: Kích thước file (bytes)
+          minimum: 0
+          example: 2048000
+        attachment_type:
+          $ref: "#/components/schemas/AttachmentTypeEnum"
+        file_url:
+          type: string
+          description: URL lưu trữ file
+          example: "s3://xtalent-attachments/cv/APP-000001_CV.pdf"
+      required:
+        - file_name
+        - file_type
+        - file_size
+        - attachment_type
+        - file_url
+
+    # === Response Schemas ===
+    Application:
+      type: object
+      description: |
+        Application - đơn apply của Student vào Event/Track.
+        Aggregate Root trong Application context.
+
+        ## Lifecycle States
+        - DRAFT: Đang nháp
+        - SUBMITTED: Đã submit
+        - SCREENING: Đang screening
+        - TEST: Chờ test
+        - INTERVIEW: Chờ interview
+        - OFFER: Chờ offer
+        - ACCEPTED: Đã accept
+        - REJECTED: Bị reject
+        - WITHDRAWN: Rút đơn
+
+        ## References
+        - Glossary: [application.md](../6.glossary/application.md#entities-danh-tu)
+        - Ontology: [application.yaml](../5.ontology/application/application.yaml)
+      properties:
+        application_id:
+          type: string
+          description: Unique identifier cho Application
+          pattern: "^APP-\\d{6}$"
+          example: "APP-20260001"
+        event_id:
+          type: string
+          description: Event ID mà Student apply vào
+          pattern: "^EVT-\\d{6}$"
+          example: "EVT-000001"
+        track_id:
+          type: string
+          description: Track ID mà Student apply vào
+          pattern: "^TRK-\\d{6}$"
+          example: "TRK-000001"
+        student_id:
+          type: string
+          description: Student ID người apply
+          pattern: "^STU-\\d{6}$"
+          example: "STU-000001"
+        status:
+          $ref: "#/components/schemas/ApplicationStatusEnum"
+        submitted_at:
+          type: string
+          format: date-time
+          description: Thời điểm submit application
+          example: "2026-04-15T10:30:00Z"
+        created_by:
+          type: string
+          description: User ID tạo Application (student_id)
+          example: "STU-000001"
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp tạo Application
+          example: "2026-04-15T10:30:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: Timestamp cập nhật Application
+          example: "2026-04-15T10:30:00Z"
+      required:
+        - application_id
+        - event_id
+        - track_id
+        - student_id
+        - status
+        - submitted_at
+        - created_by
+        - created_at
+
+    ApplicationDetail:
+      type: object
+      description: Application với đầy đủ thông tin (student, form_fields, question_answers, attachments)
+      allOf:
+        - $ref: "#/components/schemas/Application"
+        - type: object
+          properties:
+            student:
+              $ref: "#/components/schemas/Student"
+            form_fields:
+              type: array
+              items:
+                $ref: "#/components/schemas/FormFieldValue"
+            question_answers:
+              type: array
+              items:
+                $ref: "#/components/schemas/QuestionAnswer"
+            attachments:
+              type: array
+              items:
+                $ref: "#/components/schemas/Attachment"
+
+    Student:
+      type: object
+      description: |
+        Student - thông tin sinh viên applicant trong hệ thống ATS.
+
+        ## References
+        - Glossary: [application.md](../6.glossary/application.md#entities-danh-tu)
+        - Ontology: [student.yaml](../5.ontology/application/student.yaml)
+      properties:
+        student_id:
+          type: string
+          description: Unique identifier cho Student
+          pattern: "^STU-\\d{6}$"
+          example: "STU-000001"
+        full_name:
+          type: string
+          description: Họ và tên đầy đủ
+          example: "NGUYEN VAN A"
+        email:
+          type: string
+          format: email
+          description: Email liên lạc
+          example: "nguyenvana@gmail.com"
+        phone:
+          type: string
+          description: Số điện thoại
+          pattern: "^\\+?[0-9]{10,15}$"
+          example: "0901234567"
+        university:
+          type: string
+          description: Trường đại học
+          example: "Đại học Bách Khoa Hà Nội"
+        major:
+          type: string
+          description: Chuyên ngành học
+          example: "Computer Science"
+        gpa:
+          type: number
+          format: float
+          description: Điểm GPA (0.0 - 4.0)
+          minimum: 0.0
+          maximum: 4.0
+          example: 3.5
+        graduation_year:
+          type: integer
+          description: Năm tốt nghiệp dự kiến
+          minimum: 2020
+          maximum: 2030
+          example: 2026
+
+    FormFieldValue:
+      type: object
+      description: |
+        FormFieldValue - Giá trị các form fields động theo Event config.
+
+        ## References
+        - Glossary: [application.md](../6.glossary/application.md#entities-danh-tu)
+        - Ontology: [form-field-value.yaml](../5.ontology/application/form-field-value.yaml)
+      properties:
+        field_value_id:
+          type: string
+          description: Unique identifier cho FormFieldValue
+          pattern: "^FV-\\d{6}$"
+          example: "FV-000001"
+        application_id:
+          type: string
+          description: Application ID mà field value thuộc về
+          pattern: "^APP-\\d{6}$"
+          example: "APP-20260001"
+        field_name:
+          type: string
+          description: Tên field (dynamic theo Event config)
+          example: "expected_salary"
+        field_label:
+          type: string
+          description: Label hiển thị của field
+          example: "Expected Salary"
+        field_type:
+          $ref: "#/components/schemas/FieldTypeEnum"
+        field_value:
+          type: string
+          description: Giá trị của field
+          example: "10000000"
+        is_required:
+          type: boolean
+          description: Field có bắt buộc không
+          example: true
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-04-15T10:30:00Z"
+
+    QuestionAnswer:
+      type: object
+      description: |
+        QuestionAnswer - Câu trả lời cho questions theo Track.
+
+        ## References
+        - Glossary: [application.md](../6.glossary/application.md#entities-danh-tu)
+        - Ontology: [question-answer.yaml](../5.ontology/application/question-answer.yaml)
+      properties:
+        answer_id:
+          type: string
+          description: Unique identifier cho QuestionAnswer
+          pattern: "^ANS-\\d{6}$"
+          example: "ANS-000001"
+        application_id:
+          type: string
+          description: Application ID mà câu trả lời thuộc về
+          pattern: "^APP-\\d{6}$"
+          example: "APP-20260001"
+        question_id:
+          type: string
+          description: Question ID từ QuestionSet
+          example: "Q-001"
+        question_text:
+          type: string
+          description: Nội dung câu hỏi
+          example: "Describe your OOP knowledge"
+        question_type:
+          $ref: "#/components/schemas/QuestionTypeEnum"
+        answer_text:
+          type: string
+          description: Câu trả lời
+          example: "I have 2 years of experience with OOP principles..."
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-04-15T10:30:00Z"
+
+    Attachment:
+      type: object
+      description: |
+        Attachment - Files đính kèm (CV, certificates, etc.).
+
+        ## Business Rules
+        - BR-APP-006: File type phải đúng format (PDF, DOC, DOCX, etc.)
+        - BR-APP-007: File size tối đa 10MB (default, configurable)
+
+        ## References
+        - Glossary: [application.md](../6.glossary/application.md#entities-danh-tu)
+        - Ontology: [attachment.yaml](../5.ontology/application/attachment.yaml)
+      properties:
+        attachment_id:
+          type: string
+          description: Unique identifier cho Attachment
+          pattern: "^ATT-\\d{6}$"
+          example: "ATT-000001"
+        application_id:
+          type: string
+          description: Application ID mà attachment thuộc về
+          pattern: "^APP-\\d{6}$"
+          example: "APP-20260001"
+        file_name:
+          type: string
+          description: Tên file gốc
+          example: "NguyenVanA_CV.pdf"
+        file_type:
+          type: string
+          description: Loại file (PDF, DOC, DOCX, XLS, XLSX, PPT, PPTX, IMG)
+          example: "PDF"
+        file_size:
+          type: integer
+          description: Kích thước file (bytes)
+          minimum: 0
+          example: 2048000
+        file_url:
+          type: string
+          description: URL lưu trữ file
+          example: "s3://xtalent-attachments/cv/APP-000001_CV.pdf"
+        attachment_type:
+          $ref: "#/components/schemas/AttachmentTypeEnum"
+        upload_status:
+          $ref: "#/components/schemas/UploadStatusEnum"
+        uploaded_by:
+          type: string
+          description: User ID upload file
+          example: "STU-000001"
+        uploaded_at:
+          type: string
+          format: date-time
+          description: Timestamp upload file
+          example: "2026-04-15T10:25:00Z"
+
+    Duplicate:
+      type: object
+      description: |
+        Duplicate - record phát hiện ứng viên trùng.
+
+        ## Match Types
+        - PHONE: Match theo số điện thoại
+        - STUDENT_ID: Match theo Student ID
+        - EMAIL: Match theo email
+        - BOTH: Match cả SĐT và Student ID
+
+        ## Resolution Methods
+        - REMOVE: Xóa 1 application
+        - MERGE: Merge thông tin 2 applications
+        - NO_ACTION: Không phải duplicate
+
+        ## References
+        - Glossary: [application.md](../6.glossary/application.md#entities-danh-tu)
+        - Ontology: [duplicate.yaml](../5.ontology/application/duplicate.yaml)
+      properties:
+        duplicate_id:
+          type: string
+          description: Unique identifier cho Duplicate record
+          pattern: "^DUP-\\d{6}$"
+          example: "DUP-000001"
+        application_id_1:
+          type: string
+          description: Application ID thứ 1 (giữ lại)
+          pattern: "^APP-\\d{6}$"
+          example: "APP-20260001"
+        application_id_2:
+          type: string
+          description: Application ID thứ 2 (xóa/merge)
+          pattern: "^APP-\\d{6}$"
+          example: "APP-20260002"
+        match_type:
+          $ref: "#/components/schemas/MatchTypeEnum"
+        status:
+          $ref: "#/components/schemas/DuplicateStatusEnum"
+        resolved_at:
+          type: string
+          format: date-time
+          description: Thời điểm resolve duplicate
+          nullable: true
+        resolved_by:
+          type: string
+          description: User ID resolve duplicate
+          nullable: true
+          example: "TA-000001"
+        resolution_method:
+          $ref: "#/components/schemas/ResolutionMethodEnum"
+        created_by:
+          type: string
+          description: System auto tạo
+          example: "SYSTEM"
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp tạo Duplicate record
+          example: "2026-04-15T10:35:00Z"
+
+    # === Enums ===
+    ApplicationStatusEnum:
+      type: string
+      description: Trạng thái Application
+      enum:
+        - DRAFT
+        - SUBMITTED
+        - SCREENING
+        - TEST
+        - INTERVIEW
+        - OFFER
+        - ACCEPTED
+        - REJECTED
+        - WITHDRAWN
+
+    FieldTypeEnum:
+      type: string
+      description: Loại field trong form
+      enum:
+        - TEXT
+        - LONG_TEXT
+        - NUMBER
+        - DATE
+        - EMAIL
+        - PHONE
+        - DROPDOWN
+        - RADIO
+        - CHECKBOX
+        - FILE
+
+    QuestionTypeEnum:
+      type: string
+      description: Loại câu hỏi
+      enum:
+        - SHORT_TEXT
+        - LONG_TEXT
+        - SINGLE_CHOICE
+        - MULTIPLE_CHOICE
+        - YES_NO
+
+    AttachmentTypeEnum:
+      type: string
+      description: Loại attachment
+      enum:
+        - CV
+        - CERTIFICATE
+        - PORTFOLIO
+        - TRANSCRIPT
+        - OTHER
+
+    UploadStatusEnum:
+      type: string
+      description: Trạng thái upload
+      enum:
+        - PENDING
+        - COMPLETED
+        - FAILED
+        - DELETED
+
+    MatchTypeEnum:
+      type: string
+      description: Loại match phát hiện duplicate
+      enum:
+        - PHONE
+        - STUDENT_ID
+        - EMAIL
+        - BOTH
+
+    DuplicateStatusEnum:
+      type: string
+      description: Trạng thái xử lý duplicate
+      enum:
+        - PENDING
+        - REVIEWING
+        - RESOLVED
+        - IGNORED
+
+    ResolutionMethodEnum:
+      type: string
+      description: Phương thức resolve duplicate
+      enum:
+        - REMOVE
+        - MERGE
+        - NO_ACTION
+
+    # === Error Schemas ===
+    ErrorResponse:
+      type: object
+      description: Standard error response
+      properties:
+        error_code:
+          type: string
+          description: Machine-readable error code
+          example: "VALIDATION_FAILED"
+        message:
+          type: string
+          description: Human-readable error message
+          example: "Validation failed for the request"
+        details:
+          type: object
+          description: Additional error details
+          additionalProperties: true
+      required:
+        - error_code
+        - message
+
+    ValidationErrorResponse:
+      type: object
+      description: Validation error response with field-level errors
+      allOf:
+        - $ref: "#/components/schemas/ErrorResponse"
+        - type: object
+          properties:
+            field_errors:
+              type: array
+              items:
+                type: object
+                properties:
+                  field:
+                    type: string
+                    description: Field name
+                    example: "expected_salary"
+                  message:
+                    type: string
+                    description: Error message for this field
+                    example: "This field is required"
+                  code:
+                    type: string
+                    description: Error code
+                    example: "REQUIRED"
+
+  responses:
+    BadRequest:
+      description: Bad request (invalid input, business rule violation)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            event_not_active:
+              summary: Event Not Active
+              value:
+                error_code: "EVENT_NOT_ACTIVE"
+                message: "Event đã hết hạn nhận applications (endDate: 2026-04-10)"
+                details:
+                  event_id: "EVT-000001"
+                  event_status: "CLOSED"
+                  application_deadline: "2026-04-10T23:59:59Z"
+            already_applied:
+              summary: Already Applied to Event
+              value:
+                error_code: "ALREADY_APPLIED_TO_EVENT"
+                message: "Bạn đã apply Event này trước đó (application_id: APP-20260001)"
+                details:
+                  existing_application_id: "APP-20260001"
+                  existing_status: "SUBMITTED"
+            already_applied_to_other_track:
+              summary: Already Applied to Other Track
+              value:
+                error_code: "ALREADY_APPLIED_TO_OTHER_TRACK"
+                message: "Bạn đã apply Track khác trong Event này (track_id: TRK-000001)"
+                details:
+                  existing_track_id: "TRK-000001"
+                  existing_application_id: "APP-20260001"
+                  business_rule: "BR-APP-002"
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            application_not_found:
+              summary: Application Not Found
+              value:
+                error_code: "APPLICATION_NOT_FOUND"
+                message: "Application APP-20269999 not found"
+
+    Conflict:
+      description: Conflict (resource already exists, duplicate detected)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            duplicate_detected:
+              summary: Duplicate Detected
+              value:
+                error_code: "DUPLICATE_DETECTED"
+                message: "Phát hiện application trùng theo số điện thoại"
+                details:
+                  match_type: "PHONE"
+                  matched_phone: "0901234567"
+                  matched_application_id: "APP-20260002"
+
+    ValidationFailed:
+      description: Validation failed (missing required fields, invalid format)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ValidationErrorResponse"
+          examples:
+            missing_required_fields:
+              summary: Missing Required Fields
+              value:
+                error_code: "VALIDATION_FAILED"
+                message: "Vui lòng điền đầy đủ thông tin bắt buộc (marked with *)"
+                field_errors:
+                  - field: "expected_salary"
+                    message: "This field is required"
+                    code: "REQUIRED"
+                  - field: "availability"
+                    message: "This field is required"
+                    code: "REQUIRED"
+            invalid_file_format:
+              summary: Invalid File Format
+              value:
+                error_code: "VALIDATION_FAILED"
+                message: "File 'resume.exe' có định dạng không được chấp nhận"
+                field_errors:
+                  - field: "attachments[0].file_type"
+                    message: "Chỉ chấp nhận: PDF, DOC, DOCX, XLS, XLSX, PPT, PPTX, JPG, PNG"
+                    code: "INVALID_FORMAT"
+
+    Forbidden:
+      description: Forbidden (access denied, insufficient permissions)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            access_denied:
+              summary: Access Denied
+              value:
+                error_code: "ACCESS_DENIED"
+                message: "You do not have permission to access this application"
+
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            internal_error:
+              summary: Internal Server Error
+              value:
+                error_code: "INTERNAL_SERVER_ERROR"
+                message: "An unexpected error occurred. Please try again later."
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token for authenticated users (Student, TA)
+
+    internalApiKey:
+      type: apiKey
+      in: header
+      name: X-Internal-API-Key
+      description: API key for internal service-to-service communication (duplicate detection, etc.)
+
+security:
+  - BearerAuth: []

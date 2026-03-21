@@ -1,0 +1,163 @@
+// ODDS System - Interview Context Database Schema
+// Generated from Ontology: https://xtalent.io/ontology/ats/interview
+// Date: 2026-03-21
+
+// === ENUMS ===
+
+// InterviewSlot Status
+enum InterviewSlotStatusEnum {
+  DRAFT
+  ACTIVE
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+// InterviewFormat
+enum InterviewFormatEnum {
+  ONLINE
+  OFFLINE
+  HYBRID
+}
+
+// InterviewSchedule Status
+enum InterviewScheduleStatusEnum {
+  PENDING
+  CONFIRMED
+  RESCHEDULED
+  COMPLETED
+  NO_SHOW
+  CANCELLED
+}
+
+// Invitation Status
+enum InvitationStatusEnum {
+  PENDING
+  ACCEPTED
+  DECLINED
+  CANCELLED
+}
+
+// Invitation Response
+enum InvitationResponseEnum {
+  ACCEPT
+  DECLINE
+  TENTATIVE
+}
+
+// Interview Proposal
+enum InterviewProposalEnum {
+  OFFER
+  REJECT
+  NEED_DISCUSSION
+}
+
+// CheckIn Status
+enum CheckInStatusEnum {
+  ON_TIME
+  LATE
+  ABSENT
+}
+
+// === TABLES ===
+
+// InterviewSlot - Ca phỏng vấn với ngày giờ, hình thức, Interviewers
+// Ontology: https://xtalent.io/ontology/ats/interview/interview-slot
+// Aggregate Root: true
+Table InterviewSlot {
+  slot_id varchar [pk, not null, note: "Unique identifier: ISLOT-\\d{6}"]
+  event_id varchar [not null, ref: > Event.event_id, note: "Event ID mà InterviewSlot thuộc về"]
+  slot_name varchar [not null, note: "Tên ca phỏng vấn"]
+  description text [null, note: "Mô tả ca phỏng vấn"]
+  interview_date date [not null, note: "Ngày phỏng vấn"]
+  start_time time [not null, note: "Giờ bắt đầu"]
+  end_time time [not null, note: "Giờ kết thúc"]
+  format InterviewFormatEnum [not null, note: "Hình thức phỏng vấn (Online/Offline/Hybrid)"]
+  location varchar [null, note: "Địa điểm phỏng vấn (nếu Offline)"]
+  room varchar [null, note: "Phòng phỏng vấn (nếu Offline)"]
+  link varchar [null, note: "Link phỏng vấn (nếu Online)"]
+  max_capacity integer [not null, note: "Số lượng tối đa"]
+  current_capacity integer [null, default: 0, note: "Số lượng hiện tại đã allocate"]
+  interviewers jsonb [not null, note: "Danh sách Interviewer IDs được phân công"]
+  status InterviewSlotStatusEnum [not null, note: "Trạng thái ca phỏng vấn"]
+  auto_allocate_enabled boolean [null, default: false, note: "Bật auto allocate (FCFS + Time Window)"]
+  time_window_hours integer [null, note: "Time Window để confirm (giờ, configurable, default: 24h)"]
+  max_retry integer [null, default: 2, note: "Số lần retry auto-allocate"]
+  notify_ta_on_allocate boolean [null, default: false, note: "Notify TA khi auto-allocate thành công"]
+  created_by varchar [not null, ref: > User.user_id, note: "User ID tạo InterviewSlot (TA)"]
+  created_at timestamp [not null, note: "Timestamp tạo InterviewSlot"]
+  updated_at timestamp [null, note: "Timestamp cập nhật InterviewSlot"]
+}
+
+// InterviewSchedule - Lịch phỏng vấn của Candidate
+// Ontology: https://xtalent.io/ontology/ats/interview/interview-schedule
+// Aggregate Root: true
+Table InterviewSchedule {
+  schedule_id varchar [pk, not null, note: "Unique identifier: ISCH-\\d{6}"]
+  slot_id varchar [not null, ref: > InterviewSlot.slot_id, note: "InterviewSlot ID mà Candidate được chia"]
+  application_id varchar [not null, ref: > Application.application_id, note: "Application ID của Candidate"]
+  candidate_rr_id varchar [not null, ref: > CandidateRR.candidate_rr_id, note: "Candidate RR ID"]
+  status InterviewScheduleStatusEnum [not null, note: "Trạng thái lịch phỏng vấn"]
+  confirmed_at timestamp [null, note: "Thời điểm confirm tham gia"]
+  confirm_deadline timestamp [null, note: "Deadline confirm (Time Window, configurable)"]
+  change_count integer [null, default: 0, note: "Số lần đổi lịch (max 1 lần)"]
+  created_by varchar [not null, note: "System auto tạo"]
+  created_at timestamp [not null, note: "Timestamp tạo InterviewSchedule"]
+  updated_at timestamp [null, note: "Timestamp cập nhật InterviewSchedule"]
+}
+
+// InterviewerInvitation - Invitation cho Interviewer
+// Ontology: https://xtalent.io/ontology/ats/interview/interviewer-invitation
+// Aggregate Root: true
+Table InterviewerInvitation {
+  invitation_id varchar [pk, not null, note: "Unique identifier: IINV-\\d{6}"]
+  slot_id varchar [not null, ref: > InterviewSlot.slot_id, note: "InterviewSlot ID mà Interviewer được mời"]
+  interviewer_id varchar [not null, ref: > User.user_id, note: "Interviewer ID được mời"]
+  calendar_event_id varchar [null, note: "Calendar Event ID (Google Calendar/Outlook, optional)"]
+  status InvitationStatusEnum [not null, note: "Trạng thái invitation"]
+  sent_at timestamp [not null, note: "Thời điểm gửi invitation"]
+  responded_at timestamp [null, note: "Thời điểm Interviewer phản hồi"]
+  response InvitationResponseEnum [null, note: "Phản hồi của Interviewer (Accept/Decline)"]
+  created_by varchar [not null, ref: > User.user_id, note: "User ID gửi invitation (TA hoặc System)"]
+  created_at timestamp [not null, note: "Timestamp tạo Invitation"]
+}
+
+// CheckIn - Record check-in cho Interview
+// Ontology: https://xtalent.io/ontology/ats/interview/checkin
+// Aggregate Root: true
+Table CheckIn {
+  check_in_id varchar [pk, not null, note: "Unique identifier: ICI-\\d{6}"]
+  schedule_id varchar [not null, ref: > InterviewSchedule.schedule_id, note: "InterviewSchedule ID mà Candidate check-in"]
+  actual_time timestamp [not null, note: "Thời gian check-in thực tế"]
+  is_late boolean [null, default: false, note: "Check-in muộn"]
+  late_reason text [null, note: "Lý do check-in muộn"]
+  photo_id varchar [null, ref: > Attachment.attachment_id, note: "Photo ID (chụp hình khi check-in, optional)"]
+  checked_in_by varchar [not null, ref: > User.user_id, note: "User ID thực hiện check-in"]
+  created_at timestamp [not null, note: "Timestamp tạo CheckIn record"]
+}
+
+// Grading - Kết quả phỏng vấn, đề xuất Offer/Reject
+// Ontology: https://xtalent.io/ontology/ats/interview/grading
+// Aggregate Root: true
+Table Grading {
+  grading_id varchar [pk, not null, note: "Unique identifier: IGRD-\\d{6}"]
+  schedule_id varchar [not null, ref: > InterviewSchedule.schedule_id, note: "InterviewSchedule ID được chấm"]
+  interviewer_id varchar [not null, ref: > User.user_id, note: "User ID người chấm (Interviewer)"]
+  score float [not null, note: "Điểm số (0.0-100.0)"]
+  comment text [null, note: "Nhận xét của interviewer"]
+  proposal InterviewProposalEnum [not null, note: "Đề xuất sau phỏng vấn (Offer/Reject/NeedDiscussion)"]
+  graded_at timestamp [not null, note: "Thời điểm chấm xong"]
+  can_update_before_review boolean [null, default: false, note: "Grading có thể update trước khi TA review (configurable)"]
+  update_deadline timestamp [null, note: "Deadline update grading (configurable)"]
+  created_by varchar [not null, ref: > User.user_id, note: "Grader ID"]
+  created_at timestamp [not null, note: "Timestamp tạo Grading record"]
+}
+
+// === RELATIONSHIPS ===
+// Note: DBML relationships are defined inline with ref: syntax above
+
+// InterviewSlot 1--n InterviewSchedule
+// InterviewSlot 1--n InterviewerInvitation
+// InterviewSchedule 1--n CheckIn
+// InterviewSchedule 1--1 Grading
+// InterviewSchedule 1--1 Grading (interviewer)

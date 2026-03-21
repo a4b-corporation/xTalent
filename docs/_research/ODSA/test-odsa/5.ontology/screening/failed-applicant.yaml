@@ -1,0 +1,158 @@
+id: https://xtalent.io/ontology/ats/screening/failed-applicant
+name: failed_applicant_ontology
+version: "1.0.0"
+description: "FailedApplicant - Record theo dõi applications Failed"
+
+prefixes:
+  xt: https://xtalent.io/ontology/
+  oracle: https://oracle.com/hcm/
+  sap: https://successfactors.sap.com/
+  workday: https://workday.com/
+
+default_range: string
+
+slots:
+  # --- Identifier ---
+  failed_id:
+    description: "Unique identifier cho FailedApplicant"
+    identifier: true
+    required: true
+    pattern: "^FAIL-\\d{6}$"
+    annotations:
+      example: "FAIL-000001"
+
+  # --- Core Fields ---
+  application_id:
+    description: "Application ID bị fail"
+    required: true
+    annotations:
+      reference: "Application.application_id"
+
+  screening_id:
+    description: "Screening ID quyết định fail"
+    required: true
+    annotations:
+      reference: "Screening.screening_id"
+
+  fail_reason:
+    description: "Lý do fail"
+    required: false
+
+  thank_you_sent:
+    description: "Đã gửi Thank You email chưa"
+    range: boolean
+    required: false
+
+  ended_at:
+    description: "Thời điểm kết thúc (fail)"
+    range: datetime
+    required: true
+
+  # --- Audit Fields ---
+  created_by:
+    description: "System auto tạo"
+    required: true
+
+  created_at:
+    description: "Timestamp tạo FailedApplicant record"
+    range: datetime
+    required: true
+
+classes:
+  FailedApplicant:
+    description: |
+      FailedApplicant - Record theo dõi applications Failed.
+      Failed applicants vẫn hiển thị trong danh sách với Result = Failed.
+      Có thể filter trong danh sách.
+      Aggregate Root trong Screening context.
+
+    annotations:
+      oracle_hcm_term: "RejectedApplication"
+      sap_term: "RejectedApplication"
+      workday_term: "RejectedApplication"
+      disambiguation: "xTalent: FailedApplicant = Application bị fail. Oracle: RejectedApplication. SAP: RejectedApplication. Workday: RejectedApplication. Xem docs.xtalent.io/ats/screening/failed-applicant."
+
+      module: "ats"
+      sub_module: "screening"
+      version: "1.0.0"
+      bounded_context: "Screening"
+      aggregate_root: true
+
+      ouroboros_evolution:
+        iteration: "1.0.0"
+        parent_version: null
+        evaluation_status: "pending"
+        last_evaluated: null
+        evolution_notes: "Initial version"
+
+      validation_hooks:
+        odds_system_builder:
+          required_for: true
+          validates: ["table_generation", "fk_references"]
+
+      see_also: "https://docs.xtalent.io/ats/screening/failed-applicant"
+
+    slots:
+      - failed_id
+      - application_id
+      - screening_id
+      - fail_reason
+      - thank_you_sent
+      - ended_at
+      - created_by
+      - created_at
+
+    slot_usage:
+      failed_id:
+        required: true
+        identifier: true
+
+      application_id:
+        required: true
+
+      screening_id:
+        required: true
+
+      ended_at:
+        required: true
+
+      created_by:
+        required: true
+
+      created_at:
+        required: true
+
+    rules:
+      - description: "BRS-FAIL-001: FailedApplicant chỉ được tạo khi Screening = Fail"
+        preconditions:
+          slot_conditions:
+            screening_id:
+              slot_value_conditions:
+                result:
+                  equals_string: "FAIL"
+        postconditions:
+          slot_conditions: {}
+
+      - description: "BRS-FAIL-003: Thank You Letter chỉ được gửi 1 lần per stage"
+        preconditions:
+          slot_conditions:
+            thank_you_sent:
+              equals_boolean: true
+        postconditions:
+          slot_conditions:
+            thank_you_sent:
+              equals_boolean: true
+
+# === ENUMS ===
+enums:
+  FailReasonEnum:
+    description: "Lý do fail"
+    permissible_values:
+      NOT_QUALIFIED:
+        description: "Không đủ qualifications"
+      POOR_FIT:
+        description: "Không phù hợp văn hóa"
+      INSUFFICIENT_SKILLS:
+        description: "Kỹ năng không đạt"
+      OTHER:
+        description: "Lý do khác"

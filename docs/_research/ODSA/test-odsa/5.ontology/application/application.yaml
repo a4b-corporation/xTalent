@@ -1,0 +1,198 @@
+id: https://xtalent.io/ontology/ats/application/application
+name: application_ontology
+version: "1.0.0"
+description: "Application - đơn apply của Student vào Event/Track"
+
+prefixes:
+  xt: https://xtalent.io/ontology/
+  oracle: https://oracle.com/hcm/
+  sap: https://successfactors.sap.com/
+  workday: https://workday.com/
+
+imports:
+  - ./student.yaml
+  - ./duplicate.yaml
+
+default_range: string
+
+slots:
+  # --- Identifier ---
+  application_id:
+    description: "Unique identifier cho Application"
+    identifier: true
+    required: true
+    pattern: "^APP-\\d{6}$"
+    annotations:
+      example: "APP-000001"
+
+  # --- Core Fields ---
+  event_id:
+    description: "Event ID mà Student apply vào"
+    required: true
+    annotations:
+      reference: "Event.event_id"
+
+  track_id:
+    description: "Track ID mà Student apply vào"
+    required: true
+    annotations:
+      reference: "Track.track_id"
+
+  student_id:
+    description: "Student ID người apply"
+    required: true
+    annotations:
+      reference: "Student.student_id"
+
+  status:
+    description: "Trạng thái Application"
+    range: ApplicationStatusEnum
+    required: true
+
+  submitted_at:
+    description: "Thời điểm submit application"
+    range: datetime
+    required: true
+
+  # --- Audit Fields ---
+  created_by:
+    description: "User ID tạo Application (student_id)"
+    required: true
+    annotations:
+      reference: "Student.student_id"
+
+  created_at:
+    description: "Timestamp tạo Application"
+    range: datetime
+    required: true
+
+  updated_at:
+    description: "Timestamp cập nhật Application"
+    range: datetime
+    required: false
+
+classes:
+  Application:
+    description: |
+      Application - đơn apply của Student vào Event/Track.
+      Aggregate Root trong Application context.
+      Khi submit sẽ gửi event cho Screening context.
+
+    annotations:
+      oracle_hcm_term: "JobApplication"
+      sap_term: "JobApplication"
+      workday_term: "JobApplication"
+      disambiguation: "xTalent: Application = Đơn apply vào Event. Oracle: JobApplication. SAP: JobApplication. Workday: JobApplication. Xem docs.xtalent.io/ats/application/application."
+
+      module: "ats"
+      sub_module: "application"
+      version: "1.0.0"
+      bounded_context: "Application"
+      aggregate_root: true
+
+      ouroboros_evolution:
+        iteration: "1.0.0"
+        parent_version: null
+        evaluation_status: "pending"
+        last_evaluated: null
+        evolution_notes: "Initial version"
+
+      validation_hooks:
+        odds_system_builder:
+          required_for: true
+          validates: ["table_generation", "fk_references"]
+
+      see_also: "https://docs.xtalent.io/ats/application/application"
+
+    slots:
+      - application_id
+      - event_id
+      - track_id
+      - student_id
+      - status
+      - submitted_at
+      - created_by
+      - created_at
+      - updated_at
+
+    slot_usage:
+      application_id:
+        required: true
+        identifier: true
+
+      event_id:
+        required: true
+
+      track_id:
+        required: true
+
+      student_id:
+        required: true
+
+      status:
+        required: true
+
+      submitted_at:
+        required: true
+
+      created_by:
+        required: true
+
+      created_at:
+        required: true
+
+    rules:
+      - description: "BRS-APP-001: Chỉ được apply khi Event đang active"
+        preconditions:
+          slot_conditions:
+            event_id:
+              slot_value_conditions:
+                status:
+                  equals_string: "ACTIVE"
+        postconditions:
+          slot_conditions:
+            status:
+              equals_string: "SUBMITTED"
+
+      - description: "BRS-APP-002: Student chỉ được apply 1 Track/Event"
+        preconditions:
+          slot_conditions:
+            student_id:
+              slot_value_conditions:
+                must_be_unique_per_event: true
+        postconditions:
+          slot_conditions: {}
+
+      - description: "BRS-APP-003: Student không được apply cùng 1 Event nhiều lần"
+        preconditions:
+          slot_conditions:
+            event_id:
+              slot_value_conditions:
+                student_id:
+                  must_be_unique: true
+        postconditions:
+          slot_conditions: {}
+
+# === ENUMS ===
+enums:
+  ApplicationStatusEnum:
+    description: "Trạng thái Application"
+    permissible_values:
+      DRAFT:
+        description: "Đang nháp, chưa submit"
+      SUBMITTED:
+        description: "Đã submit"
+      SCREENING:
+        description: "Đang screening"
+      TEST:
+        description: "Đã qua vòng screening, chờ test"
+      INTERVIEW:
+        description: "Đã qua vòng test, chờ interview"
+      OFFER:
+        description: "Đã qua vòng interview, chờ offer"
+      ACCEPTED:
+        description: "Đã accept offer"
+      REJECTED:
+        description: "Bị reject"
+      WITHDRAWN:
+        description: "Rút đơn"

@@ -1,0 +1,170 @@
+id: https://xtalent.io/ontology/ats/assessment/grading-task
+name: grading_task_ontology
+version: "1.0.0"
+description: "GradingTask - Task chấm bài cho Manager được TA tạo"
+
+prefixes:
+  xt: https://xtalent.io/ontology/
+  oracle: https://oracle.com/hcm/
+  sap: https://successfactors.sap.com/
+  workday: https://workday.com/
+
+default_range: string
+
+slots:
+  # --- Identifier ---
+  task_id:
+    description: "Unique identifier cho GradingTask"
+    identifier: true
+    required: true
+    pattern: "^GTK-\\d{6}$"
+    annotations:
+      example: "GTK-000001"
+
+  # --- Core Fields ---
+  assignment_id:
+    description: "Assignment ID mà task chấm thuộc về"
+    required: true
+    annotations:
+      reference: "Assignment.assignment_id"
+
+  grader_id:
+    description: "Manager ID được phân công chấm"
+    required: true
+    annotations:
+      reference: "User.user_id"
+
+  submissions:
+    description: "Danh sách submission IDs được phân công chấm"
+    range: string
+    multivalued: true
+    required: true
+
+  status:
+    description: "Trạng thái task"
+    range: GradingTaskStatusEnum
+    required: true
+
+  completed_at:
+    description: "Thời điểm hoàn thành task"
+    range: datetime
+    required: false
+
+  deadline:
+    description: "Deadline hoàn thành chấm"
+    range: datetime
+    required: false
+
+  # --- Audit Fields ---
+  created_by:
+    description: "User ID tạo task (TA)"
+    required: true
+    annotations:
+      reference: "User.user_id"
+
+  created_at:
+    description: "Timestamp tạo task"
+    range: datetime
+    required: true
+
+classes:
+  GradingTask:
+    description: |
+      GradingTask - Task chấm bài cho Manager được TA tạo.
+      Auto-complete khi TA import kết quả chấm hàng loạt.
+      Aggregate Root trong Assessment context.
+
+    annotations:
+      oracle_hcm_term: "GradingTask"
+      sap_term: "GradingTask"
+      workday_term: "GradingTask"
+      disambiguation: "xTalent: GradingTask = Task chấm bài. Oracle: GradingTask. SAP: GradingTask. Workday: GradingTask. Xem docs.xtalent.io/ats/assessment/grading-task."
+
+      module: "ats"
+      sub_module: "assessment"
+      version: "1.0.0"
+      bounded_context: "Assessment"
+      aggregate_root: true
+
+      ouroboros_evolution:
+        iteration: "1.0.0"
+        parent_version: null
+        evaluation_status: "pending"
+        last_evaluated: null
+        evolution_notes: "Initial version"
+
+      validation_hooks:
+        odds_system_builder:
+          required_for: true
+          validates: ["table_generation", "fk_references"]
+
+      see_also: "https://docs.xtalent.io/ats/assessment/grading-task"
+
+    slots:
+      - task_id
+      - assignment_id
+      - grader_id
+      - submissions
+      - status
+      - completed_at
+      - deadline
+      - created_by
+      - created_at
+
+    slot_usage:
+      task_id:
+        required: true
+        identifier: true
+
+      assignment_id:
+        required: true
+
+      grader_id:
+        required: true
+
+      submissions:
+        required: true
+
+      status:
+        required: true
+
+      created_by:
+        required: true
+
+      created_at:
+        required: true
+
+    rules:
+      - description: "BRS-GTK-001: Task auto-complete khi TA import kết quả"
+        preconditions:
+          slot_conditions:
+            assignment_id:
+              slot_value_conditions:
+                results_imported:
+                  equals_boolean: true
+        postconditions:
+          slot_conditions:
+            status:
+              equals_string: "COMPLETED"
+
+      - description: "BRS-GTK-002: Chỉ Managers được phân công mới chấm được"
+        preconditions:
+          slot_conditions: {}
+        postconditions:
+          slot_conditions:
+            grader_id:
+              must_be_manager: true
+
+# === ENUMS ===
+enums:
+  GradingTaskStatusEnum:
+    description: "Trạng thái GradingTask"
+    permissible_values:
+      PENDING:
+        description: "Chưa bắt đầu"
+      IN_PROGRESS:
+        description: "Đang chấm"
+      COMPLETED:
+        description: "Hoàn thành"
+      CANCELLED:
+        description: "Đã hủy"

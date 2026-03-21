@@ -1,0 +1,154 @@
+id: https://xtalent.io/ontology/ats/offer/offer-reminder
+name: offer_reminder_ontology
+version: "1.0.0"
+description: "OfferReminder - Reminder record (24h/2h trước deadline)"
+
+prefixes:
+  xt: https://xtalent.io/ontology/
+  oracle: https://oracle.com/hcm/
+  sap: https://successfactors.sap.com/
+  workday: https://workday.com/
+
+default_range: string
+
+slots:
+  # --- Identifier ---
+  reminder_id:
+    description: "Unique identifier cho OfferReminder"
+    identifier: true
+    required: true
+    pattern: "^OREM-\\d{6}$"
+    annotations:
+      example: "OREM-000001"
+
+  # --- Core Fields ---
+  offer_id:
+    description: "Offer ID mà reminder thuộc về"
+    required: true
+    annotations:
+      reference: "Offer.offer_id"
+
+  reminder_type:
+    description: "Loại reminder (24h/2h trước deadline)"
+    range: ReminderTypeEnum
+    required: true
+
+  scheduled_at:
+    description: "Thời gian lên lịch gửi"
+    range: datetime
+    required: true
+
+  sent_at:
+    description: "Thời gian đã gửi"
+    range: datetime
+    required: false
+
+  status:
+    description: "Trạng thái reminder"
+    range: ReminderStatusEnum
+    required: true
+
+  # --- Audit Fields ---
+  created_at:
+    description: "Timestamp tạo Reminder"
+    range: datetime
+    required: true
+
+classes:
+  OfferReminder:
+    description: |
+      OfferReminder - Reminder record (24h/2h trước deadline).
+      Auto-remind 24h + 2h trước deadline (configurable timing).
+      Aggregate Root trong Offer context.
+
+    annotations:
+      oracle_hcm_term: "OfferReminder"
+      sap_term: "OfferReminder"
+      workday_term: "OfferReminder"
+      disambiguation: "xTalent: OfferReminder = Reminder Offer. Oracle: OfferReminder. SAP: OfferReminder. Workday: OfferReminder. Xem docs.xtalent.io/ats/offer/offer-reminder."
+
+      module: "ats"
+      sub_module: "offer"
+      version: "1.0.0"
+      bounded_context: "Offer"
+      aggregate_root: true
+
+      ouroboros_evolution:
+        iteration: "1.0.0"
+        parent_version: null
+        evaluation_status: "pending"
+        last_evaluated: null
+        evolution_notes: "Initial version"
+
+      validation_hooks:
+        odds_system_builder:
+          required_for: true
+          validates: ["table_generation", "fk_references"]
+
+      see_also: "https://docs.xtalent.io/ats/offer/offer-reminder"
+
+    slots:
+      - reminder_id
+      - offer_id
+      - reminder_type
+      - scheduled_at
+      - sent_at
+      - status
+      - created_at
+
+    slot_usage:
+      reminder_id:
+        required: true
+        identifier: true
+
+      offer_id:
+        required: true
+
+      reminder_type:
+        required: true
+
+      scheduled_at:
+        required: true
+
+      status:
+        required: true
+
+      created_at:
+        required: true
+
+    rules:
+      - description: "BRS-OREM-001: Auto-remind 24h + 2h trước deadline (configurable)"
+        preconditions:
+          slot_conditions:
+            offer_id:
+              slot_value_conditions:
+                auto_remind_enabled:
+                  equals_boolean: true
+        postconditions:
+          slot_conditions:
+            reminder_type:
+              one_of:
+                - "REMIND_24H"
+                - "REMIND_2H"
+
+# === ENUMS ===
+enums:
+  ReminderTypeEnum:
+    description: "Loại reminder"
+    permissible_values:
+      REMIND_24H:
+        description: "Remind 24h trước deadline"
+      REMIND_2H:
+        description: "Remind 2h trước deadline"
+
+  ReminderStatusEnum:
+    description: "Trạng thái reminder"
+    permissible_values:
+      PENDING:
+        description: "Chưa gửi"
+      SENT:
+        description: "Đã gửi"
+      FAILED:
+        description: "Gửi thất bại"
+      CANCELLED:
+        description: "Đã hủy"

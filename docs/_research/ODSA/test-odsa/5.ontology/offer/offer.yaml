@@ -1,0 +1,279 @@
+id: https://xtalent.io/ontology/ats/offer/offer
+name: offer_ontology
+version: "1.0.0"
+description: "Offer - Thư mời nhận việc với lương, phúc lợi, deadline"
+
+prefixes:
+  xt: https://xtalent.io/ontology/
+  oracle: https://oracle.com/hcm/
+  sap: https://successfactors.sap.com/
+  workday: https://workday.com/
+
+imports:
+  - ./offer-response.yaml
+  - ./offer-reminder.yaml
+  - ./candidate-scan.yaml
+  - ./candidate-transfer.yaml
+
+default_range: string
+
+slots:
+  # --- Identifier ---
+  offer_id:
+    description: "Unique identifier cho Offer"
+    identifier: true
+    required: true
+    pattern: "^OFR-\\d{6}$"
+    annotations:
+      example: "OFR-000001"
+
+  # --- Core Fields ---
+  application_id:
+    description: "Application ID mà Offer được tạo cho"
+    required: true
+    annotations:
+      reference: "Application.application_id"
+
+  candidate_rr_id:
+    description: "Candidate RR ID"
+    required: true
+    annotations:
+      reference: "CandidateRR.candidate_rr_id"
+
+  request_id:
+    description: "Request ID từ Request tuyển dụng"
+    required: true
+    annotations:
+      reference: "RequestMapping.request_id"
+
+  salary:
+    description: "Mức lương đề xuất"
+    range: float
+    minimum_value: 0.0
+    required: true
+
+  benefits:
+    description: "Phúc lợi (mô tả chi tiết)"
+    required: false
+
+  deadline:
+    description: "Deadline phản hồi Offer"
+    range: datetime
+    required: true
+
+  status:
+    description: "Trạng thái Offer"
+    range: OfferStatusEnum
+    required: true
+
+  template_id:
+    description: "Offer Template ID từ library (configurable)"
+    required: false
+    annotations:
+      reference: "OfferTemplate.template_id"
+
+  reoffer_count:
+    description: "Số lần re-offer (configurable, default: 1-2)"
+    range: integer
+    minimum_value: 0
+    maximum_value: 3
+    required: false
+
+  # --- Configurable Parameters ---
+  auto_remind_enabled:
+    description: "Auto remind 24h + 2h trước deadline"
+    range: boolean
+    required: false
+
+  remind_timing_24h:
+    description: "Thời gian remind 24h trước deadline (phút)"
+    range: integer
+    minimum_value: 0
+    maximum_value: 1440
+    required: false
+
+  remind_timing_2h:
+    description: "Thời gian remind 2h trước deadline (phút)"
+    range: integer
+    minimum_value: 0
+    maximum_value: 120
+    required: false
+
+  grace_period_hours:
+    description: "Grace period sau deadline trước auto-reject (giờ, default: 24-48h)"
+    range: integer
+    minimum_value: 0
+    maximum_value: 168
+    required: false
+
+  auto_reject_enabled:
+    description: "Auto reject sau grace period nếu TA không action"
+    range: boolean
+    required: false
+
+  # --- Audit Fields ---
+  created_by:
+    description: "User ID tạo Offer (TA)"
+    required: true
+    annotations:
+      reference: "User.user_id"
+
+  created_at:
+    description: "Timestamp tạo Offer"
+    range: datetime
+    required: true
+
+  updated_at:
+    description: "Timestamp cập nhật Offer"
+    range: datetime
+    required: false
+
+  expired_at:
+    description: "Timestamp expire Offer"
+    range: datetime
+    required: false
+
+classes:
+  Offer:
+    description: |
+      Offer - Thư mời nhận việc với lương, phúc lợi, deadline.
+      Student chỉ có Accept/Reject options (không Negotiate).
+      Auto-remind 24h + 2h trước deadline (configurable).
+      Auto-Expire sau deadline, grace period cho TA reactivate.
+      Auto-Reject sau grace period nếu TA không action.
+      Aggregate Root trong Offer context.
+
+    annotations:
+      oracle_hcm_term: "JobOffer"
+      sap_term: "JobOffer"
+      workday_term: "JobOffer"
+      disambiguation: "xTalent: Offer = Thư mời nhận việc. Oracle: JobOffer. SAP: JobOffer. Workday: JobOffer. Xem docs.xtalent.io/ats/offer/offer."
+
+      module: "ats"
+      sub_module: "offer"
+      version: "1.0.0"
+      bounded_context: "Offer"
+      aggregate_root: true
+
+      ouroboros_evolution:
+        iteration: "1.0.0"
+        parent_version: null
+        evaluation_status: "pending"
+        last_evaluated: null
+        evolution_notes: "Initial version"
+
+      validation_hooks:
+        odds_system_builder:
+          required_for: true
+          validates: ["table_generation", "fk_references"]
+
+      see_also: "https://docs.xtalent.io/ats/offer/offer"
+
+    slots:
+      - offer_id
+      - application_id
+      - candidate_rr_id
+      - request_id
+      - salary
+      - benefits
+      - deadline
+      - status
+      - template_id
+      - reoffer_count
+      - auto_remind_enabled
+      - remind_timing_24h
+      - remind_timing_2h
+      - grace_period_hours
+      - auto_reject_enabled
+      - created_by
+      - created_at
+      - updated_at
+      - expired_at
+
+    slot_usage:
+      offer_id:
+        required: true
+        identifier: true
+
+      application_id:
+        required: true
+
+      candidate_rr_id:
+        required: true
+
+      request_id:
+        required: true
+
+      salary:
+        required: true
+
+      deadline:
+        required: true
+
+      status:
+        required: true
+
+      created_by:
+        required: true
+
+      created_at:
+        required: true
+
+    rules:
+      - description: "BRS-OFR-001: Offer chỉ được tạo cho Candidates Pass Interview"
+        preconditions:
+          slot_conditions:
+            candidate_rr_id:
+              slot_value_conditions:
+                current_stage:
+                  equals_string: "INTERVIEW"
+        postconditions:
+          slot_conditions:
+            interview_result:
+              equals_string: "PASS"
+
+      - description: "BRS-OFR-002: Offer phải matching với Request đã map trong Event"
+        preconditions:
+          slot_conditions:
+            request_id:
+              slot_value_conditions: {}
+        postconditions:
+          slot_conditions:
+            request_mapping:
+              must_exist: true
+
+      - description: "BRS-OFR-004: Auto-Expire khi deadline qua (không phải Reject)"
+        preconditions:
+          slot_conditions:
+            deadline:
+              is_before: "now"
+        postconditions:
+          slot_conditions:
+            status:
+              equals_string: "EXPIRED"
+
+      - description: "BRS-OFR-011: Student chỉ có Accept/Reject options (không Negotiate)"
+        preconditions:
+          slot_conditions: {}
+        postconditions:
+          slot_conditions:
+            response_options:
+              equals_string: "ACCEPT_REJECT_ONLY"
+
+# === ENUMS ===
+enums:
+  OfferStatusEnum:
+    description: "Trạng thái Offer"
+    permissible_values:
+      DRAFT:
+        description: "Đang nháp"
+      SENT:
+        description: "Đã gửi"
+      ACCEPTED:
+        description: "Đã accept"
+      REJECTED:
+        description: "Đã reject"
+      EXPIRED:
+        description: "Đã expire (qua deadline)"
+      CANCELLED:
+        description: "Đã hủy"

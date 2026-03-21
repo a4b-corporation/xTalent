@@ -1,0 +1,194 @@
+id: https://xtalent.io/ontology/ats/application/student
+name: student_ontology
+version: "1.0.0"
+description: "Student - thông tin sinh viên applicant"
+
+prefixes:
+  xt: https://xtalent.io/ontology/
+  oracle: https://oracle.com/hcm/
+  sap: https://successfactors.sap.com/
+  workday: https://workday.com/
+
+default_range: string
+
+slots:
+  # --- Identifier ---
+  student_id:
+    description: "Unique identifier cho Student"
+    identifier: true
+    required: true
+    pattern: "^STU-\\d{6}$"
+    annotations:
+      example: "STU-000001"
+
+  # --- Core Fields ---
+  full_name:
+    description: "Họ và tên đầy đủ"
+    required: true
+
+  email:
+    description: "Email liên lạc"
+    required: true
+
+  phone:
+    description: "Số điện thoại"
+    required: true
+
+  date_of_birth:
+    description: "Ngày sinh"
+    range: date
+    required: true
+
+  gender:
+    description: "Giới tính"
+    range: GenderEnum
+    required: false
+
+  university:
+    description: "Trường đại học"
+    required: true
+
+  major:
+    description: "Chuyên ngành học"
+    required: true
+
+  gpa:
+    description: "Điểm GPA"
+    range: float
+    minimum_value: 0.0
+    maximum_value: 4.0
+    required: false
+
+  graduation_year:
+    description: "Năm tốt nghiệp dự kiến"
+    range: integer
+    minimum_value: 2020
+    maximum_value: 2030
+    required: false
+
+  address:
+    description: "Địa chỉ liên lạc"
+    required: false
+
+  # --- Audit Fields ---
+  created_by:
+    description: "User ID tạo Student record"
+    required: true
+
+  created_at:
+    description: "Timestamp tạo Student record"
+    range: datetime
+    required: true
+
+  updated_at:
+    description: "Timestamp cập nhật Student record"
+    range: datetime
+    required: false
+
+classes:
+  Student:
+    description: |
+      Student - thông tin sinh viên applicant trong hệ thống ATS.
+      Aggregate Root trong Application context.
+
+    annotations:
+      oracle_hcm_term: "Candidate"
+      sap_term: "Candidate"
+      workday_term: "Candidate"
+      disambiguation: "xTalent: Student = Ứng viên sinh viên. Oracle: Candidate. SAP: Candidate. Workday: Candidate. Xem docs.xtalent.io/ats/application/student."
+
+      module: "ats"
+      sub_module: "application"
+      version: "1.0.0"
+      bounded_context: "Application"
+      aggregate_root: true
+
+      ouroboros_evolution:
+        iteration: "1.0.0"
+        parent_version: null
+        evaluation_status: "pending"
+        last_evaluated: null
+        evolution_notes: "Initial version"
+
+      validation_hooks:
+        odds_system_builder:
+          required_for: true
+          validates: ["table_generation", "fk_references"]
+
+      see_also: "https://docs.xtalent.io/ats/application/student"
+
+    slots:
+      - student_id
+      - full_name
+      - email
+      - phone
+      - date_of_birth
+      - gender
+      - university
+      - major
+      - gpa
+      - graduation_year
+      - address
+      - created_by
+      - created_at
+      - updated_at
+
+    slot_usage:
+      student_id:
+        required: true
+        identifier: true
+
+      full_name:
+        required: true
+
+      email:
+        required: true
+
+      phone:
+        required: true
+
+      date_of_birth:
+        required: true
+
+      university:
+        required: true
+
+      major:
+        required: true
+
+      created_by:
+        required: true
+
+      created_at:
+        required: true
+
+    rules:
+      - description: "BRS-STU-001: Email phải hợp lệ"
+        preconditions:
+          slot_conditions: {}
+        postconditions:
+          slot_conditions:
+            email:
+              pattern: "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
+
+      - description: "BRS-STU-002: Phone phải hợp lệ"
+        preconditions:
+          slot_conditions: {}
+        postconditions:
+          slot_conditions:
+            phone:
+              pattern: "^\\+?[0-9]{10,15}$"
+
+# === ENUMS ===
+enums:
+  GenderEnum:
+    description: "Giới tính"
+    permissible_values:
+      MALE:
+        description: "Nam"
+      FEMALE:
+        description: "Nữ"
+      OTHER:
+        description: "Khác"
+      PREFER_NOT_TO_SAY:
+        description: "Không muốn tiết lộ"

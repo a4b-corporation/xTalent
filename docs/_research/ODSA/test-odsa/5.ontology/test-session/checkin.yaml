@@ -1,0 +1,159 @@
+id: https://xtalent.io/ontology/ats/test-session/checkin
+name: checkin_ontology
+version: "1.0.0"
+description: "CheckIn - Record check-in cho Student trong Test Session"
+
+prefixes:
+  xt: https://xtalent.io/ontology/
+  oracle: https://oracle.com/hcm/
+  sap: https://successfactors.sap.com/
+  workday: https://workday.com/
+
+default_range: string
+
+slots:
+  # --- Identifier ---
+  check_in_id:
+    description: "Unique identifier cho CheckIn"
+    identifier: true
+    required: true
+    pattern: "^TCI-\\d{6}$"
+    annotations:
+      example: "TCI-000001"
+
+  # --- Core Fields ---
+  schedule_id:
+    description: "Schedule ID mà Student check-in"
+    required: true
+    annotations:
+      reference: "Schedule.schedule_id"
+
+  actual_time:
+    description: "Thời gian check-in thực tế"
+    range: datetime
+    required: true
+
+  is_late:
+    description: "Check-in muộn (sau grace period)"
+    range: boolean
+    required: false
+
+  late_reason:
+    description: "Lý do check-in muộn"
+    required: false
+
+  photo_id:
+    description: "Photo ID (chụp hình khi check-in, configurable)"
+    required: false
+    annotations:
+      reference: "Attachment.attachment_id"
+
+  checked_in_by:
+    description: "User ID thực hiện check-in (TA hoặc self)"
+    required: true
+    annotations:
+      reference: "User.user_id"
+
+  # --- Audit Fields ---
+  created_at:
+    description: "Timestamp tạo CheckIn record"
+    range: datetime
+    required: true
+
+classes:
+  CheckIn:
+    description: |
+      CheckIn - Record check-in cho Student trong Test Session.
+      Check-in muộn vẫn cho phép với lý do (configurable grace period).
+      Photo capture không bắt buộc (configurable).
+      Aggregate Root trong Test Session context.
+
+    annotations:
+      oracle_hcm_term: "TestCheckIn"
+      sap_term: "TestCheckIn"
+      workday_term: "TestCheckIn"
+      disambiguation: "xTalent: CheckIn = Record check-in onsite. Oracle: TestCheckIn. SAP: TestCheckIn. Workday: TestCheckIn. Xem docs.xtalent.io/ats/test-session/checkin."
+
+      module: "ats"
+      sub_module: "test-session"
+      version: "1.0.0"
+      bounded_context: "Test Session"
+      aggregate_root: true
+
+      ouroboros_evolution:
+        iteration: "1.0.0"
+        parent_version: null
+        evaluation_status: "pending"
+        last_evaluated: null
+        evolution_notes: "Initial version"
+
+      validation_hooks:
+        odds_system_builder:
+          required_for: true
+          validates: ["table_generation", "fk_references"]
+
+      see_also: "https://docs.xtalent.io/ats/test-session/checkin"
+
+    slots:
+      - check_in_id
+      - schedule_id
+      - actual_time
+      - is_late
+      - late_reason
+      - photo_id
+      - checked_in_by
+      - created_at
+
+    slot_usage:
+      check_in_id:
+        required: true
+        identifier: true
+
+      schedule_id:
+        required: true
+
+      actual_time:
+        required: true
+
+      checked_in_by:
+        required: true
+
+      created_at:
+        required: true
+
+    rules:
+      - description: "BRS-TCI-001: Check-in muộn vẫn cho phép với lý do (grace period configurable)"
+        preconditions:
+          slot_conditions:
+            actual_time:
+              is_after: "schedule.test_date + schedule.start_time"
+        postconditions:
+          slot_conditions:
+            late_reason:
+              not_equals_string: ""
+
+      - description: "BRS-TCI-006: Photo capture không bắt buộc (configurable)"
+        preconditions:
+          slot_conditions:
+            slot_id:
+              slot_value_conditions:
+                photo_capture_required:
+                  equals_boolean: false
+        postconditions:
+          slot_conditions:
+            photo_id:
+              can_be_null: true
+
+# === ENUMS ===
+enums:
+  CheckInStatusEnum:
+    description: "Trạng thái check-in"
+    permissible_values:
+      ON_TIME:
+        description: "Đúng giờ"
+      LATE:
+        description: "Muộn (trong grace period)"
+      VERY_LATE:
+        description: "Muộn quá grace period"
+      ABSENT:
+        description: "Vắng mặt"

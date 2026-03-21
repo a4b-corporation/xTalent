@@ -1,0 +1,152 @@
+// Assessment Context DBML Schema
+// Generated from ontology concepts: Assignment, Submission, Grading, GradingTask
+// Bounded Context: Assessment (ATS Module)
+
+// === ENUMS ===
+
+// Assignment Lifecycle States
+// Source: 5.ontology/assessment/assignment.yaml#AssignmentStatusEnum
+enum AssignmentStatus {
+  DRAFT       // Đang nháp
+  ACTIVE      // Đang mở nộp bài
+  CLOSED      // Đã đóng (qua deadline)
+  GRADING     // Đang chấm
+  COMPLETED   // Hoàn tất chấm
+  CANCELLED   // Đã hủy
+}
+
+// Submission Lifecycle States
+// Source: 5.ontology/assessment/submission.yaml#SubmissionStatusEnum
+enum SubmissionStatus {
+  SUBMITTED     // Đã nộp
+  GRADING       // Đang chấm
+  GRADED        // Đã chấm xong
+  LATE          // Nộp muộn
+  RESUBMITTED   // Nộp lại
+}
+
+// Grading Pass/Fail Results
+// Source: 5.ontology/assessment/grading.yaml#PassFailEnum
+enum PassFail {
+  PASS              // Đạt
+  FAIL              // Không đạt
+  NEEDS_DISCUSSION  // Cần thảo luận thêm
+}
+
+// GradingTask Lifecycle States
+// Source: 5.ontology/assessment/grading-task.yaml#GradingTaskStatusEnum
+enum GradingTaskStatus {
+  PENDING     // Chưa bắt đầu
+  IN_PROGRESS // Đang chấm
+  COMPLETED   // Hoàn thành
+  CANCELLED   // Đã hủy
+}
+
+// === TABLES ===
+
+// Assignment - Bài kiểm tra Online được TA tạo và gửi cho Students
+// Aggregate Root in Assessment Context
+// Source: 5.ontology/assessment/assignment.yaml#Assignment
+Table Assignment {
+  assignment_id         varchar(20)     pk    // Pattern: ^ASMNT-\d{6}$, Example: ASMNT-000001
+  event_id              varchar(100)    not null  // Event ID mà Assignment thuộc về
+  title                 varchar(255)    not null  // Tiêu đề Assignment
+  description           text            null      // Mô tả chi tiết Assignment
+  link                  varchar(500)    not null  // Link làm bài (Google Form, TestGorilla, etc.)
+  attachment_id         varchar(100)    null      // Attachment ID (file đính kèm nếu có)
+  deadline              timestamp       not null  // Deadline nộp bài
+  status                AssignmentStatus not null // Trạng thái Assignment
+  graders               jsonb           null      // Danh sách Grader IDs được phân công chấm
+  allowed_file_types    jsonb           null      // Các loại file được phép nộp (configurable)
+  max_file_size         integer         null      // Kích thước file tối đa (bytes)
+  multiple_files_allowed boolean        null      // Cho phép nộp nhiều file (không cần zip)
+  created_by            varchar(100)    not null  // User ID tạo Assignment (TA)
+  created_at            timestamp       not null  // Timestamp tạo Assignment
+  updated_at            timestamp       null      // Timestamp cập nhật Assignment
+}
+
+// Submission - Bài nộp của Student cho Assignment
+// Aggregate Root in Assessment Context
+// Source: 5.ontology/assessment/submission.yaml#Submission
+Table Submission {
+  submission_id     varchar(20)      pk    // Pattern: ^SUB-\d{6}$, Example: SUB-000001
+  assignment_id     varchar(20)      not null  // FK -> Assignment.assignment_id
+  application_id    varchar(100)     not null  // Application ID của Student nộp bài
+  candidate_rr_id   varchar(100)     not null  // Candidate RR ID
+  attachments       jsonb            not null  // Danh sách attachment IDs nộp lên
+  submitted_at      timestamp        not null  // Thời điểm nộp bài
+  is_late           boolean          null      // Nộp muộn (sau deadline)
+  status            SubmissionStatus not null  // Trạng thái Submission
+  created_by        varchar(100)     not null  // Student ID người nộp
+  created_at        timestamp        not null  // Timestamp tạo Submission
+}
+
+// Grading - Kết quả chấm bài Assignment/Submission
+// Aggregate Root in Assessment Context
+// Source: 5.ontology/assessment/grading.yaml#Grading
+Table Grading {
+  grading_id        varchar(20)     pk    // Pattern: ^GRD-\d{6}$, Example: GRD-000001
+  submission_id     varchar(20)     not null  // FK -> Submission.submission_id
+  grader_id         varchar(100)    not null  // User ID người chấm (Manager)
+  score             float           not null  // Điểm số (0.0 - 100.0)
+  comment           text            null      // Nhận xét của grader
+  pass_fail         PassFail        not null  // Kết quả Đạt/Không đạt
+  graded_at         timestamp       not null  // Thời điểm chấm xong
+  created_by        varchar(100)    not null  // Grader ID
+  created_at        timestamp       not null  // Timestamp tạo Grading record
+}
+
+// GradingTask - Task chấm bài cho Manager được TA tạo
+// Aggregate Root in Assessment Context
+// Source: 5.ontology/assessment/grading-task.yaml#GradingTask
+Table GradingTask {
+  task_id         varchar(20)          pk    // Pattern: ^GTK-\d{6}$, Example: GTK-000001
+  assignment_id   varchar(20)          not null  // FK -> Assignment.assignment_id
+  grader_id       varchar(100)         not null  // Manager ID được phân công chấm
+  submissions     jsonb                not null  // Danh sách submission IDs được phân công chấm
+  status          GradingTaskStatus    not null  // Trạng thái task
+  completed_at    timestamp            null      // Thời điểm hoàn thành task
+  deadline        timestamp            null      // Deadline hoàn thành chấm
+  created_by      varchar(100)         not null  // User ID tạo task (TA)
+  created_at      timestamp            not null  // Timestamp tạo task
+}
+
+// === RELATIONSHIPS ===
+// Source: 5.ontology/assessment/*.yaml (references in annotations)
+
+// Submission -> Assignment (Many-to-One)
+// A Submission belongs to one Assignment
+// An Assignment can have many Submissions
+Ref: Submission.assignment_id > Assignment.assignment_id
+
+// Grading -> Submission (Many-to-One)
+// A Grading record belongs to one Submission
+// A Submission can have multiple Grading records (multiple graders)
+Ref: Grading.submission_id > Submission.submission_id
+
+// GradingTask -> Assignment (Many-to-One)
+// A GradingTask belongs to one Assignment
+// An Assignment can have many GradingTasks
+Ref: GradingTask.assignment_id > Assignment.assignment_id
+
+// === INDEXES ===
+
+// Index for querying submissions by assignment
+create index Submission_assignment_idx on Submission(assignment_id)
+
+// Index for querying gradings by submission
+create index Grading_submission_idx on Grading(submission_id)
+
+// Index for querying grading tasks by assignment
+create index GradingTask_assignment_idx on GradingTask(assignment_id)
+
+// Index for querying by status (lifecycle queries)
+create index Assignment_status_idx on Assignment(status)
+create index Submission_status_idx on Submission(status)
+create index GradingTask_status_idx on GradingTask(status)
+
+// Index for audit trail queries
+create index Assignment_created_at_idx on Assignment(created_at)
+create index Submission_created_at_idx on Submission(created_at)
+create index Grading_created_at_idx on Grading(created_at)
+create index GradingTask_created_at_idx on GradingTask(created_at)

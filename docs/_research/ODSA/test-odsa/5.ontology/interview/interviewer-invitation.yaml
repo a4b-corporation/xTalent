@@ -1,0 +1,174 @@
+id: https://xtalent.io/ontology/ats/interview/interviewer-invitation
+name: interviewer_invitation_ontology
+version: "1.0.0"
+description: "InterviewerInvitation - Invitation cho Interviewer"
+
+prefixes:
+  xt: https://xtalent.io/ontology/
+  oracle: https://oracle.com/hcm/
+  sap: https://successfactors.sap.com/
+  workday: https://workday.com/
+
+default_range: string
+
+slots:
+  # --- Identifier ---
+  invitation_id:
+    description: "Unique identifier cho InterviewerInvitation"
+    identifier: true
+    required: true
+    pattern: "^IINV-\\d{6}$"
+    annotations:
+      example: "IINV-000001"
+
+  # --- Core Fields ---
+  slot_id:
+    description: "InterviewSlot ID mà Interviewer được mời"
+    required: true
+    annotations:
+      reference: "InterviewSlot.slot_id"
+
+  interviewer_id:
+    description: "Interviewer ID được mời"
+    required: true
+    annotations:
+      reference: "User.user_id"
+
+  calendar_event_id:
+    description: "Calendar Event ID (Google Calendar/Outlook, optional)"
+    required: false
+
+  status:
+    description: "Trạng thái invitation"
+    range: InvitationStatusEnum
+    required: true
+
+  sent_at:
+    description: "Thời điểm gửi invitation"
+    range: datetime
+    required: true
+
+  responded_at:
+    description: "Thời điểm Interviewer phản hồi"
+    range: datetime
+    required: false
+
+  response:
+    description: "Phản hồi của Interviewer (Accept/Decline)"
+    range: InvitationResponseEnum
+    required: false
+
+  # --- Audit Fields ---
+  created_by:
+    description: "User ID gửi invitation (TA hoặc System)"
+    required: true
+    annotations:
+      reference: "User.user_id"
+
+  created_at:
+    description: "Timestamp tạo Invitation"
+    range: datetime
+    required: true
+
+classes:
+  InterviewerInvitation:
+    description: |
+      InterviewerInvitation - Invitation cho Interviewer.
+      Auto tạo calendar event cho Interviewers (optional integration).
+      Aggregate Root trong Interview context.
+
+    annotations:
+      oracle_hcm_term: "InterviewerInvitation"
+      sap_term: "InterviewerInvitation"
+      workday_term: "InterviewerInvitation"
+      disambiguation: "xTalent: InterviewerInvitation = Mời phỏng vấn. Oracle: InterviewerInvitation. SAP: InterviewerInvitation. Workday: InterviewerInvitation. Xem docs.xtalent.io/ats/interview/interviewer-invitation."
+
+      module: "ats"
+      sub_module: "interview"
+      version: "1.0.0"
+      bounded_context: "Interview"
+      aggregate_root: true
+
+      ouroboros_evolution:
+        iteration: "1.0.0"
+        parent_version: null
+        evaluation_status: "pending"
+        last_evaluated: null
+        evolution_notes: "Initial version"
+
+      validation_hooks:
+        odds_system_builder:
+          required_for: true
+          validates: ["table_generation", "fk_references"]
+
+      see_also: "https://docs.xtalent.io/ats/interview/interviewer-invitation"
+
+    slots:
+      - invitation_id
+      - slot_id
+      - interviewer_id
+      - calendar_event_id
+      - status
+      - sent_at
+      - responded_at
+      - response
+      - created_by
+      - created_at
+
+    slot_usage:
+      invitation_id:
+        required: true
+        identifier: true
+
+      slot_id:
+        required: true
+
+      interviewer_id:
+        required: true
+
+      status:
+        required: true
+
+      sent_at:
+        required: true
+
+      created_by:
+        required: true
+
+      created_at:
+        required: true
+
+    rules:
+      - description: "BRS-IINV-001: Calendar event tự động tạo cho Interviewers (optional)"
+        preconditions:
+          slot_conditions:
+            calendar_integration_enabled:
+              equals_boolean: true
+        postconditions:
+          slot_conditions:
+            calendar_event_id:
+              must_exist: true
+
+# === ENUMS ===
+enums:
+  InvitationStatusEnum:
+    description: "Trạng thái invitation"
+    permissible_values:
+      PENDING:
+        description: "Chưa phản hồi"
+      ACCEPTED:
+        description: "Đã chấp nhận"
+      DECLINED:
+        description: "Đã từ chối"
+      CANCELLED:
+        description: "Đã hủy"
+
+  InvitationResponseEnum:
+    description: "Phản hồi của Interviewer"
+    permissible_values:
+      ACCEPT:
+        description: "Chấp nhận"
+      DECLINE:
+        description: "Từ chối"
+      TENTATIVE:
+        description: "Chưa chắc chắn"

@@ -1,0 +1,144 @@
+id: https://xtalent.io/ontology/ats/application/question-answer
+name: question_answer_ontology
+version: "1.0.0"
+description: "QuestionAnswer - Câu trả lời cho questions theo Track"
+
+prefixes:
+  xt: https://xtalent.io/ontology/
+  oracle: https://oracle.com/hcm/
+  sap: https://successfactors.sap.com/
+  workday: https://workday.com/
+
+default_range: string
+
+slots:
+  # --- Identifier ---
+  answer_id:
+    description: "Unique identifier cho QuestionAnswer"
+    identifier: true
+    required: true
+    pattern: "^ANS-\\d{6}$"
+    annotations:
+      example: "ANS-000001"
+
+  # --- Core Fields ---
+  application_id:
+    description: "Application ID mà câu trả lời thuộc về"
+    required: true
+    annotations:
+      reference: "Application.application_id"
+
+  question_id:
+    description: "Question ID từ QuestionSet"
+    required: true
+    annotations:
+      reference: "QuestionSet.question_id"
+
+  question_text:
+    description: "Nội dung câu hỏi"
+    required: true
+
+  question_type:
+    description: "Loại câu hỏi (SHORT_TEXT, LONG_TEXT, SINGLE_CHOICE, etc.)"
+    range: QuestionTypeEnum
+    required: true
+
+  answer_text:
+    description: "Câu trả lời"
+    required: true
+
+  # --- Audit Fields ---
+  created_at:
+    description: "Timestamp tạo câu trả lời"
+    range: datetime
+    required: true
+
+classes:
+  QuestionAnswer:
+    description: |
+      QuestionAnswer - Câu trả lời cho questions theo Track.
+      Mỗi Track có bộ câu hỏi riêng, Student phải trả lời khi apply.
+      Aggregate Root trong Application context.
+
+    annotations:
+      oracle_hcm_term: "ApplicationAnswer"
+      sap_term: "ApplicationAnswer"
+      workday_term: "ApplicationAnswer"
+      disambiguation: "xTalent: QuestionAnswer = Câu trả lời application. Oracle: ApplicationAnswer. SAP: ApplicationAnswer. Workday: ApplicationAnswer. Xem docs.xtalent.io/ats/application/question-answer."
+
+      module: "ats"
+      sub_module: "application"
+      version: "1.0.0"
+      bounded_context: "Application"
+      aggregate_root: true
+
+      ouroboros_evolution:
+        iteration: "1.0.0"
+        parent_version: null
+        evaluation_status: "pending"
+        last_evaluated: null
+        evolution_notes: "Initial version"
+
+      validation_hooks:
+        odds_system_builder:
+          required_for: true
+          validates: ["table_generation", "fk_references"]
+
+      see_also: "https://docs.xtalent.io/ats/application/question-answer"
+
+    slots:
+      - answer_id
+      - application_id
+      - question_id
+      - question_text
+      - question_type
+      - answer_text
+      - created_at
+
+    slot_usage:
+      answer_id:
+        required: true
+        identifier: true
+
+      application_id:
+        required: true
+
+      question_id:
+        required: true
+
+      question_text:
+        required: true
+
+      question_type:
+        required: true
+
+      answer_text:
+        required: true
+
+      created_at:
+        required: true
+
+    rules:
+      - description: "BRS-ANS-001: Câu trả lời không được để trống"
+        preconditions:
+          slot_conditions: {}
+        postconditions:
+          slot_conditions:
+            answer_text:
+              not_equals_string: ""
+
+# === ENUMS ===
+enums:
+  QuestionTypeEnum:
+    description: "Loại câu hỏi"
+    permissible_values:
+      SHORT_TEXT:
+        description: "Câu trả lời ngắn"
+      LONG_TEXT:
+        description: "Câu trả lời dài (essay)"
+      SINGLE_CHOICE:
+        description: "Chọn 1 đáp án"
+      MULTIPLE_CHOICE:
+        description: "Chọn nhiều đáp án"
+      YES_NO:
+        description: "Có/Không"

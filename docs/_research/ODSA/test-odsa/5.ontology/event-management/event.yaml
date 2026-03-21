@@ -1,0 +1,244 @@
+id: https://xtalent.io/ontology/ats/event-management/event
+name: event_ontology
+version: "1.0.0"
+description: "Event tuyển dụng Fresher - sự kiện tuyển dụng được tạo, config workflow, mapping request và publish lên Career Site"
+
+prefixes:
+  xt: https://xtalent.io/ontology/
+  oracle: https://oracle.com/hcm/
+  sap: https://successfactors.sap.com/
+  workday: https://workday.com/
+
+imports:
+  - ./track.yaml
+  - ./workflow.yaml
+
+default_range: string
+
+slots:
+  # --- Identifier ---
+  event_id:
+    description: "Unique identifier cho Event"
+    identifier: true
+    required: true
+    pattern: "^EVT-\\d{6}$"
+    annotations:
+      example: "EVT-000001"
+
+  # --- Core Fields ---
+  name:
+    description: "Tên Event tuyển dụng"
+    required: true
+
+  description:
+    description: "Mô tả chi tiết Event"
+    required: false
+
+  program_type:
+    description: "Loại chương trình (Fresher, Job Fair, Uniweek, etc.)"
+    required: true
+    range: ProgramTypeEnum
+
+  start_date:
+    description: "Ngày bắt đầu Event"
+    range: date
+    required: true
+
+  end_date:
+    description: "Ngày kết thúc Event"
+    range: date
+    required: true
+
+  application_start_date:
+    description: "Thời gian bắt đầu nhận applications"
+    range: datetime
+    required: true
+
+  application_end_date:
+    description: "Thời gian kết thúc nhận applications"
+    range: datetime
+    required: true
+
+  status:
+    description: "Trạng thái hiện tại của Event"
+    range: EventStatusEnum
+    required: true
+
+  # --- Audit Fields ---
+  created_by:
+    description: "User ID tạo Event (TA)"
+    required: true
+    annotations:
+      reference: "User.user_id"
+
+  created_at:
+    description: "Timestamp tạo Event"
+    range: datetime
+    required: true
+
+  updated_at:
+    description: "Timestamp cập nhật Event"
+    range: datetime
+    required: false
+
+  # --- Relationship Slots ---
+  tracks:
+    description: "Danh sách Tracks trong Event"
+    range: track
+    multivalued: true
+    inlined: false
+
+  workflow_id:
+    description: "Workflow configuration cho Event"
+    required: false
+    annotations:
+      reference: "Workflow.workflow_id"
+
+classes:
+  Event:
+    description: |
+      Event tuyển dụng Fresher - aggregate root trong Event Management context.
+      Bao gồm thông tin Event, tracks, workflow configuration, và request mappings.
+      Aggregate Root trong Event Management context.
+
+    annotations:
+      # Terminology mapping
+      oracle_hcm_term: "RecruitingEvent"
+      sap_term: "RecruitingEvent"
+      workday_term: "RecruitingEvent"
+      disambiguation: "xTalent: Event = Fresher Recruitment Event. Oracle: RecruitingEvent. SAP: RecruitingEvent. Workday: RecruitingEvent. Xem docs.xtalent.io/ats/event-management/event."
+
+      # Module info
+      module: "ats"
+      sub_module: "event-management"
+      version: "1.0.0"
+
+      # Bounded Context
+      bounded_context: "Event Management"
+      aggregate_root: true
+
+      # Ouroboros Evolution Tracking
+      ouroboros_evolution:
+        iteration: "1.0.0"
+        parent_version: null
+        evaluation_status: "pending"
+        last_evaluated: null
+        evolution_notes: "Initial version from Bounded Context definition"
+
+      # Cross-skill Validation Hooks
+      validation_hooks:
+        odds_system_builder:
+          required_for: true
+          validates: ["table_generation", "fk_references"]
+        database_schema_design:
+          required_for: false
+          validates: ["normalization", "indexing"]
+
+      # See also
+      see_also: "https://docs.xtalent.io/ats/event-management/event"
+
+    slots:
+      - event_id
+      - name
+      - description
+      - program_type
+      - start_date
+      - end_date
+      - application_start_date
+      - application_end_date
+      - status
+      - created_by
+      - created_at
+      - updated_at
+      - tracks
+      - workflow_id
+
+    slot_usage:
+      event_id:
+        required: true
+        identifier: true
+
+      name:
+        required: true
+
+      program_type:
+        required: true
+
+      start_date:
+        required: true
+
+      end_date:
+        required: true
+
+      application_start_date:
+        required: true
+
+      application_end_date:
+        required: true
+
+      status:
+        required: true
+
+      created_by:
+        required: true
+
+      created_at:
+        required: true
+
+    rules:
+      - description: "BRS-EM-001: Chỉ Event thuộc Program 'Fresher' mới được map Request tuyển dụng"
+        preconditions:
+          slot_conditions:
+            program_type:
+              equals_string: "FRESHER"
+        postconditions:
+          slot_conditions: {}
+
+      - description: "BRS-EM-004: Không được add mapping Request sau khi Event đã publish"
+        preconditions:
+          slot_conditions:
+            status:
+              equals_string: "PUBLISHED"
+        postconditions:
+          slot_conditions:
+            request_mappings:
+              equals_string: "no_new_mappings"
+
+      - description: "BRS-EM-007: Workflow phải có ít nhất 1 vòng đánh giá (Test hoặc Interview)"
+        preconditions:
+          slot_conditions:
+            workflow_id:
+              slot_value_conditions:
+                rounds:
+                  list_has_length:
+                    min_length: 1
+        postconditions:
+          slot_conditions: {}
+
+# === ENUMS ===
+enums:
+  ProgramTypeEnum:
+    description: "Loại chương trình tuyển dụng"
+    permissible_values:
+      FRESHER:
+        description: "Event tuyển dụng Fresher"
+      JOB_FAIR:
+        description: "Ngày hội việc làm"
+      UNIWEEK:
+        description: "Tuần lễ đại học"
+      INTERN:
+        description: "Tuyển dụng thực tập sinh"
+
+  EventStatusEnum:
+    description: "Trạng thái lifecycle của Event"
+    permissible_values:
+      DRAFT:
+        description: "Event đang ở trạng thái nháp, chưa publish"
+      PUBLISHED:
+        description: "Event đã publish lên Career Site, đang nhận applications"
+      ACTIVE:
+        description: "Event đang diễn ra"
+      COMPLETED:
+        description: "Event đã hoàn tất"
+      CANCELLED:
+        description: "Event đã hủy"

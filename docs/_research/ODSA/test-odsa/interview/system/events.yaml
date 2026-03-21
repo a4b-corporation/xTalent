@@ -1,0 +1,476 @@
+# ODDS System - Interview Context Domain Events
+# Generated from Ontology Lifecycle Transitions
+# Date: 2026-03-21
+#
+# Event Naming Convention: {Entity}{State}d
+# Source: https://xtalent.io/ontology/ats/interview
+
+events:
+  # ===========================================
+  # InterviewSlot Events
+  # Ontology: https://xtalent.io/ontology/ats/interview/interview-slot
+  # ===========================================
+
+  InterviewSlotCreated:
+    description: |
+      Event được emit khi một InterviewSlot mới được tạo.
+      Transition: (none) -> DRAFT
+    aggregate_root: InterviewSlot
+    aggregate_id_field: slot_id
+    lifecycle_transition: INITIAL -> DRAFT
+    payload:
+      slot_id:
+        type: string
+        description: Unique identifier cho InterviewSlot
+        pattern: "^ISLOT-\\d{6}$"
+      event_id:
+        type: string
+        description: Event ID mà InterviewSlot thuộc về
+      slot_name:
+        type: string
+        description: Tên ca phỏng vấn
+      status:
+        type: string
+        enum: [DRAFT]
+        description: Trạng thái ban đầu là DRAFT
+      created_by:
+        type: string
+        description: User ID tạo InterviewSlot (TA)
+      created_at:
+        type: string
+        format: date-time
+        description: Timestamp tạo InterviewSlot
+    use_cases:
+      - "TA tạo ca phỏng vấn mới"
+    ontology_trace:
+      concept: InterviewSlot
+      bounded_context: Interview
+      aggregate_root: true
+
+  InterviewSlotPublished:
+    description: |
+      Event được emit khi InterviewSlot được publish từ DRAFT sang ACTIVE.
+      Transition: DRAFT -> ACTIVE
+    aggregate_root: InterviewSlot
+    aggregate_id_field: slot_id
+    lifecycle_transition: DRAFT -> ACTIVE
+    payload:
+      slot_id:
+        type: string
+        description: Unique identifier cho InterviewSlot
+        pattern: "^ISLOT-\\d{6}$"
+      published_at:
+        type: string
+        format: date-time
+        description: Thời điểm publish
+      published_by:
+        type: string
+        description: User ID thực hiện publish
+      previous_status:
+        type: string
+        enum: [DRAFT]
+      new_status:
+        type: string
+        enum: [ACTIVE]
+    use_cases:
+      - "TA publish ca phỏng vấn để mở đăng ký"
+    ontology_trace:
+      concept: InterviewSlot
+      bounded_context: Interview
+      aggregate_root: true
+
+  # ===========================================
+  # InterviewSchedule Events
+  # Ontology: https://xtalent.io/ontology/ats/interview/interview-schedule
+  # ===========================================
+
+  InterviewScheduleAllocated:
+    description: |
+      Event được emit khi một InterviewSchedule được tạo (candidate được phân vào slot).
+      Transition: (none) -> PENDING
+    aggregate_root: InterviewSchedule
+    aggregate_id_field: schedule_id
+    lifecycle_transition: INITIAL -> PENDING
+    payload:
+      schedule_id:
+        type: string
+        description: Unique identifier cho InterviewSchedule
+        pattern: "^ISCH-\\d{6}$"
+      slot_id:
+        type: string
+        description: InterviewSlot ID mà Candidate được chia
+        pattern: "^ISLOT-\\d{6}$"
+      application_id:
+        type: string
+        description: Application ID của Candidate
+      candidate_rr_id:
+        type: string
+        description: Candidate RR ID
+      status:
+        type: string
+        enum: [PENDING]
+        description: Trạng thái ban đầu là PENDING
+      confirm_deadline:
+        type: string
+        format: date-time
+        description: Deadline confirm (Time Window, configurable)
+      created_by:
+        type: string
+        description: System auto tạo
+      created_at:
+        type: string
+        format: date-time
+    use_cases:
+      - "Auto-allocate candidate vào slot (FCFS + Time Window)"
+      - "TA phân công candidate vào slot"
+    ontology_trace:
+      concept: InterviewSchedule
+      bounded_context: Interview
+      aggregate_root: true
+    business_rules:
+      - "BRS-ISCH-003: Auto-allocate với FCFS + Time Window (configurable)"
+
+  InterviewScheduleConfirmed:
+    description: |
+      Event được emit khi Candidate confirm tham gia phỏng vấn.
+      Transition: PENDING -> CONFIRMED
+    aggregate_root: InterviewSchedule
+    aggregate_id_field: schedule_id
+    lifecycle_transition: PENDING -> CONFIRMED
+    payload:
+      schedule_id:
+        type: string
+        description: Unique identifier cho InterviewSchedule
+        pattern: "^ISCH-\\d{6}$"
+      slot_id:
+        type: string
+        description: InterviewSlot ID
+        pattern: "^ISLOT-\\d{6}$"
+      confirmed_at:
+        type: string
+        format: date-time
+        description: Thời điểm confirm tham gia
+      previous_status:
+        type: string
+        enum: [PENDING]
+      new_status:
+        type: string
+        enum: [CONFIRMED]
+    use_cases:
+      - "Candidate confirm tham gia phỏng vấn"
+    ontology_trace:
+      concept: InterviewSchedule
+      bounded_context: Interview
+      aggregate_root: true
+    business_rules:
+      - "BRS-ISCH-001: Student chỉ được đổi lịch 1 lần"
+
+  InterviewScheduleRescheduled:
+    description: |
+      Event được emit khi Interview được reschedule (đổi lịch).
+      Transition: CONFIRMED -> RESCHEDULED
+    aggregate_root: InterviewSchedule
+    aggregate_id_field: schedule_id
+    lifecycle_transition: CONFIRMED -> RESCHEDULED
+    payload:
+      schedule_id:
+        type: string
+        description: Unique identifier cho InterviewSchedule
+        pattern: "^ISCH-\\d{6}$"
+      old_slot_id:
+        type: string
+        description: InterviewSlot ID cũ
+        pattern: "^ISLOT-\\d{6}$"
+      new_slot_id:
+        type: string
+        description: InterviewSlot ID mới
+        pattern: "^ISLOT-\\d{6}$"
+      change_count:
+        type: integer
+        description: Số lần đổi lịch (max 1 lần)
+      reason:
+        type: string
+        description: Lý do đổi lịch
+      rescheduled_at:
+        type: string
+        format: date-time
+      previous_status:
+        type: string
+        enum: [CONFIRMED]
+      new_status:
+        type: string
+        enum: [RESCHEDULED]
+    use_cases:
+      - "Candidate đổi lịch phỏng vấn"
+    ontology_trace:
+      concept: InterviewSchedule
+      bounded_context: Interview
+      aggregate_root: true
+    business_rules:
+      - "BRS-ISCH-001: Student chỉ được đổi lịch 1 lần"
+      - "BRS-ISCH-002: Lần thứ 2 chỉ còn Yes/No options"
+
+  # ===========================================
+  # InterviewerInvitation Events
+  # Ontology: https://xtalent.io/ontology/ats/interview/interviewer-invitation
+  # ===========================================
+
+  InterviewerInvitationSent:
+    description: |
+      Event được emit khi invitation được gửi cho Interviewer.
+      Transition: (none) -> PENDING
+    aggregate_root: InterviewerInvitation
+    aggregate_id_field: invitation_id
+    lifecycle_transition: INITIAL -> PENDING
+    payload:
+      invitation_id:
+        type: string
+        description: Unique identifier cho InterviewerInvitation
+        pattern: "^IINV-\\d{6}$"
+      slot_id:
+        type: string
+        description: InterviewSlot ID mà Interviewer được mời
+        pattern: "^ISLOT-\\d{6}$"
+      interviewer_id:
+        type: string
+        description: Interviewer ID được mời
+      status:
+        type: string
+        enum: [PENDING]
+        description: Trạng thái ban đầu là PENDING
+      sent_at:
+        type: string
+        format: date-time
+        description: Thời điểm gửi invitation
+      created_by:
+        type: string
+        description: User ID gửi invitation (TA hoặc System)
+      created_at:
+        type: string
+        format: date-time
+    use_cases:
+      - "TA gửi mời interviewers cho ca phỏng vấn"
+      - "System auto tạo invitation khi slot được publish"
+    ontology_trace:
+      concept: InterviewerInvitation
+      bounded_context: Interview
+      aggregate_root: true
+
+  InterviewerInvitationAccepted:
+    description: |
+      Event được emit khi Interviewer chấp nhận invitation.
+      Transition: PENDING -> ACCEPTED
+    aggregate_root: InterviewerInvitation
+    aggregate_id_field: invitation_id
+    lifecycle_transition: PENDING -> ACCEPTED
+    payload:
+      invitation_id:
+        type: string
+        description: Unique identifier cho InterviewerInvitation
+        pattern: "^IINV-\\d{6}$"
+      slot_id:
+        type: string
+        description: InterviewSlot ID
+        pattern: "^ISLOT-\\d{6}$"
+      interviewer_id:
+        type: string
+        description: Interviewer ID
+      response:
+        type: string
+        enum: [ACCEPT]
+        description: Phản hồi của Interviewer
+      responded_at:
+        type: string
+        format: date-time
+        description: Thời điểm Interviewer phản hồi
+      previous_status:
+        type: string
+        enum: [PENDING]
+      new_status:
+        type: string
+        enum: [ACCEPTED]
+    use_cases:
+      - "Interviewer chấp nhận lời mời phỏng vấn"
+    ontology_trace:
+      concept: InterviewerInvitation
+      bounded_context: Interview
+      aggregate_root: true
+
+  InterviewerInvitationDeclined:
+    description: |
+      Event được emit khi Interviewer từ chối invitation.
+      Transition: PENDING -> DECLINED
+    aggregate_root: InterviewerInvitation
+    aggregate_id_field: invitation_id
+    lifecycle_transition: PENDING -> DECLINED
+    payload:
+      invitation_id:
+        type: string
+        description: Unique identifier cho InterviewerInvitation
+        pattern: "^IINV-\\d{6}$"
+      slot_id:
+        type: string
+        description: InterviewSlot ID
+        pattern: "^ISLOT-\\d{6}$"
+      interviewer_id:
+        type: string
+        description: Interviewer ID
+      response:
+        type: string
+        enum: [DECLINE]
+        description: Phản hồi của Interviewer
+      reason:
+        type: string
+        description: Lý do từ chối (optional)
+      responded_at:
+        type: string
+        format: date-time
+        description: Thời điểm Interviewer phản hồi
+      previous_status:
+        type: string
+        enum: [PENDING]
+      new_status:
+        type: string
+        enum: [DECLINED]
+    use_cases:
+      - "Interviewer từ chối lời mời phỏng vấn"
+    ontology_trace:
+      concept: InterviewerInvitation
+      bounded_context: Interview
+      aggregate_root: true
+
+  # ===========================================
+  # Grading Events
+  # Ontology: https://xtalent.io/ontology/ats/interview/grading
+  # ===========================================
+
+  GradingSubmitted:
+    description: |
+      Event được emit khi Interviewer submit grading (kết quả phỏng vấn).
+      Transition: (none) -> SUBMITTED
+    aggregate_root: Grading
+    aggregate_id_field: grading_id
+    lifecycle_transition: INITIAL -> SUBMITTED
+    payload:
+      grading_id:
+        type: string
+        description: Unique identifier cho Grading
+        pattern: "^IGRD-\\d{6}$"
+      schedule_id:
+        type: string
+        description: InterviewSchedule ID được chấm
+        pattern: "^ISCH-\\d{6}$"
+      interviewer_id:
+        type: string
+        description: User ID người chấm (Interviewer)
+      score:
+        type: number
+        format: float
+        minimum: 0.0
+        maximum: 100.0
+        description: Điểm số
+      comment:
+        type: string
+        description: Nhận xét của interviewer
+      proposal:
+        type: string
+        enum: [OFFER, REJECT, NEED_DISCUSSION]
+        description: Đề xuất sau phỏng vấn
+      graded_at:
+        type: string
+        format: date-time
+        description: Thời điểm chấm xong
+      can_update_before_review:
+        type: boolean
+        default: false
+        description: Grading có thể update trước khi TA review
+      update_deadline:
+        type: string
+        format: date-time
+        description: Deadline update grading (configurable)
+      created_by:
+        type: string
+        description: Grader ID
+      created_at:
+        type: string
+        format: date-time
+    use_cases:
+      - "Interviewer submit kết quả phỏng vấn"
+    ontology_trace:
+      concept: Grading
+      bounded_context: Interview
+      aggregate_root: true
+    business_rules:
+      - "BRS-IGRD-001: Interviewer chỉ thấy Candidates được phân công"
+      - "BRS-IGRD-002: Grading có thể update trước khi final review (configurable)"
+
+  # ===========================================
+  # CheckIn Events
+  # Ontology: https://xtalent.io/ontology/ats/interview/checkin
+  # ===========================================
+
+  CheckInRecorded:
+    description: |
+      Event được emit khi check-in được record cho Candidate.
+      Transition: (none) -> RECORDED
+    aggregate_root: CheckIn
+    aggregate_id_field: check_in_id
+    lifecycle_transition: INITIAL -> RECORDED
+    payload:
+      check_in_id:
+        type: string
+        description: Unique identifier cho CheckIn
+        pattern: "^ICI-\\d{6}$"
+      schedule_id:
+        type: string
+        description: InterviewSchedule ID mà Candidate check-in
+        pattern: "^ISCH-\\d{6}$"
+      actual_time:
+        type: string
+        format: date-time
+        description: Thời gian check-in thực tế
+      is_late:
+        type: boolean
+        default: false
+        description: Check-in muộn
+      late_reason:
+        type: string
+        description: Lý do check-in muộn (optional)
+      photo_id:
+        type: string
+        description: Photo ID (chụp hình khi check-in, optional)
+      checked_in_by:
+        type: string
+        description: User ID thực hiện check-in
+      created_at:
+        type: string
+        format: date-time
+    use_cases:
+      - "Candidate check-in khi đến phỏng vấn"
+      - "TA record check-in cho candidate"
+    ontology_trace:
+      concept: CheckIn
+      bounded_context: Interview
+      aggregate_root: true
+    business_rules:
+      - "BRS-ICI-001: Check-in muộn vẫn cho phép với lý do"
+
+# ===========================================
+# Event Summary
+# ===========================================
+# Total Events: 10
+#
+# By Aggregate Root:
+# - InterviewSlot: 2 events (InterviewSlotCreated, InterviewSlotPublished)
+# - InterviewSchedule: 3 events (InterviewScheduleAllocated, InterviewScheduleConfirmed, InterviewScheduleRescheduled)
+# - InterviewerInvitation: 3 events (InterviewerInvitationSent, InterviewerInvitationAccepted, InterviewerInvitationDeclined)
+# - Grading: 1 event (GradingSubmitted)
+# - CheckIn: 1 event (CheckInRecorded)
+#
+# Lifecycle Coverage:
+# - All lifecycle transitions from ontology enums are covered
+# - InterviewSlotStatusEnum: DRAFT, ACTIVE, IN_PROGRESS, COMPLETED, CANCELLED
+# - InterviewScheduleStatusEnum: PENDING, CONFIRMED, RESCHEDULED, COMPLETED, NO_SHOW, CANCELLED
+# - InvitationStatusEnum: PENDING, ACCEPTED, DECLINED, CANCELLED
+# - InterviewProposalEnum: OFFER, REJECT, NEED_DISCUSSION
+# - CheckInStatusEnum: ON_TIME, LATE, ABSENT

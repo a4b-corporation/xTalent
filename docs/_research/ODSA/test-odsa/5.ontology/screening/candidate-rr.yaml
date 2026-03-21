@@ -1,0 +1,199 @@
+id: https://xtalent.io/ontology/ats/screening/candidate-rr
+name: candidate_rr_ontology
+version: "1.0.0"
+description: "CandidateRR - Candidate record được tạo khi Pass Screening"
+
+prefixes:
+  xt: https://xtalent.io/ontology/
+  oracle: https://oracle.com/hcm/
+  sap: https://successfactors.sap.com/
+  workday: https://workday.com/
+
+default_range: string
+
+slots:
+  # --- Identifier ---
+  candidate_rr_id:
+    description: "Unique identifier cho Candidate RR"
+    identifier: true
+    required: true
+    pattern: "^CRR-\\d{6}$"
+    annotations:
+      example: "CRR-000001"
+
+  # --- Core Fields ---
+  application_id:
+    description: "Application ID mà Candidate RR được tạo từ"
+    required: true
+    annotations:
+      reference: "Application.application_id"
+
+  student_id:
+    description: "Student ID của candidate"
+    required: true
+    annotations:
+      reference: "Student.student_id"
+
+  status:
+    description: "Trạng thái candidate trong pipeline"
+    range: CandidateStatusEnum
+    required: true
+
+  current_stage:
+    description: "Vòng hiện tại của candidate"
+    range: CandidateStageEnum
+    required: true
+
+  source_event:
+    description: "Event ID mà candidate apply vào"
+    required: true
+    annotations:
+      reference: "Event.event_id"
+
+  screening_id:
+    description: "Screening ID mà Candidate RR được tạo từ"
+    required: true
+    annotations:
+      reference: "Screening.screening_id"
+
+  # --- Audit Fields ---
+  created_by:
+    description: "System auto tạo"
+    required: true
+
+  created_at:
+    description: "Timestamp tạo Candidate RR"
+    range: datetime
+    required: true
+
+  updated_at:
+    description: "Timestamp cập nhật Candidate RR"
+    range: datetime
+    required: false
+
+classes:
+  CandidateRR:
+    description: |
+      CandidateRR - Candidate record trong ATS được tạo khi Pass Screening.
+      Theo dõi candidate xuyên suốt các vòng tuyển dụng.
+      Aggregate Root trong Screening context.
+
+    annotations:
+      oracle_hcm_term: "Candidate"
+      sap_term: "Candidate"
+      workday_term: "Candidate"
+      disambiguation: "xTalent: CandidateRR = Record candidate trong ATS. Oracle: Candidate. SAP: Candidate. Workday: Candidate. Xem docs.xtalent.io/ats/screening/candidate-rr."
+
+      module: "ats"
+      sub_module: "screening"
+      version: "1.0.0"
+      bounded_context: "Screening"
+      aggregate_root: true
+
+      ouroboros_evolution:
+        iteration: "1.0.0"
+        parent_version: null
+        evaluation_status: "pending"
+        last_evaluated: null
+        evolution_notes: "Initial version"
+
+      validation_hooks:
+        odds_system_builder:
+          required_for: true
+          validates: ["table_generation", "fk_references"]
+
+      see_also: "https://docs.xtalent.io/ats/screening/candidate-rr"
+
+    slots:
+      - candidate_rr_id
+      - application_id
+      - student_id
+      - status
+      - current_stage
+      - source_event
+      - screening_id
+      - created_by
+      - created_at
+      - updated_at
+
+    slot_usage:
+      candidate_rr_id:
+        required: true
+        identifier: true
+
+      application_id:
+        required: true
+
+      student_id:
+        required: true
+
+      status:
+        required: true
+
+      current_stage:
+        required: true
+
+      source_event:
+        required: true
+
+      screening_id:
+        required: true
+
+      created_by:
+        required: true
+
+      created_at:
+        required: true
+
+    rules:
+      - description: "BRS-CRR-001: Candidate RR chỉ được tạo khi Screening = Pass"
+        preconditions:
+          slot_conditions:
+            screening_id:
+              slot_value_conditions:
+                result:
+                  equals_string: "PASS"
+        postconditions:
+          slot_conditions: {}
+
+      - description: "BRS-CRR-002: Status cập nhật theo tiến độ pipeline"
+        preconditions:
+          slot_conditions: {}
+        postconditions:
+          slot_conditions:
+            status:
+              one_of:
+                - "ACTIVE"
+                - "HIRED"
+                - "REJECTED"
+                - "WITHDRAWN"
+
+# === ENUMS ===
+enums:
+  CandidateStatusEnum:
+    description: "Trạng thái candidate"
+    permissible_values:
+      ACTIVE:
+        description: "Đang trong pipeline"
+      HIRED:
+        description: "Đã hire (accept offer)"
+      REJECTED:
+        description: "Bị reject"
+      WITHDRAWN:
+        description: "Rút lui"
+
+  CandidateStageEnum:
+    description: "Vòng hiện tại của candidate"
+    permissible_values:
+      SCREENING:
+        description: "Vòng screening"
+      ONLINE_TEST:
+        description: "Vòng Online Test"
+      ONSITE_TEST:
+        description: "Vòng Onsite Test"
+      INTERVIEW:
+        description: "Vòng phỏng vấn"
+      OFFER:
+        description: "Vòng offer"
+      HIRE:
+        description: "Đã hire"

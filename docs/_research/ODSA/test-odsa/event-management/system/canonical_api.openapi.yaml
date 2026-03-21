@@ -1,0 +1,708 @@
+openapi: 3.0.3
+info:
+  title: Event Management Context - Canonical API
+  description: |
+    Canonical API cho Event Management Context trong xTalent ATS.
+
+    ## Bounded Context
+    Event Management - Quản lý sự kiện tuyển dụng Fresher từ khi tạo draft đến khi publish, active và hoàn tất.
+
+    ## Aggregate Roots
+    - Event
+    - Track
+    - Workflow
+    - QuestionSet
+    - RequestMapping
+
+    ## Ontology Reference
+    - 5.ontology/event-management/event.yaml
+    - 5.ontology/event-management/track.yaml
+    - 5.ontology/event-management/workflow.yaml
+    - 5.ontology/event-management/question-set.yaml
+    - 5.ontology/event-management/request-mapping.yaml
+
+  version: 1.0.0
+  contact:
+    name: xTalent ATS Team
+  license:
+    name: Proprietary
+
+servers:
+  - url: /api/ats/event-management/v1
+    description: Event Management API v1
+
+tags:
+  - name: Events
+    description: Event operations - Aggregate Root
+  - name: Tracks
+    description: Track operations within Events
+  - name: Workflows
+    description: Workflow configuration for Events
+  - name: QuestionSets
+    description: Question Set management
+  - name: RequestMappings
+    description: Request to Event mapping
+
+paths:
+  /events/create:
+    post:
+      tags:
+        - Events
+      summary: Create Event
+      description: |
+        Tạo mới một Event tuyển dụng.
+
+        **Business Rules:**
+        - BRS-EM-001: Chỉ Event thuộc Program 'Fresher' mới được map Request tuyển dụng
+
+        **Traceability:**
+        - Ontology: Event (5.ontology/event-management/event.yaml)
+        - Lifecycle Transition: EventCreated
+      operationId: createEvent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEventRequest'
+      responses:
+        '201':
+          description: Event created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventResponse'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /events/{id}/map-request:
+    post:
+      tags:
+        - RequestMappings
+      summary: Map Request to Event
+      description: |
+        Map một Request tuyển dụng từ hệ thống ngoài vào Event.
+
+        **Business Rules:**
+        - BRS-EM-001: Chỉ Request type 'Fresher' mới được map
+        - BRS-EM-MAP-002: Một Request chỉ được map 1 Event duy nhất
+        - BRS-EM-004: Không được add mapping Request sau khi Event đã publish
+
+        **Traceability:**
+        - Ontology: RequestMapping (5.ontology/event-management/request-mapping.yaml)
+        - Lifecycle Transition: RequestMapped
+      operationId: mapRequestToEvent
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Event ID (EVT-xxxxxx)
+          schema:
+            type: string
+            pattern: '^EVT-\d{6}$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MapRequestToEventRequest'
+      responses:
+        '201':
+          description: Request mapped successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestMappingResponse'
+        '400':
+          description: Invalid input or business rule violation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Event not found
+        '409':
+          description: Request already mapped to another Event
+
+  /events/{id}/add-track:
+    post:
+      tags:
+        - Tracks
+      summary: Add Track to Event
+      description: |
+        Thêm một Track (chuyên ngành) vào Event.
+
+        **Business Rules:**
+        - BRS-EM-TRK-001: Track phải thuộc về 1 Event
+
+        **Traceability:**
+        - Ontology: Track (5.ontology/event-management/track.yaml)
+        - Lifecycle Transition: TrackAdded
+      operationId: addTrackToEvent
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Event ID (EVT-xxxxxx)
+          schema:
+            type: string
+            pattern: '^EVT-\d{6}$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddTrackToEventRequest'
+      responses:
+        '201':
+          description: Track added successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrackResponse'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Event not found
+
+  /events/{id}/configure-workflow:
+    post:
+      tags:
+        - Workflows
+      summary: Configure Workflow for Event
+      description: |
+        Cấu hình workflow các vòng tuyển dụng cho Event.
+
+        **Business Rules:**
+        - BRS-EM-007: Workflow phải có ít nhất 1 vòng đánh giá (Test hoặc Interview)
+        - BRS-EM-WFL-001: Workflow phải có ít nhất 1 vòng đánh giá
+        - BRS-EM-WFL-002: Vòng skipped phải tồn tại trong rounds
+
+        **Traceability:**
+        - Ontology: Workflow (5.ontology/event-management/workflow.yaml)
+        - Lifecycle Transition: WorkflowConfigured
+      operationId: configureWorkflowForEvent
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Event ID (EVT-xxxxxx)
+          schema:
+            type: string
+            pattern: '^EVT-\d{6}$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfigureWorkflowRequest'
+      responses:
+        '200':
+          description: Workflow configured successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowResponse'
+        '400':
+          description: Invalid input or business rule violation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Event not found
+
+  /events/{id}/publish:
+    post:
+      tags:
+        - Events
+      summary: Publish Event
+      description: |
+        Publish Event lên Career Site, bắt đầu nhận applications.
+
+        **Preconditions:**
+        - Event phải có ít nhất 1 Track
+        - Event phải có Workflow configured
+        - Event lifecycle state = DRAFT
+
+        **Postconditions:**
+        - Event lifecycle state = PUBLISHED
+        - Không được add thêm Request mappings
+
+        **Traceability:**
+        - Ontology: Event (5.ontology/event-management/event.yaml)
+        - Lifecycle Transition: EventPublished
+      operationId: publishEvent
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Event ID (EVT-xxxxxx)
+          schema:
+            type: string
+            pattern: '^EVT-\d{6}$'
+      responses:
+        '200':
+          description: Event published successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventResponse'
+        '400':
+          description: Event cannot be published (missing tracks or workflow)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Event not found
+        '409':
+          description: Event is not in DRAFT state
+
+  /events/{id}:
+    get:
+      tags:
+        - Events
+      summary: Get Event Details
+      description: |
+        Lấy thông tin chi tiết của Event bao gồm:
+        - Event基本信息
+        - Danh sách Tracks
+        - Workflow configuration
+        - Request mappings
+
+        **Traceability:**
+        - Ontology: Event (5.ontology/event-management/event.yaml)
+      operationId: getEventDetails
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Event ID (EVT-xxxxxx)
+          schema:
+            type: string
+            pattern: '^EVT-\d{6}$'
+        - name: include
+          in: query
+          required: false
+          description: Additional resources to include
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [tracks, workflow, request_mappings, question_sets]
+      responses:
+        '200':
+          description: Event details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventDetailsResponse'
+        '404':
+          description: Event not found
+
+components:
+  schemas:
+    # ========================================================================
+    # REQUEST SCHEMAS
+    # ========================================================================
+
+    CreateEventRequest:
+      type: object
+      required:
+        - name
+        - program_type
+        - start_date
+        - end_date
+        - application_start_date
+        - application_end_date
+      properties:
+        name:
+          type: string
+          description: Tên Event tuyển dụng
+          example: "Fresher Recruitment 2026 - Spring"
+        description:
+          type: string
+          description: Mô tả chi tiết Event
+          example: "Tuyển dụng Fresher đợt xuân 2026"
+        program_type:
+          $ref: '#/components/schemas/ProgramType'
+        start_date:
+          type: string
+          format: date
+          description: Ngày bắt đầu Event
+          example: "2026-04-01"
+        end_date:
+          type: string
+          format: date
+          description: Ngày kết thúc Event
+          example: "2026-04-30"
+        application_start_date:
+          type: string
+          format: date-time
+          description: Thời gian bắt đầu nhận applications
+          example: "2026-03-15T00:00:00Z"
+        application_end_date:
+          type: string
+          format: date-time
+          description: Thời gian kết thúc nhận applications
+          example: "2026-03-31T23:59:59Z"
+
+    MapRequestToEventRequest:
+      type: object
+      required:
+        - request_id
+        - request_type
+        - position_title
+        - headcount
+      properties:
+        request_id:
+          type: string
+          description: Request ID từ hệ thống tuyển dụng (external)
+          example: "REQ-2026-001"
+        request_type:
+          $ref: '#/components/schemas/RequestType'
+        position_title:
+          type: string
+          description: Tên vị trí tuyển dụng
+          example: "Fresher Developer"
+        department:
+          type: string
+          description: Phòng ban tuyển dụng
+          example: "Engineering"
+        hiring_manager:
+          type: string
+          description: Hiring Manager của Request (User ID)
+          example: "USR-001"
+        headcount:
+          type: integer
+          minimum: 1
+          description: Số lượng tuyển
+          example: 10
+
+    AddTrackToEventRequest:
+      type: object
+      required:
+        - track_name
+      properties:
+        track_name:
+          type: string
+          description: Tên Track (chuyên ngành)
+          example: "Game Development"
+        description:
+          type: string
+          description: Mô tả Track
+          example: "Lập trình viên phát triển Game"
+        question_set_id:
+          type: string
+          description: Bộ câu hỏi áp dụng cho Track (QST-xxxxxx)
+          pattern: '^QST-\d{6}$'
+          example: "QST-000001"
+
+    ConfigureWorkflowRequest:
+      type: object
+      required:
+        - workflow_name
+        - rounds
+      properties:
+        workflow_name:
+          type: string
+          description: Tên Workflow
+          example: "Standard Fresher Workflow"
+        rounds:
+          type: array
+          description: Danh sách các vòng tuyển dụng theo thứ tự
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/WorkflowRoundConfig'
+        skipped_rounds:
+          type: array
+          description: Danh sách các vòng được skip
+          items:
+            $ref: '#/components/schemas/WorkflowRound'
+
+    WorkflowRoundConfig:
+      type: object
+      required:
+        - round_type
+      properties:
+        round_type:
+          $ref: '#/components/schemas/WorkflowRound'
+        round_config:
+          type: object
+          description: Cấu hình chi tiết cho vòng
+          additionalProperties: true
+
+    # ========================================================================
+    # RESPONSE SCHEMAS
+    # ========================================================================
+
+    EventResponse:
+      type: object
+      properties:
+        event_id:
+          type: string
+          example: "EVT-000001"
+        name:
+          type: string
+          example: "Fresher Recruitment 2026 - Spring"
+        description:
+          type: string
+        program_type:
+          $ref: '#/components/schemas/ProgramType'
+        lifecycle_state:
+          $ref: '#/components/schemas/EventLifecycle'
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        application_start:
+          type: string
+          format: date-time
+        application_end:
+          type: string
+          format: date-time
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    EventDetailsResponse:
+      allOf:
+        - $ref: '#/components/schemas/EventResponse'
+        - type: object
+          properties:
+            tracks:
+              type: array
+              items:
+                $ref: '#/components/schemas/TrackResponse'
+            workflow:
+              $ref: '#/components/schemas/WorkflowResponse'
+            request_mappings:
+              type: array
+              items:
+                $ref: '#/components/schemas/RequestMappingResponse'
+
+    TrackResponse:
+      type: object
+      properties:
+        track_id:
+          type: string
+          example: "TRK-000001"
+        event_id:
+          type: string
+          example: "EVT-000001"
+        track_name:
+          type: string
+          example: "Game Development"
+        description:
+          type: string
+        question_set_id:
+          type: string
+          example: "QST-000001"
+        status:
+          $ref: '#/components/schemas/TrackStatus'
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    WorkflowResponse:
+      type: object
+      properties:
+        workflow_id:
+          type: string
+          example: "WFL-000001"
+        event_id:
+          type: string
+          example: "EVT-000001"
+        workflow_name:
+          type: string
+          example: "Standard Fresher Workflow"
+        rounds:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowRoundDetail'
+        skipped_rounds:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowRound'
+        status:
+          $ref: '#/components/schemas/WorkflowStatus'
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    WorkflowRoundDetail:
+      type: object
+      properties:
+        round_order:
+          type: integer
+          example: 1
+        round_type:
+          $ref: '#/components/schemas/WorkflowRound'
+        round_config:
+          type: object
+          additionalProperties: true
+
+    RequestMappingResponse:
+      type: object
+      properties:
+        mapping_id:
+          type: string
+          example: "MAP-000001"
+        event_id:
+          type: string
+          example: "EVT-000001"
+        request_id:
+          type: string
+          example: "REQ-2026-001"
+        request_type:
+          $ref: '#/components/schemas/RequestType'
+        position_title:
+          type: string
+          example: "Fresher Developer"
+        department:
+          type: string
+        hiring_manager:
+          type: string
+        headcount:
+          type: integer
+          example: 10
+        status:
+          $ref: '#/components/schemas/RequestMappingStatus'
+        mapped_at:
+          type: string
+          format: date-time
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    ErrorResponse:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          description: Error code
+          example: "INVALID_STATE"
+        message:
+          type: string
+          description: Error message
+          example: "Event cannot be published because it has no tracks"
+        details:
+          type: object
+          description: Additional error details
+          additionalProperties: true
+
+    # ========================================================================
+    # ENUMS
+    # ========================================================================
+
+    ProgramType:
+      type: string
+      enum:
+        - FRESHER
+        - JOB_FAIR
+        - UNIWEEK
+        - INTERN
+      description: Loại chương trình tuyển dụng
+
+    EventLifecycle:
+      type: string
+      enum:
+        - DRAFT
+        - PUBLISHED
+        - ACTIVE
+        - COMPLETED
+        - CANCELLED
+      description: Trạng thái lifecycle của Event
+
+    TrackStatus:
+      type: string
+      enum:
+        - ACTIVE
+        - INACTIVE
+        - CANCELLED
+      description: Trạng thái Track
+
+    WorkflowStatus:
+      type: string
+      enum:
+        - DRAFT
+        - ACTIVE
+        - INACTIVE
+      description: Trạng thái Workflow
+
+    WorkflowRound:
+      type: string
+      enum:
+        - SCREENING
+        - ONLINE_TEST
+        - ONSITE_TEST
+        - INTERVIEW
+        - OFFER
+      description: Các vòng tuyển dụng có thể có
+
+    QuestionSetStatus:
+      type: string
+      enum:
+        - DRAFT
+        - ACTIVE
+        - INACTIVE
+      description: Trạng thái bộ câu hỏi
+
+    QuestionType:
+      type: string
+      enum:
+        - SHORT_TEXT
+        - LONG_TEXT
+        - SINGLE_CHOICE
+        - MULTIPLE_CHOICE
+        - YES_NO
+        - FILE_UPLOAD
+      description: Loại câu hỏi
+
+    RequestType:
+      type: string
+      enum:
+        - FRESHER
+        - INTERN
+        - EMPLOYEE
+        - CONTRACTOR
+      description: Loại Request tuyển dụng
+
+    RequestMappingStatus:
+      type: string
+      enum:
+        - ACTIVE
+        - INACTIVE
+        - CANCELLED
+      description: Trạng thái mapping

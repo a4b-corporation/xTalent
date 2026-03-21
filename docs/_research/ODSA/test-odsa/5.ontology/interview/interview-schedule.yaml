@@ -1,0 +1,199 @@
+id: https://xtalent.io/ontology/ats/interview/interview-schedule
+name: interview_schedule_ontology
+version: "1.0.0"
+description: "InterviewSchedule - Lịch phỏng vấn của Candidate"
+
+prefixes:
+  xt: https://xtalent.io/ontology/
+  oracle: https://oracle.com/hcm/
+  sap: https://successfactors.sap.com/
+  workday: https://workday.com/
+
+default_range: string
+
+slots:
+  # --- Identifier ---
+  schedule_id:
+    description: "Unique identifier cho InterviewSchedule"
+    identifier: true
+    required: true
+    pattern: "^ISCH-\\d{6}$"
+    annotations:
+      example: "ISCH-000001"
+
+  # --- Core Fields ---
+  slot_id:
+    description: "InterviewSlot ID mà Candidate được chia"
+    required: true
+    annotations:
+      reference: "InterviewSlot.slot_id"
+
+  application_id:
+    description: "Application ID của Candidate"
+    required: true
+    annotations:
+      reference: "Application.application_id"
+
+  candidate_rr_id:
+    description: "Candidate RR ID"
+    required: true
+    annotations:
+      reference: "CandidateRR.candidate_rr_id"
+
+  status:
+    description: "Trạng thái lịch phỏng vấn"
+    range: InterviewScheduleStatusEnum
+    required: true
+
+  confirmed_at:
+    description: "Thời điểm confirm tham gia"
+    range: datetime
+    required: false
+
+  confirm_deadline:
+    description: "Deadline confirm (Time Window, configurable)"
+    range: datetime
+    required: false
+
+  change_count:
+    description: "Số lần đổi lịch (max 1 lần)"
+    range: integer
+    minimum_value: 0
+    maximum_value: 2
+    required: false
+
+  # --- Audit Fields ---
+  created_by:
+    description: "System auto tạo"
+    required: true
+
+  created_at:
+    description: "Timestamp tạo InterviewSchedule"
+    range: datetime
+    required: true
+
+  updated_at:
+    description: "Timestamp cập nhật InterviewSchedule"
+    range: datetime
+    required: false
+
+classes:
+  InterviewSchedule:
+    description: |
+      InterviewSchedule - Lịch phỏng vấn của Candidate.
+      Student chỉ được đổi lịch 1 lần, lần thứ 2 chỉ còn Yes/No options.
+      Auto-allocate với FCFS + Time Window (configurable).
+      Aggregate Root trong Interview context.
+
+    annotations:
+      oracle_hcm_term: "InterviewSchedule"
+      sap_term: "InterviewSchedule"
+      workday_term: "InterviewSchedule"
+      disambiguation: "xTalent: InterviewSchedule = Lịch phỏng vấn. Oracle: InterviewSchedule. SAP: InterviewSchedule. Workday: InterviewSchedule. Xem docs.xtalent.io/ats/interview/interview-schedule."
+
+      module: "ats"
+      sub_module: "interview"
+      version: "1.0.0"
+      bounded_context: "Interview"
+      aggregate_root: true
+
+      ouroboros_evolution:
+        iteration: "1.0.0"
+        parent_version: null
+        evaluation_status: "pending"
+        last_evaluated: null
+        evolution_notes: "Initial version"
+
+      validation_hooks:
+        odds_system_builder:
+          required_for: true
+          validates: ["table_generation", "fk_references"]
+
+      see_also: "https://docs.xtalent.io/ats/interview/interview-schedule"
+
+    slots:
+      - schedule_id
+      - slot_id
+      - application_id
+      - candidate_rr_id
+      - status
+      - confirmed_at
+      - confirm_deadline
+      - change_count
+      - created_by
+      - created_at
+      - updated_at
+
+    slot_usage:
+      schedule_id:
+        required: true
+        identifier: true
+
+      slot_id:
+        required: true
+
+      application_id:
+        required: true
+
+      candidate_rr_id:
+        required: true
+
+      status:
+        required: true
+
+      created_by:
+        required: true
+
+      created_at:
+        required: true
+
+    rules:
+      - description: "BRS-ISCH-001: Student chỉ được đổi lịch 1 lần"
+        preconditions:
+          slot_conditions:
+            change_count:
+              minimum_value: 1
+        postconditions:
+          slot_conditions:
+            change_request_allowed:
+              equals_boolean: false
+
+      - description: "BRS-ISCH-002: Lần đổi thứ 2 chỉ còn Yes/No options"
+        preconditions:
+          slot_conditions:
+            change_count:
+              minimum_value: 1
+        postconditions:
+          slot_conditions:
+            change_options:
+              equals_string: "YES_NO_ONLY"
+
+      - description: "BRS-ISCH-003: Auto-allocate với FCFS + Time Window (configurable)"
+        preconditions:
+          slot_conditions:
+            slot_id:
+              slot_value_conditions:
+                auto_allocate_enabled:
+                  equals_boolean: true
+        postconditions:
+          slot_conditions:
+            allocation_method:
+              equals_string: "FCFS_WITH_TIME_WINDOW"
+
+# === ENUMS ===
+enums:
+  InterviewScheduleStatusEnum:
+    description: "Trạng thái lịch phỏng vấn"
+    permissible_values:
+      PENDING:
+        description: "Chưa confirm"
+      CONFIRMED:
+        description: "Đã confirm"
+      RESCHEDULED:
+        description: "Đã đổi lịch"
+      COMPLETED:
+        description: "Hoàn tất"
+      NO_SHOW:
+        description: "Không đến"
+      CANCELLED:
+        description: "Đã hủy"

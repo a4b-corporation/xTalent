@@ -1,0 +1,580 @@
+# Assessment Context - Domain Events
+# Generated from ontology lifecycle transitions
+# Bounded Context: Assessment (ATS Module)
+#
+# Event Naming Convention: {Entity}{State}d
+# Source: 5.ontology/assessment/*.yaml (enum states and lifecycle transitions)
+
+# =============================================================================
+# ASSIGNMENT EVENTS
+# Source: 5.ontology/assessment/assignment.yaml
+# Lifecycle States: DRAFT -> ACTIVE -> CLOSED -> GRADING -> COMPLETED
+# =============================================================================
+
+- event_id: EVT-ASM-001
+  name: AssignmentCreated
+  description: "Published when a new Assignment (Online Test) is created by TA. Marks the transition of Assignment into DRAFT state."
+  source:
+    ontology_file: 5.ontology/assessment/assignment.yaml
+    aggregate_root: Assignment
+    lifecycle_transition: "null -> DRAFT"
+  payload:
+    assignment_id:
+      type: string
+      description: "Unique Assignment ID (format: ASMNT-XXXXXX)"
+      source: assignment_id
+    event_id:
+      type: string
+      description: "Event ID this Assignment belongs to"
+      source: event_id
+    title:
+      type: string
+      description: "Assignment title"
+      source: title
+    created_by:
+      type: string
+      description: "TA user ID who created the assignment"
+      source: created_by
+    created_at:
+      type: datetime
+      description: "Timestamp of creation"
+      source: created_at
+  use_cases:
+    - "Notify stakeholders of new assessment"
+    - "Trigger downstream processes (e.g., notification setup)"
+    - "Audit trail for assignment creation"
+
+- event_id: EVT-ASM-002
+  name: AssignmentActivated
+  description: "Published when Assignment status changes to ACTIVE. Assignment is now open for student submissions."
+  source:
+    ontology_file: 5.ontology/assessment/assignment.yaml
+    aggregate_root: Assignment
+    lifecycle_transition: "DRAFT -> ACTIVE"
+  payload:
+    assignment_id:
+      type: string
+    event_id:
+      type: string
+    title:
+      type: string
+    deadline:
+      type: datetime
+    status:
+      type: string
+      value: ACTIVE
+    activated_at:
+      type: datetime
+  use_cases:
+    - "Notify students that assessment is available"
+    - "Start deadline monitoring"
+
+- event_id: EVT-ASM-003
+  name: AssignmentClosed
+  description: "Published when Assignment status changes to CLOSED. Assignment is now closed for submissions (past deadline)."
+  source:
+    ontology_file: 5.ontology/assessment/assignment.yaml
+    aggregate_root: Assignment
+    lifecycle_transition: "ACTIVE -> CLOSED"
+  payload:
+    assignment_id:
+      type: string
+    event_id:
+      type: string
+    title:
+      type: string
+    deadline:
+      type: datetime
+    status:
+      type: string
+      value: CLOSED
+    closed_at:
+      type: datetime
+  use_cases:
+    - "Notify stakeholders that submission period ended"
+    - "Trigger late submission handling"
+    - "Prepare for grading phase"
+
+- event_id: EVT-ASM-004
+  name: AssignmentGradingStarted
+  description: "Published when Assignment status changes to GRADING. Grading phase has begun for this assignment."
+  source:
+    ontology_file: 5.ontology/assessment/assignment.yaml
+    aggregate_root: Assignment
+    lifecycle_transition: "CLOSED -> GRADING"
+  payload:
+    assignment_id:
+      type: string
+    event_id:
+      type: string
+    title:
+      type: string
+    status:
+      type: string
+      value: GRADING
+    total_submissions:
+      type: integer
+      description: "Total number of submissions to grade"
+    grading_started_at:
+      type: datetime
+  use_cases:
+    - "Notify graders to begin grading"
+    - "Start grading progress tracking"
+
+- event_id: EVT-ASM-005
+  name: AssignmentCompleted
+  description: "Published when Assignment status changes to COMPLETED. All grading is finished and results are finalized."
+  source:
+    ontology_file: 5.ontology/assessment/assignment.yaml
+    aggregate_root: Assignment
+    lifecycle_transition: "GRADING -> COMPLETED"
+  payload:
+    assignment_id:
+      type: string
+    event_id:
+      type: string
+    title:
+      type: string
+    status:
+      type: string
+      value: COMPLETED
+    total_submissions:
+      type: integer
+    total_graded:
+      type: integer
+    completed_at:
+      type: datetime
+  use_cases:
+    - "Notify students that results are available"
+    - "Trigger result publication"
+    - "Update applicant status in recruitment pipeline"
+
+- event_id: EVT-ASM-006
+  name: AssignmentCancelled
+  description: "Published when Assignment status changes to CANCELLED. Assignment has been cancelled and will not proceed."
+  source:
+    ontology_file: 5.ontology/assessment/assignment.yaml
+    aggregate_root: Assignment
+    lifecycle_transition: "Any -> CANCELLED"
+  payload:
+    assignment_id:
+      type: string
+    event_id:
+      type: string
+    title:
+      type: string
+    status:
+      type: string
+      value: CANCELLED
+    cancelled_by:
+      type: string
+      description: "User ID who cancelled the assignment"
+    cancelled_at:
+      type: datetime
+    reason:
+      type: string
+      description: "Reason for cancellation"
+  use_cases:
+    - "Notify affected students and graders"
+    - "Clean up related grading tasks"
+    - "Audit trail"
+
+# =============================================================================
+# SUBMISSION EVENTS
+# Source: 5.ontology/assessment/submission.yaml
+# Lifecycle States: SUBMITTED -> GRADING -> GRADED
+# =============================================================================
+
+- event_id: EVT-SUB-001
+  name: SubmissionSubmitted
+  description: "Published when a Student submits their Assignment. Marks the transition of Submission into SUBMITTED state."
+  source:
+    ontology_file: 5.ontology/assessment/submission.yaml
+    aggregate_root: Submission
+    lifecycle_transition: "null -> SUBMITTED"
+  payload:
+    submission_id:
+      type: string
+      description: "Unique Submission ID (format: SUB-XXXXXX)"
+      source: submission_id
+    assignment_id:
+      type: string
+      description: "Assignment ID being submitted"
+      source: assignment_id
+    application_id:
+      type: string
+      description: "Application ID of submitting student"
+      source: application_id
+    candidate_rr_id:
+      type: string
+      description: "Candidate Record Reference ID"
+      source: candidate_rr_id
+    attachment_count:
+      type: integer
+      description: "Number of attachments submitted"
+      source: attachments.length
+    submitted_at:
+      type: datetime
+      source: submitted_at
+    is_late:
+      type: boolean
+      description: "Whether submission is after deadline"
+      source: is_late
+    status:
+      type: string
+      value: SUBMITTED
+    created_by:
+      type: string
+      description: "Student ID who submitted"
+      source: created_by
+  use_cases:
+    - "Acknowledge receipt to student"
+    - "Update submission count for assignment"
+    - "Trigger late submission flag if applicable"
+
+- event_id: EVT-SUB-002
+  name: SubmissionGradingStarted
+  description: "Published when Submission status changes to GRADING. Grading process has begun for this submission."
+  source:
+    ontology_file: 5.ontology/assessment/submission.yaml
+    aggregate_root: Submission
+    lifecycle_transition: "SUBMITTED -> GRADING"
+  payload:
+    submission_id:
+      type: string
+    assignment_id:
+      type: string
+    status:
+      type: string
+      value: GRADING
+    grader_id:
+      type: string
+      description: "ID of grader assigned"
+    grading_started_at:
+      type: datetime
+  use_cases:
+    - "Track grading progress"
+    - "Notify student that their submission is being reviewed"
+
+- event_id: EVT-SUB-003
+  name: SubmissionGraded
+  description: "Published when Submission status changes to GRADED. Submission has been fully graded and result is recorded."
+  source:
+    ontology_file: 5.ontology/assessment/submission.yaml
+    aggregate_root: Submission
+    lifecycle_transition: "GRADING -> GRADED"
+  payload:
+    submission_id:
+      type: string
+    assignment_id:
+      type: string
+    application_id:
+      type: string
+    status:
+      type: string
+      value: GRADED
+    grading_id:
+      type: string
+      description: "ID of the grading record"
+    score:
+      type: float
+      description: "Score (0-100)"
+    pass_fail:
+      type: string
+      enum: [PASS, FAIL, NEEDS_DISCUSSION]
+    graded_at:
+      type: datetime
+  use_cases:
+    - "Notify student of result"
+    - "Update applicant status in recruitment pipeline"
+    - "Trigger next steps based on pass/fail"
+
+- event_id: EVT-SUB-004
+  name: SubmissionResubmitted
+  description: "Published when Submission status changes to RESUBMITTED. Student has resubmitted their assignment."
+  source:
+    ontology_file: 5.ontology/assessment/submission.yaml
+    aggregate_root: Submission
+    lifecycle_transition: "Any -> RESUBMITTED"
+  payload:
+    submission_id:
+      type: string
+    assignment_id:
+      type: string
+    application_id:
+      type: string
+    status:
+      type: string
+      value: RESUBMITTED
+    resubmission_count:
+      type: integer
+      description: "Number of times resubmitted"
+    submitted_at:
+      type: datetime
+  use_cases:
+    - "Track resubmission attempts"
+    - "Notify graders of new submission"
+
+# =============================================================================
+# GRADING EVENTS
+# Source: 5.ontology/assessment/grading.yaml
+# Grading is created when a submission is scored
+# =============================================================================
+
+- event_id: EVT-GRD-001
+  name: GradingCreated
+  description: "Published when a Grading record is created. A grader has scored a submission."
+  source:
+    ontology_file: 5.ontology/assessment/grading.yaml
+    aggregate_root: Grading
+    lifecycle_transition: "null -> GRADED"
+  payload:
+    grading_id:
+      type: string
+      description: "Unique Grading ID (format: GRD-XXXXXX)"
+      source: grading_id
+    submission_id:
+      type: string
+      description: "Submission ID being graded"
+      source: submission_id
+    assignment_id:
+      type: string
+      description: "Assignment ID (via submission)"
+    grader_id:
+      type: string
+      description: "Grader (Manager) user ID"
+      source: grader_id
+    score:
+      type: float
+      description: "Score (0-100)"
+      source: score
+    pass_fail:
+      type: string
+      enum: [PASS, FAIL, NEEDS_DISCUSSION]
+      source: pass_fail
+    comment:
+      type: string
+      description: "Grader's comments"
+      source: comment
+    graded_at:
+      type: datetime
+      source: graded_at
+    created_by:
+      type: string
+      source: created_by
+    created_at:
+      type: datetime
+      source: created_at
+  use_cases:
+    - "Record grading result"
+    - "Trigger submission status update"
+    - "Notify student of result (if auto-publish enabled)"
+
+- event_id: EVT-GRD-002
+  name: GradingScored
+  description: "Published when a Grading record's score is finalized. Synonymous with GradingCreated but emphasizes the scoring action."
+  source:
+    ontology_file: 5.ontology/assessment/grading.yaml
+    aggregate_root: Grading
+    lifecycle_transition: "Scoring completed"
+  payload:
+    grading_id:
+      type: string
+    submission_id:
+      type: string
+    assignment_id:
+      type: string
+    grader_id:
+      type: string
+    score:
+      type: float
+    pass_fail:
+      type: string
+      enum: [PASS, FAIL, NEEDS_DISCUSSION]
+    scored_at:
+      type: datetime
+  use_cases:
+    - "Update grading statistics"
+    - "Track grader performance"
+    - "Calculate assignment averages"
+
+# =============================================================================
+# GRADING TASK EVENTS
+# Source: 5.ontology/assessment/grading-task.yaml
+# Lifecycle States: PENDING -> IN_PROGRESS -> COMPLETED
+# =============================================================================
+
+- event_id: EVT-GTK-001
+  name: GradingTaskCreated
+  description: "Published when a new GradingTask is created by TA. Marks the transition of GradingTask into PENDING state."
+  source:
+    ontology_file: 5.ontology/assessment/grading-task.yaml
+    aggregate_root: GradingTask
+    lifecycle_transition: "null -> PENDING"
+  payload:
+    task_id:
+      type: string
+      description: "Unique Task ID (format: GTK-XXXXXX)"
+      source: task_id
+    assignment_id:
+      type: string
+      description: "Assignment ID this task is for"
+      source: assignment_id
+    grader_id:
+      type: string
+      description: "Manager user ID assigned to grade"
+      source: grader_id
+    submission_count:
+      type: integer
+      description: "Number of submissions to grade"
+      source: submissions.length
+    status:
+      type: string
+      value: PENDING
+    deadline:
+      type: datetime
+      description: "Grading deadline"
+      source: deadline
+    created_by:
+      type: string
+      description: "TA user ID who created the task"
+      source: created_by
+    created_at:
+      type: datetime
+      source: created_at
+  use_cases:
+    - "Notify grader of new assignment"
+    - "Track grading workload distribution"
+    - "Start deadline monitoring"
+
+- event_id: EVT-GTK-002
+  name: GradingTaskStarted
+  description: "Published when GradingTask status changes to IN_PROGRESS. Grader has begun working on the task."
+  source:
+    ontology_file: 5.ontology/assessment/grading-task.yaml
+    aggregate_root: GradingTask
+    lifecycle_transition: "PENDING -> IN_PROGRESS"
+  payload:
+    task_id:
+      type: string
+    assignment_id:
+      type: string
+    grader_id:
+      type: string
+    status:
+      type: string
+      value: IN_PROGRESS
+    started_at:
+      type: datetime
+  use_cases:
+    - "Track grading progress"
+    - "Update task dashboard"
+
+- event_id: EVT-GTK-003
+  name: GradingTaskCompleted
+  description: "Published when GradingTask status changes to COMPLETED. All submissions in the task have been graded."
+  source:
+    ontology_file: 5.ontology/assessment/grading-task.yaml
+    aggregate_root: GradingTask
+    lifecycle_transition: "IN_PROGRESS -> COMPLETED"
+  payload:
+    task_id:
+      type: string
+    assignment_id:
+      type: string
+    grader_id:
+      type: string
+    status:
+      type: string
+      value: COMPLETED
+    submission_count:
+      type: integer
+      description: "Total submissions in task"
+    graded_count:
+      type: integer
+      description: "Number of submissions graded"
+    completed_at:
+      type: datetime
+  use_cases:
+    - "Notify TA that task is complete"
+    - "Update assignment grading progress"
+    - "Trigger auto-completion if results imported"
+
+- event_id: EVT-GTK-004
+  name: GradingTaskAutoCompleted
+  description: "Published when GradingTask is auto-completed by TA importing results. Per business rule BRS-GTK-001."
+  source:
+    ontology_file: 5.ontology/assessment/grading-task.yaml
+    aggregate_root: GradingTask
+    lifecycle_transition: "Any -> COMPLETED (auto)"
+  payload:
+    task_id:
+      type: string
+    assignment_id:
+      type: string
+    grader_id:
+      type: string
+    status:
+      type: string
+      value: COMPLETED
+    completed_at:
+      type: datetime
+    results_imported_by:
+      type: string
+      description: "TA user ID who imported results"
+    import_timestamp:
+      type: datetime
+  use_cases:
+    - "Record bulk import completion"
+    - "Update assignment status"
+    - "Notify stakeholders of bulk grading"
+
+- event_id: EVT-GTK-005
+  name: GradingTaskCancelled
+  description: "Published when GradingTask status changes to CANCELLED. Task has been cancelled and will not be completed."
+  source:
+    ontology_file: 5.ontology/assessment/grading-task.yaml
+    aggregate_root: GradingTask
+    lifecycle_transition: "Any -> CANCELLED"
+  payload:
+    task_id:
+      type: string
+    assignment_id:
+      type: string
+    grader_id:
+      type: string
+    status:
+      type: string
+      value: CANCELLED
+    cancelled_by:
+      type: string
+      description: "User ID who cancelled"
+    cancelled_at:
+      type: datetime
+    reason:
+      type: string
+      description: "Reason for cancellation"
+  use_cases:
+    - "Notify grader"
+    - "Reassign submissions if needed"
+    - "Audit trail"
+
+# =============================================================================
+# EVENT SUMMARY
+# =============================================================================
+# Total Events: 17
+#
+# By Aggregate Root:
+# - Assignment: 6 events (Created, Activated, Closed, GradingStarted, Completed, Cancelled)
+# - Submission: 4 events (Submitted, GradingStarted, Graded, Resubmitted)
+# - Grading: 2 events (Created, Scored)
+# - GradingTask: 5 events (Created, Started, Completed, AutoCompleted, Cancelled)
+#
+# Lifecycle Coverage:
+# - All lifecycle state transitions are covered
+# - All enum states have corresponding events
+#
+# Business Rules Traced:
+# - BRS-GTK-001: Task auto-complete (GradingTaskAutoCompleted event)
+# - BRS-GTK-002: Manager-only grading (enforced at API level)
+# =============================================================================

@@ -1,0 +1,144 @@
+id: https://xtalent.io/ontology/ats/interview/checkin
+name: checkin_ontology
+version: "1.0.0"
+description: "CheckIn - Record check-in cho Interview"
+
+prefixes:
+  xt: https://xtalent.io/ontology/
+  oracle: https://oracle.com/hcm/
+  sap: https://successfactors.sap.com/
+  workday: https://workday.com/
+
+default_range: string
+
+slots:
+  # --- Identifier ---
+  check_in_id:
+    description: "Unique identifier cho CheckIn"
+    identifier: true
+    required: true
+    pattern: "^ICI-\\d{6}$"
+    annotations:
+      example: "ICI-000001"
+
+  # --- Core Fields ---
+  schedule_id:
+    description: "InterviewSchedule ID mà Candidate check-in"
+    required: true
+    annotations:
+      reference: "InterviewSchedule.schedule_id"
+
+  actual_time:
+    description: "Thời gian check-in thực tế"
+    range: datetime
+    required: true
+
+  is_late:
+    description: "Check-in muộn"
+    range: boolean
+    required: false
+
+  late_reason:
+    description: "Lý do check-in muộn"
+    required: false
+
+  photo_id:
+    description: "Photo ID (chụp hình khi check-in, optional)"
+    required: false
+    annotations:
+      reference: "Attachment.attachment_id"
+
+  checked_in_by:
+    description: "User ID thực hiện check-in"
+    required: true
+    annotations:
+      reference: "User.user_id"
+
+  # --- Audit Fields ---
+  created_at:
+    description: "Timestamp tạo CheckIn record"
+    range: datetime
+    required: true
+
+classes:
+  CheckIn:
+    description: |
+      CheckIn - Record check-in cho Interview.
+      Ghi nhận check-in, chụp hình (optional).
+      Aggregate Root trong Interview context.
+
+    annotations:
+      oracle_hcm_term: "InterviewCheckIn"
+      sap_term: "InterviewCheckIn"
+      workday_term: "InterviewCheckIn"
+      disambiguation: "xTalent: CheckIn = Record check-in interview. Oracle: InterviewCheckIn. SAP: InterviewCheckIn. Workday: InterviewCheckIn. Xem docs.xtalent.io/ats/interview/checkin."
+
+      module: "ats"
+      sub_module: "interview"
+      version: "1.0.0"
+      bounded_context: "Interview"
+      aggregate_root: true
+
+      ouroboros_evolution:
+        iteration: "1.0.0"
+        parent_version: null
+        evaluation_status: "pending"
+        last_evaluated: null
+        evolution_notes: "Initial version"
+
+      validation_hooks:
+        odds_system_builder:
+          required_for: true
+          validates: ["table_generation", "fk_references"]
+
+      see_also: "https://docs.xtalent.io/ats/interview/checkin"
+
+    slots:
+      - check_in_id
+      - schedule_id
+      - actual_time
+      - is_late
+      - late_reason
+      - photo_id
+      - checked_in_by
+      - created_at
+
+    slot_usage:
+      check_in_id:
+        required: true
+        identifier: true
+
+      schedule_id:
+        required: true
+
+      actual_time:
+        required: true
+
+      checked_in_by:
+        required: true
+
+      created_at:
+        required: true
+
+    rules:
+      - description: "BRS-ICI-001: Check-in muộn vẫn cho phép với lý do"
+        preconditions:
+          slot_conditions:
+            actual_time:
+              is_after: "schedule.interview_date + schedule.start_time"
+        postconditions:
+          slot_conditions:
+            late_reason:
+              not_equals_string: ""
+
+# === ENUMS ===
+enums:
+  CheckInStatusEnum:
+    description: "Trạng thái check-in"
+    permissible_values:
+      ON_TIME:
+        description: "Đúng giờ"
+      LATE:
+        description: "Muộn"
+      ABSENT:
+        description: "Vắng mặt"

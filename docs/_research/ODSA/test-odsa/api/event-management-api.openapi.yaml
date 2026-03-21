@@ -1,0 +1,1315 @@
+openapi: "3.0.3"
+info:
+  title: Event Management API
+  description: |
+    API cho Event Management Bounded Context - Tuyển dụng Fresher.
+
+    **Responsibilities:**
+    - Tạo và quản lý Event Fresher
+    - Map Request tuyển dụng vào Event
+    - Cấu hình Tracks và QuestionSets
+    - Configure Workflow các vòng tuyển dụng
+    - Publish Event lên Career Site
+
+    **Derived from:**
+    - Glossary: `6.glossary/event-management.md`
+    - Flows: `7.flows/event-management-flow.md`
+    - Ontology: `5.ontology/event-management/*.yaml`
+
+    **Business Rules:**
+    - BR-EM-001: Chỉ Event thuộc Program "Fresher" mới được map Request
+    - BR-EM-002: Chỉ Request type "Fresher" và status "Approved" mới được map
+    - BR-EM-004: Một Request chỉ được map 1 Event duy nhất
+    - BR-EM-006: Không được add mapping Request sau khi Event đã publish
+    - BR-EM-007: Workflow phải có ít nhất 1 vòng đánh giá (Test hoặc Interview)
+
+    **Event Lifecycle:**
+    ```
+    DRAFT → PUBLISHED → ACTIVE → COMPLETED
+                  ↓
+               CANCELLED
+    ```
+  version: "1.0.0"
+  contact:
+    name: TA Operations Team + Tech Lead
+  license:
+    name: Internal Use Only
+
+servers:
+  - url: https://api.xtalent.io/ats/v1
+    description: Production server
+  - url: https://staging-api.xtalent.io/ats/v1
+    description: Staging server
+  - url: http://localhost:8080/ats/v1
+    description: Local development
+
+tags:
+  - name: Events
+    description: Operations for managing Event lifecycle
+  - name: Request Mappings
+    description: Link Requests to Events
+  - name: Tracks
+    description: Manage specialization tracks within Events
+  - name: Workflows
+    description: Configure recruitment workflow rounds
+
+paths:
+  /events/create:
+    post:
+      tags:
+        - Events
+      summary: Create Event
+      description: |
+        Tạo Event Fresher mới từ dashboard.
+
+        **Flow Reference:** `7.flows/event-management-flow.md` - Phase 1: Create Event
+
+        **Preconditions:**
+        - TA có quyền tạo Event (TA_ADMIN/TA_MANAGER role)
+        - Program type = "Fresher" (chỉ Fresher events được tạo trong system này)
+
+        **Business Rules:**
+        - BR-EM-001: program_type phải là "FRESHER"
+
+        **Event Generated:** `EventCreated`
+      operationId: createEvent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEventRequest"
+            examples:
+              fresher_journey_2026:
+                summary: Fresher Journey 2026
+                value:
+                  name: "Fresher Journey 2026 - Hanoi"
+                  description: "Tuyển dụng Fresher cho các vị trí Game Development, Game Design, Game QC"
+                  program_type: "FRESHER"
+                  start_date: "2026-04-01"
+                  end_date: "2026-04-30"
+                  application_start_date: "2026-04-01T00:00:00Z"
+                  application_end_date: "2026-04-30T23:59:59Z"
+      responses:
+        "201":
+          description: Event created successfully
+          headers:
+            X-Event-ID:
+              description: Generated Event ID (pattern: EVT-YYYYNNNN)
+              schema:
+                type: string
+                example: "EVT-20260001"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Event"
+              examples:
+                fresher_journey_created:
+                  summary: Event created
+                  value:
+                    event_id: "EVT-20260001"
+                    name: "Fresher Journey 2026 - Hanoi"
+                    description: "Tuyển dụng Fresher cho các vị trí Game Development, Game Design, Game QC"
+                    program_type: "FRESHER"
+                    start_date: "2026-04-01"
+                    end_date: "2026-04-30"
+                    application_start_date: "2026-04-01T00:00:00Z"
+                    application_end_date: "2026-04-30T23:59:59Z"
+                    status: "DRAFT"
+                    created_by: "ta_user_001"
+                    created_at: "2026-03-20T10:30:00Z"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationError"
+              examples:
+                invalid_program_type:
+                  summary: Invalid Program Type
+                  value:
+                    error_code: "INVALID_PROGRAM_TYPE"
+                    message: "Chỉ Event thuộc Program 'Fresher' mới được tạo trong system này"
+                    field: "program_type"
+                    provided_value: "EXPERIENCED"
+                    suggestion: "Vui lòng chọn Program type = Fresher"
+                invalid_dates:
+                  summary: Invalid Date Range
+                  value:
+                    error_code: "INVALID_DATE_RANGE"
+                    message: "start_date phải trước end_date"
+                    field: "start_date"
+                    provided_value: "2026-05-01"
+                    context:
+                      end_date: "2026-04-30"
+        "403":
+          description: User does not have permission to create Event
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForbiddenError"
+
+  /events/{id}/map-request:
+    post:
+      tags:
+        - Request Mappings
+      summary: Map Request to Event
+      description: |
+        Map Request tuyển dụng vào Event.
+
+        **Flow Reference:** `7.flows/event-management-flow.md` - Phase 2: Map Request
+
+        **Preconditions:**
+        - Event status = DRAFT
+        - Request type = "FRESHER"
+        - Request status = "APPROVED"
+        - Request chưa được map Event khác
+
+        **Business Rules:**
+        - BR-EM-002: Chỉ Request type "Fresher" và status "Approved" mới được map
+        - BR-EM-004: Một Request chỉ được map 1 Event duy nhất
+
+        **Event Generated:** `RequestMapped`
+      operationId: mapRequestToEvent
+      parameters:
+        - $ref: "#/components/parameters/EventIdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MapRequestRequest"
+            examples:
+              map_fresher_request:
+                summary: Map Fresher Request
+                value:
+                  request_id: "REQ-2026-001"
+      responses:
+        "201":
+          description: Request mapped successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RequestMapping"
+              examples:
+                mapping_created:
+                  summary: RequestMapping created
+                  value:
+                    mapping_id: "MAP-000001"
+                    event_id: "EVT-20260001"
+                    request_id: "REQ-2026-001"
+                    request_type: "FRESHER"
+                    position_title: "Fresher Game Developer"
+                    department: "Game Development"
+                    hiring_manager: "hm_001"
+                    headcount: 5
+                    status: "ACTIVE"
+                    mapped_at: "2026-03-20T10:35:00Z"
+                    created_by: "ta_user_001"
+                    created_at: "2026-03-20T10:35:00Z"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationError"
+              examples:
+                invalid_request_type:
+                  summary: Invalid Request Type
+                  value:
+                    error_code: "INVALID_REQUEST_TYPE"
+                    message: "Request type phải là 'Fresher'"
+                    field: "request_type"
+                    provided_value: "EXPERIENCED"
+                invalid_request_status:
+                  summary: Invalid Request Status
+                  value:
+                    error_code: "INVALID_REQUEST_STATUS"
+                    message: "Request phải ở trạng thái 'Approved'"
+                    field: "request_status"
+                    provided_value: "PENDING"
+                request_already_mapped:
+                  summary: Request Already Mapped
+                  value:
+                    error_code: "REQUEST_ALREADY_MAPPED"
+                    message: "Request đã được map vào Event [EVT-20250015]"
+                    field: "request_id"
+                    provided_value: "REQ-2026-001"
+                    context:
+                      mapped_event_id: "EVT-20250015"
+        "404":
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotFoundError"
+        "403":
+          description: Not allowed to map requests (Event already published - BR-EM-006)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForbiddenError"
+
+  /events/{id}/add-track:
+    post:
+      tags:
+        - Tracks
+      summary: Add Track to Event
+      description: |
+        Thêm Track chuyên ngành vào Event.
+
+        **Flow Reference:** `7.flows/event-management-flow.md` - Phase 3: Add Track & Configure QuestionSets
+
+        **Preconditions:**
+        - Event status = DRAFT
+
+        **Postconditions:**
+        - Track created với status = ACTIVE
+        - Track có thể được link với QuestionSet (optional)
+
+        **Business Rules:**
+        - BRS-EM-TRK-001: Track phải thuộc về 1 Event
+        - BRS-EM-TRK-002: Không được xóa Track đã có applications
+
+        **Configurable Parameters:**
+        - `min_tracks`: 1 (số Track tối thiểu trước khi publish)
+      operationId: addTrackToEvent
+      parameters:
+        - $ref: "#/components/parameters/EventIdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddTrackRequest"
+            examples:
+              game_dev_track:
+                summary: Game Development Track
+                value:
+                  track_name: "Game Development"
+                  description: "Track dành cho ứng viên có kinh nghiệm lập trình C++/C#, portfolio game dự án"
+                  question_set_id: "QST-000001"
+      responses:
+        "201":
+          description: Track added successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Track"
+              examples:
+                track_created:
+                  summary: Track created
+                  value:
+                    track_id: "TRK-000001"
+                    event_id: "EVT-20260001"
+                    track_name: "Game Development"
+                    description: "Track dành cho ứng viên có kinh nghiệm lập trình C++/C#, portfolio game dự án"
+                    question_set_id: "QST-000001"
+                    status: "ACTIVE"
+                    created_by: "ta_user_001"
+                    created_at: "2026-03-20T10:40:00Z"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationError"
+              examples:
+                missing_required_fields:
+                  summary: Missing Required Fields
+                  value:
+                    error_code: "MISSING_REQUIRED_FIELDS"
+                    message: "track_name và description là bắt buộc"
+                    fields:
+                      - "track_name"
+                      - "description"
+                invalid_question_set:
+                  summary: Invalid QuestionSet
+                  value:
+                    error_code: "INVALID_QUESTION_SET"
+                    message: "QuestionSet không tồn tại hoặc không có câu hỏi nào"
+                    field: "question_set_id"
+                    provided_value: "QST-999999"
+        "404":
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotFoundError"
+
+  /events/{id}/configure-workflow:
+    post:
+      tags:
+        - Workflows
+      summary: Configure Workflow for Event
+      description: |
+        Thiết lập workflow các vòng tuyển dụng cho Event.
+
+        **Flow Reference:** `7.flows/event-management-flow.md` - Phase 4: Configure Workflow
+
+        **Preconditions:**
+        - Event status = DRAFT
+
+        **Required Rounds:**
+        - SCREENING (required)
+        - ONLINE_TEST hoặc ONSITE_TEST (ít nhất 1 trong 2)
+        - INTERVIEW (required)
+        - OFFER (required)
+
+        **Business Rules:**
+        - BR-EM-007: Workflow phải có ít nhất 1 vòng đánh giá (Test hoặc Interview)
+        - BRS-EM-WFL-001: Workflow phải có ít nhất 1 vòng đánh giá
+        - BRS-EM-WFL-002: Vòng skipped phải tồn tại trong rounds
+
+        **Configurable Parameters:**
+        - `min_workflow_rounds`: 1 (số vòng đánh giá tối thiểu)
+
+        **Available Rounds:**
+        - SCREENING: Vòng screening applications
+        - ONLINE_TEST: Vòng Online Test (Assignment)
+        - ONSITE_TEST: Vòng Onsite Test
+        - INTERVIEW: Vòng Phỏng vấn
+        - OFFER: Vòng Offer
+      operationId: configureWorkflowForEvent
+      parameters:
+        - $ref: "#/components/parameters/EventIdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfigureWorkflowRequest"
+            examples:
+              full_workflow:
+                summary: Full Workflow (no skips)
+                value:
+                  workflow_name: "Fresher Standard Workflow"
+                  rounds:
+                    - "SCREENING"
+                    - "ONLINE_TEST"
+                    - "INTERVIEW"
+                    - "OFFER"
+                  skipped_rounds: []
+              workflow_with_skips:
+                summary: Workflow with skipped rounds
+                value:
+                  workflow_name: "Fresher Fast-Track Workflow"
+                  rounds:
+                    - "SCREENING"
+                    - "ONLINE_TEST"
+                    - "ONSITE_TEST"
+                    - "INTERVIEW"
+                    - "OFFER"
+                  skipped_rounds:
+                    - "ONLINE_TEST"
+      responses:
+        "201":
+          description: Workflow configured successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workflow"
+              examples:
+                workflow_created:
+                  summary: Workflow created
+                  value:
+                    workflow_id: "WFL-000001"
+                    event_id: "EVT-20260001"
+                    workflow_name: "Fresher Standard Workflow"
+                    rounds:
+                      - "SCREENING"
+                      - "ONLINE_TEST"
+                      - "INTERVIEW"
+                      - "OFFER"
+                    skipped_rounds: []
+                    status: "ACTIVE"
+                    created_by: "ta_user_001"
+                    created_at: "2026-03-20T10:45:00Z"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationError"
+              examples:
+                no_evaluation_rounds:
+                  summary: No Evaluation Rounds
+                  value:
+                    error_code: "NO_EVALUATION_ROUNDS"
+                    message: "Workflow phải có ít nhất 1 vòng đánh giá (Test hoặc Interview)"
+                    field: "rounds"
+                    provided_value: ["SCREENING", "OFFER"]
+                    suggestion: "Vui lòng configure workflow với Screening + Online Test/Onsite Test + Interview"
+                invalid_skipped_round:
+                  summary: Invalid Skipped Round
+                  value:
+                    error_code: "INVALID_SKIPPED_ROUND"
+                    message: "Vòng skipped phải tồn tại trong danh sách rounds"
+                    field: "skipped_rounds"
+                    provided_value: "INTERVIEW"
+                    context:
+                      rounds: ["SCREENING", "ONLINE_TEST", "OFFER"]
+                missing_required_round:
+                  summary: Missing Required Round
+                  value:
+                    error_code: "MISSING_REQUIRED_ROUND"
+                    message: "Workflow thiếu vòng bắt buộc: SCREENING"
+                    field: "rounds"
+                    missing_rounds: ["SCREENING"]
+        "404":
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotFoundError"
+
+  /events/{id}/publish:
+    post:
+      tags:
+        - Events
+      summary: Publish Event
+      description: |
+        Publish Event lên Career Site.
+
+        **Flow Reference:** `7.flows/event-management-flow.md` - Phase 5: Publish Event
+
+        **Preconditions:**
+        - Event status = DRAFT
+        - Event có ít nhất 1 Track
+        - Event có ít nhất 1 Request mapped
+        - Workflow hợp lệ (≥1 vòng đánh giá)
+
+        **Validation trước khi publish:**
+        - tracks count ≥ 1
+        - request_mappings count ≥ 1
+        - workflow hợp lệ (≥1 evaluation round)
+
+        **Postconditions:**
+        - Event.status = PUBLISHED
+        - Event được hiển thị trên Career Site
+        - application_window mở (nếu start_date ≤ now)
+        - Event `EventPublished` được publish
+
+        **Business Rules:**
+        - BR-EM-006: Không được add mapping Request sau khi Event đã publish
+
+        **Configurable Parameters:**
+        - `min_tracks`: 1
+        - `min_request_mappings`: 1
+        - `min_workflow_rounds`: 1
+        - `career_site_timeout_seconds`: 5
+        - `career_site_retry_attempts`: 3
+
+        **Integration Points:**
+        - Career Site (external): PublishEvent - Sync REST API
+        - Application Context: EventPublished - Async event bus
+      operationId: publishEvent
+      parameters:
+        - $ref: "#/components/parameters/EventIdParam"
+      responses:
+        "200":
+          description: Event published successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublishEventResponse"
+              examples:
+                event_published:
+                  summary: Event published
+                  value:
+                    event_id: "EVT-20260001"
+                    status: "PUBLISHED"
+                    published_at: "2026-03-20T11:00:00Z"
+                    application_window:
+                      start: "2026-04-01T00:00:00Z"
+                      end: "2026-04-30T23:59:59Z"
+                    career_site_url: "https://career.xtalent.io/events/EVT-20260001"
+                    tracks_count: 3
+                    request_mappings_count: 2
+        "400":
+          description: Validation error - Event not ready to publish
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationError"
+              examples:
+                no_tracks:
+                  summary: No Tracks
+                  value:
+                    error_code: "NO_TRACKS"
+                    message: "Event phải có ít nhất 1 Track trước khi publish"
+                    field: "tracks"
+                    provided_value: 0
+                    suggestion: "Vui lòng add Track với thông tin chi tiết"
+                no_request_mappings:
+                  summary: No Request Mappings
+                  value:
+                    error_code: "NO_REQUEST_MAPPINGS"
+                    message: "Event phải map ít nhất 1 Request trước khi publish"
+                    field: "request_mappings"
+                    provided_value: 0
+                    suggestion: "Vui lòng map Request từ danh sách available Requests"
+                invalid_workflow:
+                  summary: Invalid Workflow
+                  value:
+                    error_code: "INVALID_WORKFLOW"
+                    message: "Workflow phải có ít nhất 1 vòng đánh giá (Test hoặc Interview)"
+                    field: "workflow"
+                    provided_value:
+                      rounds: ["SCREENING", "OFFER"]
+                      evaluation_rounds_count: 0
+                    suggestion: "Vui lòng configure workflow với Screening + Online Test/Onsite Test + Interview"
+        "409":
+          description: Event already published
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConflictError"
+              examples:
+                already_published:
+                  summary: Already Published
+                  value:
+                    error_code: "EVENT_ALREADY_PUBLISHED"
+                    message: "Event đã được publish trước đó"
+                    field: "status"
+                    provided_value: "PUBLISHED"
+                    context:
+                      published_at: "2026-03-15T09:00:00Z"
+                    suggestion: "Vui lòng sử dụng chức năng 'Update Event Config' nếu cần thay đổi"
+        "404":
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotFoundError"
+        "504":
+          description: Career Site API timeout
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TimeoutError"
+              examples:
+                career_site_timeout:
+                  summary: Career Site Timeout
+                  value:
+                    error_code: "CAREER_SITE_TIMEOUT"
+                    message: "Không thể publish lên Career Site — API timeout sau 5 seconds"
+                    retry_policy: "Exponential Backoff"
+                    retry_attempts:
+                      - attempt: 1
+                        delay_ms: 500
+                      - attempt: 2
+                        delay_ms: 2000
+                      - attempt: 3
+                        delay_ms: 10000
+                    suggestion: "Vui lòng thử lại sau hoặc sử dụng retry manual"
+
+  /events/{id}:
+    get:
+      tags:
+        - Events
+      summary: Get Event Details
+      description: |
+        Lấy thông tin chi tiết Event bao gồm:
+        - Event cơ bản
+        - Tracks (với QuestionSets)
+        - RequestMappings
+        - Workflow configuration
+
+        **Flow Reference:** `7.flows/event-management-flow.md` - Get Event Details
+      operationId: getEventDetails
+      parameters:
+        - $ref: "#/components/parameters/EventIdParam"
+        - name: include
+          in: query
+          description: Fields to include in response
+          required: false
+          schema:
+            type: array
+            items:
+              type: string
+              enum:
+                - tracks
+                - request_mappings
+                - workflow
+                - all
+          style: form
+          explode: false
+      responses:
+        "200":
+          description: Event details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventDetails"
+              examples:
+                full_event_details:
+                  summary: Full Event Details
+                  value:
+                    event:
+                      event_id: "EVT-20260001"
+                      name: "Fresher Journey 2026 - Hanoi"
+                      description: "Tuyển dụng Fresher cho các vị trí Game Development, Game Design, Game QC"
+                      program_type: "FRESHER"
+                      start_date: "2026-04-01"
+                      end_date: "2026-04-30"
+                      application_start_date: "2026-04-01T00:00:00Z"
+                      application_end_date: "2026-04-30T23:59:59Z"
+                      status: "PUBLISHED"
+                      published_at: "2026-03-20T11:00:00Z"
+                      created_by: "ta_user_001"
+                      created_at: "2026-03-20T10:30:00Z"
+                    tracks:
+                      - track_id: "TRK-000001"
+                        track_name: "Game Development"
+                        description: "Track dành cho ứng viên có kinh nghiệm lập trình C++/C#"
+                        question_set_id: "QST-000001"
+                        status: "ACTIVE"
+                      - track_id: "TRK-000002"
+                        track_name: "Game Design"
+                        description: "Track dành cho ứng viên có tư duy thẩm mỹ, creativity"
+                        question_set_id: "QST-000002"
+                        status: "ACTIVE"
+                      - track_id: "TRK-000003"
+                        track_name: "Game QC"
+                        description: "Track dành cho ứng viên có tư duy logic, attention to detail"
+                        question_set_id: "QST-000003"
+                        status: "ACTIVE"
+                    request_mappings:
+                      - mapping_id: "MAP-000001"
+                        request_id: "REQ-2026-001"
+                        request_type: "FRESHER"
+                        position_title: "Fresher Game Developer"
+                        department: "Game Development"
+                        headcount: 5
+                        status: "ACTIVE"
+                      - mapping_id: "MAP-000002"
+                        request_id: "REQ-2026-002"
+                        request_type: "FRESHER"
+                        position_title: "Fresher Game Designer"
+                        department: "Game Design"
+                        headcount: 3
+                        status: "ACTIVE"
+                    workflow:
+                      workflow_id: "WFL-000001"
+                      workflow_name: "Fresher Standard Workflow"
+                      rounds:
+                        - "SCREENING"
+                        - "ONLINE_TEST"
+                        - "INTERVIEW"
+                        - "OFFER"
+                      skipped_rounds: []
+                      status: "ACTIVE"
+        "404":
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotFoundError"
+
+components:
+  parameters:
+    EventIdParam:
+      name: id
+      in: path
+      required: true
+      description: Event ID (pattern: EVT-YYYYNNNN)
+      schema:
+        type: string
+        pattern: "^EVT-\\d{6}$"
+        example: "EVT-20260001"
+
+  schemas:
+    # === Request Schemas ===
+    CreateEventRequest:
+      type: object
+      required:
+        - name
+        - description
+        - program_type
+        - start_date
+        - end_date
+        - application_start_date
+        - application_end_date
+      properties:
+        name:
+          type: string
+          description: "Tên Event tuyển dụng"
+          example: "Fresher Journey 2026 - Hanoi"
+        description:
+          type: string
+          description: "Mô tả chi tiết Event"
+          example: "Tuyển dụng Fresher cho các vị trí Game Development, Game Design, Game QC"
+        program_type:
+          type: string
+          description: "Loại chương trình (chỉ FRESHER được chấp nhận)"
+          enum:
+            - FRESHER
+          example: "FRESHER"
+        start_date:
+          type: string
+          format: date
+          description: "Ngày bắt đầu Event"
+          example: "2026-04-01"
+        end_date:
+          type: string
+          format: date
+          description: "Ngày kết thúc Event"
+          example: "2026-04-30"
+        application_start_date:
+          type: string
+          format: date-time
+          description: "Thời gian bắt đầu nhận applications"
+          example: "2026-04-01T00:00:00Z"
+        application_end_date:
+          type: string
+          format: date-time
+          description: "Thời gian kết thúc nhận applications"
+          example: "2026-04-30T23:59:59Z"
+
+    MapRequestRequest:
+      type: object
+      required:
+        - request_id
+      properties:
+        request_id:
+          type: string
+          description: "Request ID từ hệ thống tuyển dụng"
+          example: "REQ-2026-001"
+
+    AddTrackRequest:
+      type: object
+      required:
+        - track_name
+        - description
+      properties:
+        track_name:
+          type: string
+          description: "Tên Track (VD: Game Development, Game Design, Game QC)"
+          example: "Game Development"
+        description:
+          type: string
+          description: "Mô tả Track"
+          example: "Track dành cho ứng viên có kinh nghiệm lập trình C++/C#"
+        question_set_id:
+          type: string
+          description: "Bộ câu hỏi áp dụng cho Track"
+          pattern: "^QST-\\d{6}$"
+          example: "QST-000001"
+
+    ConfigureWorkflowRequest:
+      type: object
+      required:
+        - workflow_name
+        - rounds
+      properties:
+        workflow_name:
+          type: string
+          description: "Tên Workflow"
+          example: "Fresher Standard Workflow"
+        rounds:
+          type: array
+          description: "Danh sách các vòng tuyển dụng theo thứ tự"
+          items:
+            $ref: "#/components/schemas/WorkflowRound"
+          minItems: 1
+          example:
+            - SCREENING
+            - ONLINE_TEST
+            - INTERVIEW
+            - OFFER
+        skipped_rounds:
+          type: array
+          description: "Danh sách các vòng được skip (nếu có)"
+          items:
+            $ref: "#/components/schemas/WorkflowRound"
+          default: []
+          example:
+            - ONLINE_TEST
+
+    # === Entity Schemas (from LinkML Ontology) ===
+    Event:
+      type: object
+      required:
+        - event_id
+        - name
+        - description
+        - program_type
+        - start_date
+        - end_date
+        - application_start_date
+        - application_end_date
+        - status
+        - created_by
+        - created_at
+      properties:
+        event_id:
+          type: string
+          description: "Unique identifier cho Event"
+          pattern: "^EVT-\\d{6}$"
+          example: "EVT-000001"
+        name:
+          type: string
+          description: "Tên Event tuyển dụng"
+          example: "Fresher Journey 2026 - Hanoi"
+        description:
+          type: string
+          description: "Mô tả chi tiết Event"
+          example: "Tuyển dụng Fresher cho các vị trí Game Development, Game Design, Game QC"
+        program_type:
+          $ref: "#/components/schemas/ProgramTypeEnum"
+        start_date:
+          type: string
+          format: date
+          description: "Ngày bắt đầu Event"
+          example: "2026-04-01"
+        end_date:
+          type: string
+          format: date
+          description: "Ngày kết thúc Event"
+          example: "2026-04-30"
+        application_start_date:
+          type: string
+          format: date-time
+          description: "Thời gian bắt đầu nhận applications"
+          example: "2026-04-01T00:00:00Z"
+        application_end_date:
+          type: string
+          format: date-time
+          description: "Thời gian kết thúc nhận applications"
+          example: "2026-04-30T23:59:59Z"
+        status:
+          $ref: "#/components/schemas/EventStatusEnum"
+        published_at:
+          type: string
+          format: date-time
+          description: "Thời điểm Event được publish"
+          example: "2026-03-20T11:00:00Z"
+        created_by:
+          type: string
+          description: "User ID tạo Event (TA)"
+          example: "ta_user_001"
+        created_at:
+          type: string
+          format: date-time
+          description: "Timestamp tạo Event"
+          example: "2026-03-20T10:30:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: "Timestamp cập nhật Event"
+          example: "2026-03-20T10:45:00Z"
+
+    Track:
+      type: object
+      required:
+        - track_id
+        - event_id
+        - track_name
+        - status
+        - created_by
+        - created_at
+      properties:
+        track_id:
+          type: string
+          description: "Unique identifier cho Track"
+          pattern: "^TRK-\\d{6}$"
+          example: "TRK-000001"
+        event_id:
+          type: string
+          description: "Event ID mà Track thuộc về"
+          pattern: "^EVT-\\d{6}$"
+          example: "EVT-20260001"
+        track_name:
+          type: string
+          description: "Tên Track (VD: Game Development, Game Design, Game QC)"
+          example: "Game Development"
+        description:
+          type: string
+          description: "Mô tả Track"
+          example: "Track dành cho ứng viên có kinh nghiệm lập trình C++/C#"
+        question_set_id:
+          type: string
+          description: "Bộ câu hỏi áp dụng cho Track"
+          pattern: "^QST-\\d{6}$"
+          example: "QST-000001"
+        status:
+          $ref: "#/components/schemas/TrackStatusEnum"
+        created_by:
+          type: string
+          description: "User ID tạo Track"
+          example: "ta_user_001"
+        created_at:
+          type: string
+          format: date-time
+          description: "Timestamp tạo Track"
+          example: "2026-03-20T10:40:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: "Timestamp cập nhật Track"
+          example: "2026-03-20T10:40:00Z"
+
+    RequestMapping:
+      type: object
+      required:
+        - mapping_id
+        - event_id
+        - request_id
+        - request_type
+        - position_title
+        - headcount
+        - status
+        - mapped_at
+        - created_by
+        - created_at
+      properties:
+        mapping_id:
+          type: string
+          description: "Unique identifier cho RequestMapping"
+          pattern: "^MAP-\\d{6}$"
+          example: "MAP-000001"
+        event_id:
+          type: string
+          description: "Event ID mà Request được map vào"
+          pattern: "^EVT-\\d{6}$"
+          example: "EVT-20260001"
+        request_id:
+          type: string
+          description: "Request ID từ hệ thống tuyển dụng (external)"
+          example: "REQ-2026-001"
+        request_type:
+          $ref: "#/components/schemas/RequestTypeEnum"
+        position_title:
+          type: string
+          description: "Tên vị trí tuyển dụng"
+          example: "Fresher Game Developer"
+        department:
+          type: string
+          description: "Phòng ban tuyển dụng"
+          example: "Game Development"
+        hiring_manager:
+          type: string
+          description: "Hiring Manager của Request"
+          example: "hm_001"
+        headcount:
+          type: integer
+          minimum: 1
+          description: "Số lượng tuyển"
+          example: 5
+        status:
+          $ref: "#/components/schemas/RequestMappingStatusEnum"
+        mapped_at:
+          type: string
+          format: date-time
+          description: "Thời điểm map Request vào Event"
+          example: "2026-03-20T10:35:00Z"
+        created_by:
+          type: string
+          description: "User ID tạo mapping"
+          example: "ta_user_001"
+        created_at:
+          type: string
+          format: date-time
+          description: "Timestamp tạo mapping"
+          example: "2026-03-20T10:35:00Z"
+
+    Workflow:
+      type: object
+      required:
+        - workflow_id
+        - event_id
+        - workflow_name
+        - rounds
+        - status
+        - created_by
+        - created_at
+      properties:
+        workflow_id:
+          type: string
+          description: "Unique identifier cho Workflow"
+          pattern: "^WFL-\\d{6}$"
+          example: "WFL-000001"
+        event_id:
+          type: string
+          description: "Event ID mà Workflow áp dụng"
+          pattern: "^EVT-\\d{6}$"
+          example: "EVT-20260001"
+        workflow_name:
+          type: string
+          description: "Tên Workflow"
+          example: "Fresher Standard Workflow"
+        rounds:
+          type: array
+          description: "Danh sách các vòng tuyển dụng theo thứ tự"
+          items:
+            $ref: "#/components/schemas/WorkflowRound"
+          example:
+            - SCREENING
+            - ONLINE_TEST
+            - INTERVIEW
+            - OFFER
+        skipped_rounds:
+          type: array
+          description: "Danh sách các vòng được skip (nếu có)"
+          items:
+            $ref: "#/components/schemas/WorkflowRound"
+          example: []
+        status:
+          $ref: "#/components/schemas/WorkflowStatusEnum"
+        created_by:
+          type: string
+          description: "User ID tạo Workflow"
+          example: "ta_user_001"
+        created_at:
+          type: string
+          format: date-time
+          description: "Timestamp tạo Workflow"
+          example: "2026-03-20T10:45:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: "Timestamp cập nhật Workflow"
+          example: "2026-03-20T10:45:00Z"
+
+    EventDetails:
+      type: object
+      description: "Full Event details including tracks, request mappings, and workflow"
+      properties:
+        event:
+          $ref: "#/components/schemas/Event"
+        tracks:
+          type: array
+          items:
+            $ref: "#/components/schemas/Track"
+        request_mappings:
+          type: array
+          items:
+            $ref: "#/components/schemas/RequestMapping"
+        workflow:
+          $ref: "#/components/schemas/Workflow"
+
+    PublishEventResponse:
+      type: object
+      properties:
+        event_id:
+          type: string
+          example: "EVT-20260001"
+        status:
+          type: string
+          enum:
+            - PUBLISHED
+          example: "PUBLISHED"
+        published_at:
+          type: string
+          format: date-time
+          example: "2026-03-20T11:00:00Z"
+        application_window:
+          type: object
+          properties:
+            start:
+              type: string
+              format: date-time
+            end:
+              type: string
+              format: date-time
+        career_site_url:
+          type: string
+          format: uri
+          example: "https://career.xtalent.io/events/EVT-20260001"
+        tracks_count:
+          type: integer
+          example: 3
+        request_mappings_count:
+          type: integer
+          example: 2
+
+    # === Enums (from LinkML Ontology) ===
+    ProgramTypeEnum:
+      type: string
+      description: "Loại chương trình tuyển dụng"
+      enum:
+        - FRESHER
+        - JOB_FAIR
+        - UNIWEEK
+        - INTERN
+      x-ontology-source: "5.ontology/event-management/event.yaml"
+
+    EventStatusEnum:
+      type: string
+      description: "Trạng thái lifecycle của Event"
+      enum:
+        - DRAFT
+        - PUBLISHED
+        - ACTIVE
+        - COMPLETED
+        - CANCELLED
+      x-ontology-source: "5.ontology/event-management/event.yaml"
+
+    TrackStatusEnum:
+      type: string
+      description: "Trạng thái Track"
+      enum:
+        - ACTIVE
+        - INACTIVE
+        - CANCELLED
+      x-ontology-source: "5.ontology/event-management/track.yaml"
+
+    RequestTypeEnum:
+      type: string
+      description: "Loại Request tuyển dụng"
+      enum:
+        - FRESHER
+        - INTERN
+        - EMPLOYEE
+        - CONTRACTOR
+      x-ontology-source: "5.ontology/event-management/request-mapping.yaml"
+
+    RequestMappingStatusEnum:
+      type: string
+      description: "Trạng thái mapping"
+      enum:
+        - ACTIVE
+        - INACTIVE
+        - CANCELLED
+      x-ontology-source: "5.ontology/event-management/request-mapping.yaml"
+
+    WorkflowStatusEnum:
+      type: string
+      description: "Trạng thái Workflow"
+      enum:
+        - DRAFT
+        - ACTIVE
+        - INACTIVE
+      x-ontology-source: "5.ontology/event-management/workflow.yaml"
+
+    WorkflowRound:
+      type: string
+      description: "Các vòng tuyển dụng có thể có"
+      enum:
+        - SCREENING
+        - ONLINE_TEST
+        - ONSITE_TEST
+        - INTERVIEW
+        - OFFER
+      x-ontology-source: "5.ontology/event-management/workflow.yaml"
+
+    QuestionSetStatusEnum:
+      type: string
+      description: "Trạng thái bộ câu hỏi"
+      enum:
+        - DRAFT
+        - ACTIVE
+        - INACTIVE
+      x-ontology-source: "5.ontology/event-management/question-set.yaml"
+
+    # === Error Schemas ===
+    ValidationError:
+      type: object
+      required:
+        - error_code
+        - message
+      properties:
+        error_code:
+          type: string
+          description: "Machine-readable error code"
+          example: "INVALID_PROGRAM_TYPE"
+        message:
+          type: string
+          description: "Human-readable error message"
+          example: "Chỉ Event thuộc Program 'Fresher' mới được tạo trong system này"
+        field:
+          type: string
+          description: "Field that caused the error"
+          example: "program_type"
+        provided_value:
+          description: "The value that was provided"
+          oneOf:
+            - type: string
+            - type: integer
+            - type: array
+        context:
+          type: object
+          description: "Additional context for the error"
+          additionalProperties: true
+        suggestion:
+          type: string
+          description: "Suggested action to fix the error"
+          example: "Vui lòng chọn Program type = Fresher"
+
+    NotFoundError:
+      type: object
+      required:
+        - error_code
+        - message
+      properties:
+        error_code:
+          type: string
+          example: "EVENT_NOT_FOUND"
+        message:
+          type: string
+          example: "Event không tồn tại"
+        resource_id:
+          type: string
+          example: "EVT-20260001"
+
+    ForbiddenError:
+      type: object
+      required:
+        - error_code
+        - message
+      properties:
+        error_code:
+          type: string
+          example: "FORBIDDEN"
+        message:
+          type: string
+          example: "User does not have permission to perform this action"
+        required_permission:
+          type: string
+          example: "event:create"
+
+    ConflictError:
+      type: object
+      required:
+        - error_code
+        - message
+      properties:
+        error_code:
+          type: string
+          example: "EVENT_ALREADY_PUBLISHED"
+        message:
+          type: string
+          example: "Event đã được publish trước đó"
+        context:
+          type: object
+          additionalProperties: true
+        suggestion:
+          type: string
+
+    TimeoutError:
+      type: object
+      required:
+        - error_code
+        - message
+      properties:
+        error_code:
+          type: string
+          example: "CAREER_SITE_TIMEOUT"
+        message:
+          type: string
+          example: "Không thể publish lên Career Site — API timeout"
+        retry_policy:
+          type: string
+          example: "Exponential Backoff"
+        retry_attempts:
+          type: array
+          items:
+            type: object
+            properties:
+              attempt:
+                type: integer
+              delay_ms:
+                type: integer
+        suggestion:
+          type: string

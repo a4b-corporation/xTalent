@@ -1,0 +1,289 @@
+id: https://xtalent.io/ontology/ats/interview/interview-slot
+name: interview_slot_ontology
+version: "1.0.0"
+description: "InterviewSlot - Ca phỏng vấn với ngày giờ, hình thức (Online/Offline), Interviewers"
+
+prefixes:
+  xt: https://xtalent.io/ontology/
+  oracle: https://oracle.com/hcm/
+  sap: https://successfactors.sap.com/
+  workday: https://workday.com/
+
+imports:
+  - ./interview-schedule.yaml
+  - ./interviewer-invitation.yaml
+  - ./checkin.yaml
+  - ./grading.yaml
+
+default_range: string
+
+slots:
+  # --- Identifier ---
+  slot_id:
+    description: "Unique identifier cho InterviewSlot"
+    identifier: true
+    required: true
+    pattern: "^ISLOT-\\d{6}$"
+    annotations:
+      example: "ISLOT-000001"
+
+  # --- Core Fields ---
+  event_id:
+    description: "Event ID mà InterviewSlot thuộc về"
+    required: true
+    annotations:
+      reference: "Event.event_id"
+
+  slot_name:
+    description: "Tên ca phỏng vấn"
+    required: true
+
+  description:
+    description: "Mô tả ca phỏng vấn"
+    required: false
+
+  interview_date:
+    description: "Ngày phỏng vấn"
+    range: date
+    required: true
+
+  start_time:
+    description: "Giờ bắt đầu"
+    range: time
+    required: true
+
+  end_time:
+    description: "Giờ kết thúc"
+    range: time
+    required: true
+
+  format:
+    description: "Hình thức phỏng vấn (Online/Offline)"
+    range: InterviewFormatEnum
+    required: true
+
+  location:
+    description: "Địa điểm phỏng vấn (nếu Offline)"
+    required: false
+
+  room:
+    description: "Phòng phỏng vấn (nếu Offline)"
+    required: false
+
+  link:
+    description: "Link phỏng vấn (nếu Online)"
+    required: false
+
+  max_capacity:
+    description: "Số lượng tối đa"
+    range: integer
+    minimum_value: 1
+    required: true
+
+  current_capacity:
+    description: "Số lượng hiện tại đã allocate"
+    range: integer
+    minimum_value: 0
+    required: false
+
+  interviewers:
+    description: "Danh sách Interviewer IDs được phân công"
+    range: string
+    multivalued: true
+    required: true
+
+  status:
+    description: "Trạng thái ca phỏng vấn"
+    range: InterviewSlotStatusEnum
+    required: true
+
+  # --- Configurable Parameters ---
+  auto_allocate_enabled:
+    description: "Bật auto allocate (FCFS + Time Window)"
+    range: boolean
+    required: false
+
+  time_window_hours:
+    description: "Time Window để confirm (giờ, configurable, default: 24h)"
+    range: integer
+    minimum_value: 1
+    maximum_value: 72
+    required: false
+
+  max_retry:
+    description: "Số lần retry auto-allocate (configurable, default: 2)"
+    range: integer
+    minimum_value: 0
+    maximum_value: 5
+    required: false
+
+  notify_ta_on_allocate:
+    description: "Notify TA khi auto-allocate thành công"
+    range: boolean
+    required: false
+
+  # --- Audit Fields ---
+  created_by:
+    description: "User ID tạo InterviewSlot (TA)"
+    required: true
+    annotations:
+      reference: "User.user_id"
+
+  created_at:
+    description: "Timestamp tạo InterviewSlot"
+    range: datetime
+    required: true
+
+  updated_at:
+    description: "Timestamp cập nhật InterviewSlot"
+    range: datetime
+    required: false
+
+classes:
+  InterviewSlot:
+    description: |
+      InterviewSlot - Ca phỏng vấn với ngày giờ, hình thức (Online/Offline), Interviewers.
+      Interviewer chỉ thấy Candidates được phân công.
+      Auto-allocate với FCFS + Time Window (configurable).
+      Aggregate Root trong Interview context.
+
+    annotations:
+      oracle_hcm_term: "InterviewSession"
+      sap_term: "InterviewSession"
+      workday_term: "InterviewSession"
+      disambiguation: "xTalent: InterviewSlot = Ca phỏng vấn. Oracle: InterviewSession. SAP: InterviewSession. Workday: InterviewSession. Xem docs.xtalent.io/ats/interview/interview-slot."
+
+      module: "ats"
+      sub_module: "interview"
+      version: "1.0.0"
+      bounded_context: "Interview"
+      aggregate_root: true
+
+      ouroboros_evolution:
+        iteration: "1.0.0"
+        parent_version: null
+        evaluation_status: "pending"
+        last_evaluated: null
+        evolution_notes: "Initial version"
+
+      validation_hooks:
+        odds_system_builder:
+          required_for: true
+          validates: ["table_generation", "fk_references"]
+
+      see_also: "https://docs.xtalent.io/ats/interview/interview-slot"
+
+    slots:
+      - slot_id
+      - event_id
+      - slot_name
+      - description
+      - interview_date
+      - start_time
+      - end_time
+      - format
+      - location
+      - room
+      - link
+      - max_capacity
+      - current_capacity
+      - interviewers
+      - status
+      - auto_allocate_enabled
+      - time_window_hours
+      - max_retry
+      - notify_ta_on_allocate
+      - created_by
+      - created_at
+      - updated_at
+
+    slot_usage:
+      slot_id:
+        required: true
+        identifier: true
+
+      event_id:
+        required: true
+
+      slot_name:
+        required: true
+
+      interview_date:
+        required: true
+
+      start_time:
+        required: true
+
+      end_time:
+        required: true
+
+      format:
+        required: true
+
+      interviewers:
+        required: true
+
+      status:
+        required: true
+
+      created_by:
+        required: true
+
+      created_at:
+        required: true
+
+    rules:
+      - description: "BRS-ISLOT-001: Interviewer chỉ thấy Candidates được phân công"
+        preconditions:
+          slot_conditions:
+            interviewers:
+              list_has_length:
+                min_length: 1
+        postconditions:
+          slot_conditions:
+            candidate_visibility:
+              equals_string: "ASSIGNED_ONLY"
+
+      - description: "BRS-ISLOT-002: Interviewer không được request đổi lịch"
+        preconditions:
+          slot_conditions: {}
+        postconditions:
+          slot_conditions:
+            interviewer_change_request_allowed:
+              equals_boolean: false
+
+      - description: "BRS-ISLOT-005: Auto-allocate với FCFS + Time Window (configurable)"
+        preconditions:
+          slot_conditions:
+            auto_allocate_enabled:
+              equals_boolean: true
+        postconditions:
+          slot_conditions:
+            allocation_method:
+              equals_string: "FCFS_WITH_TIME_WINDOW"
+
+# === ENUMS ===
+enums:
+  InterviewFormatEnum:
+    description: "Hình thức phỏng vấn"
+    permissible_values:
+      ONLINE:
+        description: "Phỏng vấn online (video call)"
+      OFFLINE:
+        description: "Phỏng vấn trực tiếp"
+      HYBRID:
+        description: "Phỏng vấn lai (cả online và offline)"
+
+  InterviewSlotStatusEnum:
+    description: "Trạng thái ca phỏng vấn"
+    permissible_values:
+      DRAFT:
+        description: "Đang nháp"
+      ACTIVE:
+        description: "Đang mở đăng ký"
+      IN_PROGRESS:
+        description: "Đang diễn ra"
+      COMPLETED:
+        description: "Hoàn tất"
+      CANCELLED:
+        description: "Đã hủy"

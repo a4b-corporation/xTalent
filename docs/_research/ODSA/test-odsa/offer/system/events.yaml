@@ -1,0 +1,361 @@
+# ODDS System - Offer Context Events
+# Generated from ontology: /5.ontology/offer/*.yaml
+# Events trace to lifecycle transitions and use cases
+
+# ============================================
+# EVENT NAMING CONVENTION
+# Format: {Entity}{State}d
+# Example: OfferCreated, OfferSent, OfferAccepted
+# ============================================
+
+events:
+  # ============================================
+  # OFFER LIFECYCLE EVENTS
+  # ============================================
+
+  - name: OfferCreated
+    description: |
+      Emitted khi Offer mới được tạo cho Candidate.
+      Transition: None → DRAFT
+    trigger:
+      operation: createOffer
+      precondition: Candidate interview result = PASS
+    payload:
+      offer_id:
+        type: string
+        description: Offer ID
+      application_id:
+        type: string
+        description: Application ID
+      candidate_rr_id:
+        type: string
+        description: Candidate RR ID
+      request_id:
+        type: string
+        description: Request ID
+      salary:
+        type: number
+        description: Mức lương đề xuất
+      deadline:
+        type: string
+        format: date-time
+        description: Deadline phản hồi
+      created_by:
+        type: string
+        description: TA User ID
+    traceability:
+      ontology: /5.ontology/offer/offer.yaml
+      use_case: UC-ATS-OFFER-001
+      business_rule: BRS-OFR-001, BRS-OFR-002
+
+  - name: OfferSent
+    description: |
+      Emitted khi Offer được gửi cho Candidate.
+      Transition: DRAFT → SENT
+    trigger:
+      operation: sendOffer
+      precondition: Offer status = DRAFT
+    payload:
+      offer_id:
+        type: string
+        description: Offer ID
+      sent_by:
+        type: string
+        description: User ID gửi Offer
+      sent_at:
+        type: string
+        format: date-time
+        description: Thời gian gửi
+    traceability:
+      ontology: /5.ontology/offer/offer.yaml
+      use_case: UC-ATS-OFFER-002
+
+  - name: OfferAccepted
+    description: |
+      Emitted khi Candidate chấp nhận Offer.
+      Transition: SENT → ACCEPTED
+    trigger:
+      operation: acceptOffer
+      precondition: Offer status = SENT
+    payload:
+      offer_id:
+        type: string
+        description: Offer ID
+      accepted_by:
+        type: string
+        description: Student ID
+      accepted_at:
+        type: string
+        format: date-time
+        description: Thời gian chấp nhận
+    traceability:
+      ontology: /5.ontology/offer/offer.yaml
+      use_case: UC-ATS-OFFER-003
+      business_rule: BRS-OFR-011
+
+  - name: OfferRejected
+    description: |
+      Emitted khi Candidate từ chối Offer.
+      Transition: SENT → REJECTED
+    trigger:
+      operation: rejectOffer
+      precondition: Offer status = SENT
+    payload:
+      offer_id:
+        type: string
+        description: Offer ID
+      rejected_by:
+        type: string
+        description: Student ID
+      reason:
+        type: string
+        description: Lý do từ chối
+      rejected_at:
+        type: string
+        format: date-time
+        description: Thời gian từ chối
+    traceability:
+      ontology: /5.ontology/offer/offer.yaml
+      use_case: UC-ATS-OFFER-004
+      business_rule: BRS-OFR-011
+
+  - name: OfferExpired
+    description: |
+      Emitted khi Offer expire tự động sau deadline.
+      Transition: SENT → EXPIRED
+    trigger:
+      operation: expireOffer (auto)
+      precondition: Current time > Offer deadline
+    payload:
+      offer_id:
+        type: string
+        description: Offer ID
+      expired_at:
+        type: string
+        format: date-time
+        description: Thời gian expire
+      grace_period_ends_at:
+        type: string
+        format: date-time
+        description: Kết thúc grace period
+    traceability:
+      ontology: /5.ontology/offer/offer.yaml
+      use_case: UC-ATS-OFFER-005
+      business_rule: BRS-OFR-004
+
+  - name: OfferCancelled
+    description: |
+      Emitted khi Offer bị hủy bởi TA.
+      Transition: ANY → CANCELLED
+    trigger:
+      operation: cancelOffer
+    payload:
+      offer_id:
+        type: string
+        description: Offer ID
+      cancelled_by:
+        type: string
+        description: User ID hủy Offer
+      reason:
+        type: string
+        description: Lý do hủy
+      cancelled_at:
+        type: string
+        format: date-time
+        description: Thời gian hủy
+    traceability:
+      ontology: /5.ontology/offer/offer.yaml
+      use_case: UC-ATS-OFFER-006
+
+  # ============================================
+  # OFFER REMINDER EVENTS
+  # ============================================
+
+  - name: OfferReminderSent
+    description: |
+      Emitted khi reminder được gửi cho Candidate.
+      Reminder types: 24h, 2h trước deadline
+    trigger:
+      operation: sendReminder (auto)
+      precondition: Offer status = SENT AND reminder scheduled time reached
+    payload:
+      reminder_id:
+        type: string
+        description: Reminder ID
+      offer_id:
+        type: string
+        description: Offer ID
+      reminder_type:
+        type: string
+        enum: [REMIND_24H, REMIND_2H]
+        description: Loại reminder
+      sent_at:
+        type: string
+        format: date-time
+        description: Thời gian gửi
+    traceability:
+      ontology: /5.ontology/offer/offer-reminder.yaml
+      use_case: UC-ATS-OFFER-REMINDER-001
+      business_rule: BRS-OREM-001
+
+  # ============================================
+  # DOCUMENT SCANNING EVENTS
+  # ============================================
+
+  - name: DocumentsScanned
+    description: |
+      Emitted khi documents của Candidate được scan xong.
+      Transition: PENDING → COMPLETED
+    trigger:
+      operation: scanDocuments
+      precondition: Offer status = ACCEPTED
+    payload:
+      scan_id:
+        type: string
+        description: Scan ID
+      offer_id:
+        type: string
+        description: Offer ID
+      candidate_rr_id:
+        type: string
+        description: Candidate RR ID
+      documents:
+        type: array
+        items:
+          type: string
+        description: Danh sách document IDs
+      scanned_by:
+        type: string
+        description: User ID thực hiện scan
+      scanned_at:
+        type: string
+        format: date-time
+        description: Thời gian scan
+    traceability:
+      ontology: /5.ontology/offer/candidate-scan.yaml
+      use_case: UC-ATS-OFFER-007
+      business_rule: BRS-OSCN-001
+
+  # ============================================
+  # CANDIDATE TRANSFER EVENTS
+  # ============================================
+
+  - name: CandidateTransferred
+    description: |
+      Emitted khi Candidate được transfer sang hệ thống CnB.
+      Transition: PENDING → COMPLETED
+    trigger:
+      operation: transferToCnB
+      precondition: Offer status = ACCEPTED AND Documents scanned = COMPLETED
+    payload:
+      transfer_id:
+        type: string
+        description: Transfer ID
+      offer_id:
+        type: string
+        description: Offer ID
+      candidate_rr_id:
+        type: string
+        description: Candidate RR ID
+      cnb_reference_id:
+        type: string
+        description: Reference ID từ CnB
+      transferred_at:
+        type: string
+        format: date-time
+        description: Thời gian transfer
+    traceability:
+      ontology: /5.ontology/offer/candidate-transfer.yaml
+      use_case: UC-ATS-OFFER-008
+      business_rule: BRS-OTRF-001, BRS-OTRF-002
+
+  - name: CandidateTransferFailed
+    description: |
+      Emitted khi transfer sang CnB thất bại.
+      Transition: IN_PROGRESS → FAILED
+    trigger:
+      operation: transferToCnB (error)
+    payload:
+      transfer_id:
+        type: string
+        description: Transfer ID
+      offer_id:
+        type: string
+        description: Offer ID
+      candidate_rr_id:
+        type: string
+        description: Candidate RR ID
+      error_message:
+        type: string
+        description: Chi tiết lỗi
+      failed_at:
+        type: string
+        format: date-time
+        description: Thời gian thất bại
+      retry_count:
+        type: integer
+        description: Số lần retry
+    traceability:
+      ontology: /5.ontology/offer/candidate-transfer.yaml
+      use_case: UC-ATS-OFFER-008
+
+# ============================================
+# EVENT HANDLERS (for reference)
+# ============================================
+
+handlers:
+  # OfferCreated handlers
+  - event: OfferCreated
+    handler: AutoScheduleReminders
+    action: Schedule reminders for 24h and 2h before deadline
+
+  # OfferSent handlers
+  - event: OfferSent
+    handler: NotifyCandidate
+    action: Send notification to Candidate via email/SMS
+
+  # OfferAccepted handlers
+  - event: OfferAccepted
+    handler: UpdateCandidateRRStatus
+    action: Update CandidateRR stage to OFFER_ACCEPTED
+
+  - event: OfferAccepted
+    handler: NotifyTA
+    action: Notify TA about acceptance
+
+  # OfferRejected handlers
+  - event: OfferRejected
+    handler: UpdateCandidateRRStatus
+    action: Update CandidateRR stage based on rejection
+
+  - event: OfferRejected
+    handler: NotifyTA
+    action: Notify TA about rejection with reason
+
+  # OfferExpired handlers
+  - event: OfferExpired
+    handler: StartGracePeriod
+    action: Start grace period timer for TA to react
+
+  - event: OfferExpired
+    handler: NotifyTA
+    action: Notify TA about expired Offer
+
+  # DocumentsScanned handlers
+  - event: DocumentsScanned
+    handler: TriggerCandidateTransfer
+    action: Automatically trigger transfer to CnB
+
+  # CandidateTransferred handlers
+  - event: CandidateTransferred
+    handler: UpdateCandidateRRStatus
+    action: Update CandidateRR stage to TRANSFERRED
+
+  # CandidateTransferFailed handlers
+  - event: CandidateTransferFailed
+    handler: RetryTransfer
+    action: Schedule retry with exponential backoff
+
+  - event: CandidateTransferFailed
+    handler: NotifyTA
+    action: Notify TA for manual intervention if max retries reached

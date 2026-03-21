@@ -1,0 +1,155 @@
+// ODDS System - Test Session Context Database Schema
+// Generated from Ontology: https://xtalent.io/ontology/ats/test-session
+// Entities: TestSlot, Schedule, CheckIn, Grading
+// Date: 2026-03-21
+
+// ============================================
+// ENUMS
+// ============================================
+
+// TestSlot Status - Lifecycle states from TestSlot.status
+enum TestSlotStatusEnum {
+  DRAFT       // Đang nháp
+  ACTIVE      // Đang mở đăng ký
+  IN_PROGRESS // Đang diễn ra
+  COMPLETED   // Hoàn tất
+  CANCELLED   // Đã hủy
+}
+
+// Schedule Status - Lifecycle states from Schedule.status
+enum ScheduleStatusEnum {
+  PENDING     // Chưa confirm
+  CONFIRMED   // Đã confirm
+  RESCHEDULED // Đã đổi lịch
+  COMPLETED   // Hoàn tất
+  NO_SHOW     // Không đến
+  CANCELLED   // Đã hủy
+}
+
+// CheckIn Status - from checkin.yaml
+enum CheckInStatusEnum {
+  ON_TIME     // Đúng giờ
+  LATE        // Muộn (trong grace period)
+  VERY_LATE   // Muộn quá grace period
+  ABSENT      // Vắng mặt
+}
+
+// PassFail - Grading result from grading.yaml
+enum PassFailEnum {
+  PASS              // Đạt
+  FAIL              // Không đạt
+  NEEDS_DISCUSSION  // Cần thảo luận thêm
+}
+
+// ============================================
+// TABLES
+// ============================================
+
+// TestSlot - Ca thi Onsite với ngày giờ, địa điểm, phòng, capacity
+// Ontology: https://xtalent.io/ontology/ats/test-session/test-slot
+// Aggregate Root: true
+Table TestSlot {
+  slot_id varchar [pk, not null, note: "Unique identifier: TSLOT-\\d{6}"]
+  event_id varchar [not null, note: "Event ID mà TestSlot thuộc về (ref: Event.event_id)"]
+  slot_name varchar [not null, note: "Tên ca thi"]
+  description text [null, note: "Mô tả ca thi"]
+  test_date date [not null, note: "Ngày thi"]
+  start_time time [not null, note: "Giờ bắt đầu"]
+  end_time time [not null, note: "Giờ kết thúc"]
+  location varchar [not null, note: "Địa điểm thi"]
+  room varchar [not null, note: "Phòng thi"]
+  max_capacity integer [not null, note: "Số lượng tối đa"]
+  current_capacity integer [null, default: 0, note: "Số lượng hiện tại đã allocate"]
+  graders jsonb [null, note: "Danh sách Grader IDs được phân công chấm"]
+  status TestSlotStatusEnum [not null, note: "Trạng thái ca thi"]
+  auto_allocate_enabled boolean [null, default: false, note: "Bật auto allocate (FCFS + Time Window)"]
+  time_window_hours integer [null, note: "Time Window để confirm (giờ, configurable, default: 24h)"]
+  max_retry integer [null, default: 2, note: "Số lần retry auto-allocate (configurable, default: 2)"]
+  notify_ta_on_allocate boolean [null, default: false, note: "Notify TA khi auto-allocate thành công"]
+  photo_capture_required boolean [null, default: false, note: "Bắt buộc chụp hình khi check-in (configurable)"]
+  grace_period_minutes integer [null, default: 15, note: "Grace period cho check-in muộn (phút, default: 15)"]
+  created_by varchar [not null, note: "User ID tạo TestSlot (TA) (ref: User.user_id)"]
+  created_at timestamp [not null, note: "Timestamp tạo TestSlot"]
+  updated_at timestamp [null, note: "Timestamp cập nhật TestSlot"]
+}
+
+// Schedule - Lịch thi của Student trong Test Session
+// Ontology: https://xtalent.io/ontology/ats/test-session/schedule
+// Aggregate Root: true
+Table Schedule {
+  schedule_id varchar [pk, not null, note: "Unique identifier: TSCH-\\d{6}"]
+  slot_id varchar [not null, ref: > TestSlot.slot_id, note: "TestSlot ID mà Student được chia"]
+  application_id varchar [not null, note: "Application ID của Student (ref: Application.application_id)"]
+  candidate_rr_id varchar [not null, note: "Candidate RR ID (ref: CandidateRR.candidate_rr_id)"]
+  sbd varchar [null, note: "Số báo danh (auto gen khi được chia vào slot, pattern: SBD-\\d{8})"]
+  status ScheduleStatusEnum [not null, note: "Trạng thái lịch thi"]
+  confirmed_at timestamp [null, note: "Thời điểm confirm tham gia"]
+  confirm_deadline timestamp [null, note: "Deadline confirm (Time Window, configurable)"]
+  change_count integer [null, default: 0, note: "Số lần đổi lịch (max 1 lần)"]
+  created_by varchar [not null, note: "System auto tạo"]
+  created_at timestamp [not null, note: "Timestamp tạo Schedule"]
+  updated_at timestamp [null, note: "Timestamp cập nhật Schedule"]
+}
+
+// CheckIn - Record check-in cho Student trong Test Session
+// Ontology: https://xtalent.io/ontology/ats/test-session/checkin
+// Aggregate Root: true
+Table CheckIn {
+  check_in_id varchar [pk, not null, note: "Unique identifier: TCI-\\d{6}"]
+  schedule_id varchar [not null, ref: > Schedule.schedule_id, note: "Schedule ID mà Student check-in"]
+  actual_time timestamp [not null, note: "Thời gian check-in thực tế"]
+  is_late boolean [null, default: false, note: "Check-in muộn (sau grace period)"]
+  late_reason text [null, note: "Lý do check-in muộn"]
+  photo_id varchar [null, note: "Photo ID (chụp hình khi check-in, configurable) (ref: Attachment.attachment_id)"]
+  checked_in_by varchar [not null, note: "User ID thực hiện check-in (TA hoặc self) (ref: User.user_id)"]
+  created_at timestamp [not null, note: "Timestamp tạo CheckIn record"]
+}
+
+// Grading - Kết quả chấm Onsite Test
+// Ontology: https://xtalent.io/ontology/ats/test-session/grading
+// Aggregate Root: true
+Table Grading {
+  grading_id varchar [pk, not null, note: "Unique identifier: TGRD-\\d{6}"]
+  schedule_id varchar [not null, ref: > Schedule.schedule_id, note: "Schedule ID được chấm"]
+  grader_id varchar [not null, note: "User ID người chấm (Manager) (ref: User.user_id)"]
+  score float [not null, note: "Điểm số (0.0-100.0)"]
+  comment text [null, note: "Nhận xét của grader"]
+  pass_fail PassFailEnum [not null, note: "Đạt/Không đạt"]
+  graded_at timestamp [not null, note: "Thời điểm chấm xong"]
+  created_by varchar [not null, note: "Grader ID (ref: User.user_id)"]
+  created_at timestamp [not null, note: "Timestamp tạo Grading record"]
+}
+
+// ============================================
+// RELATIONSHIPS
+// ============================================
+
+// TestSlot 1--n Schedule (through slot_id)
+// Schedule 1--n CheckIn (through schedule_id)
+// Schedule 1--1 Grading (through schedule_id)
+
+// ============================================
+// INDEXES
+// ============================================
+
+// TestSlot indexes
+Create Index idx_testslot_event ON TestSlot(event_id)
+Create Index idx_testslot_status ON TestSlot(status)
+Create Index idx_testslot_test_date ON TestSlot(test_date)
+Create Index idx_testslot_created_at ON TestSlot(created_at)
+
+// Schedule indexes
+Create Index idx_schedule_slot ON Schedule(slot_id)
+Create Index idx_schedule_application ON Schedule(application_id)
+Create Index idx_schedule_candidate ON Schedule(candidate_rr_id)
+Create Index idx_schedule_status ON Schedule(status)
+Create Index idx_schedule_created_at ON Schedule(created_at)
+
+// CheckIn indexes
+Create Index idx_checkin_schedule ON CheckIn(schedule_id)
+Create Index idx_checkin_created_at ON CheckIn(created_at)
+
+// Grading indexes
+Create Index idx_grading_schedule ON Grading(schedule_id)
+Create Index idx_grading_grader ON Grading(grader_id)
+Create Index idx_grading_created_at ON Grading(created_at)

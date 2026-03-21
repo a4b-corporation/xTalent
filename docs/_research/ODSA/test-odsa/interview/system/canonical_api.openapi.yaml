@@ -1,0 +1,819 @@
+openapi: 3.0.3
+info:
+  title: ODDS System - Interview Context Canonical API
+  description: |
+    Canonical API cho Interview Context - Quản lý phỏng vấn trong hệ thống ATS.
+
+    ## Ontology Reference
+    - InterviewSlot: https://xtalent.io/ontology/ats/interview/interview-slot
+    - InterviewSchedule: https://xtalent.io/ontology/ats/interview/interview-schedule
+    - InterviewerInvitation: https://xtalent.io/ontology/ats/interview/interviewer-invitation
+    - CheckIn: https://xtalent.io/ontology/ats/interview/checkin
+    - Grading: https://xtalent.io/ontology/ats/interview/grading
+
+    ## Aggregate Roots
+    - InterviewSlot
+    - InterviewSchedule
+    - InterviewerInvitation
+    - CheckIn
+    - Grading
+  version: 1.0.0
+  contact:
+    name: xTalent ATS Team
+    url: https://docs.xtalent.io/ats/interview
+
+servers:
+  - url: https://api.xtalent.io/ats/interview/v1
+    description: Production server
+
+tags:
+  - name: Interview Slots
+    description: Quản lý ca phỏng vấn (InterviewSlot)
+  - name: Interview Schedules
+    description: Quản lý lịch phỏng vấn (InterviewSchedule)
+  - name: Interviewer Invitations
+    description: Quản lý invitation cho Interviewer
+  - name: Check-ins
+    description: Record check-in cho Interview
+  - name: Grading
+    description: Kết quả phỏng vấn, đề xuất Offer/Reject
+
+paths:
+  /interview-slots/create:
+    post:
+      tags:
+        - Interview Slots
+      summary: Create InterviewSlot
+      description: |
+        Tạo mới một ca phỏng vấn (InterviewSlot).
+
+        ## Use Case
+        TA tạo ca phỏng vấn với ngày giờ, hình thức, interviewers.
+
+        ## Ontology Trace
+        - Concept: InterviewSlot
+        - Aggregate Root: true
+        - Bounded Context: Interview
+      operationId: createInterviewSlot
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateInterviewSlotRequest'
+      responses:
+        '201':
+          description: InterviewSlot created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InterviewSlotResponse'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+
+  /interview-slots/{id}/publish:
+    post:
+      tags:
+        - Interview Slots
+      summary: Publish InterviewSlot
+      description: |
+        Publish InterviewSlot từ trạng thái DRAFT sang ACTIVE.
+
+        ## Lifecycle Transition
+        DRAFT -> ACTIVE
+
+        ## Event Emitted
+        InterviewSlotPublished
+      operationId: publishInterviewSlot
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^ISLOT-\d{6}$'
+          description: InterviewSlot ID
+      responses:
+        '200':
+          description: InterviewSlot published successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InterviewSlotResponse'
+        '400':
+          description: Invalid slot state for publish
+        '404':
+          description: InterviewSlot not found
+
+  /interview-slots/{id}/schedule:
+    post:
+      tags:
+        - Interview Slots
+      summary: Schedule Candidates
+      description: |
+        Schedule Candidates vào InterviewSlot.
+        Auto-allocate với FCFS + Time Window (configurable).
+
+        ## Use Case
+        Phân công candidates vào ca phỏng vấn.
+
+        ## Ontology Trace
+        - Creates: InterviewSchedule
+        - Emits: InterviewScheduleAllocated
+      operationId: scheduleCandidates
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^ISLOT-\d{6}$'
+          description: InterviewSlot ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScheduleCandidatesRequest'
+      responses:
+        '201':
+          description: Candidates scheduled successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InterviewScheduleResponse'
+        '400':
+          description: Invalid input or slot full
+        '404':
+          description: InterviewSlot not found
+
+  /interview-schedules/{id}/confirm:
+    post:
+      tags:
+        - Interview Schedules
+      summary: Confirm Interview Schedule
+      description: |
+        Confirm tham gia phỏng vấn.
+
+        ## Lifecycle Transition
+        PENDING -> CONFIRMED
+
+        ## Event Emitted
+        InterviewScheduleConfirmed
+
+        ## Ontology Trace
+        - Aggregate: InterviewSchedule
+        - Business Rule: Student chỉ được đổi lịch 1 lần
+      operationId: confirmInterviewSchedule
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^ISCH-\d{6}$'
+          description: InterviewSchedule ID
+      responses:
+        '200':
+          description: Interview confirmed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InterviewScheduleResponse'
+        '400':
+          description: Invalid schedule state for confirm
+        '404':
+          description: InterviewSchedule not found
+
+  /interview-schedules/{id}/reschedule:
+    post:
+      tags:
+        - Interview Schedules
+      summary: Reschedule Interview
+      description: |
+        Đổi lịch phỏng vấn.
+
+        ## Lifecycle Transition
+        CONFIRMED -> RESCHEDULED
+
+        ## Event Emitted
+        InterviewScheduleRescheduled
+
+        ## Business Rules
+        - Student chỉ được đổi lịch 1 lần (change_count < 1)
+        - Lần thứ 2 chỉ còn Yes/No options
+      operationId: rescheduleInterview
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^ISCH-\d{6}$'
+          description: InterviewSchedule ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RescheduleInterviewRequest'
+      responses:
+        '200':
+          description: Interview rescheduled successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InterviewScheduleResponse'
+        '400':
+          description: Reschedule not allowed (max changes exceeded)
+        '404':
+          description: InterviewSchedule not found
+
+  /interview-schedules/{id}:
+    get:
+      tags:
+        - Interview Schedules
+      summary: Get Interview Schedule
+      description: |
+        Lấy thông tin InterviewSchedule.
+
+        ## Ontology Trace
+        - Aggregate: InterviewSchedule
+        - Includes: InterviewSlot details, Candidate info
+      operationId: getInterviewSchedule
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^ISCH-\d{6}$'
+          description: InterviewSchedule ID
+      responses:
+        '200':
+          description: InterviewSchedule details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InterviewScheduleResponse'
+        '404':
+          description: InterviewSchedule not found
+
+  /interviewer-invitations/{id}/respond:
+    post:
+      tags:
+        - Interviewer Invitations
+      summary: Respond to Invitation
+      description: |
+        Interviewer phản hồi invitation (Accept/Decline).
+
+        ## Lifecycle Transitions
+        PENDING -> ACCEPTED (khi Accept)
+        PENDING -> DECLINED (khi Decline)
+
+        ## Events Emitted
+        - InterviewerInvitationAccepted
+        - InterviewerInvitationDeclined
+
+        ## Ontology Trace
+        - Aggregate: InterviewerInvitation
+      operationId: respondToInvitation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^IINV-\d{6}$'
+          description: InterviewerInvitation ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RespondToInvitationRequest'
+      responses:
+        '200':
+          description: Invitation response recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InterviewerInvitationResponse'
+        '400':
+          description: Invalid response or invitation already responded
+        '404':
+          description: InterviewerInvitation not found
+
+  /interviews/{id}/submit-grading:
+    post:
+      tags:
+        - Grading
+      summary: Submit Grading
+      description: |
+        Interviewer submit grading (kết quả phỏng vấn).
+
+        ## Event Emitted
+        GradingSubmitted
+
+        ## Ontology Trace
+        - Creates: Grading (Aggregate Root)
+        - Business Rule: Interviewer chỉ thấy Candidates được phân công
+        - Grading có thể update trước khi TA review (configurable)
+      operationId: submitGrading
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^ISCH-\d{6}$'
+          description: InterviewSchedule ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitGradingRequest'
+      responses:
+        '201':
+          description: Grading submitted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GradingResponse'
+        '400':
+          description: Invalid input
+        '403':
+          description: Not authorized (interviewer not assigned)
+        '404':
+          description: InterviewSchedule not found
+
+  /checkins/record:
+    post:
+      tags:
+        - Check-ins
+      summary: Record Check-in
+      description: |
+        Record check-in cho Candidate.
+
+        ## Event Emitted
+        CheckInRecorded
+
+        ## Ontology Trace
+        - Creates: CheckIn (Aggregate Root)
+        - Business Rule: Check-in muộn vẫn cho phép với lý do
+      operationId: recordCheckIn
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecordCheckInRequest'
+      responses:
+        '201':
+          description: Check-in recorded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckInResponse'
+        '400':
+          description: Invalid input
+        '404':
+          description: InterviewSchedule not found
+
+components:
+  schemas:
+    # === Request Schemas ===
+    CreateInterviewSlotRequest:
+      type: object
+      required:
+        - event_id
+        - slot_name
+        - interview_date
+        - start_time
+        - end_time
+        - format
+        - max_capacity
+        - interviewers
+      properties:
+        event_id:
+          type: string
+          description: Event ID mà InterviewSlot thuộc về
+        slot_name:
+          type: string
+          description: Tên ca phỏng vấn
+        description:
+          type: string
+          description: Mô tả ca phỏng vấn
+        interview_date:
+          type: string
+          format: date
+          description: Ngày phỏng vấn
+        start_time:
+          type: string
+          format: time
+          description: Giờ bắt đầu
+        end_time:
+          type: string
+          format: time
+          description: Giờ kết thúc
+        format:
+          $ref: '#/components/schemas/InterviewFormatEnum'
+        location:
+          type: string
+          description: Địa điểm phỏng vấn (nếu Offline)
+        room:
+          type: string
+          description: Phòng phỏng vấn (nếu Offline)
+        link:
+          type: string
+          description: Link phỏng vấn (nếu Online)
+        max_capacity:
+          type: integer
+          minimum: 1
+          description: Số lượng tối đa
+        interviewers:
+          type: array
+          items:
+            type: string
+          description: Danh sách Interviewer IDs
+        auto_allocate_enabled:
+          type: boolean
+          default: false
+          description: Bật auto allocate
+        time_window_hours:
+          type: integer
+          minimum: 1
+          maximum: 72
+          description: Time Window để confirm (giờ)
+        max_retry:
+          type: integer
+          minimum: 0
+          maximum: 5
+          default: 2
+          description: Số lần retry auto-allocate
+        notify_ta_on_allocate:
+          type: boolean
+          default: false
+
+    ScheduleCandidatesRequest:
+      type: object
+      required:
+        - candidates
+      properties:
+        candidates:
+          type: array
+          items:
+            type: object
+            required:
+              - application_id
+              - candidate_rr_id
+            properties:
+              application_id:
+                type: string
+                description: Application ID
+              candidate_rr_id:
+                type: string
+                description: Candidate RR ID
+
+    RescheduleInterviewRequest:
+      type: object
+      required:
+        - new_slot_id
+      properties:
+        new_slot_id:
+          type: string
+          pattern: '^ISLOT-\d{6}$'
+          description: InterviewSlot ID mới
+        reason:
+          type: string
+          description: Lý do đổi lịch
+
+    RespondToInvitationRequest:
+      type: object
+      required:
+        - response
+      properties:
+        response:
+          $ref: '#/components/schemas/InvitationResponseEnum'
+
+    SubmitGradingRequest:
+      type: object
+      required:
+        - interviewer_id
+        - score
+        - proposal
+        - graded_at
+      properties:
+        interviewer_id:
+          type: string
+          description: User ID người chấm
+        score:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 100.0
+          description: Điểm số
+        comment:
+          type: string
+          description: Nhận xét của interviewer
+        proposal:
+          $ref: '#/components/schemas/InterviewProposalEnum'
+        graded_at:
+          type: string
+          format: date-time
+          description: Thời điểm chấm xong
+        can_update_before_review:
+          type: boolean
+          default: false
+        update_deadline:
+          type: string
+          format: date-time
+          description: Deadline update grading
+
+    RecordCheckInRequest:
+      type: object
+      required:
+        - schedule_id
+        - actual_time
+        - checked_in_by
+      properties:
+        schedule_id:
+          type: string
+          pattern: '^ISCH-\d{6}$'
+          description: InterviewSchedule ID
+        actual_time:
+          type: string
+          format: date-time
+          description: Thời gian check-in thực tế
+        is_late:
+          type: boolean
+          default: false
+          description: Check-in muộn
+        late_reason:
+          type: string
+          description: Lý do check-in muộn
+        photo_id:
+          type: string
+          description: Photo ID (optional)
+        checked_in_by:
+          type: string
+          description: User ID thực hiện check-in
+
+    # === Response Schemas ===
+    InterviewSlotResponse:
+      type: object
+      properties:
+        slot_id:
+          type: string
+          pattern: '^ISLOT-\d{6}$'
+        event_id:
+          type: string
+        slot_name:
+          type: string
+        description:
+          type: string
+        interview_date:
+          type: string
+          format: date
+        start_time:
+          type: string
+          format: time
+        end_time:
+          type: string
+          format: time
+        format:
+          $ref: '#/components/schemas/InterviewFormatEnum'
+        location:
+          type: string
+        room:
+          type: string
+        link:
+          type: string
+        max_capacity:
+          type: integer
+        current_capacity:
+          type: integer
+        interviewers:
+          type: array
+          items:
+            type: string
+        status:
+          $ref: '#/components/schemas/InterviewSlotStatusEnum'
+        auto_allocate_enabled:
+          type: boolean
+        time_window_hours:
+          type: integer
+        max_retry:
+          type: integer
+        notify_ta_on_allocate:
+          type: boolean
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    InterviewScheduleResponse:
+      type: object
+      properties:
+        schedule_id:
+          type: string
+          pattern: '^ISCH-\d{6}$'
+        slot_id:
+          type: string
+          pattern: '^ISLOT-\d{6}$'
+        application_id:
+          type: string
+        candidate_rr_id:
+          type: string
+        status:
+          $ref: '#/components/schemas/InterviewScheduleStatusEnum'
+        confirmed_at:
+          type: string
+          format: date-time
+        confirm_deadline:
+          type: string
+          format: date-time
+        change_count:
+          type: integer
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    InterviewerInvitationResponse:
+      type: object
+      properties:
+        invitation_id:
+          type: string
+          pattern: '^IINV-\d{6}$'
+        slot_id:
+          type: string
+          pattern: '^ISLOT-\d{6}$'
+        interviewer_id:
+          type: string
+        calendar_event_id:
+          type: string
+        status:
+          $ref: '#/components/schemas/InvitationStatusEnum'
+        sent_at:
+          type: string
+          format: date-time
+        responded_at:
+          type: string
+          format: date-time
+        response:
+          $ref: '#/components/schemas/InvitationResponseEnum'
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    GradingResponse:
+      type: object
+      properties:
+        grading_id:
+          type: string
+          pattern: '^IGRD-\d{6}$'
+        schedule_id:
+          type: string
+          pattern: '^ISCH-\d{6}$'
+        interviewer_id:
+          type: string
+        score:
+          type: number
+          format: float
+        comment:
+          type: string
+        proposal:
+          $ref: '#/components/schemas/InterviewProposalEnum'
+        graded_at:
+          type: string
+          format: date-time
+        can_update_before_review:
+          type: boolean
+        update_deadline:
+          type: string
+          format: date-time
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    CheckInResponse:
+      type: object
+      properties:
+        check_in_id:
+          type: string
+          pattern: '^ICI-\d{6}$'
+        schedule_id:
+          type: string
+          pattern: '^ISCH-\d{6}$'
+        actual_time:
+          type: string
+          format: date-time
+        is_late:
+          type: boolean
+        late_reason:
+          type: string
+        photo_id:
+          type: string
+        checked_in_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    # === Enums ===
+    InterviewFormatEnum:
+      type: string
+      enum:
+        - ONLINE
+        - OFFLINE
+        - HYBRID
+      description: Hình thức phỏng vấn
+
+    InterviewSlotStatusEnum:
+      type: string
+      enum:
+        - DRAFT
+        - ACTIVE
+        - IN_PROGRESS
+        - COMPLETED
+        - CANCELLED
+      description: Trạng thái ca phỏng vấn
+
+    InterviewScheduleStatusEnum:
+      type: string
+      enum:
+        - PENDING
+        - CONFIRMED
+        - RESCHEDULED
+        - COMPLETED
+        - NO_SHOW
+        - CANCELLED
+      description: Trạng thái lịch phỏng vấn
+
+    InvitationStatusEnum:
+      type: string
+      enum:
+        - PENDING
+        - ACCEPTED
+        - DECLINED
+        - CANCELLED
+      description: Trạng thái invitation
+
+    InvitationResponseEnum:
+      type: string
+      enum:
+        - ACCEPT
+        - DECLINE
+        - TENTATIVE
+      description: Phản hồi của Interviewer
+
+    InterviewProposalEnum:
+      type: string
+      enum:
+        - OFFER
+        - REJECT
+        - NEED_DISCUSSION
+      description: Đề xuất sau phỏng vấn
+
+    CheckInStatusEnum:
+      type: string
+      enum:
+        - ON_TIME
+        - LATE
+        - ABSENT
+      description: Trạng thái check-in
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object

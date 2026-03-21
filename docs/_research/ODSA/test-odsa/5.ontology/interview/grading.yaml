@@ -1,0 +1,192 @@
+id: https://xtalent.io/ontology/ats/interview/grading
+name: grading_ontology
+version: "1.0.0"
+description: "Grading - Kết quả phỏng vấn, đề xuất Offer/Reject"
+
+prefixes:
+  xt: https://xtalent.io/ontology/
+  oracle: https://oracle.com/hcm/
+  sap: https://successfactors.sap.com/
+  workday: https://workday.com/
+
+default_range: string
+
+slots:
+  # --- Identifier ---
+  grading_id:
+    description: "Unique identifier cho Grading"
+    identifier: true
+    required: true
+    pattern: "^IGRD-\\d{6}$"
+    annotations:
+      example: "IGRD-000001"
+
+  # --- Core Fields ---
+  schedule_id:
+    description: "InterviewSchedule ID được chấm"
+    required: true
+    annotations:
+      reference: "InterviewSchedule.schedule_id"
+
+  interviewer_id:
+    description: "User ID người chấm (Interviewer)"
+    required: true
+    annotations:
+      reference: "User.user_id"
+
+  score:
+    description: "Điểm số"
+    range: float
+    minimum_value: 0.0
+    maximum_value: 100.0
+    required: true
+
+  comment:
+    description: "Nhận xét của interviewer"
+    required: false
+
+  proposal:
+    description: "Đề xuất sau phỏng vấn (Offer/Reject/NeedDiscussion)"
+    range: InterviewProposalEnum
+    required: true
+
+  graded_at:
+    description: "Thời điểm chấm xong"
+    range: datetime
+    required: true
+
+  # --- Configurable ---
+  can_update_before_review:
+    description: "Grading có thể update trước khi TA review (configurable)"
+    range: boolean
+    required: false
+
+  update_deadline:
+    description: "Deadline update grading (configurable)"
+    range: datetime
+    required: false
+
+  # --- Audit Fields ---
+  created_by:
+    description: "Grader ID"
+    required: true
+    annotations:
+      reference: "User.user_id"
+
+  created_at:
+    description: "Timestamp tạo Grading record"
+    range: datetime
+    required: true
+
+classes:
+  Grading:
+    description: |
+      Grading - Kết quả phỏng vấn, đề xuất Offer/Reject.
+      Interviewer chấm điểm, đề xuất Offer/Reject/NeedDiscussion.
+      Grading có thể update trước khi TA review (configurable deadline).
+      Aggregate Root trong Interview context.
+
+    annotations:
+      oracle_hcm_term: "InterviewGrading"
+      sap_term: "InterviewGrading"
+      workday_term: "InterviewGrading"
+      disambiguation: "xTalent: Grading = Kết quả phỏng vấn. Oracle: InterviewGrading. SAP: InterviewGrading. Workday: InterviewGrading. Xem docs.xtalent.io/ats/interview/grading."
+
+      module: "ats"
+      sub_module: "interview"
+      version: "1.0.0"
+      bounded_context: "Interview"
+      aggregate_root: true
+
+      ouroboros_evolution:
+        iteration: "1.0.0"
+        parent_version: null
+        evaluation_status: "pending"
+        last_evaluated: null
+        evolution_notes: "Initial version"
+
+      validation_hooks:
+        odds_system_builder:
+          required_for: true
+          validates: ["table_generation", "fk_references"]
+
+      see_also: "https://docs.xtalent.io/ats/interview/grading"
+
+    slots:
+      - grading_id
+      - schedule_id
+      - interviewer_id
+      - score
+      - comment
+      - proposal
+      - graded_at
+      - can_update_before_review
+      - update_deadline
+      - created_by
+      - created_at
+
+    slot_usage:
+      grading_id:
+        required: true
+        identifier: true
+
+      schedule_id:
+        required: true
+
+      interviewer_id:
+        required: true
+
+      score:
+        required: true
+
+      proposal:
+        required: true
+
+      graded_at:
+        required: true
+
+      created_by:
+        required: true
+
+      created_at:
+        required: true
+
+    rules:
+      - description: "BRS-IGRD-001: Interviewer chỉ thấy Candidates được phân công"
+        preconditions:
+          slot_conditions:
+            schedule_id:
+              slot_value_conditions:
+                slot_id:
+                  slot_value_conditions:
+                    interviewers:
+                      list_has_length:
+                        min_length: 1
+        postconditions:
+          slot_conditions:
+            interviewer_id:
+              must_be_in_list: "interviewslot.interviewers"
+
+      - description: "BRS-IGRD-002: Grading có thể update trước khi final review (configurable)"
+        preconditions:
+          slot_conditions:
+            can_update_before_review:
+              equals_boolean: true
+            graded_at:
+              is_not_null: true
+        postconditions:
+          slot_conditions:
+            can_update:
+              equals_boolean: true
+
+# === ENUMS ===
+enums:
+  InterviewProposalEnum:
+    description: "Đề xuất sau phỏng vấn"
+    permissible_values:
+      OFFER:
+        description: "Đề xuất offer"
+      REJECT:
+        description: "Từ chối"
+      NEED_DISCUSSION:
+        description: "Cần thảo luận thêm"

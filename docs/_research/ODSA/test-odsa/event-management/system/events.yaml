@@ -1,0 +1,426 @@
+# Event Management Context - Domain Events
+# Generated from Ontology: 5.ontology/event-management/
+# Traceability: Every event maps to a lifecycle transition
+
+# =============================================================================
+# EVENT NAMING CONVENTION
+# Format: {Entity}{State}d
+# Example: EventCreated, EventPublished, EventCompleted
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Event: EventCreated
+# Lifecycle Transition: null → DRAFT
+# Aggregate: Event
+# -----------------------------------------------------------------------------
+EventCreated:
+  name: EventCreated
+  description: |
+    Event tuyển dụng Fresher đã được tạo thành công.
+    Khởi đầu lifecycle của Event ở trạng thái DRAFT.
+  traceability:
+    ontology: 5.ontology/event-management/event.yaml
+    class: Event
+    lifecycle_transition: "null → DRAFT"
+  payload:
+    event_id:
+      type: string
+      description: Unique identifier cho Event
+      pattern: "^EVT-\\d{6}$"
+      example: "EVT-000001"
+    name:
+      type: string
+      description: Tên Event tuyển dụng
+    program_type:
+      type: string
+      enum: [FRESHER, JOB_FAIR, UNIWEEK, INTERN]
+      description: Loại chương trình
+    lifecycle_state:
+      type: string
+      enum: [DRAFT]
+      description: Trạng thái lifecycle sau transition
+    created_by:
+      type: string
+      description: User ID tạo Event (TA)
+    created_at:
+      type: string
+      format: date-time
+      description: Timestamp tạo Event
+  business_rules:
+    - BRS-EM-001: Chỉ Event thuộc Program 'Fresher' mới được map Request tuyển dụng
+  metadata:
+    version: "1.0.0"
+    bounded_context: "Event Management"
+    aggregate_root: true
+
+# -----------------------------------------------------------------------------
+# Event: RequestMapped
+# Lifecycle Transition: Internal transition (lifecycle state unchanged)
+# Aggregate: Event
+# -----------------------------------------------------------------------------
+RequestMapped:
+  name: RequestMapped
+  description: |
+    Một Request tuyển dụng đã được map vào Event.
+    Event liên kết với nhu cầu tuyển dụng từ hệ thống ngoài.
+  traceability:
+    ontology: 5.ontology/event-management/request-mapping.yaml
+    class: RequestMapping
+    lifecycle_transition: "Internal transition"
+  payload:
+    mapping_id:
+      type: string
+      description: Unique identifier cho RequestMapping
+      pattern: "^MAP-\\d{6}$"
+      example: "MAP-000001"
+    event_id:
+      type: string
+      description: Event ID mà Request được map vào
+      pattern: "^EVT-\\d{6}$"
+    request_id:
+      type: string
+      description: Request ID từ hệ thống tuyển dụng (external)
+    request_type:
+      type: string
+      enum: [FRESHER, INTERN, EMPLOYEE, CONTRACTOR]
+      description: Loại Request tuyển dụng
+    position_title:
+      type: string
+      description: Tên vị trí tuyển dụng
+    headcount:
+      type: integer
+      description: Số lượng tuyển
+    mapped_by:
+      type: string
+      description: User ID tạo mapping
+    mapped_at:
+      type: string
+      format: date-time
+      description: Thời điểm map Request vào Event
+  business_rules:
+    - BRS-EM-MAP-001: Chỉ Request type 'Fresher' mới được map
+    - BRS-EM-MAP-002: Một Request chỉ được map 1 Event duy nhất
+    - BRS-EM-004: Không được add mapping Request sau khi Event đã publish
+  metadata:
+    version: "1.0.0"
+    bounded_context: "Event Management"
+    aggregate_root: true
+
+# -----------------------------------------------------------------------------
+# Event: TrackAdded
+# Lifecycle Transition: Internal transition (lifecycle state unchanged)
+# Aggregate: Event
+# -----------------------------------------------------------------------------
+TrackAdded:
+  name: TrackAdded
+  description: |
+    Một Track (chuyên ngành) đã được thêm vào Event.
+    Event có thêm một chuyên ngành tuyển dụng mới.
+  traceability:
+    ontology: 5.ontology/event-management/track.yaml
+    class: Track
+    lifecycle_transition: "Internal transition"
+  payload:
+    track_id:
+      type: string
+      description: Unique identifier cho Track
+      pattern: "^TRK-\\d{6}$"
+      example: "TRK-000001"
+    event_id:
+      type: string
+      description: Event ID mà Track thuộc về
+      pattern: "^EVT-\\d{6}$"
+    track_name:
+      type: string
+      description: "Tên Track (VD: Game Development, Game Design, Game QC)"
+    question_set_id:
+      type: string
+      description: Bộ câu hỏi áp dụng cho Track
+      pattern: "^QST-\\d{6}$"
+    added_by:
+      type: string
+      description: User ID tạo Track
+    added_at:
+      type: string
+      format: date-time
+      description: Timestamp tạo Track
+  business_rules:
+    - BRS-EM-TRK-001: Track phải thuộc về 1 Event
+    - BRS-EM-TRK-002: Không được xóa Track đã có applications
+  metadata:
+    version: "1.0.0"
+    bounded_context: "Event Management"
+    aggregate_root: true
+
+# -----------------------------------------------------------------------------
+# Event: WorkflowConfigured
+# Lifecycle Transition: Internal transition (lifecycle state unchanged)
+# Aggregate: Event
+# -----------------------------------------------------------------------------
+WorkflowConfigured:
+  name: WorkflowConfigured
+  description: |
+    Workflow các vòng tuyển dụng đã được cấu hình cho Event.
+    Event đã sẵn sàng để publish (sau khi có tracks).
+  traceability:
+    ontology: 5.ontology/event-management/workflow.yaml
+    class: Workflow
+    lifecycle_transition: "Internal transition"
+  payload:
+    workflow_id:
+      type: string
+      description: Unique identifier cho Workflow
+      pattern: "^WFL-\\d{6}$"
+      example: "WFL-000001"
+    event_id:
+      type: string
+      description: Event ID mà Workflow áp dụng
+      pattern: "^EVT-\\d{6}$"
+    workflow_name:
+      type: string
+      description: Tên Workflow
+    rounds:
+      type: array
+      description: Danh sách các vòng tuyển dụng theo thứ tự
+      items:
+        type: object
+        properties:
+          round_order:
+            type: integer
+          round_type:
+            type: string
+            enum: [SCREENING, ONLINE_TEST, ONSITE_TEST, INTERVIEW, OFFER]
+    skipped_rounds:
+      type: array
+      description: Danh sách các vòng được skip
+      items:
+        type: string
+        enum: [SCREENING, ONLINE_TEST, ONSITE_TEST, INTERVIEW, OFFER]
+    configured_by:
+      type: string
+      description: User ID tạo Workflow
+    configured_at:
+      type: string
+      format: date-time
+      description: Timestamp tạo Workflow
+  business_rules:
+    - BRS-EM-007: Workflow phải có ít nhất 1 vòng đánh giá (Test hoặc Interview)
+    - BRS-EM-WFL-001: Workflow phải có ít nhất 1 vòng đánh giá
+    - BRS-EM-WFL-002: Vòng skipped phải tồn tại trong rounds
+  metadata:
+    version: "1.0.0"
+    bounded_context: "Event Management"
+    aggregate_root: true
+
+# -----------------------------------------------------------------------------
+# Event: EventPublished
+# Lifecycle Transition: DRAFT → PUBLISHED
+# Aggregate: Event
+# -----------------------------------------------------------------------------
+EventPublished:
+  name: EventPublished
+  description: |
+    Event đã được publish lên Career Site.
+    Event bắt đầu nhận applications từ candidates.
+  traceability:
+    ontology: 5.ontology/event-management/event.yaml
+    class: Event
+    lifecycle_transition: "DRAFT → PUBLISHED"
+  payload:
+    event_id:
+      type: string
+      description: Unique identifier cho Event
+      pattern: "^EVT-\\d{6}$"
+      example: "EVT-000001"
+    name:
+      type: string
+      description: Tên Event tuyển dụng
+    lifecycle_state:
+      type: string
+      enum: [PUBLISHED]
+      description: Trạng thái lifecycle sau transition
+    published_by:
+      type: string
+      description: User ID publish Event
+    published_at:
+      type: string
+      format: date-time
+      description: Timestamp publish Event
+  preconditions:
+    - Event phải có ít nhất 1 Track
+    - Event phải có Workflow configured
+    - Event lifecycle state = DRAFT
+  postconditions:
+    - Event lifecycle state = PUBLISHED
+    - Không được add thêm Request mappings
+  business_rules:
+    - BRS-EM-004: Không được add mapping Request sau khi Event đã publish
+  metadata:
+    version: "1.0.0"
+    bounded_context: "Event Management"
+    aggregate_root: true
+
+# -----------------------------------------------------------------------------
+# Event: EventActivated
+# Lifecycle Transition: PUBLISHED → ACTIVE
+# Aggregate: Event
+# -----------------------------------------------------------------------------
+EventActivated:
+  name: EventActivated
+  description: |
+    Event đã bắt đầu diễn ra.
+    Applications đã bắt đầu được xử lý (screening, test, interview).
+  traceability:
+    ontology: 5.ontology/event-management/event.yaml
+    class: Event
+    lifecycle_transition: "PUBLISHED → ACTIVE"
+  payload:
+    event_id:
+      type: string
+      description: Unique identifier cho Event
+      pattern: "^EVT-\\d{6}$"
+      example: "EVT-000001"
+    name:
+      type: string
+      description: Tên Event tuyển dụng
+    lifecycle_state:
+      type: string
+      enum: [ACTIVE]
+      description: Trạng thái lifecycle sau transition
+    activated_by:
+      type: string
+      description: User ID activate Event
+    activated_at:
+      type: string
+      format: date-time
+      description: Timestamp activate Event
+  preconditions:
+    - Event lifecycle state = PUBLISHED
+    - Application start date đã đến
+  metadata:
+    version: "1.0.0"
+    bounded_context: "Event Management"
+    aggregate_root: true
+
+# -----------------------------------------------------------------------------
+# Event: EventCompleted
+# Lifecycle Transition: ACTIVE → COMPLETED
+# Aggregate: Event
+# -----------------------------------------------------------------------------
+EventCompleted:
+  name: EventCompleted
+  description: |
+    Event đã hoàn tất.
+    Tất cả applications đã được xử lý, offers đã được gửi.
+  traceability:
+    ontology: 5.ontology/event-management/event.yaml
+    class: Event
+    lifecycle_transition: "ACTIVE → COMPLETED"
+  payload:
+    event_id:
+      type: string
+      description: Unique identifier cho Event
+      pattern: "^EVT-\\d{6}$"
+      example: "EVT-000001"
+    name:
+      type: string
+      description: Tên Event tuyển dụng
+    lifecycle_state:
+      type: string
+      enum: [COMPLETED]
+      description: Trạng thái lifecycle sau transition
+    completed_by:
+      type: string
+      description: User ID complete Event
+    completed_at:
+      type: string
+      format: date-time
+      description: Timestamp complete Event
+    summary:
+      type: object
+      description: Tổng kết Event
+      properties:
+        total_applications:
+          type: integer
+          description: Tổng số applications
+        total_hired:
+          type: integer
+          description: Số lượng đã hired
+  preconditions:
+    - Event lifecycle state = ACTIVE
+    - Event end date đã đến HOẶC tất cả applications đã được xử lý
+  metadata:
+    version: "1.0.0"
+    bounded_context: "Event Management"
+    aggregate_root: true
+
+# -----------------------------------------------------------------------------
+# Event: EventCancelled
+# Lifecycle Transition: {DRAFT, PUBLISHED, ACTIVE} → CANCELLED
+# Aggregate: Event
+# -----------------------------------------------------------------------------
+EventCancelled:
+  name: EventCancelled
+  description: |
+    Event đã bị hủy.
+    Event không thể tiếp tục xử lý.
+  traceability:
+    ontology: 5.ontology/event-management/event.yaml
+    class: Event
+    lifecycle_transition: "{DRAFT, PUBLISHED, ACTIVE} → CANCELLED"
+  payload:
+    event_id:
+      type: string
+      description: Unique identifier cho Event
+      pattern: "^EVT-\\d{6}$"
+      example: "EVT-000001"
+    name:
+      type: string
+      description: Tên Event tuyển dụng
+    lifecycle_state:
+      type: string
+      enum: [CANCELLED]
+      description: Trạng thái lifecycle sau transition
+    previous_state:
+      type: string
+      enum: [DRAFT, PUBLISHED, ACTIVE]
+      description: Trạng thái lifecycle trước transition
+    cancelled_by:
+      type: string
+      description: User ID cancel Event
+    cancelled_at:
+      type: string
+      format: date-time
+      description: Timestamp cancel Event
+    cancellation_reason:
+      type: string
+      description: Lý do hủy Event
+  preconditions:
+    - Event lifecycle state IN [DRAFT, PUBLISHED, ACTIVE]
+  postconditions:
+    - Event không thể tiếp tục xử lý
+    - Tất cả pending applications bị hủy
+  metadata:
+    version: "1.0.0"
+    bounded_context: "Event Management"
+    aggregate_root: true
+
+# =============================================================================
+# LIFECYCLE SUMMARY
+# =============================================================================
+# States: DRAFT → PUBLISHED → ACTIVE → COMPLETED
+#                                      ↘
+#                                        CANCELLED (terminal)
+#
+# Transitions:
+#   - EventCreated: null → DRAFT
+#   - EventPublished: DRAFT → PUBLISHED
+#   - EventActivated: PUBLISHED → ACTIVE
+#   - EventCompleted: ACTIVE → COMPLETED
+#   - EventCancelled: {DRAFT, PUBLISHED, ACTIVE} → CANCELLED
+#
+# Internal Events (no state change):
+#   - RequestMapped: Map Request vào Event
+#   - TrackAdded: Thêm Track vào Event
+#   - WorkflowConfigured: Cấu hình Workflow cho Event
+# =============================================================================

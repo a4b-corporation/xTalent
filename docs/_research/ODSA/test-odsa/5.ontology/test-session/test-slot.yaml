@@ -1,0 +1,293 @@
+id: https://xtalent.io/ontology/ats/test-session/test-slot
+name: test_slot_ontology
+version: "1.0.0"
+description: "TestSlot - Ca thi Onsite với ngày giờ, địa điểm, phòng, capacity"
+
+prefixes:
+  xt: https://xtalent.io/ontology/
+  oracle: https://oracle.com/hcm/
+  sap: https://successfactors.sap.com/
+  workday: https://workday.com/
+
+imports:
+  - ./schedule.yaml
+  - ./checkin.yaml
+  - ./grading.yaml
+
+default_range: string
+
+slots:
+  # --- Identifier ---
+  slot_id:
+    description: "Unique identifier cho TestSlot"
+    identifier: true
+    required: true
+    pattern: "^TSLOT-\\d{6}$"
+    annotations:
+      example: "TSLOT-000001"
+
+  # --- Core Fields ---
+  event_id:
+    description: "Event ID mà TestSlot thuộc về"
+    required: true
+    annotations:
+      reference: "Event.event_id"
+
+  slot_name:
+    description: "Tên ca thi"
+    required: true
+
+  description:
+    description: "Mô tả ca thi"
+    required: false
+
+  test_date:
+    description: "Ngày thi"
+    range: date
+    required: true
+
+  start_time:
+    description: "Giờ bắt đầu"
+    range: time
+    required: true
+
+  end_time:
+    description: "Giờ kết thúc"
+    range: time
+    required: true
+
+  location:
+    description: "Địa điểm thi"
+    required: true
+
+  room:
+    description: "Phòng thi"
+    required: true
+
+  max_capacity:
+    description: "Số lượng tối đa"
+    range: integer
+    minimum_value: 1
+    required: true
+
+  current_capacity:
+    description: "Số lượng hiện tại đã allocate"
+    range: integer
+    minimum_value: 0
+    required: false
+
+  graders:
+    description: "Danh sách Grader IDs được phân công chấm"
+    range: string
+    multivalued: true
+    required: false
+
+  status:
+    description: "Trạng thái ca thi"
+    range: TestSlotStatusEnum
+    required: true
+
+  # --- Configurable Parameters ---
+  auto_allocate_enabled:
+    description: "Bật auto allocate (FCFS + Time Window)"
+    range: boolean
+    required: false
+
+  time_window_hours:
+    description: "Time Window để confirm (giờ, configurable, default: 24h)"
+    range: integer
+    minimum_value: 1
+    maximum_value: 72
+    required: false
+
+  max_retry:
+    description: "Số lần retry auto-allocate (configurable, default: 2)"
+    range: integer
+    minimum_value: 0
+    maximum_value: 5
+    required: false
+
+  notify_ta_on_allocate:
+    description: "Notify TA khi auto-allocate thành công"
+    range: boolean
+    required: false
+
+  photo_capture_required:
+    description: "Bắt buộc chụp hình khi check-in (configurable)"
+    range: boolean
+    required: false
+
+  grace_period_minutes:
+    description: "Grace period cho check-in muộn (phút, default: 15)"
+    range: integer
+    minimum_value: 0
+    maximum_value: 60
+    required: false
+
+  # --- Audit Fields ---
+  created_by:
+    description: "User ID tạo TestSlot (TA)"
+    required: true
+    annotations:
+      reference: "User.user_id"
+
+  created_at:
+    description: "Timestamp tạo TestSlot"
+    range: datetime
+    required: true
+
+  updated_at:
+    description: "Timestamp cập nhật TestSlot"
+    range: datetime
+    required: false
+
+classes:
+  TestSlot:
+    description: |
+      TestSlot - Ca thi Onsite với ngày giờ, địa điểm, phòng, capacity.
+      Auto gen SBD khi Student được chia vào slot.
+      Auto allocate slots theo FCFS với Time Window (configurable).
+      Aggregate Root trong Test Session context.
+
+    annotations:
+      oracle_hcm_term: "TestSession"
+      sap_term: "TestSession"
+      workday_term: "TestSession"
+      disambiguation: "xTalent: TestSlot = Ca thi Onsite. Oracle: TestSession. SAP: TestSession. Workday: TestSession. Xem docs.xtalent.io/ats/test-session/test-slot."
+
+      module: "ats"
+      sub_module: "test-session"
+      version: "1.0.0"
+      bounded_context: "Test Session"
+      aggregate_root: true
+
+      ouroboros_evolution:
+        iteration: "1.0.0"
+        parent_version: null
+        evaluation_status: "pending"
+        last_evaluated: null
+        evolution_notes: "Initial version"
+
+      validation_hooks:
+        odds_system_builder:
+          required_for: true
+          validates: ["table_generation", "fk_references"]
+
+      see_also: "https://docs.xtalent.io/ats/test-session/test-slot"
+
+    slots:
+      - slot_id
+      - event_id
+      - slot_name
+      - description
+      - test_date
+      - start_time
+      - end_time
+      - location
+      - room
+      - max_capacity
+      - current_capacity
+      - graders
+      - status
+      - auto_allocate_enabled
+      - time_window_hours
+      - max_retry
+      - notify_ta_on_allocate
+      - photo_capture_required
+      - grace_period_minutes
+      - created_by
+      - created_at
+      - updated_at
+
+    slot_usage:
+      slot_id:
+        required: true
+        identifier: true
+
+      event_id:
+        required: true
+
+      slot_name:
+        required: true
+
+      test_date:
+        required: true
+
+      start_time:
+        required: true
+
+      end_time:
+        required: true
+
+      location:
+        required: true
+
+      room:
+        required: true
+
+      max_capacity:
+        required: true
+
+      status:
+        required: true
+
+      created_by:
+        required: true
+
+      created_at:
+        required: true
+
+    rules:
+      - description: "BRS-TSLOT-001: Auto gen SBD khi Student được chia vào slot"
+        preconditions:
+          slot_conditions:
+            schedule_id:
+              slot_value_conditions:
+                student_assigned:
+                  equals_boolean: true
+        postconditions:
+          slot_conditions:
+            schedule_id:
+              sbd:
+                must_be_generated: true
+
+      - description: "BRS-TSLOT-002: Student chỉ được đổi lịch 1 lần"
+        preconditions:
+          slot_conditions:
+            schedule_id:
+              slot_value_conditions:
+                change_count:
+                  minimum_value: 1
+        postconditions:
+          slot_conditions:
+            schedule_id:
+              change_request_allowed:
+                equals_boolean: false
+
+      - description: "BRS-TSLOT-005: Notify TA khi auto-allocate thành công (configurable)"
+        preconditions:
+          slot_conditions:
+            notify_ta_on_allocate:
+              equals_boolean: true
+            auto_allocate_enabled:
+              equals_boolean: true
+        postconditions:
+          slot_conditions:
+            ta_notification_sent:
+              equals_boolean: true
+
+# === ENUMS ===
+enums:
+  TestSlotStatusEnum:
+    description: "Trạng thái ca thi"
+    permissible_values:
+      DRAFT:
+        description: "Đang nháp"
+      ACTIVE:
+        description: "Đang mở đăng ký"
+      IN_PROGRESS:
+        description: "Đang diễn ra"
+      COMPLETED:
+        description: "Hoàn tất"
+      CANCELLED:
+        description: "Đã hủy"

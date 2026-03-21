@@ -1,0 +1,195 @@
+id: https://xtalent.io/ontology/ats/application/duplicate
+name: duplicate_ontology
+version: "1.0.0"
+description: "Duplicate - record phát hiện ứng viên trùng (SĐT + StudentID)"
+
+prefixes:
+  xt: https://xtalent.io/ontology/
+  oracle: https://oracle.com/hcm/
+  sap: https://successfactors.sap.com/
+  workday: https://workday.com/
+
+default_range: string
+
+slots:
+  # --- Identifier ---
+  duplicate_id:
+    description: "Unique identifier cho Duplicate record"
+    identifier: true
+    required: true
+    pattern: "^DUP-\\d{6}$"
+    annotations:
+      example: "DUP-000001"
+
+  # --- Core Fields ---
+  application_id_1:
+    description: "Application ID thứ 1 (giữ lại)"
+    required: true
+    annotations:
+      reference: "Application.application_id"
+
+  application_id_2:
+    description: "Application ID thứ 2 (xóa/merge)"
+    required: true
+    annotations:
+      reference: "Application.application_id"
+
+  match_type:
+    description: "Loại match (PHONE, STUDENT_ID, BOTH)"
+    range: MatchTypeEnum
+    required: true
+
+  status:
+    description: "Trạng thái xử lý duplicate"
+    range: DuplicateStatusEnum
+    required: true
+
+  resolved_at:
+    description: "Thời điểm resolve duplicate"
+    range: datetime
+    required: false
+
+  resolved_by:
+    description: "User ID resolve duplicate"
+    required: false
+    annotations:
+      reference: "User.user_id"
+
+  resolution_method:
+    description: "Phương thức resolve (REMOVE, MERGE, NO_ACTION)"
+    range: ResolutionMethodEnum
+    required: false
+
+  # --- Audit Fields ---
+  created_by:
+    description: "System auto tạo"
+    required: true
+
+  created_at:
+    description: "Timestamp tạo Duplicate record"
+    range: datetime
+    required: true
+
+classes:
+  Duplicate:
+    description: |
+      Duplicate - record phát hiện ứng viên trùng.
+      Auto tạo khi Student submit application và match theo SĐT HOẶC StudentID.
+      Aggregate Root trong Application context.
+
+    annotations:
+      oracle_hcm_term: "DuplicateCandidate"
+      sap_term: "DuplicateCandidate"
+      workday_term: "DuplicateCandidate"
+      disambiguation: "xTalent: Duplicate = Ứng viên trùng. Oracle: DuplicateCandidate. SAP: DuplicateCandidate. Workday: DuplicateCandidate. Xem docs.xtalent.io/ats/application/duplicate."
+
+      module: "ats"
+      sub_module: "application"
+      version: "1.0.0"
+      bounded_context: "Application"
+      aggregate_root: true
+
+      ouroboros_evolution:
+        iteration: "1.0.0"
+        parent_version: null
+        evaluation_status: "pending"
+        last_evaluated: null
+        evolution_notes: "Initial version"
+
+      validation_hooks:
+        odds_system_builder:
+          required_for: true
+          validates: ["table_generation", "fk_references"]
+
+      see_also: "https://docs.xtalent.io/ats/application/duplicate"
+
+    slots:
+      - duplicate_id
+      - application_id_1
+      - application_id_2
+      - match_type
+      - status
+      - resolved_at
+      - resolved_by
+      - resolution_method
+      - created_by
+      - created_at
+
+    slot_usage:
+      duplicate_id:
+        required: true
+        identifier: true
+
+      application_id_1:
+        required: true
+
+      application_id_2:
+        required: true
+
+      match_type:
+        required: true
+
+      status:
+        required: true
+
+      created_by:
+        required: true
+
+      created_at:
+        required: true
+
+    rules:
+      - description: "BRS-DUP-001: Duplicate phải có 2 application IDs khác nhau"
+        preconditions:
+          slot_conditions: {}
+        postconditions:
+          slot_conditions:
+            application_id_1:
+              not_equals_slot: "application_id_2"
+
+      - description: "BRS-DUP-002: application_id_1 là application được giữ lại"
+        preconditions:
+          slot_conditions:
+            resolution_method:
+              equals_string: "REMOVE"
+        postconditions:
+          slot_conditions:
+            application_id_2:
+              status:
+                equals_string: "REMOVED"
+
+# === ENUMS ===
+enums:
+  MatchTypeEnum:
+    description: "Loại match phát hiện duplicate"
+    permissible_values:
+      PHONE:
+        description: "Match theo số điện thoại"
+      STUDENT_ID:
+        description: "Match theo Student ID"
+      EMAIL:
+        description: "Match theo email"
+      BOTH:
+        description: "Match cả SĐT và Student ID"
+
+  DuplicateStatusEnum:
+    description: "Trạng thái xử lý duplicate"
+    permissible_values:
+      PENDING:
+        description: "Chưa xử lý"
+      REVIEWING:
+        description: "Đang review"
+      RESOLVED:
+        description: "Đã xử lý"
+      IGNORED:
+        description: "Bỏ qua (không phải duplicate)"
+
+  ResolutionMethodEnum:
+    description: "Phương thức resolve duplicate"
+    permissible_values:
+      REMOVE:
+        description: "Xóa 1 application"
+      MERGE:
+        description: "Merge thông tin 2 applications"
+      NO_ACTION:
+        description: "Không hành động (không phải duplicate)"

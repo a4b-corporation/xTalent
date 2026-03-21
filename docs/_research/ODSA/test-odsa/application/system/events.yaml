@@ -1,0 +1,904 @@
+# Domain Events - Application Context
+# Bounded Context: Application (ATS)
+# Generated from: 5.ontology/application/*.yaml
+#
+# Lifecycle: DRAFT → SUBMITTED → SCREENING → TEST → INTERVIEW → OFFER → ACCEPTED/REJECTED/WITHDRAWN
+
+---
+# Event: ApplicationSubmitted
+# Transition: DRAFT → SUBMITTED
+# Trigger: Student submit application
+# Actor: Student
+
+event_type: ApplicationSubmitted
+version: "1.0.0"
+description: |
+  Event được emit khi Student submit application vào Event/Track.
+
+  Use Case: UC-APP-001 - Submit Application
+
+  Event này trigger Screening context để bắt đầu quá trình screening.
+category: application.lifecycle
+aggregate_root: Application
+aggregate_id_field: application_id
+correlation_id_field: event_id
+causation_id_field: null
+
+trigger:
+  type: command
+  command: SubmitApplication
+  use_case: UC-APP-001
+
+source_transition:
+  from_status: DRAFT
+  to_status: SUBMITTED
+
+actor:
+  type: Student
+  id_field: student_id
+
+payload:
+  application_id:
+    type: string
+    description: Application ID
+    pattern: "^APP-\\d{6}$"
+    required: true
+  event_id:
+    type: string
+    description: Event ID mà Student apply vào
+    required: true
+  track_id:
+    type: string
+    description: Track ID mà Student apply vào
+    required: true
+  student_id:
+    type: string
+    description: Student ID người apply
+    pattern: "^STU-\\d{6}$"
+    required: true
+  submitted_at:
+    type: datetime
+    description: Thời điểm submit
+    required: true
+  form_field_values:
+    type: array
+    description: Dynamic form field values
+    items:
+      type: object
+      properties:
+        field_name: string
+        field_value: string
+    required: false
+  question_answers:
+    type: array
+    description: Question answers for Track
+    items:
+      type: object
+      properties:
+        question_id: string
+        answer_text: string
+    required: false
+  attachment_ids:
+    type: array
+    description: List of attachment IDs
+    items:
+      type: string
+    required: false
+
+affects:
+  - aggregate: Application
+    id_field: application_id
+    mutation: status = SUBMITTED, submitted_at = now()
+  - aggregate: Event
+    id_field: event_id
+    mutation: application_count++
+  - context: Screening
+    trigger: StartScreeningProcess
+    action: Tạo screening record cho application
+
+business_rules:
+  - BRS-APP-001: Chỉ được apply khi Event đang active
+  - BRS-APP-002: Student chỉ được apply 1 Track/Event
+  - BRS-APP-003: Student không được apply cùng 1 Event nhiều lần
+
+outbox:
+  enabled: true
+  retention_days: 30
+
+---
+# Event: ApplicationScreened
+# Transition: SUBMITTED → SCREENING
+# Trigger: System auto move to screening
+# Actor: System
+
+event_type: ApplicationScreened
+version: "1.0.0"
+description: |
+  Event được emit khi application được move sang trạng thái SCREENING.
+
+  Use Case: UC-SCR-001 - Start Screening
+
+  Event này trigger Screening context để bắt đầu đánh giá application.
+category: application.lifecycle
+aggregate_root: Application
+aggregate_id_field: application_id
+correlation_id_field: event_id
+causation_id_field: ApplicationSubmitted.event_id
+
+trigger:
+  type: system
+  condition: Application.status = SUBMITTED AND Event.screening_enabled = true
+  use_case: UC-SCR-001
+
+source_transition:
+  from_status: SUBMITTED
+  to_status: SCREENING
+
+actor:
+  type: System
+  id_field: system
+
+payload:
+  application_id:
+    type: string
+    description: Application ID
+    required: true
+  event_id:
+    type: string
+    description: Event ID
+    required: true
+  track_id:
+    type: string
+    description: Track ID
+    required: true
+  student_id:
+    type: string
+    description: Student ID
+    required: true
+  screened_at:
+    type: datetime
+    description: Thời điểm move sang screening
+    required: true
+  screening_criteria:
+    type: object
+    description: Criteria được dùng để screening
+    required: false
+
+affects:
+  - aggregate: Application
+    id_field: application_id
+    mutation: status = SCREENING
+  - context: Screening
+    trigger: EvaluateApplication
+    action: Bắt đầu đánh giá application theo criteria
+
+business_rules:
+  - BRS-SCR-001: Screening criteria phải được define trước
+  - BRS-SCR-002: Auto-screening phải hoàn thành trong 24h
+
+outbox:
+  enabled: true
+  retention_days: 30
+
+---
+# Event: ApplicationMovedToTest
+# Transition: SCREENING → TEST
+# Trigger: Screening passed
+# Actor: System/Recruiter
+
+event_type: ApplicationMovedToTest
+version: "1.0.0"
+description: |
+  Event được emit khi application vượt qua vòng screening và được move sang TEST.
+
+  Use Case: UC-TST-001 - Schedule Test
+
+  Event này trigger Test Session context để lên lịch test cho application.
+category: application.lifecycle
+aggregate_root: Application
+aggregate_id_field: application_id
+correlation_id_field: event_id
+causation_id_field: ApplicationScreened.event_id
+
+trigger:
+  type: command
+  command: PassScreening
+  use_case: UC-TST-001
+
+source_transition:
+  from_status: SCREENING
+  to_status: TEST
+
+actor:
+  type: Recruiter
+  id_field: user_id
+  fallback: System
+
+payload:
+  application_id:
+    type: string
+    description: Application ID
+    required: true
+  event_id:
+    type: string
+    description: Event ID
+    required: true
+  track_id:
+    type: string
+    description: Track ID
+    required: true
+  student_id:
+    type: string
+    description: Student ID
+    required: true
+  screening_result:
+    type: object
+    description: Kết quả screening
+    properties:
+      score: number
+      passed: boolean
+      notes: string
+    required: true
+  moved_at:
+    type: datetime
+    description: Thời điểm move sang test
+    required: true
+
+affects:
+  - aggregate: Application
+    id_field: application_id
+    mutation: status = TEST
+  - context: TestSession
+    trigger: ScheduleTest
+    action: Lên lịch test cho application
+  - aggregate: Student
+    id_field: student_id
+    mutation: send_notification("Test invitation")
+
+business_rules:
+  - BRS-TST-001: Test phải được schedule trong vòng 7 ngày
+  - BRS-TST-002: Student phải nhận được email mời test
+
+outbox:
+  enabled: true
+  retention_days: 30
+
+---
+# Event: ApplicationMovedToInterview
+# Transition: TEST → INTERVIEW
+# Trigger: Test passed
+# Actor: System/Interviewer
+
+event_type: ApplicationMovedToInterview
+version: "1.0.0"
+description: |
+  Event được emit khi application vượt qua vòng test và được move sang INTERVIEW.
+
+  Use Case: UC-INT-001 - Schedule Interview
+
+  Event này trigger Interview context để lên lịch interview cho application.
+category: application.lifecycle
+aggregate_root: Application
+aggregate_id_field: application_id
+correlation_id_field: event_id
+causation_id_field: ApplicationMovedToTest.event_id
+
+trigger:
+  type: command
+  command: PassTest
+  use_case: UC-INT-001
+
+source_transition:
+  from_status: TEST
+  to_status: INTERVIEW
+
+actor:
+  type: Interviewer
+  id_field: user_id
+  fallback: System
+
+payload:
+  application_id:
+    type: string
+    description: Application ID
+    required: true
+  event_id:
+    type: string
+    description: Event ID
+    required: true
+  track_id:
+    type: string
+    description: Track ID
+    required: true
+  student_id:
+    type: string
+    description: Student ID
+    required: true
+  test_result:
+    type: object
+    description: Kết quả test
+    properties:
+      score: number
+      max_score: number
+      passed: boolean
+      feedback: string
+    required: true
+  moved_at:
+    type: datetime
+    description: Thời điểm move sang interview
+    required: true
+
+affects:
+  - aggregate: Application
+    id_field: application_id
+    mutation: status = INTERVIEW
+  - context: Interview
+    trigger: ScheduleInterview
+    action: Lên lịch interview cho application
+  - aggregate: Student
+    id_field: student_id
+    mutation: send_notification("Interview invitation")
+
+business_rules:
+  - BRS-INT-001: Interview phải được schedule trong vòng 5 ngày
+  - BRS-INT-002: Student phải nhận được email mời interview
+
+outbox:
+  enabled: true
+  retention_days: 30
+
+---
+# Event: ApplicationOffered
+# Transition: INTERVIEW → OFFER
+# Trigger: Interview passed, offer created
+# Actor: HR/Recruiter
+
+event_type: ApplicationOffered
+version: "1.0.0"
+description: |
+  Event được emit khi application vượt qua vòng interview và được đưa offer.
+
+  Use Case: UC-OFF-001 - Create Offer
+
+  Event này trigger Offer context để tạo offer cho application.
+category: application.lifecycle
+aggregate_root: Application
+aggregate_id_field: application_id
+correlation_id_field: event_id
+causation_id_field: ApplicationMovedToInterview.event_id
+
+trigger:
+  type: command
+  command: CreateOffer
+  use_case: UC-OFF-001
+
+source_transition:
+  from_status: INTERVIEW
+  to_status: OFFER
+
+actor:
+  type: HR
+  id_field: user_id
+  fallback: Recruiter
+
+payload:
+  application_id:
+    type: string
+    description: Application ID
+    required: true
+  event_id:
+    type: string
+    description: Event ID
+    required: true
+  track_id:
+    type: string
+    description: Track ID
+    required: true
+  student_id:
+    type: string
+    description: Student ID
+    required: true
+  offer_details:
+    type: object
+    description: Chi tiết offer
+    properties:
+      position: string
+      salary: number
+      start_date: date
+      benefits: array
+      expiry_date: date
+    required: true
+  interview_result:
+    type: object
+    description: Kết quả interview
+    properties:
+      score: number
+      feedback: string
+      interviewer_id: string
+    required: true
+  offered_at:
+    type: datetime
+    description: Thời điểm đưa offer
+    required: true
+
+affects:
+  - aggregate: Application
+    id_field: application_id
+    mutation: status = OFFER
+  - context: Offer
+    trigger: TrackOffer
+    action: Theo dõi offer acceptance
+  - aggregate: Student
+    id_field: student_id
+    mutation: send_notification("Offer letter")
+
+business_rules:
+  - BRS-OFF-001: Offer phải có expiry date
+  - BRS-OFF-002: Offer letter phải được gửi trong 3 ngày
+
+outbox:
+  enabled: true
+  retention_days: 30
+
+---
+# Event: ApplicationAccepted
+# Transition: OFFER → ACCEPTED
+# Trigger: Student accepts offer
+# Actor: Student
+
+event_type: ApplicationAccepted
+version: "1.0.0"
+description: |
+  Event được emit khi Student accept offer.
+
+  Use Case: UC-OFF-002 - Accept Offer
+
+  Event này trigger Onboarding context để bắt đầu quá trình onboarding.
+category: application.lifecycle
+aggregate_root: Application
+aggregate_id_field: application_id
+correlation_id_field: event_id
+causation_id_field: ApplicationOffered.event_id
+
+trigger:
+  type: command
+  command: AcceptOffer
+  use_case: UC-OFF-002
+
+source_transition:
+  from_status: OFFER
+  to_status: ACCEPTED
+
+actor:
+  type: Student
+  id_field: student_id
+
+payload:
+  application_id:
+    type: string
+    description: Application ID
+    required: true
+  event_id:
+    type: string
+    description: Event ID
+    required: true
+  track_id:
+    type: string
+    description: Track ID
+    required: true
+  student_id:
+    type: string
+    description: Student ID
+    required: true
+  accepted_at:
+    type: datetime
+    description: Thời điểm accept offer
+    required: true
+  offer_id:
+    type: string
+    description: Offer ID được accept
+    required: true
+
+affects:
+  - aggregate: Application
+    id_field: application_id
+    mutation: status = ACCEPTED
+  - context: Onboarding
+    trigger: StartOnboarding
+    action: Bắt đầu quá trình onboarding
+  - aggregate: Event
+    id_field: event_id
+    mutation: accepted_count++
+
+business_rules:
+  - BRS-OFF-003: Onboarding phải bắt đầu trong 7 ngày
+  - BRS-OFF-004: Event headcount phải được update
+
+outbox:
+  enabled: true
+  retention_days: 30
+
+---
+# Event: ApplicationRejected
+# Transition: SCREENING/TEST/INTERVIEW/OFFER → REJECTED
+# Trigger: Failed at any stage
+# Actor: System/Recruiter/Interviewer/HR
+
+event_type: ApplicationRejected
+version: "1.0.0"
+description: |
+  Event được emit khi application bị reject ở bất kỳ stage nào.
+
+  Use Case: UC-APP-007 - Reject Application
+
+  Event này trigger notification cho Student.
+category: application.lifecycle
+aggregate_root: Application
+aggregate_id_field: application_id
+correlation_id_field: event_id
+causation_id_field: null
+
+trigger:
+  type: command
+  command: RejectApplication
+  use_case: UC-APP-007
+
+source_transition:
+  from_status:
+    - SCREENING
+    - TEST
+    - INTERVIEW
+    - OFFER
+  to_status: REJECTED
+
+actor:
+  type: Recruiter
+  id_field: user_id
+  fallback: System
+
+payload:
+  application_id:
+    type: string
+    description: Application ID
+    required: true
+  event_id:
+    type: string
+    description: Event ID
+    required: true
+  track_id:
+    type: string
+    description: Track ID
+    required: true
+  student_id:
+    type: string
+    description: Student ID
+    required: true
+  rejection_reason:
+    type: string
+    description: Lý do reject
+    required: true
+  rejected_by:
+    type: string
+    description: User ID người reject
+    required: true
+  rejected_at:
+    type: datetime
+    description: Thời điểm reject
+    required: true
+  stage:
+    type: string
+    description: Stage bị reject (SCREENING/TEST/INTERVIEW/OFFER)
+    enum:
+      - SCREENING
+      - TEST
+      - INTERVIEW
+      - OFFER
+    required: true
+
+affects:
+  - aggregate: Application
+    id_field: application_id
+    mutation: status = REJECTED
+  - aggregate: Student
+    id_field: student_id
+    mutation: send_notification("Rejection email")
+  - aggregate: Event
+    id_field: event_id
+    mutation: rejected_count++
+
+business_rules:
+  - BRS-APP-008: Rejection email phải được gửi trong 24h
+  - BRS-APP-009: Reason phải được provide cho rejection
+
+outbox:
+  enabled: true
+  retention_days: 30
+
+---
+# Event: ApplicationWithdrawn
+# Transition: SUBMITTED/SCREENING/TEST/INTERVIEW/OFFER → WITHDRAWN
+# Trigger: Student withdraws application
+# Actor: Student
+
+event_type: ApplicationWithdrawn
+version: "1.0.0"
+description: |
+  Event được emit khi Student withdraw application.
+
+  Use Case: UC-APP-004 - Withdraw Application
+
+  Event này trigger cleanup và notification.
+category: application.lifecycle
+aggregate_root: Application
+aggregate_id_field: application_id
+correlation_id_field: event_id
+causation_id_field: null
+
+trigger:
+  type: command
+  command: WithdrawApplication
+  use_case: UC-APP-004
+
+source_transition:
+  from_status:
+    - SUBMITTED
+    - SCREENING
+    - TEST
+    - INTERVIEW
+    - OFFER
+  to_status: WITHDRAWN
+
+actor:
+  type: Student
+  id_field: student_id
+
+payload:
+  application_id:
+    type: string
+    description: Application ID
+    required: true
+  event_id:
+    type: string
+    description: Event ID
+    required: true
+  track_id:
+    type: string
+    description: Track ID
+    required: true
+  student_id:
+    type: string
+    description: Student ID
+    required: true
+  reason:
+    type: string
+    description: Lý do withdraw
+    maxLength: 500
+    required: false
+  withdrawn_at:
+    type: datetime
+    description: Thời điểm withdraw
+    required: true
+
+affects:
+  - aggregate: Application
+    id_field: application_id
+    mutation: status = WITHDRAWN
+  - aggregate: Event
+    id_field: event_id
+    mutation: withdrawn_count++
+  - context: Screening
+    trigger: CancelScreening
+    action: Hủy screening process (nếu đang screening)
+
+business_rules:
+  - BRS-APP-010: Student có thể withdraw bất kỳ lúc nào trước khi accept offer
+  - BRS-APP-011: Withdrawn application không thể restore
+
+outbox:
+  enabled: true
+  retention_days: 30
+
+---
+# Event: DuplicateDetected
+# Trigger: System detects duplicate applications
+# Actor: System
+
+event_type: DuplicateDetected
+version: "1.0.0"
+description: |
+  Event được emit khi system phát hiện duplicate applications.
+
+  Use Case: UC-DUP-001 - Detect Duplicate
+
+  Event này trigger manual review hoặc auto-resolution.
+category: duplicate.detection
+aggregate_root: Duplicate
+aggregate_id_field: duplicate_id
+correlation_id_field: event_id
+causation_id_field: ApplicationSubmitted.event_id
+
+trigger:
+  type: system
+  condition: Match found by phone OR student_id OR email
+  use_case: UC-DUP-001
+
+source_transition:
+  from_status: null
+  to_status: PENDING
+
+actor:
+  type: System
+  id_field: system
+
+payload:
+  duplicate_id:
+    type: string
+    description: Duplicate record ID
+    pattern: "^DUP-\\d{6}$"
+    required: true
+  application_id_1:
+    type: string
+    description: Application ID thứ 1 (giữ lại)
+    required: true
+  application_id_2:
+    type: string
+    description: Application ID thứ 2 (xóa/merge)
+    required: true
+  match_type:
+    type: string
+    description: Loại match (PHONE, STUDENT_ID, EMAIL, BOTH)
+    enum:
+      - PHONE
+      - STUDENT_ID
+      - EMAIL
+      - BOTH
+    required: true
+  student_id:
+    type: string
+    description: Student ID trùng
+    required: true
+  detected_at:
+    type: datetime
+    description: Thời điểm phát hiện
+    required: true
+  match_confidence:
+    type: number
+    description: Độ tin cậy của match (0-1)
+    minimum: 0
+    maximum: 1
+    required: false
+
+affects:
+  - aggregate: Duplicate
+    id_field: duplicate_id
+    mutation: Create duplicate record with status = PENDING
+  - aggregate: Application
+    id_field: application_id_2
+    mutation: flag_for_review = true
+  - context: Screening
+    trigger: HoldScreening
+    action: Tạm dừng screening cho cả 2 applications
+
+business_rules:
+  - BRS-DUP-001: Duplicate phải có 2 application IDs khác nhau
+  - BRS-DUP-002: application_id_1 là application được giữ lại
+
+outbox:
+  enabled: true
+  retention_days: 30
+
+---
+# Event: DuplicateResolved
+# Transition: PENDING/REVIEWING → RESOLVED/IGNORED
+# Trigger: Manual review or auto-resolution
+# Actor: Admin/Recruiter
+
+event_type: DuplicateResolved
+version: "1.0.0"
+description: |
+  Event được emit khi duplicate được resolve.
+
+  Use Case: UC-DUP-002 - Resolve Duplicate
+
+  Event này trigger cleanup và notification.
+category: duplicate.resolution
+aggregate_root: Duplicate
+aggregate_id_field: duplicate_id
+correlation_id_field: DuplicateDetected.event_id
+causation_id_field: null
+
+trigger:
+  type: command
+  command: ResolveDuplicate
+  use_case: UC-DUP-002
+
+source_transition:
+  from_status:
+    - PENDING
+    - REVIEWING
+  to_status:
+    - RESOLVED
+    - IGNORED
+
+actor:
+  type: Admin
+  id_field: user_id
+  fallback: Recruiter
+
+payload:
+  duplicate_id:
+    type: string
+    description: Duplicate record ID
+    required: true
+  application_id_1:
+    type: string
+    description: Application ID thứ 1
+    required: true
+  application_id_2:
+    type: string
+    description: Application ID thứ 2
+    required: true
+  status:
+    type: string
+    description: Status sau resolve (RESOLVED/IGNORED)
+    enum:
+      - RESOLVED
+      - IGNORED
+    required: true
+  resolution_method:
+    type: string
+    description: Phương thức resolve (REMOVE, MERGE, NO_ACTION)
+    enum:
+      - REMOVE
+      - MERGE
+      - NO_ACTION
+    required: true
+  resolved_by:
+    type: string
+    description: User ID resolve
+    required: true
+  resolved_at:
+    type: datetime
+    description: Thời điểm resolve
+    required: true
+  notes:
+    type: string
+    description: Ghi chú khi resolve
+    required: false
+
+affects:
+  - aggregate: Duplicate
+    id_field: duplicate_id
+    mutation: status = RESOLVED/IGNORED, resolved_at = now()
+  - aggregate: Application
+    id_field: application_id_2
+    mutation: Depends on resolution_method
+  - context: Screening
+    trigger: ResumeScreening
+    action: Tiếp tục screening cho application được giữ lại
+
+business_rules:
+  - BRS-DUP-002: application_id_1 là application được giữ lại
+
+outbox:
+  enabled: true
+  retention_days: 30
+
+---
+# Metadata
+# This file defines all domain events for the Application context.
+#
+# Event Sourcing:
+# - All events are immutable
+# - Events are stored in order of occurrence
+# - Events can be replayed to reconstruct state
+#
+# Event Bus:
+# - Events are published to the event bus
+# - Other contexts subscribe to relevant events
+# - Events are used for inter-context communication
+#
+# CQRS:
+# - Events trigger command handlers
+# - Commands mutate aggregates
+# - Events are projected to read models

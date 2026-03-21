@@ -1,0 +1,138 @@
+id: https://xtalent.io/ontology/ats/offer/offer-response
+name: offer_response_ontology
+version: "1.0.0"
+description: "OfferResponse - Phản hồi của Student (Accept/Reject)"
+
+prefixes:
+  xt: https://xtalent.io/ontology/
+  oracle: https://oracle.com/hcm/
+  sap: https://successfactors.sap.com/
+  workday: https://workday.com/
+
+default_range: string
+
+slots:
+  # --- Identifier ---
+  response_id:
+    description: "Unique identifier cho OfferResponse"
+    identifier: true
+    required: true
+    pattern: "^OFRSP-\\d{6}$"
+    annotations:
+      example: "OFRSP-000001"
+
+  # --- Core Fields ---
+  offer_id:
+    description: "Offer ID mà Student phản hồi"
+    required: true
+    annotations:
+      reference: "Offer.offer_id"
+
+  response:
+    description: "Phản hồi của Student (Accept/Reject)"
+    range: ResponseEnum
+    required: true
+
+  reason:
+    description: "Lý do (nếu Reject)"
+    required: false
+
+  response_at:
+    description: "Thời điểm phản hồi"
+    range: datetime
+    required: true
+
+  # --- Audit Fields ---
+  created_by:
+    description: "Student ID phản hồi"
+    required: true
+    annotations:
+      reference: "Student.student_id"
+
+  created_at:
+    description: "Timestamp tạo OfferResponse"
+    range: datetime
+    required: true
+
+classes:
+  OfferResponse:
+    description: |
+      OfferResponse - Phản hồi của Student (Accept/Reject).
+      Student chỉ có Accept/Reject options (không Negotiate).
+      Aggregate Root trong Offer context.
+
+    annotations:
+      oracle_hcm_term: "JobOfferResponse"
+      sap_term: "JobOfferResponse"
+      workday_term: "JobOfferResponse"
+      disambiguation: "xTalent: OfferResponse = Phản hồi Offer. Oracle: JobOfferResponse. SAP: JobOfferResponse. Workday: JobOfferResponse. Xem docs.xtalent.io/ats/offer/offer-response."
+
+      module: "ats"
+      sub_module: "offer"
+      version: "1.0.0"
+      bounded_context: "Offer"
+      aggregate_root: true
+
+      ouroboros_evolution:
+        iteration: "1.0.0"
+        parent_version: null
+        evaluation_status: "pending"
+        last_evaluated: null
+        evolution_notes: "Initial version"
+
+      validation_hooks:
+        odds_system_builder:
+          required_for: true
+          validates: ["table_generation", "fk_references"]
+
+      see_also: "https://docs.xtalent.io/ats/offer/offer-response"
+
+    slots:
+      - response_id
+      - offer_id
+      - response
+      - reason
+      - response_at
+      - created_by
+      - created_at
+
+    slot_usage:
+      response_id:
+        required: true
+        identifier: true
+
+      offer_id:
+        required: true
+
+      response:
+        required: true
+
+      response_at:
+        required: true
+
+      created_by:
+        required: true
+
+      created_at:
+        required: true
+
+    rules:
+      - description: "BRS-OFRSP-001: Student chỉ có Accept/Reject options (không Negotiate)"
+        preconditions:
+          slot_conditions: {}
+        postconditions:
+          slot_conditions:
+            response:
+              one_of:
+                - "ACCEPT"
+                - "REJECT"
+
+# === ENUMS ===
+enums:
+  ResponseEnum:
+    description: "Phản hồi của Student"
+    permissible_values:
+      ACCEPT:
+        description: "Chấp nhận offer"
+      REJECT:
+        description: "Từ chối offer"

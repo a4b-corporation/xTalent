@@ -1,0 +1,1469 @@
+openapi: "3.0.3"
+info:
+  title: Offer API
+  description: |
+    API cho Offer Bounded Context - xTalent ATS
+
+    ## Overview
+    API này cung cấp các endpoints để quản lý quy trình tạo Offer, gửi Offer, student phản hồi (Accept/Reject),
+    auto-remind trước deadline, scan documents, và transfer candidate sang hệ thống CnB.
+
+    ## Use Cases
+    - **Create Offer**: TA tạo Offer cho Candidate sau khi Pass Interview
+    - **Send Offer**: TA gửi Offer cho Candidate
+    - **Accept Offer**: Student accept Offer trước deadline
+    - **Reject Offer**: Student reject Offer trước deadline
+    - **Scan Documents**: TA scan documents sau khi Candidate Accept Offer
+    - **Transfer to CnB**: System auto-transfer Candidate sang CnB sau khi scan documents hoàn tất
+
+    ## Business Rules
+    - **BR-OFR-001**: Offer chỉ được tạo cho Candidates Pass Interview (CandidateRR.current_stage = INTERVIEW, Interview.result = PASS)
+    - **BR-OFR-002**: Offer phải matching với Request đã map trong Event (salary trong range min-max)
+    - **BR-OFR-004**: Auto-Expire khi deadline qua (status = EXPIRED)
+    - **BR-OFR-011**: Student chỉ có Accept/Reject options (không Negotiate)
+    - **BR-OREM-001**: Auto-remind 24h + 2h trước deadline (configurable)
+    - **BR-OTRF-001**: Transfer chỉ được thực hiện sau khi Accept Offer
+    - **BR-OTRF-002**: Transfer cần ACL để translate sang CnB model
+    - **BR-OSCN-001**: Scan chỉ được thực hiện sau khi Accept Offer
+
+    ## Derived From
+    - Glossary: `6.glossary/offer.md`
+    - Flow: `7.flows/offer-flow.md`
+    - Ontology: `5.ontology/offer/*.yaml`
+
+  version: "1.0.0"
+  contact:
+    name: xTalent ATS Team
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://api.xtalent.io/ats/v1
+    description: Production server
+  - url: https://staging-api.xtalent.io/ats/v1
+    description: Staging server
+  - url: http://localhost:8080/ats/v1
+    description: Local development server
+
+tags:
+  - name: Offers
+    description: Operations for creating and managing Offers
+  - name: Offer Responses
+    description: Operations for handling student Accept/Reject responses
+  - name: Document Scanning
+    description: Operations for scanning candidate documents
+  - name: Candidate Transfer
+    description: Operations for transferring candidates to CnB system
+
+paths:
+  /offers/create:
+    post:
+      tags:
+        - Offers
+      operationId: createOffer
+      summary: Create Offer
+      description: |
+        Tạo Offer mới cho Candidate sau khi Pass Interview.
+
+        ## Use Case
+        TA tạo Offer cho Candidate với salary, benefits, và deadline.
+
+        ## Preconditions (BR-OFR-001, BR-OFR-002)
+        - CandidateRR.current_stage = INTERVIEW
+        - Interview.result = PASS (Grading.proposal = OFFER)
+        - RequestMapping tồn tại cho Event (salary trong range min-max)
+        - reoffer_count < max_reoffer (default: 2)
+
+        ## Business Rules
+        - **BR-OFR-001**: Offer chỉ được tạo cho Candidates Pass Interview
+        - **BR-OFR-002**: Offer phải matching với Request đã map
+
+        ## Error Paths
+        - **409**: Candidate chưa Pass Interview (current_stage != INTERVIEW hoặc interview_result != PASS)
+        - **400**: Salary ngoài Request range (salary < min hoặc salary > max)
+        - **409**: Re-offer quá max count (reoffer_count >= max_reoffer)
+
+        ## Flow Reference
+        See: `7.flows/offer-flow.md` - Phase 1: Create & Send Offer (Steps 1-8)
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOfferRequest"
+            examples:
+              standard_offer:
+                summary: Standard Offer for Junior Candidate
+                value:
+                  candidate_rr_id: "CRR-000001"
+                  application_id: "APP-000001"
+                  request_id: "REQ-000001"
+                  salary: 15000000.0
+                  benefits: "13th month salary, 12 days PTO, health insurance"
+                  deadline: "2026-05-15T23:59:59+07:00"
+                  template_id: "TMPL-JUNIOR"
+                  auto_remind_enabled: true
+                  grace_period_hours: 48
+              senior_offer:
+                summary: Senior Offer with extended benefits
+                value:
+                  candidate_rr_id: "CRR-000002"
+                  application_id: "APP-000002"
+                  request_id: "REQ-000002"
+                  salary: 20000000.0
+                  benefits: "13th month salary, 15 days PTO, training budget $1000, health insurance"
+                  deadline: "2026-05-20T23:59:59+07:00"
+                  template_id: "TMPL-SENIOR"
+                  auto_remind_enabled: true
+                  grace_period_hours: 72
+
+      responses:
+        "201":
+          description: Offer created successfully
+          headers:
+            Location:
+              description: URI of the created Offer
+              schema:
+                type: string
+                format: uri
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Offer"
+              examples:
+                draft_offer_created:
+                  summary: Draft Offer Created
+                  value:
+                    offer_id: "OFR-000001"
+                    application_id: "APP-000001"
+                    candidate_rr_id: "CRR-000001"
+                    request_id: "REQ-000001"
+                    salary: 15000000.0
+                    benefits: "13th month salary, 12 days PTO, health insurance"
+                    deadline: "2026-05-15T23:59:59+07:00"
+                    status: "DRAFT"
+                    template_id: "TMPL-JUNIOR"
+                    reoffer_count: 0
+                    auto_remind_enabled: true
+                    remind_timing_24h: 1440
+                    remind_timing_2h: 120
+                    grace_period_hours: 48
+                    auto_reject_enabled: true
+                    created_by: "TA-001"
+                    created_at: "2026-03-20T10:30:00+07:00"
+
+        "400":
+          description: Bad Request - Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                salary_out_of_range:
+                  summary: Salary Outside Request Range
+                  value:
+                    code: "SALARY_OUT_OF_RANGE"
+                    message: "Salary đề xuất (20000000) ngoài Request range (10000000-15000000)"
+                    details:
+                      proposed_salary: 20000000
+                      request_min: 10000000
+                      request_max: 15000000
+                    suggestion: "Vui lòng điều chỉnh salary trong khoảng cho phép hoặc liên hệ Request Owner để điều chỉnh Request"
+                    reference: "7.flows/offer-flow.md#case-offercreate-salary-ngoai-request-range"
+
+        "409":
+          description: Conflict - Business rule violation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                candidate_not_passed_interview:
+                  summary: Candidate Not Passed Interview
+                  value:
+                    code: "INTERVIEW_NOT_PASSED"
+                    message: "Candidate chưa đạt Interview"
+                    details:
+                      candidate_rr_id: "CRR-000001"
+                      current_stage: "SCREENING"
+                      interview_result: null
+                    suggestion: "Candidate phải hoàn thành Interview với result = PASS trước khi tạo Offer"
+                    reference: "7.flows/offer-flow.md#case-offercreate-candidate-chua-pass-interview"
+                reoffer_limit_reached:
+                  summary: Re-offer Limit Reached
+                  value:
+                    code: "REOFFER_LIMIT_REACHED"
+                    message: "Candidate đã re-offer 2 lần (max: 2)"
+                    details:
+                      candidate_rr_id: "CRR-000001"
+                      reoffer_count: 2
+                      max_reoffer: 2
+                    suggestion: "Liên hệ TA_ADMIN để xử lý ngoại lệ"
+                    reference: "7.flows/offer-flow.md#case-offercreate-re-offer-qua-max-count"
+
+        "401":
+          description: Unauthorized - User not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+        "403":
+          description: Forbidden - User lacks permission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /offers/{offer_id}/send:
+    post:
+      tags:
+        - Offers
+      operationId: sendOffer
+      summary: Send Offer
+      description: |
+        Gửi Offer cho Candidate sau khi đã tạo Draft.
+
+        ## Use Case
+        TA gửi Offer cho Candidate với Offer letter (PDF), Accept/Reject link, và deadline reminder.
+
+        ## Preconditions
+        - Offer.status = DRAFT
+        - Offer có đầy đủ salary, benefits, deadline
+
+        ## Postconditions
+        - Offer.status = SENT
+        - OfferReminder được tạo (REMIND_24H, REMIND_2H) nếu auto_remind_enabled = true
+        - Event `OfferSent` được publish
+
+        ## Flow Reference
+        See: `7.flows/offer-flow.md` - Phase 1: Create & Send Offer (Steps 9-15)
+
+      parameters:
+        - name: offer_id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^OFR-\\d{6}$"
+          example: "OFR-000001"
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendOfferRequest"
+            examples:
+              send_with_template:
+                summary: Send Offer with Email Template
+                value:
+                  email_template_id: "TMPL-OFFER-001"
+                  send_reminders: true
+
+      responses:
+        "200":
+          description: Offer sent successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Offer"
+              examples:
+                offer_sent:
+                  summary: Offer Sent to Candidate
+                  value:
+                    offer_id: "OFR-000001"
+                    application_id: "APP-000001"
+                    candidate_rr_id: "CRR-000001"
+                    request_id: "REQ-000001"
+                    salary: 15000000.0
+                    benefits: "13th month salary, 12 days PTO, health insurance"
+                    deadline: "2026-05-15T23:59:59+07:00"
+                    status: "SENT"
+                    template_id: "TMPL-JUNIOR"
+                    reoffer_count: 0
+                    auto_remind_enabled: true
+                    created_by: "TA-001"
+                    created_at: "2026-03-20T10:30:00+07:00"
+                    updated_at: "2026-03-20T10:35:00+07:00"
+
+        "400":
+          description: Bad Request - Offer incomplete
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                incomplete_offer:
+                  summary: Offer Missing Required Fields
+                  value:
+                    code: "OFFER_INCOMPLETE"
+                    message: "Offer thiếu thông tin bắt buộc"
+                    details:
+                      offer_id: "OFR-000001"
+                      missing_fields: ["salary", "deadline"]
+
+        "404":
+          description: Offer not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+        "409":
+          description: Conflict - Invalid offer status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                invalid_status:
+                  summary: Offer Already Sent
+                  value:
+                    code: "INVALID_STATUS"
+                    message: "Offer đã ở trạng thái SENT, không thể gửi lại"
+                    details:
+                      offer_id: "OFR-000001"
+                      current_status: "SENT"
+
+        "500":
+          description: Internal Server Error - Email service failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                email_service_error:
+                  summary: Email Service Unavailable
+                  value:
+                    code: "EMAIL_SERVICE_ERROR"
+                    message: "Không thể gửi Offer email - Email service unavailable"
+                    details:
+                      offer_id: "OFR-000001"
+                      error: "Connection timeout after 5000ms"
+                      retry_policy:
+                        strategy: "exponential_backoff"
+                        max_attempts: 3
+                        delays: ["500ms", "2s", "10s"]
+                    reference: "7.flows/offer-flow.md#case-email-service-timeout"
+
+  /offers/{offer_id}/accept:
+    post:
+      tags:
+        - Offer Responses
+      operationId: acceptOffer
+      summary: Accept Offer
+      description: |
+        Student accept Offer trước deadline.
+
+        ## Use Case
+        Candidate click Accept link từ Offer email để xác nhận nhận việc.
+
+        ## Preconditions
+        - Offer.status = SENT
+        - currentTime <= deadline + grace_period
+
+        ## Postconditions
+        - Offer.status = ACCEPTED
+        - OfferResponse được tạo với response = ACCEPT
+        - Event `OfferAccepted` được publish
+        - Documents scan được khởi tạo
+
+        ## Business Rules
+        - **BR-OFRSP-001**: OfferResponse chỉ có ACCEPT/REJECT options
+        - **BR-OSCN-001**: Scan chỉ được thực hiện sau khi Accept Offer
+
+        ## Flow Reference
+        See: `7.flows/offer-flow.md` - Phase 2: Student Accept/Reject Offer (Steps 16-23)
+
+      parameters:
+        - name: offer_id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^OFR-\\d{6}$"
+          example: "OFR-000001"
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AcceptOfferRequest"
+            examples:
+              accept_with_token:
+                summary: Accept Offer with Token
+                value:
+                  token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                  student_id: "STU-000001"
+
+      responses:
+        "200":
+          description: Offer accepted successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Offer"
+                  - type: object
+                    properties:
+                      offer_response:
+                        $ref: "#/components/schemas/OfferResponse"
+              examples:
+                offer_accepted:
+                  summary: Offer Accepted by Student
+                  value:
+                    offer_id: "OFR-000001"
+                    application_id: "APP-000001"
+                    candidate_rr_id: "CRR-000001"
+                    request_id: "REQ-000001"
+                    salary: 15000000.0
+                    benefits: "13th month salary, 12 days PTO, health insurance"
+                    deadline: "2026-05-15T23:59:59+07:00"
+                    status: "ACCEPTED"
+                    template_id: "TMPL-JUNIOR"
+                    created_by: "TA-001"
+                    created_at: "2026-03-20T10:30:00+07:00"
+                    updated_at: "2026-03-20T14:45:00+07:00"
+                    offer_response:
+                      response_id: "OFRSP-000001"
+                      offer_id: "OFR-000001"
+                      response: "ACCEPT"
+                      reason: null
+                      response_at: "2026-03-20T14:45:00+07:00"
+                      created_by: "STU-000001"
+                      created_at: "2026-03-20T14:45:00+07:00"
+
+        "400":
+          description: Bad Request - Invalid token or deadline expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                deadline_expired:
+                  summary: Offer Deadline Expired
+                  value:
+                    code: "DEADLINE_EXPIRED"
+                    message: "Offer đã hết hạn phản hồi"
+                    details:
+                      offer_id: "OFR-000001"
+                      deadline: "2026-05-15T23:59:59+07:00"
+                      grace_period_hours: 48
+                      current_time: "2026-05-18T10:00:00+07:00"
+                    suggestion: "Liên hệ TA để được hỗ trợ gia hạn deadline"
+                    reference: "7.flows/offer-flow.md#case-offerresponse-candidate-response-sau-deadline"
+
+        "404":
+          description: Offer not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+        "409":
+          description: Conflict - Invalid offer status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                already_responded:
+                  summary: Offer Already Responded
+                  value:
+                    code: "ALREADY_RESPONDED"
+                    message: "Offer đã được phản hồi"
+                    details:
+                      offer_id: "OFR-000001"
+                      current_status: "ACCEPTED"
+                      previous_response:
+                        response_id: "OFRSP-000001"
+                        response: "ACCEPT"
+                        response_at: "2026-03-20T14:45:00+07:00"
+
+  /offers/{offer_id}/reject:
+    post:
+      tags:
+        - Offer Responses
+      operationId: rejectOffer
+      summary: Reject Offer
+      description: |
+        Student reject Offer trước deadline.
+
+        ## Use Case
+        Candidate click Reject link từ Offer email để từ chối nhận việc.
+
+        ## Preconditions
+        - Offer.status = SENT
+        - currentTime <= deadline
+
+        ## Postconditions
+        - Offer.status = REJECTED
+        - OfferResponse được tạo với response = REJECT
+        - Event `OfferRejected` được publish
+        - CandidateRR.status được cập nhật
+
+        ## Business Rules
+        - **BR-OFRSP-001**: OfferResponse chỉ có ACCEPT/REJECT options
+
+        ## Flow Reference
+        See: `7.flows/offer-flow.md` - Phase 2: Student Accept/Reject Offer (Steps 16-23)
+
+      parameters:
+        - name: offer_id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^OFR-\\d{6}$"
+          example: "OFR-000001"
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RejectOfferRequest"
+            examples:
+              reject_with_reason:
+                summary: Reject Offer with Reason
+                value:
+                  token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                  student_id: "STU-000001"
+                  reason: "Accepted another offer with better benefits"
+
+      responses:
+        "200":
+          description: Offer rejected successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Offer"
+                  - type: object
+                    properties:
+                      offer_response:
+                        $ref: "#/components/schemas/OfferResponse"
+              examples:
+                offer_rejected:
+                  summary: Offer Rejected by Student
+                  value:
+                    offer_id: "OFR-000001"
+                    application_id: "APP-000001"
+                    candidate_rr_id: "CRR-000001"
+                    request_id: "REQ-000001"
+                    salary: 15000000.0
+                    benefits: "13th month salary, 12 days PTO, health insurance"
+                    deadline: "2026-05-15T23:59:59+07:00"
+                    status: "REJECTED"
+                    template_id: "TMPL-JUNIOR"
+                    created_by: "TA-001"
+                    created_at: "2026-03-20T10:30:00+07:00"
+                    updated_at: "2026-03-20T14:45:00+07:00"
+                    offer_response:
+                      response_id: "OFRSP-000001"
+                      offer_id: "OFR-000001"
+                      response: "REJECT"
+                      reason: "Accepted another offer with better benefits"
+                      response_at: "2026-03-20T14:45:00+07:00"
+                      created_by: "STU-000001"
+                      created_at: "2026-03-20T14:45:00+07:00"
+
+        "404":
+          description: Offer not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+        "409":
+          description: Conflict - Invalid offer status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /offers/{offer_id}/scan-documents:
+    post:
+      tags:
+        - Document Scanning
+      operationId: scanDocuments
+      summary: Scan Documents
+      description: |
+        TA scan documents của Candidate sau khi Accept Offer.
+
+        ## Use Case
+        TA upload và scan documents (CMND, bằng cấp, hồ sơ sức khỏe) cho Candidate đã Accept Offer.
+
+        ## Preconditions
+        - Offer.status = ACCEPTED
+        - TA có quyền scan documents (TA_ADMIN/TA_MANAGER hoặc được phân công)
+
+        ## Postconditions
+        - CandidateScan được tạo với status = COMPLETED
+        - documents[] lưu trữ document IDs
+        - Event `DocumentsScanned` được publish
+
+        ## Business Rules
+        - **BR-OSCN-001**: Scan chỉ được thực hiện sau khi Accept Offer
+
+        ## Flow Reference
+        See: `7.flows/offer-flow.md` - Phase 4: Scan Documents & Transfer to CnB (Steps 29-32)
+
+      parameters:
+        - name: offer_id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^OFR-\\d{6}$"
+          example: "OFR-000001"
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScanDocumentsRequest"
+            examples:
+              scan_complete_documents:
+                summary: Scan Complete Document Set
+                value:
+                  candidate_rr_id: "CRR-000001"
+                  documents:
+                    - document_id: "DOC-001"
+                      document_type: "CMND"
+                      file_name: "cmnd_front.jpg"
+                      storage_url: "https://storage.xtalent.io/docs/DOC-001"
+                    - document_id: "DOC-002"
+                      document_type: "DIPLOMA"
+                      file_name: "bang_dai_hoc.pdf"
+                      storage_url: "https://storage.xtalent.io/docs/DOC-002"
+                    - document_id: "DOC-003"
+                      document_type: "HEALTH_RECORD"
+                      file_name: "ho_so_suc_khoe.pdf"
+                      storage_url: "https://storage.xtalent.io/docs/DOC-003"
+
+      responses:
+        "201":
+          description: Documents scanned successfully
+          headers:
+            Location:
+              description: URI of the created CandidateScan
+              schema:
+                type: string
+                format: uri
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CandidateScan"
+              examples:
+                scan_completed:
+                  summary: Documents Scanned Successfully
+                  value:
+                    scan_id: "OSCN-000001"
+                    candidate_rr_id: "CRR-000001"
+                    documents: ["DOC-001", "DOC-002", "DOC-003"]
+                    status: "COMPLETED"
+                    scanned_at: "2026-03-20T15:00:00+07:00"
+                    scanned_by: "TA-001"
+                    created_at: "2026-03-20T15:00:00+07:00"
+
+        "400":
+          description: Bad Request - Missing required documents
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                missing_documents:
+                  summary: Missing Required Documents
+                  value:
+                    code: "MISSING_DOCUMENTS"
+                    message: "Thiếu documents bắt buộc"
+                    details:
+                      candidate_rr_id: "CRR-000001"
+                      required_documents: ["CMND", "DIPLOMA"]
+                      submitted_documents: ["CMND"]
+
+        "403":
+          description: Forbidden - Offer not yet accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                offer_not_accepted:
+                  summary: Offer Not Yet Accepted
+                  value:
+                    code: "OFFER_NOT_ACCEPTED"
+                    message: "Chỉ có thể scan documents sau khi Candidate Accept Offer"
+                    details:
+                      offer_id: "OFR-000001"
+                      current_status: "SENT"
+
+        "404":
+          description: Offer not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+        "409":
+          description: Conflict - Documents already scanned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                already_scanned:
+                  summary: Documents Already Scanned
+                  value:
+                    code: "ALREADY_SCANNED"
+                    message: "Documents đã được scan trước đó"
+                    details:
+                      candidate_rr_id: "CRR-000001"
+                      previous_scan:
+                        scan_id: "OSCN-000001"
+                        scanned_at: "2026-03-20T15:00:00+07:00"
+                        status: "COMPLETED"
+
+  /offers/{offer_id}/transfer:
+    post:
+      tags:
+        - Candidate Transfer
+      operationId: transferCandidate
+      summary: Transfer Candidate to CnB
+      description: |
+        Transfer Candidate sang hệ thống CnB (Corporate Network) sau khi Accept Offer và scan documents hoàn tất.
+
+        ## Use Case
+        System tự động transfer Candidate sang CnB với ACL translation để convert từ Candidate model → Employee model.
+
+        ## Preconditions
+        - Offer.status = ACCEPTED
+        - CandidateScan.status = COMPLETED
+        - documents[] đầy đủ (CMND, bằng cấp, hồ sơ sức khỏe)
+
+        ## Postconditions
+        - CandidateTransfer được tạo với status = COMPLETED
+        - cnb_reference_id generated (pattern: CNB-YYYY-NNNN)
+        - Event `CandidateTransferred` được publish
+
+        ## Business Rules
+        - **BR-OTRF-001**: Transfer chỉ được thực hiện sau khi Accept Offer
+        - **BR-OTRF-002**: Transfer cần ACL để translate sang CnB model
+
+        ## Flow Reference
+        See: `7.flows/offer-flow.md` - Phase 4: Scan Documents & Transfer to CnB (Steps 33-36)
+
+      parameters:
+        - name: offer_id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^OFR-\\d{6}$"
+          example: "OFR-000001"
+
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransferCandidateRequest"
+            examples:
+              initiate_transfer:
+                summary: Initiate CnB Transfer
+                value:
+                  candidate_rr_id: "CRR-000001"
+                  scan_id: "OSCN-000001"
+
+      responses:
+        "201":
+          description: Candidate transferred successfully
+          headers:
+            Location:
+              description: URI of the created CandidateTransfer
+              schema:
+                type: string
+                format: uri
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CandidateTransfer"
+              examples:
+                transfer_completed:
+                  summary: Candidate Transferred to CnB
+                  value:
+                    transfer_id: "OTRF-000001"
+                    candidate_rr_id: "CRR-000001"
+                    cnb_reference_id: "CNB-2026-0001"
+                    status: "COMPLETED"
+                    transferred_at: "2026-03-20T15:30:00+07:00"
+                    created_by: "SYSTEM"
+                    created_at: "2026-03-20T15:30:00+07:00"
+                    error_message: null
+
+        "400":
+          description: Bad Request - Prerequisites not met
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                documents_not_scanned:
+                  summary: Documents Not Scanned
+                  value:
+                    code: "DOCUMENTS_NOT_SCANNED"
+                    message: "Phải hoàn thành scan documents trước khi transfer"
+                    details:
+                      candidate_rr_id: "CRR-000001"
+                      candidate_scan_status: "PENDING"
+
+        "404":
+          description: Offer not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+        "409":
+          description: Conflict - Invalid offer status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                offer_not_accepted:
+                  summary: Offer Not Accepted
+                  value:
+                    code: "OFFER_NOT_ACCEPTED"
+                    message: "Chỉ có thể transfer Candidate sau khi Accept Offer"
+                    details:
+                      offer_id: "OFR-000001"
+                      current_status: "SENT"
+
+        "500":
+          description: Internal Server Error - CnB system unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                cnb_unavailable:
+                  summary: CnB System Unavailable
+                  value:
+                    code: "CNB_SERVICE_UNAVAILABLE"
+                    message: "CnB system không khả dụng"
+                    details:
+                      candidate_rr_id: "CRR-000001"
+                      error: "503 Service Unavailable"
+                      retry_policy:
+                        strategy: "exponential_backoff"
+                        max_attempts: 3
+                        delays: ["500ms", "2s", "10s"]
+                      next_action: "Queued for background retry sau 30 phút"
+                    reference: "7.flows/offer-flow.md#case-cnB-system-unavailable"
+                acl_translation_error:
+                  summary: ACL Translation Failed
+                  value:
+                    code: "ACL_TRANSLATION_FAILED"
+                    message: "Không thể translate Candidate model sang Employee model"
+                    details:
+                      candidate_rr_id: "CRR-000001"
+                      error: "Schema mismatch: missing field 'employee_code'"
+                      retry_policy:
+                        strategy: "fixed_delay"
+                        max_attempts: 3
+                        delays: ["500ms", "2s", "10s"]
+                      next_action: "Queued for manual review"
+                    reference: "7.flows/offer-flow.md#case-candidatetransfer-acl-translation-failed"
+
+components:
+  schemas:
+    # === Request Schemas ===
+
+    CreateOfferRequest:
+      type: object
+      description: Request payload để tạo Offer mới
+      required:
+        - candidate_rr_id
+        - application_id
+        - request_id
+        - salary
+        - deadline
+      properties:
+        candidate_rr_id:
+          type: string
+          description: Candidate RR ID
+          pattern: "^CRR-\\d{6}$"
+          example: "CRR-000001"
+        application_id:
+          type: string
+          description: Application ID
+          pattern: "^APP-\\d{6}$"
+          example: "APP-000001"
+        request_id:
+          type: string
+          description: Request ID từ Request tuyển dụng
+          pattern: "^REQ-\\d{6}$"
+          example: "REQ-000001"
+        salary:
+          type: number
+          format: float
+          description: Mức lương đề xuất (VND)
+          minimum: 0
+          example: 15000000.0
+        benefits:
+          type: string
+          description: Phúc lợi (mô tả chi tiết)
+          example: "13th month salary, 12 days PTO, health insurance"
+        deadline:
+          type: string
+          format: date-time
+          description: Deadline phản hồi Offer
+          example: "2026-05-15T23:59:59+07:00"
+        template_id:
+          type: string
+          description: Offer Template ID từ library
+          pattern: "^TMPL-[A-Z]+$"
+          example: "TMPL-JUNIOR"
+        reoffer_count:
+          type: integer
+          description: Số lần re-offer (default: 0)
+          minimum: 0
+          maximum: 3
+          default: 0
+        auto_remind_enabled:
+          type: boolean
+          description: Auto remind 24h + 2h trước deadline
+          default: true
+        remind_timing_24h:
+          type: integer
+          description: Thời gian remind 24h trước deadline (phút)
+          minimum: 0
+          maximum: 1440
+          default: 1440
+        remind_timing_2h:
+          type: integer
+          description: Thời gian remind 2h trước deadline (phút)
+          minimum: 0
+          maximum: 120
+          default: 120
+        grace_period_hours:
+          type: integer
+          description: Grace period sau deadline trước auto-reject (giờ)
+          minimum: 0
+          maximum: 168
+          default: 48
+        auto_reject_enabled:
+          type: boolean
+          description: Auto reject sau grace period nếu TA không action
+          default: true
+
+    SendOfferRequest:
+      type: object
+      description: Request payload để gửi Offer cho Candidate
+      required:
+        - email_template_id
+      properties:
+        email_template_id:
+          type: string
+          description: Email template ID cho Offer letter
+          pattern: "^TMPL-OFFER-\\d+$"
+          example: "TMPL-OFFER-001"
+        send_reminders:
+          type: boolean
+          description: Gửi auto-reminders (24h/2h trước deadline)
+          default: true
+
+    AcceptOfferRequest:
+      type: object
+      description: Request payload để accept Offer
+      required:
+        - token
+        - student_id
+      properties:
+        token:
+          type: string
+          description: Unique token từ Accept link trong Offer email
+        student_id:
+          type: string
+          description: Student ID của Candidate
+          pattern: "^STU-\\d{6}$"
+          example: "STU-000001"
+
+    RejectOfferRequest:
+      type: object
+      description: Request payload để reject Offer
+      required:
+        - token
+        - student_id
+      properties:
+        token:
+          type: string
+          description: Unique token từ Reject link trong Offer email
+        student_id:
+          type: string
+          description: Student ID của Candidate
+          pattern: "^STU-\\d{6}$"
+          example: "STU-000001"
+        reason:
+          type: string
+          description: Lý do reject (optional)
+          example: "Accepted another offer with better benefits"
+
+    ScanDocumentsRequest:
+      type: object
+      description: Request payload để scan documents
+      required:
+        - candidate_rr_id
+        - documents
+      properties:
+        candidate_rr_id:
+          type: string
+          description: Candidate RR ID
+          pattern: "^CRR-\\d{6}$"
+          example: "CRR-000001"
+        documents:
+          type: array
+          description: Danh sách documents cần scan
+          items:
+            $ref: "#/components/schemas/DocumentInput"
+
+    TransferCandidateRequest:
+      type: object
+      description: Request payload để transfer Candidate sang CnB
+      properties:
+        candidate_rr_id:
+          type: string
+          description: Candidate RR ID
+          pattern: "^CRR-\\d{6}$"
+          example: "CRR-000001"
+        scan_id:
+          type: string
+          description: Candidate Scan ID
+          pattern: "^OSCN-\\d{6}$"
+          example: "OSCN-000001"
+
+    # === Response Schemas ===
+
+    Offer:
+      type: object
+      description: |
+        Offer - Thư mời nhận việc với salary, benefits, deadline.
+        Student chỉ có Accept/Reject options (không Negotiate).
+
+        ## Lifecycle
+        DRAFT → SENT → ACCEPTED → DocumentsScanned → CandidateTransferred → HIRED
+                          → REJECTED (Student reject)
+                          → EXPIRED (qua deadline) → CANCELLED (sau grace period)
+                          → CANCELLED (TA manually cancel)
+
+        ## Business Rules
+        - **BR-OFR-001**: Offer chỉ được tạo cho Candidates Pass Interview
+        - **BR-OFR-002**: Offer phải matching với Request đã map
+        - **BR-OFR-004**: Auto-Expire khi deadline qua
+        - **BR-OFR-011**: Student chỉ có Accept/Reject options
+
+        ## Reference
+        - Ontology: `5.ontology/offer/offer.yaml`
+        - Glossary: `6.glossary/offer.md`
+      required:
+        - offer_id
+        - application_id
+        - candidate_rr_id
+        - request_id
+        - salary
+        - deadline
+        - status
+        - created_by
+        - created_at
+      properties:
+        offer_id:
+          type: string
+          description: Unique identifier cho Offer
+          pattern: "^OFR-\\d{6}$"
+          example: "OFR-000001"
+        application_id:
+          type: string
+          description: Application ID mà Offer được tạo cho
+          pattern: "^APP-\\d{6}$"
+          example: "APP-000001"
+        candidate_rr_id:
+          type: string
+          description: Candidate RR ID
+          pattern: "^CRR-\\d{6}$"
+          example: "CRR-000001"
+        request_id:
+          type: string
+          description: Request ID từ Request tuyển dụng
+          pattern: "^REQ-\\d{6}$"
+          example: "REQ-000001"
+        salary:
+          type: number
+          format: float
+          description: Mức lương đề xuất (VND)
+          minimum: 0
+          example: 15000000.0
+        benefits:
+          type: string
+          description: Phúc lợi (mô tả chi tiết)
+          example: "13th month salary, 12 days PTO, health insurance"
+        deadline:
+          type: string
+          format: date-time
+          description: Deadline phản hồi Offer
+          example: "2026-05-15T23:59:59+07:00"
+        status:
+          $ref: "#/components/schemas/OfferStatus"
+        template_id:
+          type: string
+          description: Offer Template ID từ library
+          example: "TMPL-JUNIOR"
+        reoffer_count:
+          type: integer
+          description: Số lần re-offer
+          minimum: 0
+          maximum: 3
+          example: 0
+        auto_remind_enabled:
+          type: boolean
+          description: Auto remind enabled
+          example: true
+        remind_timing_24h:
+          type: integer
+          description: Thời gian remind 24h trước deadline (phút)
+          example: 1440
+        remind_timing_2h:
+          type: integer
+          description: Thời gian remind 2h trước deadline (phút)
+          example: 120
+        grace_period_hours:
+          type: integer
+          description: Grace period sau deadline trước auto-reject (giờ)
+          example: 48
+        auto_reject_enabled:
+          type: boolean
+          description: Auto reject enabled
+          example: true
+        created_by:
+          type: string
+          description: User ID tạo Offer (TA)
+          example: "TA-001"
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp tạo Offer
+          example: "2026-03-20T10:30:00+07:00"
+        updated_at:
+          type: string
+          format: date-time
+          description: Timestamp cập nhật Offer
+          example: "2026-03-20T10:35:00+07:00"
+        expired_at:
+          type: string
+          format: date-time
+          description: Timestamp expire Offer
+          nullable: true
+
+    OfferStatus:
+      type: string
+      description: Trạng thái Offer
+      enum:
+        - DRAFT
+        - SENT
+        - ACCEPTED
+        - REJECTED
+        - EXPIRED
+        - CANCELLED
+      x-lifecycle:
+        transitions:
+          DRAFT:
+            - SENT
+            - CANCELLED
+          SENT:
+            - ACCEPTED
+            - REJECTED
+            - EXPIRED
+            - CANCELLED
+          ACCEPTED:
+            - HIRED
+          EXPIRED:
+            - CANCELLED
+        terminal_states:
+          - HIRED
+          - REJECTED
+          - CANCELLED
+
+    OfferResponse:
+      type: object
+      description: |
+        OfferResponse - Phản hồi của Student (Accept/Reject).
+        Student chỉ có Accept/Reject options (không Negotiate).
+
+        ## Business Rules
+        - **BR-OFRSP-001**: OfferResponse chỉ có ACCEPT/REJECT options
+
+        ## Reference
+        - Ontology: `5.ontology/offer/offer-response.yaml`
+        - Glossary: `6.glossary/offer.md`
+      required:
+        - response_id
+        - offer_id
+        - response
+        - response_at
+        - created_by
+        - created_at
+      properties:
+        response_id:
+          type: string
+          description: Unique identifier cho OfferResponse
+          pattern: "^OFRSP-\\d{6}$"
+          example: "OFRSP-000001"
+        offer_id:
+          type: string
+          description: Offer ID mà Student phản hồi
+          pattern: "^OFR-\\d{6}$"
+          example: "OFR-000001"
+        response:
+          $ref: "#/components/schemas/Response"
+        reason:
+          type: string
+          description: Lý do (nếu Reject)
+          nullable: true
+          example: "Accepted another offer with better benefits"
+        response_at:
+          type: string
+          format: date-time
+          description: Thời điểm phản hồi
+          example: "2026-03-20T14:45:00+07:00"
+        created_by:
+          type: string
+          description: Student ID phản hồi
+          pattern: "^STU-\\d{6}$"
+          example: "STU-000001"
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp tạo OfferResponse
+          example: "2026-03-20T14:45:00+07:00"
+
+    Response:
+      type: string
+      description: Phản hồi của Student
+      enum:
+        - ACCEPT
+        - REJECT
+
+    CandidateScan:
+      type: object
+      description: |
+        CandidateScan - Scan documents sau khi Accept Offer.
+
+        ## Business Rules
+        - **BR-OSCN-001**: Scan chỉ được thực hiện sau khi Accept Offer
+
+        ## Reference
+        - Ontology: `5.ontology/offer/candidate-scan.yaml`
+        - Glossary: `6.glossary/offer.md`
+      required:
+        - scan_id
+        - candidate_rr_id
+        - documents
+        - status
+        - scanned_at
+        - created_by
+        - created_at
+      properties:
+        scan_id:
+          type: string
+          description: Unique identifier cho CandidateScan
+          pattern: "^OSCN-\\d{6}$"
+          example: "OSCN-000001"
+        candidate_rr_id:
+          type: string
+          description: Candidate RR ID
+          pattern: "^CRR-\\d{6}$"
+          example: "CRR-000001"
+        documents:
+          type: array
+          description: Danh sách document IDs đã scan
+          items:
+            type: string
+            example: "DOC-001"
+          example: ["DOC-001", "DOC-002", "DOC-003"]
+        status:
+          $ref: "#/components/schemas/ScanStatus"
+        scanned_at:
+          type: string
+          format: date-time
+          description: Thời điểm scan
+          example: "2026-03-20T15:00:00+07:00"
+        created_by:
+          type: string
+          description: User ID thực hiện scan (TA)
+          example: "TA-001"
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp tạo CandidateScan
+          example: "2026-03-20T15:00:00+07:00"
+
+    ScanStatus:
+      type: string
+      description: Trạng thái scan
+      enum:
+        - PENDING
+        - IN_PROGRESS
+        - COMPLETED
+        - FAILED
+
+    CandidateTransfer:
+      type: object
+      description: |
+        CandidateTransfer - Transfer Candidate sang hệ thống CnB.
+        Sau khi Candidate Accept Offer và scan documents xong.
+        Anti-Corruption Layer (ACL) cần thiết để translate sang CnB model.
+
+        ## Business Rules
+        - **BR-OTRF-001**: Transfer chỉ được thực hiện sau khi Accept Offer
+        - **BR-OTRF-002**: Transfer cần ACL để translate sang CnB model
+
+        ## Reference
+        - Ontology: `5.ontology/offer/candidate-transfer.yaml`
+        - Glossary: `6.glossary/offer.md`
+      required:
+        - transfer_id
+        - candidate_rr_id
+        - transferred_at
+        - status
+        - created_by
+        - created_at
+      properties:
+        transfer_id:
+          type: string
+          description: Unique identifier cho CandidateTransfer
+          pattern: "^OTRF-\\d{6}$"
+          example: "OTRF-000001"
+        candidate_rr_id:
+          type: string
+          description: Candidate RR ID
+          pattern: "^CRR-\\d{6}$"
+          example: "CRR-000001"
+        cnb_reference_id:
+          type: string
+          description: Reference ID từ hệ thống CnB (pattern: CNB-YYYY-NNNN)
+          pattern: "^CNB-\\d{4}-\\d{4}$"
+          example: "CNB-2026-0001"
+        transferred_at:
+          type: string
+          format: date-time
+          description: Thời điểm transfer
+          example: "2026-03-20T15:30:00+07:00"
+        status:
+          $ref: "#/components/schemas/TransferStatus"
+        error_message:
+          type: string
+          description: Lý do nếu transfer failed
+          nullable: true
+        created_by:
+          type: string
+          description: System auto tạo
+          example: "SYSTEM"
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp tạo CandidateTransfer
+          example: "2026-03-20T15:30:00+07:00"
+
+    TransferStatus:
+      type: string
+      description: Trạng thái transfer
+      enum:
+        - PENDING
+        - IN_PROGRESS
+        - COMPLETED
+        - FAILED
+        - RETRY
+
+    # === Supporting Schemas ===
+
+    DocumentInput:
+      type: object
+      description: Document input cho scan
+      required:
+        - document_id
+        - document_type
+        - file_name
+        - storage_url
+      properties:
+        document_id:
+          type: string
+          description: Document ID
+          pattern: "^DOC-\\d{3}$"
+          example: "DOC-001"
+        document_type:
+          type: string
+          description: Loại document
+          enum:
+            - CMND
+            - DIPLOMA
+            - HEALTH_RECORD
+            - OTHER
+          example: "CMND"
+        file_name:
+          type: string
+          description: Tên file
+          example: "cmnd_front.jpg"
+        storage_url:
+          type: string
+          format: uri
+          description: URL lưu trữ document
+          example: "https://storage.xtalent.io/docs/DOC-001"
+
+    Error:
+      type: object
+      description: Error response schema
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          description: Error code
+          example: "SALARY_OUT_OF_RANGE"
+        message:
+          type: string
+          description: Error message
+          example: "Salary đề xuất (20000000) ngoài Request range (10000000-15000000)"
+        details:
+          type: object
+          description: Chi tiết lỗi
+          additionalProperties: true
+        suggestion:
+          type: string
+          description: Gợi ý xử lý
+        reference:
+          type: string
+          description: Link đến Flow documentation
+          example: "7.flows/offer-flow.md"
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token authentication
+    apiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API Key authentication
+
+security:
+  - bearerAuth: []
+  - apiKey: []

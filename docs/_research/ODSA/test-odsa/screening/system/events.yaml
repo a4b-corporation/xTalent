@@ -1,0 +1,398 @@
+# Screening Context - Domain Events
+# Generated from lifecycle transitions in ontology
+# Bounded Context: Screening (ATS Module)
+#
+# Event Naming Convention: {Entity}{State}d
+# Example: CandidateRRScreened, CandidateRRShortlisted, FailedApplicantIdentified
+
+openapi: 3.0.3
+info:
+  title: Screening Context - Domain Events
+  description: |
+    Domain events emitted by the Screening Context based on lifecycle transitions.
+
+    ## Event Categories
+    - **CandidateRR Events**: Emitted when Candidate RR state changes
+    - **FailedApplicant Events**: Emitted when Failed Applicant state changes
+    - **Screening Events**: Emitted when Screening decision is made
+
+    ## Event Delivery
+    All events are published to the event bus and can be consumed by:
+    - Downstream contexts (Interview, Assessment, Offer, etc.)
+    - Analytics and reporting systems
+    - Notification services
+
+    ## Event Ordering
+    Events are ordered by `occurredAt` timestamp.
+    Event sourcing pattern is supported for aggregate reconstruction.
+  version: 1.0.0
+
+x-events:
+  # ============================================================================
+  # SCREENING EVENTS
+  # ============================================================================
+
+  ScreeningCompleted:
+    description: |
+      Emitted when a screening decision is completed (Pass or Fail).
+
+      **Trigger:** POST /applications/{id}/screen
+      **Lifecycle Transition:** Application -> Screened
+      **Business Rules:**
+      - BRS-SCR-001: Auto tạo Candidate RR khi Screening = Pass
+      - BRS-SCR-002: KHÔNG tạo Candidate RR khi Screening = Fail
+
+      **Follow-up Events:**
+      - If result=PASS: CandidateRRCreated
+      - If result=FAIL: FailedApplicantIdentified
+    payload:
+      screeningId:
+        type: string
+        pattern: '^SCR-\d{6}$'
+        example: SCR-000001
+      applicationId:
+        type: string
+        pattern: '^APP-\d{6}$'
+        example: APP-000001
+      result:
+        type: string
+        enum: [PASS, FAIL]
+        example: PASS
+      notes:
+        type: string
+        nullable: true
+        example: "Strong candidate with excellent qualifications"
+      decidedBy:
+        type: string
+        pattern: '^USR-\d{6}$'
+        example: USR-000001
+    metadata:
+      aggregateType: Screening
+      aggregateId: SCR-000001
+      eventType: DomainEvent
+      version: "1.0.0"
+
+  ScreeningUpdated:
+    description: |
+      Emitted when a screening record is updated.
+
+      **Trigger:** PUT /screenings/{id}
+      **Lifecycle Transition:** Screening -> Updated
+      **Business Rules:**
+      - BRS-SCR-005: Screening result có thể update trước khi qua vòng sau
+      **Constraints:**
+      - Can only update before application moves to next stage
+    payload:
+      screeningId:
+        type: string
+        pattern: '^SCR-\d{6}$'
+        example: SCR-000001
+      applicationId:
+        type: string
+        pattern: '^APP-\d{6}$'
+        example: APP-000001
+      updatedFields:
+        type: object
+        properties:
+          result:
+            type: string
+            enum: [PASS, FAIL, PENDING]
+          notes:
+            type: string
+      previousValues:
+        type: object
+        description: Previous values before update
+      updatedBy:
+        type: string
+        pattern: '^USR-\d{6}$'
+        example: USR-000001
+    metadata:
+      aggregateType: Screening
+      aggregateId: SCR-000001
+      eventType: DomainEvent
+      version: "1.0.0"
+
+  # ============================================================================
+  # CANDIDATE RR EVENTS
+  # ============================================================================
+
+  CandidateRRScreened:
+    description: |
+      Emitted when a Candidate RR has been created from a passed screening.
+
+      **Trigger:** Auto-created when Screening result = PASS
+      **Lifecycle Transition:** Candidate RR -> Screened (initial state)
+      **Business Rules:**
+      - BRS-CRR-001: Candidate RR chỉ được tạo khi Screening = Pass
+      **Follow-up Events:**
+      - None (this is an initial state event)
+    payload:
+      candidateRrId:
+        type: string
+        pattern: '^CRR-\d{6}$'
+        example: CRR-000001
+      applicationId:
+        type: string
+        pattern: '^APP-\d{6}$'
+        example: APP-000001
+      studentId:
+        type: string
+        pattern: '^STU-\d{6}$'
+        example: STU-000001
+      screeningId:
+        type: string
+        pattern: '^SCR-\d{6}$'
+        example: SCR-000001
+      sourceEvent:
+        type: string
+        pattern: '^EVT-\d{6}$'
+        example: EVT-000001
+      initialStage:
+        type: string
+        enum: [SCREENING]
+        default: SCREENING
+      initialStatus:
+        type: string
+        enum: [ACTIVE]
+        default: ACTIVE
+    metadata:
+      aggregateType: CandidateRR
+      aggregateId: CRR-000001
+      eventType: DomainEvent
+      version: "1.0.0"
+      causation:
+        eventType: ScreeningCompleted
+        aggregateId: SCR-000001
+
+  CandidateRRShortlisted:
+    description: |
+      Emitted when a candidate is shortlisted for next stage.
+
+      **Trigger:** POST /applications/shortlist
+      **Lifecycle Transition:** Candidate RR -> Shortlisted
+      **Business Rules:**
+      - Only candidates with Screening=PASS can be shortlisted
+      **Follow-up Events:**
+      - CandidateRRRanked (optional)
+    payload:
+      candidateRrId:
+        type: string
+        pattern: '^CRR-\d{6}$'
+        example: CRR-000001
+      applicationId:
+        type: string
+        pattern: '^APP-\d{6}$'
+        example: APP-000001
+      studentId:
+        type: string
+        pattern: '^STU-\d{6}$'
+        example: STU-000001
+      shortlistedBy:
+        type: string
+        pattern: '^USR-\d{6}$'
+        example: USR-000001
+      sourceEventId:
+        type: string
+        pattern: '^EVT-\d{6}$'
+        example: EVT-000001
+    metadata:
+      aggregateType: CandidateRR
+      aggregateId: CRR-000001
+      eventType: DomainEvent
+      version: "1.0.0"
+
+  CandidateRRRanked:
+    description: |
+      Emitted when a candidate receives a ranking.
+
+      **Trigger:** POST /candidates/{id}/rank
+      **Lifecycle Transition:** Candidate RR -> Ranked
+      **Business Rules:**
+      - Ranking determines priority for next stages
+      **Consumers:**
+      - Interview Context: Uses ranking to prioritize interview scheduling
+      - Assessment Context: Uses ranking to prioritize test invitations
+    payload:
+      candidateRrId:
+        type: string
+        pattern: '^CRR-\d{6}$'
+        example: CRR-000001
+      applicationId:
+        type: string
+        pattern: '^APP-\d{6}$'
+        example: APP-000001
+      rank:
+        type: integer
+        minimum: 1
+        example: 1
+      notes:
+        type: string
+        nullable: true
+        example: "Top candidate - excellent interview performance"
+      rankedBy:
+        type: string
+        pattern: '^USR-\d{6}$'
+        example: USR-000001
+    metadata:
+      aggregateType: CandidateRR
+      aggregateId: CRR-000001
+      eventType: DomainEvent
+      version: "1.0.0"
+
+  CandidateRRRejected:
+    description: |
+      Emitted when a candidate is rejected.
+
+      **Trigger:** Business process decision
+      **Lifecycle Transition:** Candidate RR -> Rejected
+      **Business Rules:**
+      - BRS-CRR-002: Status cập nhật theo tiến độ pipeline
+      **Follow-up Events:**
+      - None (terminal state)
+    payload:
+      candidateRrId:
+        type: string
+        pattern: '^CRR-\d{6}$'
+        example: CRR-000001
+      applicationId:
+        type: string
+        pattern: '^APP-\d{6}$'
+        example: APP-000001
+      rejectionReason:
+        type: string
+        description: Reason for rejection
+        example: "Did not pass technical assessment"
+      rejectedBy:
+        type: string
+        pattern: '^USR-\d{6}$'
+        example: USR-000001
+    metadata:
+      aggregateType: CandidateRR
+      aggregateId: CRR-000001
+      eventType: DomainEvent
+      version: "1.0.0"
+
+  # ============================================================================
+  # FAILED APPLICANT EVENTS
+  # ============================================================================
+
+  FailedApplicantIdentified:
+    description: |
+      Emitted when a failed applicant record is created.
+
+      **Trigger:** Auto-created when Screening result = FAIL
+      **Lifecycle Transition:** Failed Applicant -> Identified (initial state)
+      **Business Rules:**
+      - BRS-FAIL-001: FailedApplicant chỉ được tạo khi Screening = Fail
+      **Follow-up Events:**
+      - FailedApplicantThanked (optional)
+    payload:
+      failedId:
+        type: string
+        pattern: '^FAIL-\d{6}$'
+        example: FAIL-000001
+      applicationId:
+        type: string
+        pattern: '^APP-\d{6}$'
+        example: APP-000001
+      screeningId:
+        type: string
+        pattern: '^SCR-\d{6}$'
+        example: SCR-000001
+      failReason:
+        type: string
+        enum: [NOT_QUALIFIED, POOR_FIT, INSUFFICIENT_SKILLS, OTHER]
+        nullable: true
+        example: NOT_QUALIFIED
+      endedAt:
+        type: string
+        format: date-time
+        example: "2026-03-21T10:00:00Z"
+    metadata:
+      aggregateType: FailedApplicant
+      aggregateId: FAIL-000001
+      eventType: DomainEvent
+      version: "1.0.0"
+      causation:
+        eventType: ScreeningCompleted
+        aggregateId: SCR-000001
+
+  FailedApplicantThanked:
+    description: |
+      Emitted when a Thank You email is sent to a failed applicant.
+
+      **Trigger:** POST /failed-applicants/{id}/thank-you-email
+      **Lifecycle Transition:** Failed Applicant -> Thanked
+      **Business Rules:**
+      - BRS-FAIL-003: Thank You Letter chỉ được gửi 1 lần per stage
+      **Constraints:**
+      - Can only be sent once per failed applicant
+    payload:
+      failedId:
+        type: string
+        pattern: '^FAIL-\d{6}$'
+        example: FAIL-000001
+      applicationId:
+        type: string
+        pattern: '^APP-\d{6}$'
+        example: APP-000001
+      thankYouSent:
+        type: boolean
+        default: true
+      sentAt:
+        type: string
+        format: date-time
+        example: "2026-03-21T11:00:00Z"
+      templateId:
+        type: string
+        description: Email template used
+        example: TMPL-THANKYOU-001
+      sentBy:
+        type: string
+        pattern: '^USR-\d{6}$'
+        example: USR-000001
+    metadata:
+      aggregateType: FailedApplicant
+      aggregateId: FAIL-000001
+      eventType: DomainEvent
+      version: "1.0.0"
+
+# ============================================================================
+# Event Index
+# ============================================================================
+x-event-index:
+  byAggregate:
+    Screening:
+      - ScreeningCompleted
+      - ScreeningUpdated
+    CandidateRR:
+      - CandidateRRScreened
+      - CandidateRRShortlisted
+      - CandidateRRRanked
+      - CandidateRRRejected
+    FailedApplicant:
+      - FailedApplicantIdentified
+      - FailedApplicantThanked
+
+  byLifecycleTransition:
+    Screening:
+      initial:
+        - CandidateRRScreened
+        - FailedApplicantIdentified
+      processing:
+        - ScreeningCompleted
+        - ScreeningUpdated
+        - CandidateRRShortlisted
+        - CandidateRRRanked
+      terminal:
+        - CandidateRRRejected
+        - FailedApplicantThanked
+
+  byCausation:
+    ScreeningCompleted:
+      causes:
+        - result=PASS -> CandidateRRScreened
+        - result=FAIL -> FailedApplicantIdentified
+    CandidateRRShortlisted:
+      mayCause:
+        - CandidateRRRanked

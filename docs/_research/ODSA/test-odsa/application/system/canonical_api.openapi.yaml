@@ -1,0 +1,971 @@
+openapi: 3.0.3
+info:
+  title: Application Context - Canonical API
+  description: |
+    ODDS System - Application Context API cho ATS (Applicant Tracking System).
+
+    ## Bounded Context: Application
+    Quản lý đơn apply của sinh viên vào các Event/Track.
+
+    ## Resources:
+    - **Applications**: Đơn apply của Student
+    - **Students**: Thông tin sinh viên applicant
+    - **Duplicates**: Record phát hiện ứng viên trùng
+    - **FormFieldValues**: Giá trị form fields động
+    - **QuestionAnswers**: Câu trả lời questions
+    - **Attachments**: Files đính kèm
+
+    ## Lifecycle:
+    DRAFT → SUBMITTED → SCREENING → TEST → INTERVIEW → OFFER → ACCEPTED/REJECTED/WITHDRAWN
+
+    ## Use Cases:
+    - Submit Application
+    - Get Application Status
+    - Update Application Form
+    - Withdraw Application
+    - Upload Attachment
+  version: 1.0.0
+  contact:
+    name: xTalent ATS Team
+    url: https://docs.xtalent.io/ats/application
+  license:
+    name: Proprietary
+    url: https://xtalent.io/license
+
+servers:
+  - url: https://api.xtalent.io/v1
+    description: Production server
+  - url: https://staging-api.xtalent.io/v1
+    description: Staging server
+  - url: https://dev-api.xtalent.io/v1
+    description: Development server
+
+tags:
+  - name: Applications
+    description: Application operations
+  - name: Students
+    description: Student information operations
+  - name: Attachments
+    description: File attachment operations
+  - name: FormFields
+    description: Dynamic form field operations
+  - name: QuestionAnswers
+    description: Question answer operations
+  - name: Duplicates
+    description: Duplicate detection operations
+
+paths:
+  /applications/submit:
+    post:
+      tags:
+        - Applications
+      summary: Submit Application
+      description: |
+        Submit một application mới cho Student vào Event/Track.
+
+        ## Use Case: UC-APP-001
+        Student submit đơn apply vào một Event/Track cụ thể.
+
+        ## Pre-conditions:
+        - Event đang ACTIVE
+        - Student chưa apply Event này
+
+        ## Post-conditions:
+        - Application được tạo với status = SUBMITTED
+        - Event ApplicationSubmitted được emit
+
+        ## Business Rules:
+        - BRS-APP-001: Chỉ được apply khi Event đang active
+        - BRS-APP-002: Student chỉ được apply 1 Track/Event
+        - BRS-APP-003: Student không được apply cùng 1 Event nhiều lần
+      operationId: submitApplication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitApplicationRequest'
+      responses:
+        '201':
+          description: Application submitted successfully
+          headers:
+            Location:
+              description: URL to the created application resource
+              schema:
+                type: string
+                format: uri
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationResponse'
+        '400':
+          description: Bad request - validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflict - duplicate application or event not active
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Unprocessable - business rule violation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /applications/{applicationId}:
+    get:
+      tags:
+        - Applications
+      summary: Get Application Status
+      description: |
+        Lấy thông tin application và status hiện tại.
+
+        ## Use Case: UC-APP-002
+        Xem thông tin chi tiết application và tracking status.
+      operationId: getApplication
+      parameters:
+        - name: applicationId
+          in: path
+          required: true
+          description: 'Application ID (format: APP-xxxxxx)'
+          schema:
+            type: string
+            pattern: '^APP-\d{6}$'
+      responses:
+        '200':
+          description: Application details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationResponse'
+        '404':
+          description: Application not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /applications/{applicationId}/form:
+    put:
+      tags:
+        - Applications
+      summary: Update Application Form
+      description: |
+        Cập nhật các form fields của application.
+
+        ## Use Case: UC-APP-003
+        Update thông tin form fields động theo Event config.
+
+        ## Notes:
+        - Chỉ update được khi application ở status DRAFT
+        - Required fields phải có giá trị
+      operationId: updateApplicationForm
+      parameters:
+        - name: applicationId
+          in: path
+          required: true
+          description: 'Application ID (format: APP-xxxxxx)'
+          schema:
+            type: string
+            pattern: '^APP-\d{6}$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/FormFieldValueInput'
+      responses:
+        '200':
+          description: Form updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationResponse'
+        '400':
+          description: Bad request - validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Application not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Unprocessable - application not in DRAFT status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /applications/{applicationId}/withdraw:
+    post:
+      tags:
+        - Applications
+      summary: Withdraw Application
+      description: |
+        Rút đơn application.
+
+        ## Use Case: UC-APP-004
+        Student withdraw application đã submit.
+
+        ## Pre-conditions:
+        - Application status khác WITHDRAWN
+
+        ## Post-conditions:
+        - Application status = WITHDRAWN
+        - Event ApplicationWithdrawn được emit
+      operationId: withdrawApplication
+      parameters:
+        - name: applicationId
+          in: path
+          required: true
+          description: 'Application ID (format: APP-xxxxxx)'
+          schema:
+            type: string
+            pattern: '^APP-\d{6}$'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WithdrawRequest'
+      responses:
+        '200':
+          description: Application withdrawn successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationResponse'
+        '404':
+          description: Application not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflict - application already withdrawn
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /applications/{applicationId}/attachments:
+    post:
+      tags:
+        - Attachments
+      summary: Upload Attachment
+      description: |
+        Upload file đính kèm cho application.
+
+        ## Use Case: UC-APP-005
+        Student upload CV, certificates, portfolio khi submit application.
+
+        ## Business Rules:
+        - BRS-ATT-001: File size tối đa 10MB (default, configurable)
+        - BRS-ATT-002: File type phải đúng format cho phép (PDF, DOC, DOCX, XLS, XLSX, PPT, PPTX, JPG, PNG)
+      operationId: uploadAttachment
+      parameters:
+        - name: applicationId
+          in: path
+          required: true
+          description: 'Application ID (format: APP-xxxxxx)'
+          schema:
+            type: string
+            pattern: '^APP-\d{6}$'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: File to upload
+                attachmentType:
+                  $ref: '#/components/schemas/AttachmentTypeEnum'
+                fieldName:
+                  type: string
+                  description: Optional field name for categorization
+              required:
+                - file
+                - attachmentType
+      responses:
+        '201':
+          description: Attachment uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttachmentResponse'
+        '400':
+          description: Bad request - invalid file
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Application not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Payload too large - file exceeds max size
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '415':
+          description: Unsupported media type - invalid file type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /students:
+    post:
+      tags:
+        - Students
+      summary: Create or Update Student
+      description: |
+        Tạo mới hoặc cập nhật thông tin Student.
+
+        ## Use Case: UC-STU-001
+        Student tạo profile hoặc update thông tin cá nhân.
+      operationId: upsertStudent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StudentInput'
+      responses:
+        '201':
+          description: Student created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StudentResponse'
+        '200':
+          description: Student updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StudentResponse'
+        '400':
+          description: Bad request - validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /students/{studentId}:
+    get:
+      tags:
+        - Students
+      summary: Get Student Profile
+      description: |
+        Lấy thông tin profile của Student.
+      operationId: getStudent
+      parameters:
+        - name: studentId
+          in: path
+          required: true
+          description: 'Student ID (format: STU-xxxxxx)'
+          schema:
+            type: string
+            pattern: '^STU-\d{6}$'
+      responses:
+        '200':
+          description: Student profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StudentResponse'
+        '404':
+          description: Student not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /applications/{applicationId}/answers:
+    put:
+      tags:
+        - QuestionAnswers
+      summary: Submit Question Answers
+      description: |
+        Submit câu trả lời cho questions của Track.
+
+        ## Use Case: UC-APP-006
+        Student trả lời các questions khi apply vào Track.
+      operationId: submitQuestionAnswers
+      parameters:
+        - name: applicationId
+          in: path
+          required: true
+          description: 'Application ID (format: APP-xxxxxx)'
+          schema:
+            type: string
+            pattern: '^APP-\d{6}$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/QuestionAnswerInput'
+      responses:
+        '200':
+          description: Answers submitted successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/QuestionAnswerResponse'
+        '400':
+          description: Bad request - validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Application not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    # === Request Schemas ===
+
+    SubmitApplicationRequest:
+      type: object
+      description: Request payload để submit application
+      properties:
+        event_id:
+          type: string
+          description: Event ID mà Student apply vào
+        track_id:
+          type: string
+          description: Track ID mà Student apply vào
+        student_id:
+          type: string
+          description: Student ID người apply
+          pattern: '^STU-\d{6}$'
+        form_field_values:
+          type: array
+          description: Dynamic form field values
+          items:
+            $ref: '#/components/schemas/FormFieldValueInput'
+        question_answers:
+          type: array
+          description: Question answers for Track
+          items:
+            $ref: '#/components/schemas/QuestionAnswerInput'
+        attachment_ids:
+          type: array
+          description: List of attachment IDs to associate
+          items:
+            type: string
+            pattern: '^ATT-\d{6}$'
+      required:
+        - event_id
+        - track_id
+        - student_id
+
+    WithdrawRequest:
+      type: object
+      description: Request payload để withdraw application
+      properties:
+        reason:
+          type: string
+          description: Lý do withdraw
+          maxLength: 500
+        withdraw_at:
+          type: string
+          format: date-time
+          description: 'Thời điểm withdraw (default: now)'
+
+    # === Input Schemas ===
+
+    StudentInput:
+      type: object
+      description: Input schema cho Student
+      properties:
+        student_id:
+          type: string
+          description: Student ID (auto-generated if not provided)
+          pattern: '^STU-\d{6}$'
+        full_name:
+          type: string
+          description: Họ và tên đầy đủ
+        email:
+          type: string
+          format: email
+          description: Email liên lệ
+          pattern: '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        phone:
+          type: string
+          description: Số điện thoại
+          pattern: '^\+?[0-9]{10,15}$'
+        date_of_birth:
+          type: string
+          format: date
+          description: Ngày sinh
+        gender:
+          $ref: '#/components/schemas/GenderEnum'
+        university:
+          type: string
+          description: Trường đại học
+        major:
+          type: string
+          description: Chuyên ngành học
+        gpa:
+          type: number
+          format: float
+          description: Điểm GPA (0.0-4.0)
+          minimum: 0.0
+          maximum: 4.0
+        graduation_year:
+          type: integer
+          description: Năm tốt nghiệp dự kiến
+          minimum: 2020
+          maximum: 2030
+        address:
+          type: string
+          description: Địa chỉ liên lạc
+      required:
+        - full_name
+        - email
+        - phone
+        - date_of_birth
+        - university
+        - major
+
+    FormFieldValueInput:
+      type: object
+      description: Input schema cho FormFieldValue
+      properties:
+        field_name:
+          type: string
+          description: Tên field
+        field_label:
+          type: string
+          description: Label hiển thị
+        field_type:
+          $ref: '#/components/schemas/FieldTypeEnum'
+        field_value:
+          type: string
+          description: Giá trị của field
+        is_required:
+          type: boolean
+          description: Field có bắt buộc không
+      required:
+        - field_name
+        - field_label
+        - field_type
+        - field_value
+
+    QuestionAnswerInput:
+      type: object
+      description: Input schema cho QuestionAnswer
+      properties:
+        question_id:
+          type: string
+          description: Question ID từ QuestionSet
+        question_text:
+          type: string
+          description: Nội dung câu hỏi
+        question_type:
+          $ref: '#/components/schemas/QuestionTypeEnum'
+        answer_text:
+          type: string
+          description: Câu trả lời
+      required:
+        - question_id
+        - question_text
+        - question_type
+        - answer_text
+
+    # === Response Schemas ===
+
+    ApplicationResponse:
+      type: object
+      description: Response schema cho Application
+      properties:
+        application_id:
+          type: string
+          description: Unique identifier cho Application
+          pattern: '^APP-\d{6}$'
+        event_id:
+          type: string
+          description: Event ID mà Student apply vào
+        track_id:
+          type: string
+          description: Track ID mà Student apply vào
+        student:
+          $ref: '#/components/schemas/StudentSummary'
+        status:
+          $ref: '#/components/schemas/ApplicationLifecycleEnum'
+        submitted_at:
+          type: string
+          format: date-time
+          description: Thời điểm submit application
+        form_field_values:
+          type: array
+          description: Dynamic form field values
+          items:
+            $ref: '#/components/schemas/FormFieldValue'
+        question_answers:
+          type: array
+          description: Question answers
+          items:
+            $ref: '#/components/schemas/QuestionAnswer'
+        attachments:
+          type: array
+          description: Attachments
+          items:
+            $ref: '#/components/schemas/AttachmentSummary'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    StudentResponse:
+      type: object
+      description: Response schema cho Student
+      properties:
+        student_id:
+          type: string
+          description: Unique identifier cho Student
+          pattern: '^STU-\d{6}$'
+        full_name:
+          type: string
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+        date_of_birth:
+          type: string
+          format: date
+        gender:
+          $ref: '#/components/schemas/GenderEnum'
+        university:
+          type: string
+        major:
+          type: string
+        gpa:
+          type: number
+          format: float
+        graduation_year:
+          type: integer
+        address:
+          type: string
+        applications:
+          type: array
+          description: List of applications by this student
+          items:
+            $ref: '#/components/schemas/ApplicationSummary'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    AttachmentResponse:
+      type: object
+      description: Response schema cho Attachment
+      properties:
+        attachment_id:
+          type: string
+          description: Unique identifier cho Attachment
+          pattern: '^ATT-\d{6}$'
+        application_id:
+          type: string
+          description: Application ID mà attachment thuộc về
+        file_name:
+          type: string
+        file_type:
+          type: string
+        file_size:
+          type: integer
+          description: Kích thước file (bytes)
+        file_url:
+          type: string
+          format: uri
+        attachment_type:
+          $ref: '#/components/schemas/AttachmentTypeEnum'
+        upload_status:
+          $ref: '#/components/schemas/UploadStatusEnum'
+        uploaded_by:
+          type: string
+        uploaded_at:
+          type: string
+          format: date-time
+
+    QuestionAnswerResponse:
+      type: object
+      description: Response schema cho QuestionAnswer
+      properties:
+        answer_id:
+          type: string
+          description: Unique identifier cho QuestionAnswer
+          pattern: '^ANS-\d{6}$'
+        application_id:
+          type: string
+        question_id:
+          type: string
+        question_text:
+          type: string
+        question_type:
+          $ref: '#/components/schemas/QuestionTypeEnum'
+        answer_text:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    # === Summary Schemas ===
+
+    StudentSummary:
+      type: object
+      properties:
+        student_id:
+          type: string
+        full_name:
+          type: string
+        email:
+          type: string
+        university:
+          type: string
+        major:
+          type: string
+
+    ApplicationSummary:
+      type: object
+      properties:
+        application_id:
+          type: string
+        event_id:
+          type: string
+        track_id:
+          type: string
+        status:
+          $ref: '#/components/schemas/ApplicationLifecycleEnum'
+        submitted_at:
+          type: string
+          format: date-time
+
+    AttachmentSummary:
+      type: object
+      properties:
+        attachment_id:
+          type: string
+        file_name:
+          type: string
+        file_type:
+          type: string
+        file_size:
+          type: integer
+        attachment_type:
+          $ref: '#/components/schemas/AttachmentTypeEnum'
+        file_url:
+          type: string
+          format: uri
+
+    # === Entity Schemas ===
+
+    FormFieldValue:
+      type: object
+      properties:
+        field_value_id:
+          type: string
+        application_id:
+          type: string
+        field_name:
+          type: string
+        field_label:
+          type: string
+        field_type:
+          $ref: '#/components/schemas/FieldTypeEnum'
+        field_value:
+          type: string
+        is_required:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    QuestionAnswer:
+      type: object
+      properties:
+        answer_id:
+          type: string
+        application_id:
+          type: string
+        question_id:
+          type: string
+        question_text:
+          type: string
+        question_type:
+          $ref: '#/components/schemas/QuestionTypeEnum'
+        answer_text:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    # === Enum Schemas ===
+
+    ApplicationLifecycleEnum:
+      type: string
+      description: Trạng thái Application lifecycle
+      enum:
+        - DRAFT
+        - SUBMITTED
+        - SCREENING
+        - TEST
+        - INTERVIEW
+        - OFFER
+        - ACCEPTED
+        - REJECTED
+        - WITHDRAWN
+
+    GenderEnum:
+      type: string
+      enum:
+        - MALE
+        - FEMALE
+        - OTHER
+        - PREFER_NOT_TO_SAY
+
+    FieldTypeEnum:
+      type: string
+      enum:
+        - TEXT
+        - LONG_TEXT
+        - NUMBER
+        - DATE
+        - EMAIL
+        - PHONE
+        - DROPDOWN
+        - RADIO
+        - CHECKBOX
+        - FILE
+
+    QuestionTypeEnum:
+      type: string
+      enum:
+        - SHORT_TEXT
+        - LONG_TEXT
+        - SINGLE_CHOICE
+        - MULTIPLE_CHOICE
+        - YES_NO
+
+    AttachmentTypeEnum:
+      type: string
+      enum:
+        - CV
+        - CERTIFICATE
+        - PORTFOLIO
+        - TRANSCRIPT
+        - OTHER
+
+    UploadStatusEnum:
+      type: string
+      enum:
+        - PENDING
+        - COMPLETED
+        - FAILED
+        - DELETED
+
+    MatchTypeEnum:
+      type: string
+      enum:
+        - PHONE
+        - STUDENT_ID
+        - EMAIL
+        - BOTH
+
+    DuplicateStatusEnum:
+      type: string
+      enum:
+        - PENDING
+        - REVIEWING
+        - RESOLVED
+        - IGNORED
+
+    ResolutionMethodEnum:
+      type: string
+      enum:
+        - REMOVE
+        - MERGE
+        - NO_ACTION
+
+    # === Error Schemas ===
+
+    Error:
+      type: object
+      description: Error response schema
+      properties:
+        code:
+          type: string
+          description: Error code
+        message:
+          type: string
+          description: Human-readable error message
+        details:
+          type: array
+          description: Additional error details
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+        timestamp:
+          type: string
+          format: date-time
+        path:
+          type: string
+      required:
+        - code
+        - message
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token authentication
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API Key authentication
+
+security:
+  - bearerAuth: []
+  - apiKeyAuth: []

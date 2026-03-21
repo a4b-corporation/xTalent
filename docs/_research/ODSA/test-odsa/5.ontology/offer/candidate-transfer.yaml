@@ -1,0 +1,156 @@
+id: https://xtalent.io/ontology/ats/offer/candidate-transfer
+name: candidate_transfer_ontology
+version: "1.0.0"
+description: "CandidateTransfer - Transfer Candidate sang hệ thống CnB"
+
+prefixes:
+  xt: https://xtalent.io/ontology/
+  oracle: https://oracle.com/hcm/
+  sap: https://successfactors.sap.com/
+  workday: https://workday.com/
+
+default_range: string
+
+slots:
+  # --- Identifier ---
+  transfer_id:
+    description: "Unique identifier cho CandidateTransfer"
+    identifier: true
+    required: true
+    pattern: "^OTRF-\\d{6}$"
+    annotations:
+      example: "OTRF-000001"
+
+  # --- Core Fields ---
+  candidate_rr_id:
+    description: "Candidate RR ID"
+    required: true
+    annotations:
+      reference: "CandidateRR.candidate_rr_id"
+
+  cnb_reference_id:
+    description: "Reference ID từ hệ thống CnB"
+    required: false
+
+  transferred_at:
+    description: "Thời điểm transfer"
+    range: datetime
+    required: true
+
+  status:
+    description: "Trạng thái transfer"
+    range: TransferStatusEnum
+    required: true
+
+  error_message:
+    description: "Lý do nếu transfer failed"
+    required: false
+
+  # --- Audit Fields ---
+  created_by:
+    description: "System auto tạo"
+    required: true
+
+  created_at:
+    description: "Timestamp tạo CandidateTransfer"
+    range: datetime
+    required: true
+
+classes:
+  CandidateTransfer:
+    description: |
+      CandidateTransfer - Transfer Candidate sang hệ thống CnB.
+      Sau khi Candidate Accept Offer và scan documents xong.
+      Anti-Corruption Layer (ACL) cần thiết để translate sang CnB model.
+      Aggregate Root trong Offer context.
+
+    annotations:
+      oracle_hcm_term: "CandidateTransfer"
+      sap_term: "CandidateTransfer"
+      workday_term: "CandidateTransfer"
+      disambiguation: "xTalent: CandidateTransfer = Transfer sang CnB. Oracle: CandidateTransfer. SAP: CandidateTransfer. Workday: CandidateTransfer. Xem docs.xtalent.io/ats/offer/candidate-transfer."
+
+      module: "ats"
+      sub_module: "offer"
+      version: "1.0.0"
+      bounded_context: "Offer"
+      aggregate_root: true
+
+      ouroboros_evolution:
+        iteration: "1.0.0"
+        parent_version: null
+        evaluation_status: "pending"
+        last_evaluated: null
+        evolution_notes: "Initial version"
+
+      validation_hooks:
+        odds_system_builder:
+          required_for: true
+          validates: ["table_generation", "fk_references"]
+
+      see_also: "https://docs.xtalent.io/ats/offer/candidate-transfer"
+
+    slots:
+      - transfer_id
+      - candidate_rr_id
+      - cnb_reference_id
+      - transferred_at
+      - status
+      - error_message
+      - created_by
+      - created_at
+
+    slot_usage:
+      transfer_id:
+        required: true
+        identifier: true
+
+      candidate_rr_id:
+        required: true
+
+      transferred_at:
+        required: true
+
+      status:
+        required: true
+
+      created_by:
+        required: true
+
+      created_at:
+        required: true
+
+    rules:
+      - description: "BRS-OTRF-001: Transfer chỉ được thực hiện sau khi Accept Offer"
+        preconditions:
+          slot_conditions:
+            candidate_rr_id:
+              slot_value_conditions:
+                offer_response:
+                  equals_string: "ACCEPT"
+        postconditions:
+          slot_conditions: {}
+
+      - description: "BRS-OTRF-002: Transfer cần ACL để translate sang CnB model"
+        preconditions:
+          slot_conditions: {}
+        postconditions:
+          slot_conditions:
+            acl_translation_required:
+              equals_boolean: true
+
+# === ENUMS ===
+enums:
+  TransferStatusEnum:
+    description: "Trạng thái transfer"
+    permissible_values:
+      PENDING:
+        description: "Chưa transfer"
+      IN_PROGRESS:
+        description: "Đang transfer"
+      COMPLETED:
+        description: "Hoàn tất"
+      FAILED:
+        description: "Thất bại"
+      RETRY:
+        description: "Đang retry"

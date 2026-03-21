@@ -1,0 +1,980 @@
+openapi: "3.0.3"
+info:
+  title: Test Session System - Canonical API
+  description: |
+    Canonical API for Test Session Bounded Context.
+
+    This API provides the system-level contract for Test Session operations,
+    derived directly from the ontology and use cases.
+
+    ## Derived From
+    - **Ontology:** 5.ontology/test-session/*.yaml
+      - TestSlot: https://xtalent.io/ontology/ats/test-session/test-slot
+      - Schedule: https://xtalent.io/ontology/ats/test-session/schedule
+      - CheckIn: https://xtalent.io/ontology/ats/test-session/checkin
+      - Grading: https://xtalent.io/ontology/ats/test-session/grading
+
+    ## Business Rules
+    - **BR-TSLOT-001:** Auto gen SBD khi Student được chia vào slot (pattern: SBD-\\d{8})
+    - **BR-TSLOT-002:** Student chỉ được đổi lịch 1 lần (lần thứ 2 chỉ còn Yes/No options)
+    - **BR-TSLOT-003:** Auto allocate slots theo FCFS với Time Window (configurable)
+    - **BR-TSLOT-004:** Time Window để confirm slot (default: 24h, configurable 1-72h)
+    - **BR-TSCH-001:** Chỉ Managers được phân công mới chấm được Onsite Test
+
+    ## Aggregate Roots
+    - TestSlot: Aggregate Root - manages test slot lifecycle
+    - Schedule: Aggregate Root - manages student schedule
+    - CheckIn: Aggregate Root - records check-in events
+    - Grading: Aggregate Root - manages grading results
+
+    ## Lifecycle States
+    - TestSlot: DRAFT → ACTIVE → IN_PROGRESS → COMPLETED | CANCELLED
+    - Schedule: PENDING → CONFIRMED → RESCHEDULED → COMPLETED | NO_SHOW | CANCELLED
+
+    ## Traceability
+    | Endpoint | Use Case | Ontology |
+    |----------|----------|----------|
+    | POST /test-slots/create | Create TestSlot | TestSlot |
+    | POST /test-slots/{id}/publish | Publish TestSlot | TestSlot.status |
+    | POST /test-slots/{id}/allocate | Auto-allocate Candidates | TestSlot.auto_allocate_enabled |
+    | POST /schedules/{id}/confirm | Confirm Schedule | Schedule.status |
+    | POST /schedules/{id}/reschedule | Reschedule Test | Schedule.change_count |
+    | GET /schedules/{id} | Get Schedule | Schedule |
+    | POST /checkins | Record Check-in | CheckIn |
+    | POST /gradings | Complete Grading | Grading |
+
+  version: "1.0.0"
+  contact:
+    name: TA Operations Team + Tech Lead
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://api.xtalent.io/ats/v1
+    description: Production server
+  - url: https://staging-api.xtalent.io/ats/v1
+    description: Staging server
+
+tags:
+  - name: TestSlots
+    description: TestSlot aggregate operations (ca thi Onsite)
+  - name: Schedules
+    description: Schedule aggregate operations (lịch thi của Student)
+  - name: CheckIns
+    description: CheckIn aggregate operations (record check-in)
+  - name: Gradings
+    description: Grading aggregate operations (kết quả chấm thi)
+
+paths:
+  # ============================================
+  # TestSlot Endpoints
+  # ============================================
+
+  /test-slots/create:
+    post:
+      tags:
+        - TestSlots
+      summary: Create TestSlot
+      description: |
+        Create a new TestSlot (ca thi Onsite).
+
+        **Preconditions:**
+        - User must have TA role
+        - Event must exist
+
+        **Postconditions:**
+        - TestSlot created with status=DRAFT
+        - TestSlotCreated event published
+
+        **Business Rules:**
+        - BR-TSLOT-001: Auto gen SBD when student allocated
+        - BR-TSLOT-003: Auto allocate using FCFS with Time Window
+
+      operationId: createTestSlot
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTestSlotRequest'
+      responses:
+        '201':
+          description: TestSlot created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TestSlotResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /test-slots/{id}/publish:
+    post:
+      tags:
+        - TestSlots
+      summary: Publish TestSlot
+      description: |
+        Publish a TestSlot to make it available for registration.
+
+        **Preconditions:**
+        - TestSlot must exist
+        - TestSlot status must be DRAFT
+
+        **Postconditions:**
+        - TestSlot status changed to ACTIVE
+        - TestSlotPublished event published
+
+        **State Transition:**
+        - DRAFT → ACTIVE
+
+      operationId: publishTestSlot
+      parameters:
+        - $ref: '#/components/parameters/TestIdPathParam'
+      responses:
+        '200':
+          description: TestSlot published successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TestSlotResponse'
+        '400':
+          description: Invalid state transition
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: TestSlot not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /test-slots/{id}/allocate:
+    post:
+      tags:
+        - TestSlots
+      summary: Auto-allocate Candidates to TestSlot
+      description: |
+        Auto-allocate candidates to this TestSlot using FCFS (First-Come-First-Served)
+        strategy with configurable Time Window.
+
+        **Preconditions:**
+        - TestSlot must exist
+        - TestSlot status must be ACTIVE
+        - auto_allocate_enabled must be true
+
+        **Postconditions:**
+        - Schedules created for allocated candidates
+        - SBD generated for each allocation (pattern: SBD-\\d{8})
+        - ScheduleAllocated event published
+
+        **Business Rules:**
+        - BR-TSLOT-001: Auto gen SBD when allocated
+        - BR-TSLOT-003: FCFS allocation with Time Window
+        - BR-TSLOT-004: Time Window default 24h (configurable 1-72h)
+
+      operationId: allocateTestSlot
+      parameters:
+        - $ref: '#/components/parameters/TestIdPathParam'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AllocateTestSlotRequest'
+      responses:
+        '200':
+          description: Allocation completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AllocationResultResponse'
+        '400':
+          description: Allocation not enabled or slot full
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: TestSlot not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ============================================
+  # Schedule Endpoints
+  # ============================================
+
+  /schedules/{id}:
+    get:
+      tags:
+        - Schedules
+      summary: Get Schedule
+      description: |
+        Retrieve a Schedule by ID.
+
+        **Preconditions:**
+        - Schedule must exist
+
+      operationId: getSchedule
+      parameters:
+        - $ref: '#/components/parameters/ScheduleIdPathParam'
+      responses:
+        '200':
+          description: Schedule retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduleResponse'
+        '404':
+          description: Schedule not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /schedules/{id}/confirm:
+    post:
+      tags:
+        - Schedules
+      summary: Confirm Schedule
+      description: |
+        Confirm student's participation in the scheduled test.
+
+        **Preconditions:**
+        - Schedule must exist
+        - Schedule status must be PENDING
+        - Current time must be before confirm_deadline
+
+        **Postconditions:**
+        - Schedule status changed to CONFIRMED
+        - confirmed_at timestamp set
+        - ScheduleConfirmed event published
+
+        **State Transition:**
+        - PENDING → CONFIRMED
+
+      operationId: confirmSchedule
+      parameters:
+        - $ref: '#/components/parameters/ScheduleIdPathParam'
+      responses:
+        '200':
+          description: Schedule confirmed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduleResponse'
+        '400':
+          description: Invalid state transition or deadline passed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Schedule not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /schedules/{id}/reschedule:
+    post:
+      tags:
+        - Schedules
+      summary: Reschedule Test
+      description: |
+        Request to reschedule a test (Student can only change once).
+
+        **Preconditions:**
+        - Schedule must exist
+        - Schedule status must be CONFIRMED
+        - change_count must be 0 (max 1 change allowed)
+
+        **Postconditions:**
+        - Schedule status changed to RESCHEDULED
+        - change_count incremented
+        - New Schedule created for new slot
+        - ScheduleRescheduled event published
+
+        **Business Rules:**
+        - BR-TSLOT-002: Student can only change schedule once
+        - Second change request: YES/NO options only
+
+      operationId: rescheduleSchedule
+      parameters:
+        - $ref: '#/components/parameters/ScheduleIdPathParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RescheduleRequest'
+      responses:
+        '200':
+          description: Schedule rescheduled successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduleResponse'
+        '400':
+          description: Maximum reschedule limit reached
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Schedule not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ============================================
+  # CheckIn Endpoints
+  # ============================================
+
+  /checkins:
+    post:
+      tags:
+        - CheckIns
+      summary: Record Check-in
+      description: |
+        Record a student's check-in for their scheduled test.
+
+        **Preconditions:**
+        - Schedule must exist and be CONFIRMED
+        - Check-in must be within grace_period_minutes (configurable)
+
+        **Postconditions:**
+        - CheckIn record created
+        - CheckInRecorded event published
+
+        **Business Rules:**
+        - Late check-in allowed with reason (within grace period)
+        - Photo capture optional (configurable)
+
+      operationId: recordCheckIn
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCheckInRequest'
+      responses:
+        '201':
+          description: Check-in recorded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckInResponse'
+        '400':
+          description: Invalid schedule or past grace period
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Schedule not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ============================================
+  # Grading Endpoints
+  # ============================================
+
+  /gradings:
+    post:
+      tags:
+        - Gradings
+      summary: Complete Grading
+      description: |
+        Submit grading result for a completed test.
+
+        **Preconditions:**
+        - Schedule must exist and be COMPLETED
+        - Grader must be in the assigned graders list for the TestSlot
+        - Grading must not already exist for this Schedule
+
+        **Postconditions:**
+        - Grading record created
+        - GradingCompleted event published
+
+        **Business Rules:**
+        - BR-TSCH-001: Only assigned Managers can grade
+
+      operationId: completeGrading
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateGradingRequest'
+      responses:
+        '201':
+          description: Grading completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GradingResponse'
+        '400':
+          description: Invalid schedule or grader not authorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Grader not in assigned graders list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Schedule not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Grading already exists for this schedule
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+# ============================================
+# Components
+# ============================================
+
+components:
+  # --------------------------------------------
+  # Parameters
+  # --------------------------------------------
+  parameters:
+    TestIdPathParam:
+      name: id
+      in: path
+      required: true
+      description: TestSlot ID (pattern: TSLOT-\\d{6})
+      schema:
+        type: string
+        pattern: '^TSLOT-\d{6}$'
+        example: 'TSLOT-000001'
+
+    ScheduleIdPathParam:
+      name: id
+      in: path
+      required: true
+      description: Schedule ID (pattern: TSCH-\\d{6})
+      schema:
+        type: string
+        pattern: '^TSCH-\d{6}$'
+        example: 'TSCH-000001'
+
+  # --------------------------------------------
+  # Schemas
+  # --------------------------------------------
+  schemas:
+    # --- TestSlot Schemas ---
+
+    CreateTestSlotRequest:
+      type: object
+      required:
+        - event_id
+        - slot_name
+        - test_date
+        - start_time
+        - end_time
+        - location
+        - room
+        - max_capacity
+      properties:
+        event_id:
+          type: string
+          description: Event ID that this TestSlot belongs to
+          example: 'EVT-000001'
+        slot_name:
+          type: string
+          description: Name of the test slot
+          example: 'Ca thi Sáng - Phòng A'
+        description:
+          type: string
+          description: Optional description
+          example: 'Ca thi dành cho ứng viên Backend'
+        test_date:
+          type: string
+          format: date
+          description: Test date
+          example: '2026-04-15'
+        start_time:
+          type: string
+          format: time
+          description: Start time
+          example: '08:00:00'
+        end_time:
+          type: string
+          format: time
+          description: End time
+          example: '10:00:00'
+        location:
+          type: string
+          description: Test location
+          example: 'Văn phòng Hồ Chí Minh'
+        room:
+          type: string
+          description: Test room
+          example: 'Phòng Meeting A'
+        max_capacity:
+          type: integer
+          minimum: 1
+          description: Maximum capacity
+          example: 20
+        graders:
+          type: array
+          items:
+            type: string
+          description: List of grader IDs
+          example: ['USR-001', 'USR-002']
+        auto_allocate_enabled:
+          type: boolean
+          default: false
+          description: Enable auto-allocation
+        time_window_hours:
+          type: integer
+          minimum: 1
+          maximum: 72
+          default: 24
+          description: Time window for confirmation (hours)
+        max_retry:
+          type: integer
+          minimum: 0
+          maximum: 5
+          default: 2
+          description: Max retry attempts for auto-allocation
+        notify_ta_on_allocate:
+          type: boolean
+          default: false
+          description: Notify TA on successful allocation
+        photo_capture_required:
+          type: boolean
+          default: false
+          description: Require photo capture at check-in
+        grace_period_minutes:
+          type: integer
+          minimum: 0
+          maximum: 60
+          default: 15
+          description: Grace period for late check-in (minutes)
+
+    TestSlotResponse:
+      type: object
+      properties:
+        slot_id:
+          type: string
+          pattern: '^TSLOT-\d{6}$'
+          example: 'TSLOT-000001'
+        event_id:
+          type: string
+          example: 'EVT-000001'
+        slot_name:
+          type: string
+          example: 'Ca thi Sáng - Phòng A'
+        description:
+          type: string
+          example: 'Ca thi dành cho ứng viên Backend'
+        test_date:
+          type: string
+          format: date
+          example: '2026-04-15'
+        start_time:
+          type: string
+          format: time
+          example: '08:00:00'
+        end_time:
+          type: string
+          format: time
+          example: '10:00:00'
+        location:
+          type: string
+          example: 'Văn phòng Hồ Chí Minh'
+        room:
+          type: string
+          example: 'Phòng Meeting A'
+        max_capacity:
+          type: integer
+          example: 20
+        current_capacity:
+          type: integer
+          example: 15
+        graders:
+          type: array
+          items:
+            type: string
+          example: ['USR-001', 'USR-002']
+        status:
+          $ref: '#/components/schemas/TestSlotStatusEnum'
+        auto_allocate_enabled:
+          type: boolean
+          example: true
+        time_window_hours:
+          type: integer
+          example: 24
+        max_retry:
+          type: integer
+          example: 2
+        notify_ta_on_allocate:
+          type: boolean
+          example: true
+        photo_capture_required:
+          type: boolean
+          example: false
+        grace_period_minutes:
+          type: integer
+          example: 15
+        created_by:
+          type: string
+          example: 'USR-TA-001'
+        created_at:
+          type: string
+          format: date-time
+          example: '2026-03-20T10:00:00Z'
+        updated_at:
+          type: string
+          format: date-time
+          example: '2026-03-20T14:30:00Z'
+
+    TestSlotStatusEnum:
+      type: string
+      enum:
+        - DRAFT
+        - ACTIVE
+        - IN_PROGRESS
+        - COMPLETED
+        - CANCELLED
+      description: TestSlot lifecycle status
+
+    AllocateTestSlotRequest:
+      type: object
+      properties:
+        candidate_ids:
+          type: array
+          items:
+            type: string
+          description: Optional list of candidate IDs to allocate
+          example: ['CAND-001', 'CAND-002']
+        force:
+          type: boolean
+          default: false
+          description: Force allocation even if over capacity
+
+    AllocationResultResponse:
+      type: object
+      properties:
+        slot_id:
+          type: string
+          example: 'TSLOT-000001'
+        allocated_count:
+          type: integer
+          example: 15
+        failed_count:
+          type: integer
+          example: 2
+        remaining_capacity:
+          type: integer
+          example: 5
+        schedules:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScheduleReference'
+        failures:
+          type: array
+          items:
+            $ref: '#/components/schemas/AllocationFailure'
+
+    ScheduleReference:
+      type: object
+      properties:
+        schedule_id:
+          type: string
+          example: 'TSCH-000001'
+        candidate_rr_id:
+          type: string
+          example: 'CAND-001'
+        sbd:
+          type: string
+          pattern: '^SBD-\d{8}$'
+          example: 'SBD-20260001'
+
+    AllocationFailure:
+      type: object
+      properties:
+        candidate_rr_id:
+          type: string
+          example: 'CAND-003'
+        reason:
+          type: string
+          example: 'Slot full'
+
+    # --- Schedule Schemas ---
+
+    ScheduleResponse:
+      type: object
+      properties:
+        schedule_id:
+          type: string
+          pattern: '^TSCH-\d{6}$'
+          example: 'TSCH-000001'
+        slot_id:
+          type: string
+          example: 'TSLOT-000001'
+        application_id:
+          type: string
+          example: 'APP-000001'
+        candidate_rr_id:
+          type: string
+          example: 'CAND-001'
+        sbd:
+          type: string
+          pattern: '^SBD-\d{8}$'
+          example: 'SBD-20260001'
+        status:
+          $ref: '#/components/schemas/ScheduleStatusEnum'
+        confirmed_at:
+          type: string
+          format: date-time
+          example: '2026-03-21T09:00:00Z'
+        confirm_deadline:
+          type: string
+          format: date-time
+          example: '2026-03-22T08:00:00Z'
+        change_count:
+          type: integer
+          example: 0
+        created_by:
+          type: string
+          example: 'SYSTEM'
+        created_at:
+          type: string
+          format: date-time
+          example: '2026-03-20T10:00:00Z'
+        updated_at:
+          type: string
+          format: date-time
+          example: '2026-03-21T09:00:00Z'
+
+    ScheduleStatusEnum:
+      type: string
+      enum:
+        - PENDING
+        - CONFIRMED
+        - RESCHEDULED
+        - COMPLETED
+        - NO_SHOW
+        - CANCELLED
+      description: Schedule lifecycle status
+
+    RescheduleRequest:
+      type: object
+      required:
+        - reason
+      properties:
+        reason:
+          type: string
+          description: Reason for rescheduling
+          example: 'Conflict with school exam'
+        preferred_slot_id:
+          type: string
+          description: Optional preferred new slot ID
+          pattern: '^TSLOT-\d{6}$'
+          example: 'TSLOT-000002'
+
+    # --- CheckIn Schemas ---
+
+    CreateCheckInRequest:
+      type: object
+      required:
+        - schedule_id
+        - actual_time
+        - checked_in_by
+      properties:
+        schedule_id:
+          type: string
+          pattern: '^TSCH-\d{6}$'
+          description: Schedule ID to check in
+          example: 'TSCH-000001'
+        actual_time:
+          type: string
+          format: date-time
+          description: Actual check-in time
+          example: '2026-04-15T07:50:00Z'
+        is_late:
+          type: boolean
+          default: false
+          description: Whether this is a late check-in
+        late_reason:
+          type: string
+          description: Reason for late check-in (required if late)
+          example: 'Traffic jam'
+        photo_id:
+          type: string
+          description: Photo attachment ID (optional, configurable)
+          example: 'ATT-000001'
+        checked_in_by:
+          type: string
+          description: User ID performing check-in (TA or self)
+          example: 'USR-TA-001'
+
+    CheckInResponse:
+      type: object
+      properties:
+        check_in_id:
+          type: string
+          pattern: '^TCI-\d{6}$'
+          example: 'TCI-000001'
+        schedule_id:
+          type: string
+          example: 'TSCH-000001'
+        actual_time:
+          type: string
+          format: date-time
+          example: '2026-04-15T07:50:00Z'
+        is_late:
+          type: boolean
+          example: false
+        late_reason:
+          type: string
+          example: null
+        photo_id:
+          type: string
+          example: 'ATT-000001'
+        checked_in_by:
+          type: string
+          example: 'USR-TA-001'
+        created_at:
+          type: string
+          format: date-time
+          example: '2026-04-15T07:50:00Z'
+
+    # --- Grading Schemas ---
+
+    CreateGradingRequest:
+      type: object
+      required:
+        - schedule_id
+        - grader_id
+        - score
+        - pass_fail
+      properties:
+        schedule_id:
+          type: string
+          pattern: '^TSCH-\d{6}$'
+          description: Schedule ID to grade
+          example: 'TSCH-000001'
+        grader_id:
+          type: string
+          description: Grader (Manager) ID
+          example: 'USR-MGR-001'
+        score:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 100.0
+          description: Score (0.0-100.0)
+          example: 85.5
+        comment:
+          type: string
+          description: Grader's comment
+          example: 'Good problem-solving skills, needs improvement in communication'
+        pass_fail:
+          $ref: '#/components/schemas/PassFailEnum'
+
+    GradingResponse:
+      type: object
+      properties:
+        grading_id:
+          type: string
+          pattern: '^TGRD-\d{6}$'
+          example: 'TGRD-000001'
+        schedule_id:
+          type: string
+          example: 'TSCH-000001'
+        grader_id:
+          type: string
+          example: 'USR-MGR-001'
+        score:
+          type: number
+          format: float
+          example: 85.5
+        comment:
+          type: string
+          example: 'Good problem-solving skills'
+        pass_fail:
+          $ref: '#/components/schemas/PassFailEnum'
+        graded_at:
+          type: string
+          format: date-time
+          example: '2026-04-15T11:00:00Z'
+        created_by:
+          type: string
+          example: 'USR-MGR-001'
+        created_at:
+          type: string
+          format: date-time
+          example: '2026-04-15T11:00:00Z'
+
+    PassFailEnum:
+      type: string
+      enum:
+        - PASS
+        - FAIL
+        - NEEDS_DISCUSSION
+      description: Grading result
+
+    # --- Error Schemas ---
+
+    ErrorResponse:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          description: Error code
+          example: 'INVALID_STATE_TRANSITION'
+        message:
+          type: string
+          description: Error message
+          example: 'Cannot confirm schedule: deadline has passed'
+        details:
+          type: object
+          description: Additional error details
+          additionalProperties: true
+
+  # --------------------------------------------
+  # Responses
+  # --------------------------------------------
+  responses:
+    BadRequest:
+      description: Bad request (validation error, business rule violation)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    Unauthorized:
+      description: Unauthorized (missing or invalid authentication)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'

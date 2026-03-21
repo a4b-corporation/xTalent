@@ -1,0 +1,641 @@
+# Test Session Context - Domain Events
+# Generated from Ontology: https://xtalent.io/ontology/ats/test-session
+# Events derived from lifecycle state transitions
+
+# ============================================
+# EVENT NAMING CONVENTION
+# ============================================
+# Format: {Entity}{State}d
+# Example: TestSlotCreated, ScheduleConfirmed, GradingCompleted
+#
+# Traceability:
+# - Every event maps to a lifecycle transition
+# - Every event includes aggregate root ID
+# - Every event includes timestamp and correlation ID
+
+# ============================================
+# TESTSLOT EVENTS
+# Source: 5.ontology/test-session/test-slot.yaml
+# Lifecycle: DRAFT → ACTIVE → IN_PROGRESS → COMPLETED | CANCELLED
+# ============================================
+
+events:
+  # --------------------------------------------
+  # TestSlot Events
+  # --------------------------------------------
+
+  - name: TestSlotCreated
+    description: |
+      Published when a new TestSlot is created.
+      Initial state: DRAFT
+    source:
+      ontology: 5.ontology/test-session/test-slot.yaml
+      class: TestSlot
+      lifecycle_transition: null → DRAFT
+    payload:
+      slot_id:
+        type: string
+        pattern: '^TSLOT-\d{6}$'
+        description: Unique identifier for TestSlot
+      event_id:
+        type: string
+        description: Event ID that this TestSlot belongs to
+      slot_name:
+        type: string
+        description: Name of the test slot
+      status:
+        type: string
+        enum: [DRAFT]
+        description: Initial status
+      created_by:
+        type: string
+        description: User ID who created the TestSlot (TA)
+      created_at:
+        type: string
+        format: date-time
+        description: Timestamp when TestSlot was created
+    consumers:
+      - Test Session API (for indexing)
+      - Notification Service (for audit logging)
+
+  - name: TestSlotPublished
+    description: |
+      Published when a TestSlot is published and becomes available for registration.
+      State transition: DRAFT → ACTIVE
+    source:
+      ontology: 5.ontology/test-session/test-slot.yaml
+      class: TestSlot
+      lifecycle_transition: DRAFT → ACTIVE
+    payload:
+      slot_id:
+        type: string
+        pattern: '^TSLOT-\d{6}$'
+        description: Unique identifier for TestSlot
+      slot_name:
+        type: string
+        description: Name of the test slot
+      test_date:
+        type: string
+        format: date
+        description: Date of the test
+      start_time:
+        type: string
+        format: time
+        description: Test start time
+      end_time:
+        type: string
+        format: time
+        description: Test end time
+      location:
+        type: string
+        description: Test location
+      room:
+        type: string
+        description: Test room
+      max_capacity:
+        type: integer
+        description: Maximum capacity
+      auto_allocate_enabled:
+        type: boolean
+        description: Whether auto-allocation is enabled
+      time_window_hours:
+        type: integer
+        description: Time window for confirmation (hours)
+      published_at:
+        type: string
+        format: date-time
+        description: Timestamp when TestSlot was published
+      published_by:
+        type: string
+        description: User ID who published the TestSlot
+    consumers:
+      - Test Session API (for status update)
+      - Allocation Service (to trigger auto-allocation)
+      - Notification Service (to notify candidates)
+
+  - name: TestSlotAllocationStarted
+    description: |
+      Published when auto-allocation process begins for a TestSlot.
+      Triggered by: TestSlotPublished or manual allocation trigger
+    source:
+      ontology: 5.ontology/test-session/test-slot.yaml
+      class: TestSlot
+      lifecycle_transition: ACTIVE (ongoing)
+    payload:
+      slot_id:
+        type: string
+        pattern: '^TSLOT-\d{6}$'
+        description: Unique identifier for TestSlot
+      allocation_strategy:
+        type: string
+        enum: [FCFS]
+        description: Allocation strategy used
+      candidate_count:
+        type: integer
+        description: Number of candidates to allocate
+      triggered_by:
+        type: string
+        description: User ID or SYSTEM that triggered allocation
+      triggered_at:
+        type: string
+        format: date-time
+        description: Timestamp when allocation started
+    consumers:
+      - Test Session API (for progress tracking)
+      - Audit Service (for allocation audit trail)
+
+  - name: TestSlotAllocationCompleted
+    description: |
+      Published when auto-allocation process completes for a TestSlot.
+    source:
+      ontology: 5.ontology/test-session/test-slot.yaml
+      class: TestSlot
+      lifecycle_transition: ACTIVE (ongoing)
+    payload:
+      slot_id:
+        type: string
+        pattern: '^TSLOT-\d{6}$'
+        description: Unique identifier for TestSlot
+      allocated_count:
+        type: integer
+        description: Number of candidates successfully allocated
+      failed_count:
+        type: integer
+        description: Number of candidates that failed to allocate
+      remaining_capacity:
+        type: integer
+        description: Remaining capacity in the slot
+      completed_at:
+        type: string
+        format: date-time
+        description: Timestamp when allocation completed
+    consumers:
+      - Test Session API (for capacity update)
+      - Notification Service (to notify TA of completion)
+
+  - name: TestSlotInProgress
+    description: |
+      Published when a TestSlot transitions to IN_PROGRESS.
+      State transition: ACTIVE → IN_PROGRESS
+    source:
+      ontology: 5.ontology/test-session/test-slot.yaml
+      class: TestSlot
+      lifecycle_transition: ACTIVE → IN_PROGRESS
+    payload:
+      slot_id:
+        type: string
+        pattern: '^TSLOT-\d{6}$'
+        description: Unique identifier for TestSlot
+      test_date:
+        type: string
+        format: date
+        description: Date of the test
+      start_time:
+        type: string
+        format: time
+        description: Test start time
+      started_at:
+        type: string
+        format: date-time
+        description: Timestamp when TestSlot went in progress
+    consumers:
+      - Test Session API (for status update)
+      - CheckIn Service (to enable check-in operations)
+      - Notification Service (to notify participants)
+
+  - name: TestSlotCompleted
+    description: |
+      Published when a TestSlot is marked as completed.
+      State transition: IN_PROGRESS → COMPLETED
+    source:
+      ontology: 5.ontology/test-session/test-slot.yaml
+      class: TestSlot
+      lifecycle_transition: IN_PROGRESS → COMPLETED
+    payload:
+      slot_id:
+        type: string
+        pattern: '^TSLOT-\d{6}$'
+        description: Unique identifier for TestSlot
+      total_attendees:
+        type: integer
+        description: Total number of candidates who checked in
+      completed_at:
+        type: string
+        format: date-time
+        description: Timestamp when TestSlot was completed
+    consumers:
+      - Test Session API (for status update)
+      - Grading Service (to enable grading operations)
+      - Analytics Service (for completion metrics)
+
+  - name: TestSlotCancelled
+    description: |
+      Published when a TestSlot is cancelled.
+      State transition: DRAFT|ACTIVE → CANCELLED
+    source:
+      ontology: 5.ontology/test-session/test-slot.yaml
+      class: TestSlot
+      lifecycle_transition: DRAFT|ACTIVE → CANCELLED
+    payload:
+      slot_id:
+        type: string
+        pattern: '^TSLOT-\d{6}$'
+        description: Unique identifier for TestSlot
+      previous_status:
+        type: string
+        enum: [DRAFT, ACTIVE]
+        description: Previous status before cancellation
+      cancellation_reason:
+        type: string
+        description: Reason for cancellation
+      cancelled_by:
+        type: string
+        description: User ID who cancelled the TestSlot
+      cancelled_at:
+        type: string
+        format: date-time
+        description: Timestamp when TestSlot was cancelled
+    consumers:
+      - Test Session API (for status update)
+      - Notification Service (to notify affected candidates)
+      - Allocation Service (to release allocated slots)
+
+  # --------------------------------------------
+  # Schedule Events
+  # Source: 5.ontology/test-session/schedule.yaml
+  # Lifecycle: PENDING → CONFIRMED → RESCHEDULED → COMPLETED | NO_SHOW | CANCELLED
+  # --------------------------------------------
+
+  - name: ScheduleAllocated
+    description: |
+      Published when a Schedule is created and a candidate is allocated to a TestSlot.
+      Initial state: PENDING
+      Auto-generates SBD (Số Báo Danh) for the candidate.
+    source:
+      ontology: 5.ontology/test-session/schedule.yaml
+      class: Schedule
+      lifecycle_transition: null → PENDING
+    payload:
+      schedule_id:
+        type: string
+        pattern: '^TSCH-\d{6}$'
+        description: Unique identifier for Schedule
+      slot_id:
+        type: string
+        pattern: '^TSLOT-\d{6}$'
+        description: TestSlot ID allocated to
+      application_id:
+        type: string
+        description: Application ID of the candidate
+      candidate_rr_id:
+        type: string
+        description: Candidate RR ID
+      sbd:
+        type: string
+        pattern: '^SBD-\d{8}$'
+        description: Auto-generated Số Báo Danh (e.g., SBD-20260001)
+      confirm_deadline:
+        type: string
+        format: date-time
+        description: Deadline to confirm participation
+      allocated_at:
+        type: string
+        format: date-time
+        description: Timestamp when allocation occurred
+    consumers:
+      - Test Session API (for schedule creation)
+      - Notification Service (to notify candidate of allocation)
+      - Candidate Service (to update candidate status)
+
+  - name: ScheduleConfirmed
+    description: |
+      Published when a candidate confirms their participation.
+      State transition: PENDING → CONFIRMED
+    source:
+      ontology: 5.ontology/test-session/schedule.yaml
+      class: Schedule
+      lifecycle_transition: PENDING → CONFIRMED
+    payload:
+      schedule_id:
+        type: string
+        pattern: '^TSCH-\d{6}$'
+        description: Unique identifier for Schedule
+      slot_id:
+        type: string
+        pattern: '^TSLOT-\d{6}$'
+        description: TestSlot ID
+      candidate_rr_id:
+        type: string
+        description: Candidate RR ID
+      sbd:
+        type: string
+        pattern: '^SBD-\d{8}$'
+        description: Số Báo Danh
+      confirmed_at:
+        type: string
+        format: date-time
+        description: Timestamp when confirmed
+    consumers:
+      - Test Session API (for status update)
+      - Notification Service (to confirm receipt)
+      - CheckIn Service (to prepare for check-in)
+
+  - name: ScheduleRescheduled
+    description: |
+      Published when a Schedule is rescheduled.
+      State transition: CONFIRMED → RESCHEDULED
+      Business Rule: Student can only reschedule once (change_count max: 1)
+    source:
+      ontology: 5.ontology/test-session/schedule.yaml
+      class: Schedule
+      lifecycle_transition: CONFIRMED → RESCHEDULED
+    payload:
+      schedule_id:
+        type: string
+        pattern: '^TSCH-\d{6}$'
+        description: Unique identifier for Schedule
+      old_slot_id:
+        type: string
+        pattern: '^TSLOT-\d{6}$'
+        description: Previous TestSlot ID
+      new_slot_id:
+        type: string
+        pattern: '^TSLOT-\d{6}$'
+        description: New TestSlot ID
+      change_count:
+        type: integer
+        description: Number of times rescheduled (max 1)
+      reason:
+        type: string
+        description: Reason for rescheduling
+      rescheduled_at:
+        type: string
+        format: date-time
+        description: Timestamp when rescheduled
+      rescheduled_by:
+        type: string
+        description: User ID who requested reschedule
+    consumers:
+      - Test Session API (for status update)
+      - Notification Service (to notify TA and candidate)
+      - Allocation Service (to update slot capacities)
+
+  - name: ScheduleCompleted
+    description: |
+      Published when a Schedule is marked as completed (candidate finished test).
+      State transition: CONFIRMED → COMPLETED
+    source:
+      ontology: 5.ontology/test-session/schedule.yaml
+      class: Schedule
+      lifecycle_transition: CONFIRMED → COMPLETED
+    payload:
+      schedule_id:
+        type: string
+        pattern: '^TSCH-\d{6}$'
+        description: Unique identifier for Schedule
+      slot_id:
+        type: string
+        pattern: '^TSLOT-\d{6}$'
+        description: TestSlot ID
+      candidate_rr_id:
+        type: string
+        description: Candidate RR ID
+      sbd:
+        type: string
+        pattern: '^SBD-\d{8}$'
+        description: Số Báo Danh
+      completed_at:
+        type: string
+        format: date-time
+        description: Timestamp when completed
+    consumers:
+      - Test Session API (for status update)
+      - Grading Service (to enable grading)
+      - Analytics Service (for completion metrics)
+
+  - name: ScheduleNoShow
+    description: |
+      Published when a candidate does not show up for the test.
+      State transition: CONFIRMED → NO_SHOW
+    source:
+      ontology: 5.ontology/test-session/schedule.yaml
+      class: Schedule
+      lifecycle_transition: CONFIRMED → NO_SHOW
+    payload:
+      schedule_id:
+        type: string
+        pattern: '^TSCH-\d{6}$'
+        description: Unique identifier for Schedule
+      slot_id:
+        type: string
+        pattern: '^TSLOT-\d{6}$'
+        description: TestSlot ID
+      candidate_rr_id:
+        type: string
+        description: Candidate RR ID
+      sbd:
+        type: string
+        pattern: '^SBD-\d{8}$'
+        description: Số Báo Danh
+      marked_at:
+        type: string
+        format: date-time
+        description: Timestamp when marked as no-show
+    consumers:
+      - Test Session API (for status update)
+      - Notification Service (to notify candidate)
+      - Analytics Service (for no-show metrics)
+
+  - name: ScheduleCancelled
+    description: |
+      Published when a Schedule is cancelled.
+      State transition: PENDING|CONFIRMED → CANCELLED
+    source:
+      ontology: 5.ontology/test-session/schedule.yaml
+      class: Schedule
+      lifecycle_transition: PENDING|CONFIRMED → CANCELLED
+    payload:
+      schedule_id:
+        type: string
+        pattern: '^TSCH-\d{6}$'
+        description: Unique identifier for Schedule
+      slot_id:
+        type: string
+        pattern: '^TSLOT-\d{6}$'
+        description: TestSlot ID
+      candidate_rr_id:
+        type: string
+        description: Candidate RR ID
+      previous_status:
+        type: string
+        enum: [PENDING, CONFIRMED]
+        description: Previous status
+      cancellation_reason:
+        type: string
+        description: Reason for cancellation
+      cancelled_at:
+        type: string
+        format: date-time
+        description: Timestamp when cancelled
+    consumers:
+      - Test Session API (for status update)
+      - Notification Service (to notify candidate)
+      - Allocation Service (to release slot capacity)
+
+  # --------------------------------------------
+  # CheckIn Events
+  # Source: 5.ontology/test-session/checkin.yaml
+  # CheckIn is an event entity (no lifecycle, single state transition)
+  # --------------------------------------------
+
+  - name: CheckInRecorded
+    description: |
+      Published when a candidate checks in for their test.
+      Records actual check-in time, lateness, and optional photo.
+    source:
+      ontology: 5.ontology/test-session/checkin.yaml
+      class: CheckIn
+      lifecycle_transition: null → RECORDED
+    payload:
+      check_in_id:
+        type: string
+        pattern: '^TCI-\d{6}$'
+        description: Unique identifier for CheckIn
+      schedule_id:
+        type: string
+        pattern: '^TSCH-\d{6}$'
+        description: Schedule ID
+      slot_id:
+        type: string
+        pattern: '^TSLOT-\d{6}$'
+        description: TestSlot ID (denormalized for convenience)
+      candidate_rr_id:
+        type: string
+        description: Candidate RR ID
+      sbd:
+        type: string
+        pattern: '^SBD-\d{8}$'
+        description: Số Báo Danh
+      actual_time:
+        type: string
+        format: date-time
+        description: Actual check-in time
+      is_late:
+        type: boolean
+        description: Whether check-in is late (after grace period)
+      late_reason:
+        type: string
+        nullable: true
+        description: Reason for late check-in (if applicable)
+      photo_id:
+        type: string
+        nullable: true
+        description: Photo attachment ID (if photo capture required)
+      checked_in_by:
+        type: string
+        description: User ID who performed check-in (TA or self)
+      recorded_at:
+        type: string
+        format: date-time
+        description: Timestamp when check-in was recorded
+    consumers:
+      - Test Session API (for check-in tracking)
+      - Notification Service (to notify proctors)
+      - Analytics Service (for attendance metrics)
+
+  # --------------------------------------------
+  # Grading Events
+  # Source: 5.ontology/test-session/grading.yaml
+  # Grading is an event entity (no lifecycle, single state transition)
+  # --------------------------------------------
+
+  - name: GradingCompleted
+    description: |
+      Published when a grader completes grading for a candidate.
+      Includes score, pass/fail decision, and comments.
+    source:
+      ontology: 5.ontology/test-session/grading.yaml
+      class: Grading
+      lifecycle_transition: null → COMPLETED
+    payload:
+      grading_id:
+        type: string
+        pattern: '^TGRD-\d{6}$'
+        description: Unique identifier for Grading
+      schedule_id:
+        type: string
+        pattern: '^TSCH-\d{6}$'
+        description: Schedule ID
+      slot_id:
+        type: string
+        pattern: '^TSLOT-\d{6}$'
+        description: TestSlot ID (denormalized for convenience)
+      candidate_rr_id:
+        type: string
+        description: Candidate RR ID
+      sbd:
+        type: string
+        pattern: '^SBD-\d{8}$'
+        description: Số Báo Danh
+      grader_id:
+        type: string
+        description: Grader (Manager) ID
+      score:
+        type: number
+        format: float
+        minimum: 0.0
+        maximum: 100.0
+        description: Score (0.0-100.0)
+      pass_fail:
+        type: string
+        enum: [PASS, FAIL, NEEDS_DISCUSSION]
+        description: Pass/Fail result
+      comment:
+        type: string
+        nullable: true
+        description: Grader's comments
+      graded_at:
+        type: string
+        format: date-time
+        description: Timestamp when grading was completed
+    consumers:
+      - Test Session API (for grading result)
+      - Offer Service (to trigger offer process if PASS)
+      - Notification Service (to notify candidate of result)
+      - Analytics Service (for grading metrics)
+
+# ============================================
+# EVENT CORRELATION
+# ============================================
+# Correlation patterns for event-driven workflows:
+#
+# 1. Allocation Flow:
+#    TestSlotPublished → TestSlotAllocationStarted → ScheduleAllocated → TestSlotAllocationCompleted
+#
+# 2. Confirmation Flow:
+#    ScheduleAllocated → ScheduleConfirmed → TestSlotInProgress → CheckInRecorded → ScheduleCompleted
+#
+# 3. Grading Flow:
+#    ScheduleCompleted → GradingCompleted → (Offer Service: OfferCreated)
+#
+# 4. Reschedule Flow:
+#    ScheduleConfirmed → ScheduleRescheduled → ScheduleAllocated (new slot)
+#
+# 5. Exception Flows:
+#    - ScheduleNoShow: When candidate doesn't check in
+#    - ScheduleCancelled: When schedule is cancelled before test
+#    - TestSlotCancelled: When entire slot is cancelled
+
+# ============================================
+# EVENT VERSIONING
+# ============================================
+# Schema version: 1.0.0
+# All events follow CloudEvents specification (https://cloudevents.io/)
+# Required CloudEvents attributes:
+# - id: Unique event ID (UUID v4)
+# - source: URI identifying the event source (e.g., "xtalent.io/ats/test-session")
+# - specversion: "1.0"
+# - type: Event name (e.g., "TestSlotCreated")
+# - datacontenttype: "application/json"
+# - time: ISO 8601 timestamp
+# - data: Event payload as defined above

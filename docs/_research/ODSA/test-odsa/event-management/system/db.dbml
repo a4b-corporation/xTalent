@@ -1,0 +1,208 @@
+// Event Management Context - Database Schema
+// Generated from Ontology: 5.ontology/event-management/
+// Traceability: Every table maps to an ontology concept
+
+// ============================================================================
+// ENUMS
+// ============================================================================
+
+Enum EventLifecycle {
+  DRAFT       // Event đang ở trạng thái nháp, chưa publish
+  PUBLISHED   // Event đã publish lên Career Site, đang nhận applications
+  ACTIVE      // Event đang diễn ra
+  COMPLETED   // Event đã hoàn tất
+  CANCELLED   // Event đã hủy
+}
+
+Enum ProgramType {
+  FRESHER     // Event tuyển dụng Fresher
+  JOB_FAIR    // Ngày hội việc làm
+  UNIWEEK     // Tuần lễ đại học
+  INTERN      // Tuyển dụng thực tập sinh
+}
+
+Enum TrackStatus {
+  ACTIVE      // Track đang active
+  INACTIVE    // Track không còn active
+  CANCELLED   // Track đã hủy
+}
+
+Enum WorkflowStatus {
+  DRAFT       // Workflow đang nháp
+  ACTIVE      // Workflow đang active
+  INACTIVE    // Workflow không còn active
+}
+
+Enum WorkflowRound {
+  SCREENING     // Vòng screening applications
+  ONLINE_TEST   // Vòng Online Test (Assignment)
+  ONSITE_TEST   // Vòng Onsite Test
+  INTERVIEW     // Vòng Phỏng vấn
+  OFFER         // Vòng Offer
+}
+
+Enum QuestionSetStatus {
+  DRAFT     // Đang nháp
+  ACTIVE    // Đang active
+  INACTIVE  // Không còn active
+}
+
+Enum QuestionType {
+  SHORT_TEXT      // Câu trả lời ngắn (text)
+  LONG_TEXT       // Câu trả lời dài (essay)
+  SINGLE_CHOICE   // Chọn 1 đáp án
+  MULTIPLE_CHOICE // Chọn nhiều đáp án
+  YES_NO          // Có/Không
+  FILE_UPLOAD     // Upload file
+}
+
+Enum RequestType {
+  FRESHER    // Tuyển dụng Fresher
+  INTERN     // Tuyển dụng Intern
+  EMPLOYEE   // Tuyển dụng nhân viên chính thức
+  CONTRACTOR // Tuyển dụng contractor
+}
+
+Enum RequestMappingStatus {
+  ACTIVE     // Mapping đang active
+  INACTIVE   // Mapping không còn active
+  CANCELLED  // Mapping đã hủy
+}
+
+// ============================================================================
+// TABLES
+// ============================================================================
+
+// -----------------------------------------------------------------------------
+// Table: event
+// Ontology Concept: Event (5.ontology/event-management/event.yaml)
+// Aggregate Root: true
+// Bounded Context: Event Management
+// -----------------------------------------------------------------------------
+Table event {
+  "event_id"            varchar(20)      [pk]                         // Pattern: ^EVT-\d{6}$, Example: EVT-000001
+  "name"                varchar(255)     [not null]                   // Tên Event tuyển dụng
+  "description"         text             [null]                       // Mô tả chi tiết Event
+  "program_type"        ProgramType      [not null]                   // Loại chương trình (Fresher, Job Fair, Uniweek, etc.)
+  "lifecycle_state"     EventLifecycle   [not null, default: DRAFT]   // Trạng thái lifecycle của Event
+  "start_date"          date             [not null]                   // Ngày bắt đầu Event
+  "end_date"            date             [not null]                   // Ngày kết thúc Event
+  "application_start"   datetime         [not null]                   // Thời gian bắt đầu nhận applications
+  "application_end"     datetime         [not null]                   // Thời gian kết thúc nhận applications
+  "created_by"          varchar(50)      [not null]                   // User ID tạo Event (TA), ref: User.user_id
+  "created_at"          datetime         [not null, default: now()]   // Timestamp tạo Event
+  "updated_at"          datetime         [null]                       // Timestamp cập nhật Event
+}
+
+// -----------------------------------------------------------------------------
+// Table: track
+// Ontology Concept: Track (5.ontology/event-management/track.yaml)
+// Aggregate Root: true
+// Bounded Context: Event Management
+// -----------------------------------------------------------------------------
+Table track {
+  "track_id"          varchar(20)      [pk]                         // Pattern: ^TRK-\d{6}$, Example: TRK-000001
+  "event_id"          varchar(20)      [not null, ref: > event.event_id]  // Event ID mà Track thuộc về
+  "track_name"        varchar(255)     [not null]                   // Tên Track (VD: Game Development, Game Design, Game QC)
+  "description"       text             [null]                       // Mô tả Track
+  "question_set_id"   varchar(20)      [null, ref: > question_set.question_set_id]  // Bộ câu hỏi áp dụng cho Track
+  "status"            TrackStatus      [not null, default: ACTIVE]  // Trạng thái Track
+  "created_by"        varchar(50)      [not null]                   // User ID tạo Track, ref: User.user_id
+  "created_at"        datetime         [not null, default: now()]   // Timestamp tạo Track
+  "updated_at"        datetime         [null]                       // Timestamp cập nhật Track
+}
+
+// -----------------------------------------------------------------------------
+// Table: workflow
+// Ontology Concept: Workflow (5.ontology/event-management/workflow.yaml)
+// Aggregate Root: true
+// Bounded Context: Event Management
+// -----------------------------------------------------------------------------
+Table workflow {
+  "workflow_id"     varchar(20)      [pk]                         // Pattern: ^WFL-\d{6}$, Example: WFL-000001
+  "event_id"        varchar(20)      [not null, unique, ref: > event.event_id]  // Event ID mà Workflow áp dụng
+  "workflow_name"   varchar(255)     [not null]                   // Tên Workflow
+  "status"          WorkflowStatus   [not null, default: DRAFT]   // Trạng thái Workflow
+  "skipped_rounds"  text             [null]                       // JSON array: danh sách các vòng được skip
+  "created_by"      varchar(50)      [not null]                   // User ID tạo Workflow, ref: User.user_id
+  "created_at"      datetime         [not null, default: now()]   // Timestamp tạo Workflow
+  "updated_at"      datetime         [null]                       // Timestamp cập nhật Workflow
+}
+
+// -----------------------------------------------------------------------------
+// Table: workflow_round
+// Ontology Concept: Workflow.rounds (5.ontology/event-management/workflow.yaml)
+// Child entity of Workflow
+// -----------------------------------------------------------------------------
+Table workflow_round {
+  "id"              varchar(20)      [pk]                         // Unique ID cho round
+  "workflow_id"     varchar(20)      [not null, ref: > workflow.workflow_id]  // Workflow cha
+  "round_order"     integer          [not null]                   // Thứ tự vòng trong workflow
+  "round_type"      WorkflowRound    [not null]                   // Loại vòng tuyển dụng
+  "round_config"    text             [null]                       // JSON: cấu hình chi tiết cho vòng
+  "created_at"      datetime         [not null, default: now()]   // Timestamp tạo
+}
+
+// -----------------------------------------------------------------------------
+// Table: question_set
+// Ontology Concept: QuestionSet (5.ontology/event-management/question-set.yaml)
+// Aggregate Root: true
+// Bounded Context: Event Management
+// -----------------------------------------------------------------------------
+Table question_set {
+  "question_set_id" varchar(20)      [pk]                         // Pattern: ^QST-\d{6}$, Example: QST-000001
+  "set_name"        varchar(255)     [not null]                   // Tên bộ câu hỏi
+  "description"     text             [null]                       // Mô tả bộ câu hỏi
+  "status"          QuestionSetStatus [not null, default: DRAFT]  // Trạng thái bộ câu hỏi
+  "created_by"      varchar(50)      [not null]                   // User ID tạo QuestionSet, ref: User.user_id
+  "created_at"      datetime         [not null, default: now()]   // Timestamp tạo QuestionSet
+  "updated_at"      datetime         [null]                       // Timestamp cập nhật QuestionSet
+}
+
+// -----------------------------------------------------------------------------
+// Table: question
+// Ontology Concept: QuestionSet.questions (5.ontology/event-management/question-set.yaml)
+// Child entity of QuestionSet
+// -----------------------------------------------------------------------------
+Table question {
+  "question_id"     varchar(20)      [pk]                         // Unique ID cho question
+  "question_set_id" varchar(20)      [not null, ref: > question_set.question_set_id]  // QuestionSet cha
+  "question_order"  integer          [not null]                   // Thứ tự câu hỏi trong bộ
+  "question_type"   QuestionType     [not null]                   // Loại câu hỏi
+  "question_text"   text             [not null]                   // Nội dung câu hỏi
+  "options"         text             [null]                       // JSON: đáp án cho SINGLE_CHOICE/MULTIPLE_CHOICE
+  "is_required"     boolean          [not null, default: true]    // Có bắt buộc không
+  "created_at"      datetime         [not null, default: now()]   // Timestamp tạo
+}
+
+// -----------------------------------------------------------------------------
+// Table: request_mapping
+// Ontology Concept: RequestMapping (5.ontology/event-management/request-mapping.yaml)
+// Aggregate Root: true
+// Bounded Context: Event Management
+// -----------------------------------------------------------------------------
+Table request_mapping {
+  "mapping_id"      varchar(20)        [pk]                         // Pattern: ^MAP-\d{6}$, Example: MAP-000001
+  "event_id"        varchar(20)        [not null, ref: > event.event_id]  // Event ID mà Request được map vào
+  "request_id"      varchar(50)        [not null, unique]           // Request ID từ hệ thống tuyển dụng (external)
+  "request_type"    RequestType        [not null]                   // Loại Request (Fresher, Intern, Employee, etc.)
+  "position_title"  varchar(255)       [not null]                   // Tên vị trí tuyển dụng
+  "department"      varchar(100)       [null]                       // Phòng ban tuyển dụng
+  "hiring_manager"  varchar(50)        [null, ref: > User.user_id]  // Hiring Manager của Request
+  "headcount"       integer            [not null, min: 1]           // Số lượng tuyển
+  "status"          RequestMappingStatus [not null, default: ACTIVE]  // Trạng thái mapping
+  "mapped_at"       datetime           [not null]                   // Thời điểm map Request vào Event
+  "created_by"      varchar(50)        [not null]                   // User ID tạo mapping, ref: User.user_id
+  "created_at"      datetime           [not null, default: now()]   // Timestamp tạo mapping
+}
+
+// ============================================================================
+// RELATIONSHIPS (Summary)
+// ============================================================================
+// event 1--n track              : Một Event có nhiều Track
+// event 1--1 workflow            : Một Event có một Workflow configuration
+// workflow 1--n workflow_round   : Một Workflow có nhiều vòng tuyển dụng
+// question_set 1--n question     : Một QuestionSet có nhiều câu hỏi
+// track n--1 question_set        : Một Track áp dụng một QuestionSet
+// event 1--n request_mapping     : Một Event có nhiều Request mappings
+// ============================================================================

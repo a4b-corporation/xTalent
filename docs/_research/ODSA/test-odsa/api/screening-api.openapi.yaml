@@ -1,0 +1,1024 @@
+openapi: "3.0.3"
+info:
+  title: Screening API
+  description: |
+    API cho Screening Bounded Context - Review applications, decide Pass/Fail,
+    tạo Candidate RR, track failed applicants.
+
+    **Derived từ:**
+    - Glossary: `6.glossary/screening.md`
+    - Flow: `7.flows/screening-flow.md`
+    - Ontology: `5.ontology/screening/*.yaml`
+
+    **Business Context:**
+    Screening là quá trình TA (Talent Acquisition) review hồ sơ ứng viên và quyết định
+    ứng viên có Pass vào vòng tiếp theo hay không. Khi Pass, hệ thống auto tạo Candidate RR
+    để theo dõi candidate xuyên suốt pipeline tuyển dụng.
+
+  version: "1.0.0"
+  contact:
+    name: TA Operations Team + Tech Lead
+  license:
+    name: Internal Use Only
+
+servers:
+  - url: https://api.xtalent.io/ats/v1
+    description: Production server
+  - url: https://staging-api.xtalent.io/ats/v1
+    description: Staging server
+
+tags:
+  - name: Screening
+    description: Operations related to screening decisions (Pass/Fail) for applications
+  - name: Candidate RR
+    description: Operations related to Candidate Record in ATS pipeline
+  - name: Failed Applicants
+    description: Operations related to tracking failed applicants
+
+paths:
+  /applications/{applicationId}/screen:
+    post:
+      tags:
+        - Screening
+      summary: Complete Screening Decision
+      description: |
+        Thực hiện screening decision (Pass/Fail) cho một Application.
+
+        **Use Case:** CompleteScreening
+        **Actor:** TA (Talent Acquisition)
+        **Preconditions:**
+        - Application tồn tại với status = SCREENING
+        - TA có quyền screening (được phân công hoặc có role TA_ADMIN/TA_MANAGER)
+        - Application đã qua Duplicate check (Duplicate.status = RESOLVED hoặc IGNORED)
+        - CandidateRR chưa tồn tại cho application này
+
+        **Postconditions (Pass):**
+        - Screening record được tạo với result = PASS
+        - CandidateRR được auto tạo (status = ACTIVE, current_stage = ONLINE_TEST)
+        - Events published: ScreeningCompleted, CandidateRRCreated
+        - Application.status chuyển sang TEST
+
+        **Postconditions (Fail):**
+        - Screening record được tạo với result = FAIL
+        - FailedApplicant record được auto tạo
+        - Events published: ScreeningCompleted, FailedApplicantRecorded
+        - Thank You email được gửi cho candidate
+
+        **Flow Reference:** `7.flows/screening-flow.md`
+
+      operationId: completeScreening
+      parameters:
+        - name: applicationId
+          in: path
+          required: true
+          description: Application ID được screening (Format: APP-XXXXXX)
+          schema:
+            type: string
+            pattern: "^APP-\\d{6}$"
+            example: "APP-000001"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompleteScreeningRequest"
+            examples:
+              pass_example:
+                summary: Screening Result = PASS
+                value:
+                  result: PASS
+                  notes: "CV tốt, phù hợp yêu cầu. Ứng viên có kinh nghiệm React và Node.js"
+              fail_example:
+                summary: Screening Result = FAIL
+                value:
+                  result: FAIL
+                  failReason: INSUFFICIENT_SKILLS
+                  notes: "Kỹ năng lập trình chưa đạt yêu cầu cho vị trí Fresher"
+      responses:
+        "200":
+          description: Screening completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScreeningResponse"
+              examples:
+                pass_response:
+                  summary: Screening Pass - Candidate RR Created
+                  value:
+                    screening:
+                      screeningId: SCR-000001
+                      applicationId: APP-000001
+                      result: PASS
+                      decidedBy: TA-001
+                      decidedAt: "2026-04-20T14:30:00Z"
+                      notes: "CV tốt, phù hợp yêu cầu"
+                      createdAt: "2026-04-20T14:30:00Z"
+                    candidateRr:
+                      candidateRrId: CRR-000001
+                      applicationId: APP-000001
+                      studentId: STU-000001
+                      status: ACTIVE
+                      currentStage: ONLINE_TEST
+                      sourceEvent: EVT-000001
+                      screeningId: SCR-000001
+                      createdAt: "2026-04-20T14:30:05Z"
+                    events:
+                      - eventName: ScreeningCompleted
+                        eventId: EVT-SCR-000001
+                      - eventName: CandidateRRCreated
+                        eventId: EVT-CRR-000001
+                fail_response:
+                  summary: Screening Fail - Failed Applicant Recorded
+                  value:
+                    screening:
+                      screeningId: SCR-000002
+                      applicationId: APP-000002
+                      result: FAIL
+                      decidedBy: TA-001
+                      decidedAt: "2026-04-20T15:00:00Z"
+                      notes: "Kỹ năng không đạt"
+                      createdAt: "2026-04-20T15:00:00Z"
+                    failedApplicant:
+                      failedId: FAIL-000001
+                      applicationId: APP-000002
+                      screeningId: SCR-000002
+                      failReason: INSUFFICIENT_SKILLS
+                      thankYouSent: true
+                      endedAt: "2026-04-20T15:00:00Z"
+                      createdAt: "2026-04-20T15:00:05Z"
+                    events:
+                      - eventName: ScreeningCompleted
+                        eventId: EVT-SCR-000002
+                      - eventName: FailedApplicantRecorded
+                        eventId: EVT-FAIL-000001
+        "400":
+          description: Bad Request - Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                invalid_result:
+                  summary: Invalid result value
+                  value:
+                    errorCode: INVALID_SCREENING_RESULT
+                    message: "result phải là PASS hoặc FAIL"
+                    details:
+                      field: result
+                      providedValue: INVALID
+                      allowedValues:
+                        - PASS
+                        - FAIL
+                missing_fail_reason:
+                  summary: Missing failReason when result = FAIL
+                  value:
+                    errorCode: MISSING_FAIL_REASON
+                    message: "failReason là bắt buộc khi result = FAIL"
+                    details:
+                      field: failReason
+                      allowedValues:
+                        - INSUFFICIENT_SKILLS
+                        - CULTURE_MISMATCH
+                        - EXPERIENCE_GAP
+                        - NOT_QUALIFIED
+                        - POOR_FIT
+                        - OTHER
+        "403":
+          description: Forbidden - TA không có quyền screening
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                errorCode: SCREENING_FORBIDDEN
+                message: "Bạn không có quyền thực hiện screening cho application này"
+                details:
+                  reason: "TA không được phân công hoặc không có role required (TA_ADMIN/TA_MANAGER)"
+                  requiredRoles:
+                    - TA_ADMIN
+                    - TA_MANAGER
+                  assignedTaOnly: true
+        "404":
+          description: Not Found - Application không tồn tại
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                errorCode: APPLICATION_NOT_FOUND
+                message: "Application APP-000001 không tồn tại"
+                details:
+                  applicationId: APP-000001
+        "409":
+          description: Conflict - Application đã qua vòng Screening
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                errorCode: APPLICATION_ALREADY_SCREENED
+                message: "Application đã qua vòng Screening, không thể cập nhật"
+                details:
+                  applicationId: APP-000001
+                  currentStatus: TEST
+                  requiredStatus: SCREENING
+                  resolution: "Liên hệ Admin để xử lý ngoại lệ"
+        "422":
+          description: Unprocessable Entity - CandidateRR đã tồn tại (duplicate)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                errorCode: CANDIDATE_RR_ALREADY_EXISTS
+                message: "Candidate đã có RR từ trước (CRR-XXXX), cập nhật current_stage nếu cần"
+                details:
+                  existingCandidateRrId: CRR-000001
+                  studentId: STU-000001
+                  suggestedAction: MERGE_OR_UPDATE
+      x-flow-reference: "7.flows/screening-flow.md"
+
+  /screenings/{screeningId}:
+    get:
+      tags:
+        - Screening
+      summary: Get Screening Details
+      description: |
+        Lấy thông tin chi tiết của một Screening record.
+
+        **Use Case:** ViewScreening
+        **Actor:** TA, Admin
+
+      operationId: getScreening
+      parameters:
+        - name: screeningId
+          in: path
+          required: true
+          description: Screening ID (Format: SCR-XXXXXX)
+          schema:
+            type: string
+            pattern: "^SCR-\\d{6}$"
+            example: "SCR-000001"
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScreeningResponse"
+              example:
+                screening:
+                  screeningId: SCR-000001
+                  applicationId: APP-000001
+                  result: PASS
+                  decidedBy: TA-001
+                  decidedAt: "2026-04-20T14:30:00Z"
+                  notes: "CV tốt, phù hợp yêu cầu"
+                  createdAt: "2026-04-20T14:30:00Z"
+                  updatedAt: null
+                candidateRr:
+                  candidateRrId: CRR-000001
+                  applicationId: APP-000001
+                  studentId: STU-000001
+                  status: ACTIVE
+                  currentStage: ONLINE_TEST
+                  sourceEvent: EVT-000001
+                  screeningId: SCR-000001
+                  createdAt: "2026-04-20T14:30:05Z"
+        "404":
+          description: Screening không tồn tại
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                errorCode: SCREENING_NOT_FOUND
+                message: "Screening SCR-000001 không tồn tại"
+
+    put:
+      tags:
+        - Screening
+      summary: Update Screening Result
+      description: |
+        Cập nhật Screening result trước khi Application qua vòng sau.
+
+        **Use Case:** UpdateScreening
+        **Actor:** TA
+        **Preconditions:**
+        - Screening tồn tại
+        - Application status = SCREENING (chưa qua vòng sau)
+        - TA có quyền update (người tạo hoặc TA_ADMIN)
+
+        **Business Rule:** BR-SCR-003 - Screening result có thể update trước khi Application qua vòng sau
+
+        **Flow Reference:** `7.flows/screening-flow.md` - Edge Cases
+
+      operationId: updateScreening
+      parameters:
+        - name: screeningId
+          in: path
+          required: true
+          description: Screening ID (Format: SCR-XXXXXX)
+          schema:
+            type: string
+            pattern: "^SCR-\\d{6}$"
+            example: "SCR-000001"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateScreeningRequest"
+            examples:
+              update_example:
+                summary: Update từ PASS sang FAIL
+                value:
+                  result: FAIL
+                  failReason: CULTURE_MISMATCH
+                  notes: "Cập nhật: Ứng viên không phù hợp văn hóa công ty"
+      responses:
+        "200":
+          description: Screening updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScreeningResponse"
+              example:
+                screening:
+                  screeningId: SCR-000001
+                  applicationId: APP-000001
+                  result: FAIL
+                  decidedBy: TA-001
+                  decidedAt: "2026-04-20T14:30:00Z"
+                  notes: "Cập nhật: Ứng viên không phù hợp văn hóa công ty"
+                  createdAt: "2026-04-20T14:30:00Z"
+                  updatedAt: "2026-04-20T16:00:00Z"
+                events:
+                  - eventName: ScreeningUpdated
+                    eventId: EVT-SCR-UPD-000001
+        "400":
+          description: Invalid update request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                errorCode: INVALID_SCREENING_UPDATE
+                message: "Không thể update Screening result"
+                details:
+                  reason: "result đã thay đổi từ PASS sang FAIL nhưng không có failReason"
+        "403":
+          description: Forbidden - TA không có quyền update
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                errorCode: UPDATE_FORBIDDEN
+                message: "Bạn không có quyền cập nhật Screening này"
+        "409":
+          description: Conflict - Application đã qua vòng Screening
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                errorCode: APPLICATION_PASSED_SCREENING
+                message: "Không thể update Screening vì Application đã qua vòng Screening"
+                details:
+                  applicationId: APP-000001
+                  currentStatus: TEST
+                  requiredStatus: SCREENING
+
+  /applications/shortlist:
+    post:
+      tags:
+        - Screening
+      summary: Shortlist Multiple Applications
+      description: |
+        Shortlist nhiều applications để review screening hàng loạt.
+
+        **Use Case:** ShortlistCandidates
+        **Actor:** TA
+        **Purpose:** Chọn ra danh sách applications cần screening từ pool
+
+      operationId: shortlistApplications
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ShortlistRequest"
+            example:
+              applicationIds:
+                - APP-000001
+                - APP-000002
+                - APP-000003
+              notes: "Shortlist cho buổi screening ngày 20/04/2026"
+      responses:
+        "200":
+          description: Shortlist created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShortlistResponse"
+              example:
+                shortlistId: SL-000001
+                applicationIds:
+                  - APP-000001
+                  - APP-000002
+                  - APP-000003
+                createdAt: "2026-04-20T10:00:00Z"
+                createdBy: TA-001
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                errorCode: INVALID_SHORTLIST
+                message: "Danh sách applications không hợp lệ"
+                details:
+                  reason: "Một hoặc nhiều application không tồn tại hoặc không ở status SCREENING"
+                  invalidApplications:
+                    - applicationId: APP-999999
+                      reason: NOT_FOUND
+                    - applicationId: APP-000004
+                      reason: INVALID_STATUS
+                      currentStatus: TEST
+
+  /candidates/{candidateRrId}/rank:
+    post:
+      tags:
+        - Candidate RR
+      summary: Rank Candidates
+      description: |
+        Xếp hạng candidate trong pipeline tuyển dụng.
+
+        **Use Case:** RankCandidates
+        **Actor:** TA, Hiring Manager
+        **Purpose:** Đánh giá và xếp hạng candidate sau khi screening
+
+      operationId: rankCandidate
+      parameters:
+        - name: candidateRrId
+          in: path
+          required: true
+          description: Candidate RR ID (Format: CRR-XXXXXX)
+          schema:
+            type: string
+            pattern: "^CRR-\\d{6}$"
+            example: "CRR-000001"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RankCandidateRequest"
+            example:
+              rank: 1
+              score: 85
+              notes: "Ứng viên xuất sắc, ưu tiên cho vòng Online Test"
+      responses:
+        "200":
+          description: Candidate ranked successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RankCandidateResponse"
+              example:
+                candidateRrId: CRR-000001
+                rank: 1
+                score: 85
+                rankedBy: TA-001
+                rankedAt: "2026-04-20T15:00:00Z"
+        "404":
+          description: Candidate RR không tồn tại
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                errorCode: CANDIDATE_RR_NOT_FOUND
+                message: "Candidate RR CRR-000001 không tồn tại"
+
+  /failed-applicants/{failedId}:
+    get:
+      tags:
+        - Failed Applicants
+      summary: Get Failed Applicant Details
+      description: |
+        Lấy thông tin chi tiết của một Failed Applicant record.
+
+        **Use Case:** ViewFailedApplicant
+        **Actor:** TA, Admin
+
+      operationId: getFailedApplicant
+      parameters:
+        - name: failedId
+          in: path
+          required: true
+          description: Failed Applicant ID (Format: FAIL-XXXXXX)
+          schema:
+            type: string
+            pattern: "^FAIL-\\d{6}$"
+            example: "FAIL-000001"
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FailedApplicantResponse"
+              example:
+                failedApplicant:
+                  failedId: FAIL-000001
+                  applicationId: APP-000002
+                  screeningId: SCR-000002
+                  failReason: INSUFFICIENT_SKILLS
+                  thankYouSent: true
+                  endedAt: "2026-04-20T15:00:00Z"
+                  createdAt: "2026-04-20T15:00:05Z"
+        "404":
+          description: Failed Applicant không tồn tại
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                errorCode: FAILED_APPLICANT_NOT_FOUND
+                message: "Failed Applicant FAIL-000001 không tồn tại"
+
+  /failed-applicants/{failedId}/thank-you-email:
+    post:
+      tags:
+        - Failed Applicants
+      summary: Send Thank You Email
+      description: |
+        Gửi Thank You email cho Failed Applicant.
+
+        **Use Case:** SendThankYouEmail
+        **Actor:** System (automated) hoặc TA (manual)
+        **Preconditions:**
+        - FailedApplicant tồn tại
+        - thank_you_sent = false
+
+        **Business Rule:** BRS-FAIL-003 - Thank You Letter chỉ được gửi 1 lần per stage
+
+      operationId: sendThankYouEmail
+      parameters:
+        - name: failedId
+          in: path
+          required: true
+          description: Failed Applicant ID (Format: FAIL-XXXXXX)
+          schema:
+            type: string
+            pattern: "^FAIL-\\d{6}$"
+            example: "FAIL-000001"
+      responses:
+        "200":
+          description: Thank You email sent successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ThankYouEmailResponse"
+              example:
+                failedId: FAIL-000001
+                emailSent: true
+                sentAt: "2026-04-20T15:05:00Z"
+                emailTemplate: REJECTION
+                eventId: EVT-EMAIL-000001
+        "409":
+          description: Conflict - Email đã gửi trước đó
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                errorCode: EMAIL_ALREADY_SENT
+                message: "Thank You email đã được gửi cho Failed Applicant này"
+                details:
+                  failedId: FAIL-000001
+                  previousSentAt: "2026-04-20T15:00:00Z"
+
+components:
+  schemas:
+    # === Request Schemas ===
+    CompleteScreeningRequest:
+      type: object
+      description: Request để complete screening decision
+      required:
+        - result
+        - decidedBy
+      properties:
+        result:
+          type: string
+          description: Kết quả screening
+          enum:
+            - PASS
+            - FAIL
+          example: PASS
+        failReason:
+          type: string
+          description: |
+            Lý do fail (bắt buộc khi result = FAIL).
+            - INSUFFICIENT_SKILLS: Kỹ năng không đạt
+            - CULTURE_MISMATCH: Không phù hợp văn hóa
+            - EXPERIENCE_GAP: Khoảng cách kinh nghiệm
+            - NOT_QUALIFIED: Không đủ qualifications
+            - POOR_FIT: Không phù hợp
+            - OTHER: Lý do khác
+          enum:
+            - INSUFFICIENT_SKILLS
+            - CULTURE_MISMATCH
+            - EXPERIENCE_GAP
+            - NOT_QUALIFIED
+            - POOR_FIT
+            - OTHER
+          example: INSUFFICIENT_SKILLS
+        notes:
+          type: string
+          description: Ghi chú của TA khi screening
+          example: "CV tốt, phù hợp yêu cầu. Ứng viên có kinh nghiệm React và Node.js"
+        decidedBy:
+          type: string
+          description: User ID của TA thực hiện screening
+          example: TA-001
+
+    UpdateScreeningRequest:
+      type: object
+      description: Request để update screening result
+      required:
+        - result
+      properties:
+        result:
+          type: string
+          description: Kết quả screening mới
+          enum:
+            - PASS
+            - FAIL
+          example: FAIL
+        failReason:
+          type: string
+          description: Lý do fail (bắt buộc khi result = FAIL)
+          enum:
+            - INSUFFICIENT_SKILLS
+            - CULTURE_MISMATCH
+            - EXPERIENCE_GAP
+            - NOT_QUALIFIED
+            - POOR_FIT
+            - OTHER
+          example: CULTURE_MISMATCH
+        notes:
+          type: string
+          description: Ghi chú cập nhật
+          example: "Cập nhật: Ứng viên không phù hợp văn hóa công ty"
+
+    ShortlistRequest:
+      type: object
+      description: Request để shortlist nhiều applications
+      required:
+        - applicationIds
+      properties:
+        applicationIds:
+          type: array
+          description: Danh sách application IDs cần shortlist
+          items:
+            type: string
+            pattern: "^APP-\\d{6}$"
+          example:
+            - APP-000001
+            - APP-000002
+            - APP-000003
+        notes:
+          type: string
+          description: Ghi chú cho shortlist
+          example: "Shortlist cho buổi screening ngày 20/04/2026"
+
+    RankCandidateRequest:
+      type: object
+      description: Request để rank candidate
+      required:
+        - rank
+      properties:
+        rank:
+          type: integer
+          description: Xếp hạng candidate (1 = cao nhất)
+          minimum: 1
+          example: 1
+        score:
+          type: integer
+          description: Score đánh giá candidate (0-100)
+          minimum: 0
+          maximum: 100
+          example: 85
+        notes:
+          type: string
+          description: Ghi chú đánh giá
+          example: "Ứng viên xuất sắc, ưu tiên cho vòng Online Test"
+
+    # === Response Schemas ===
+    ScreeningResponse:
+      type: object
+      description: Response chứa thông tin Screening và entities liên quan
+      properties:
+        screening:
+          $ref: "#/components/schemas/Screening"
+        candidateRr:
+          $ref: "#/components/schemas/CandidateRR"
+          nullable: true
+        failedApplicant:
+          $ref: "#/components/schemas/FailedApplicant"
+          nullable: true
+        events:
+          type: array
+          description: Danh sách events được publish
+          items:
+            $ref: "#/components/schemas/EventPublished"
+
+    Screening:
+      type: object
+      description: |
+        Screening - Kết quả screening decision cho Application.
+        Aggregate Root trong Screening context.
+      properties:
+        screeningId:
+          type: string
+          description: Unique identifier cho Screening
+          pattern: "^SCR-\\d{6}$"
+          example: SCR-000001
+        applicationId:
+          type: string
+          description: Application ID được screening
+          example: APP-000001
+        result:
+          type: string
+          description: Kết quả screening
+          enum:
+            - PASS
+            - FAIL
+            - PENDING
+          example: PASS
+        notes:
+          type: string
+          description: Ghi chú của TA
+          nullable: true
+          example: "CV tốt, phù hợp yêu cầu"
+        decidedBy:
+          type: string
+          description: User ID quyết định (TA)
+          example: TA-001
+        decidedAt:
+          type: string
+          format: date-time
+          description: Thời điểm quyết định
+          example: "2026-04-20T14:30:00Z"
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp tạo record
+          example: "2026-04-20T14:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: Timestamp cập nhật record
+          nullable: true
+          example: "2026-04-20T16:00:00Z"
+
+    CandidateRR:
+      type: object
+      description: |
+        CandidateRR - Candidate record trong ATS được tạo khi Pass Screening.
+        Theo dõi candidate xuyên suốt các vòng tuyển dụng.
+      properties:
+        candidateRrId:
+          type: string
+          description: Unique identifier cho Candidate RR
+          pattern: "^CRR-\\d{6}$"
+          example: CRR-000001
+        applicationId:
+          type: string
+          description: Application ID mà Candidate RR được tạo từ
+          example: APP-000001
+        studentId:
+          type: string
+          description: Student ID của candidate
+          example: STU-000001
+        status:
+          type: string
+          description: Trạng thái candidate trong pipeline
+          enum:
+            - ACTIVE
+            - HIRED
+            - REJECTED
+            - WITHDRAWN
+          example: ACTIVE
+        currentStage:
+          type: string
+          description: Vòng hiện tại của candidate
+          enum:
+            - SCREENING
+            - ONLINE_TEST
+            - ONSITE_TEST
+            - INTERVIEW
+            - OFFER
+            - HIRE
+          example: ONLINE_TEST
+        sourceEvent:
+          type: string
+          description: Event ID mà candidate apply vào
+          example: EVT-000001
+        screeningId:
+          type: string
+          description: Screening ID mà Candidate RR được tạo từ
+          example: SCR-000001
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp tạo record
+          example: "2026-04-20T14:30:05Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: Timestamp cập nhật record
+          nullable: true
+
+    FailedApplicant:
+      type: object
+      description: |
+        FailedApplicant - Record theo dõi applications Failed.
+        Failed applicants vẫn hiển thị trong danh sách với Result = Failed.
+      properties:
+        failedId:
+          type: string
+          description: Unique identifier cho FailedApplicant
+          pattern: "^FAIL-\\d{6}$"
+          example: FAIL-000001
+        applicationId:
+          type: string
+          description: Application ID bị fail
+          example: APP-000002
+        screeningId:
+          type: string
+          description: Screening ID quyết định fail
+          example: SCR-000002
+        failReason:
+          type: string
+          description: Lý do fail
+          enum:
+            - INSUFFICIENT_SKILLS
+            - CULTURE_MISMATCH
+            - EXPERIENCE_GAP
+            - NOT_QUALIFIED
+            - POOR_FIT
+            - OTHER
+          example: INSUFFICIENT_SKILLS
+        thankYouSent:
+          type: boolean
+          description: Đã gửi Thank You email chưa
+          example: true
+        endedAt:
+          type: string
+          format: date-time
+          description: Thời điểm kết thúc (fail)
+          example: "2026-04-20T15:00:00Z"
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp tạo record
+          example: "2026-04-20T15:00:05Z"
+
+    ShortlistResponse:
+      type: object
+      description: Response chứa thông tin shortlist
+      properties:
+        shortlistId:
+          type: string
+          description: Unique identifier cho shortlist
+          example: SL-000001
+        applicationIds:
+          type: array
+          description: Danh sách application IDs trong shortlist
+          items:
+            type: string
+          example:
+            - APP-000001
+            - APP-000002
+            - APP-000003
+        createdAt:
+          type: string
+          format: date-time
+          example: "2026-04-20T10:00:00Z"
+        createdBy:
+          type: string
+          description: User ID tạo shortlist
+          example: TA-001
+
+    RankCandidateResponse:
+      type: object
+      description: Response chứa thông tin ranking
+      properties:
+        candidateRrId:
+          type: string
+          description: Candidate RR ID
+          example: CRR-000001
+        rank:
+          type: integer
+          description: Xếp hạng
+          example: 1
+        score:
+          type: integer
+          description: Score
+          example: 85
+        rankedBy:
+          type: string
+          description: User ID thực hiện rank
+          example: TA-001
+        rankedAt:
+          type: string
+          format: date-time
+          description: Thời điểm rank
+          example: "2026-04-20T15:00:00Z"
+
+    FailedApplicantResponse:
+      type: object
+      description: Response chứa thông tin FailedApplicant
+      properties:
+        failedApplicant:
+          $ref: "#/components/schemas/FailedApplicant"
+
+    ThankYouEmailResponse:
+      type: object
+      description: Response chứa thông tin email sent
+      properties:
+        failedId:
+          type: string
+          description: Failed Applicant ID
+          example: FAIL-000001
+        emailSent:
+          type: boolean
+          description: Email đã gửi thành công
+          example: true
+        sentAt:
+          type: string
+          format: date-time
+          description: Thời điểm gửi email
+          example: "2026-04-20T15:05:00Z"
+        emailTemplate:
+          type: string
+          description: Template email sử dụng
+          example: REJECTION
+        eventId:
+          type: string
+          description: Event ID cho ThankYouEmailSent
+          example: EVT-EMAIL-000001
+
+    EventPublished:
+      type: object
+      description: Event được publish bởi Screening Context
+      properties:
+        eventName:
+          type: string
+          description: Tên event
+          enum:
+            - ScreeningCompleted
+            - CandidateRRCreated
+            - FailedApplicantRecorded
+            - ScreeningUpdated
+            - ThankYouEmailSent
+          example: ScreeningCompleted
+        eventId:
+          type: string
+          description: Unique identifier cho event
+          example: EVT-SCR-000001
+
+    ErrorResponse:
+      type: object
+      description: Error response schema
+      properties:
+        errorCode:
+          type: string
+          description: Error code
+          example: INVALID_SCREENING_RESULT
+        message:
+          type: string
+          description: Error message
+          example: "result phải là PASS hoặc FAIL"
+        details:
+          type: object
+          description: Chi tiết lỗi
+          additionalProperties: true
+          example:
+            field: result
+            providedValue: INVALID
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token cho authentication
+
+security:
+  - BearerAuth: []

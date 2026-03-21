@@ -1,0 +1,178 @@
+// ODDS System - Offer Context Database Schema
+// Generated from ontology: /5.ontology/offer/*.yaml
+// Entities: Offer, OfferResponse, OfferReminder, CandidateScan, CandidateTransfer
+
+// ============================================
+// ENUMS
+// ============================================
+
+enum OfferStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  CANCELLED
+}
+
+enum ReminderType {
+  REMIND_24H
+  REMIND_2H
+}
+
+enum ReminderStatus {
+  PENDING
+  SENT
+  FAILED
+  CANCELLED
+}
+
+enum ResponseType {
+  ACCEPT
+  REJECT
+}
+
+enum ScanStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+enum TransferStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  RETRY
+}
+
+// ============================================
+// TABLES
+// ============================================
+
+// Offer - Thư mời nhận việc với lương, phúc lợi, deadline
+// Ontology: /5.ontology/offer/offer.yaml
+// Aggregate Root: true
+Table Offer {
+  offer_id varchar [PK, note: 'Unique identifier cho Offer (OFR-\\d{6})']
+  application_id varchar [NOT NULL, note: 'Application ID mà Offer được tạo cho']
+  candidate_rr_id varchar [NOT NULL, note: 'Candidate RR ID']
+  request_id varchar [NOT NULL, note: 'Request ID từ Request tuyển dụng']
+  salary float [NOT NULL, note: 'Mức lương đề xuất']
+  benefits text [note: 'Phúc lợi (mô tả chi tiết)']
+  deadline timestamp [NOT NULL, note: 'Deadline phản hồi Offer']
+  status OfferStatus [NOT NULL, default: 'DRAFT']
+  template_id varchar [note: 'Offer Template ID từ library']
+  reoffer_count integer [default: 0, note: 'Số lần re-offer (0-3)']
+  auto_remind_enabled boolean [default: true, note: 'Auto remind 24h + 2h trước deadline']
+  remind_timing_24h integer [default: 1440, note: 'Thời gian remind 24h (phút)']
+  remind_timing_2h integer [default: 120, note: 'Thời gian remind 2h (phút)']
+  grace_period_hours integer [default: 24, note: 'Grace period sau deadline (giờ)']
+  auto_reject_enabled boolean [default: true, note: 'Auto reject sau grace period']
+  created_by varchar [NOT NULL, note: 'User ID tạo Offer (TA)']
+  created_at timestamp [NOT NULL, default: `CURRENT_TIMESTAMP`]
+  updated_at timestamp [note: 'Timestamp cập nhật Offer']
+  expired_at timestamp [note: 'Timestamp expire Offer']
+}
+
+// OfferResponse - Phản hồi của Student (Accept/Reject)
+// Ontology: /5.ontology/offer/offer-response.yaml
+// Aggregate Root: true
+Table OfferResponse {
+  response_id varchar [PK, note: 'Unique identifier cho OfferResponse (OFRSP-\\d{6})']
+  offer_id varchar [NOT NULL, ref: > Offer.offer_id, note: 'Offer ID mà Student phản hồi']
+  response ResponseType [NOT NULL, note: 'Phản hồi của Student (Accept/Reject)']
+  reason text [note: 'Lý do (nếu Reject)']
+  response_at timestamp [NOT NULL, note: 'Thời điểm phản hồi']
+  created_by varchar [NOT NULL, note: 'Student ID phản hồi']
+  created_at timestamp [NOT NULL, default: `CURRENT_TIMESTAMP`]
+}
+
+// OfferReminder - Reminder record (24h/2h trước deadline)
+// Ontology: /5.ontology/offer/offer-reminder.yaml
+// Aggregate Root: true
+Table OfferReminder {
+  reminder_id varchar [PK, note: 'Unique identifier cho OfferReminder (OREM-\\d{6})']
+  offer_id varchar [NOT NULL, ref: > Offer.offer_id, note: 'Offer ID mà reminder thuộc về']
+  reminder_type ReminderType [NOT NULL, note: 'Loại reminder (24h/2h trước deadline)']
+  scheduled_at timestamp [NOT NULL, note: 'Thời gian lên lịch gửi']
+  sent_at timestamp [note: 'Thời gian đã gửi']
+  status ReminderStatus [NOT NULL, default: 'PENDING']
+  created_at timestamp [NOT NULL, default: `CURRENT_TIMESTAMP`]
+}
+
+// CandidateScan - Scan documents sau khi Accept Offer
+// Ontology: /5.ontology/offer/candidate-scan.yaml
+// Aggregate Root: true
+Table CandidateScan {
+  scan_id varchar [PK, note: 'Unique identifier cho CandidateScan (OSCN-\\d{6})']
+  candidate_rr_id varchar [NOT NULL, note: 'Candidate RR ID']
+  documents jsonb [NOT NULL, note: 'Danh sách document IDs đã scan']
+  status ScanStatus [NOT NULL, default: 'PENDING']
+  scanned_at timestamp [NOT NULL, note: 'Thời điểm scan']
+  created_by varchar [NOT NULL, note: 'User ID thực hiện scan']
+  created_at timestamp [NOT NULL, default: `CURRENT_TIMESTAMP`]
+}
+
+// CandidateTransfer - Transfer Candidate sang hệ thống CnB
+// Ontology: /5.ontology/offer/candidate-transfer.yaml
+// Aggregate Root: true
+// Anti-Corruption Layer (ACL) để translate sang CnB model
+Table CandidateTransfer {
+  transfer_id varchar [PK, note: 'Unique identifier cho CandidateTransfer (OTRF-\\d{6})']
+  candidate_rr_id varchar [NOT NULL, note: 'Candidate RR ID']
+  cnb_reference_id varchar [note: 'Reference ID từ hệ thống CnB']
+  transferred_at timestamp [NOT NULL, note: 'Thời điểm transfer']
+  status TransferStatus [NOT NULL, default: 'PENDING']
+  error_message text [note: 'Lý do nếu transfer failed']
+  created_by varchar [NOT NULL, note: 'System auto tạo']
+  created_at timestamp [NOT NULL, default: `CURRENT_TIMESTAMP`]
+}
+
+// ============================================
+// RELATIONSHIPS
+// ============================================
+
+// Offer -> Application (FK)
+// Offer -> CandidateRR (FK)
+// Offer -> Request (FK)
+// Note: These FKs reference external contexts
+
+// OfferResponse -> Offer (1:1 through offer_id)
+// OfferReminder -> Offer (N:1 through offer_id)
+
+// CandidateScan -> CandidateRR (FK)
+// CandidateTransfer -> CandidateRR (FK)
+
+// ============================================
+// INDEXES
+// ============================================
+
+// Offer indexes
+Create Index idx_offer_application ON Offer(application_id)
+Create Index idx_offer_candidate ON Offer(candidate_rr_id)
+Create Index idx_offer_request ON Offer(request_id)
+Create Index idx_offer_status ON Offer(status)
+Create Index idx_offer_deadline ON Offer(deadline)
+Create Index idx_offer_created_at ON Offer(created_at)
+
+// OfferResponse indexes
+Create Index idx_offer_response_offer ON OfferResponse(offer_id)
+Create Index idx_offer_response_created_by ON OfferResponse(created_by)
+Create Index idx_offer_response_response_at ON OfferResponse(response_at)
+
+// OfferReminder indexes
+Create Index idx_offer_reminder_offer ON OfferReminder(offer_id)
+Create Index idx_offer_reminder_status ON OfferReminder(status)
+Create Index idx_offer_reminder_scheduled_at ON OfferReminder(scheduled_at)
+
+// CandidateScan indexes
+Create Index idx_candidate_scan_candidate ON CandidateScan(candidate_rr_id)
+Create Index idx_candidate_scan_status ON CandidateScan(status)
+Create Index idx_candidate_scan_scanned_at ON CandidateScan(scanned_at)
+
+// CandidateTransfer indexes
+Create Index idx_candidate_transfer_candidate ON CandidateTransfer(candidate_rr_id)
+Create Index idx_candidate_transfer_status ON CandidateTransfer(status)
+Create Index idx_candidate_transfer_transferred_at ON CandidateTransfer(transferred_at)

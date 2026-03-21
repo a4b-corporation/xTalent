@@ -1,0 +1,168 @@
+id: https://xtalent.io/ontology/ats/event-management/question-set
+name: question_set_ontology
+version: "1.0.0"
+description: "Bộ câu hỏi áp dụng cho Track trong Event tuyển dụng"
+
+prefixes:
+  xt: https://xtalent.io/ontology/
+  oracle: https://oracle.com/hcm/
+  sap: https://successfactors.sap.com/
+  workday: https://workday.com/
+
+default_range: string
+
+slots:
+  # --- Identifier ---
+  question_set_id:
+    description: "Unique identifier cho QuestionSet"
+    identifier: true
+    required: true
+    pattern: "^QST-\\d{6}$"
+    annotations:
+      example: "QST-000001"
+
+  # --- Core Fields ---
+  set_name:
+    description: "Tên bộ câu hỏi"
+    required: true
+
+  description:
+    description: "Mô tả bộ câu hỏi"
+    required: false
+
+  questions:
+    description: "Danh sách câu hỏi trong bộ"
+    range: Question
+    multivalued: true
+    inlined: true
+    required: true
+
+  status:
+    description: "Trạng thái bộ câu hỏi"
+    range: QuestionSetStatusEnum
+    required: true
+
+  # --- Audit Fields ---
+  created_by:
+    description: "User ID tạo QuestionSet"
+    required: true
+    annotations:
+      reference: "User.user_id"
+
+  created_at:
+    description: "Timestamp tạo QuestionSet"
+    range: datetime
+    required: true
+
+  updated_at:
+    description: "Timestamp cập nhật QuestionSet"
+    range: datetime
+    required: false
+
+classes:
+  QuestionSet:
+    description: |
+      Bộ câu hỏi áp dụng cho Track trong Event tuyển dụng.
+      Mỗi Track có thể có một bộ câu hỏi riêng.
+      Aggregate Root trong Event Management context.
+
+    annotations:
+      oracle_hcm_term: "QuestionnaireTemplate"
+      sap_term: "QuestionnaireTemplate"
+      workday_term: "QuestionnaireTemplate"
+      disambiguation: "xTalent: QuestionSet = Bộ câu hỏi tuyển dụng. Oracle: QuestionnaireTemplate. SAP: QuestionnaireTemplate. Workday: QuestionnaireTemplate. Xem docs.xtalent.io/ats/event-management/question-set."
+
+      module: "ats"
+      sub_module: "event-management"
+      version: "1.0.0"
+      bounded_context: "Event Management"
+      aggregate_root: true
+
+      ouroboros_evolution:
+        iteration: "1.0.0"
+        parent_version: null
+        evaluation_status: "pending"
+        last_evaluated: null
+        evolution_notes: "Initial version"
+
+      validation_hooks:
+        odds_system_builder:
+          required_for: true
+          validates: ["table_generation", "fk_references"]
+
+      see_also: "https://docs.xtalent.io/ats/event-management/question-set"
+
+    slots:
+      - question_set_id
+      - set_name
+      - description
+      - questions
+      - status
+      - created_by
+      - created_at
+      - updated_at
+
+    slot_usage:
+      question_set_id:
+        required: true
+        identifier: true
+
+      set_name:
+        required: true
+
+      questions:
+        required: true
+
+      status:
+        required: true
+
+      created_by:
+        required: true
+
+      created_at:
+        required: true
+
+    rules:
+      - description: "BRS-EM-QS-001: Bộ câu hỏi phải có ít nhất 1 câu hỏi"
+        preconditions:
+          slot_conditions: {}
+        postconditions:
+          slot_conditions:
+            questions:
+              list_has_length:
+                min_length: 1
+
+# === ENUMS ===
+enums:
+  QuestionSetStatusEnum:
+    description: "Trạng thái bộ câu hỏi"
+    permissible_values:
+      DRAFT:
+        description: "Đang nháp"
+      ACTIVE:
+        description: "Đang active"
+      INACTIVE:
+        description: "Không còn active"
+
+  QuestionType:
+    description: "Loại câu hỏi"
+    permissible_values:
+      SHORT_TEXT:
+        description: "Câu trả lời ngắn (text)"
+      LONG_TEXT:
+        description: "Câu trả lời dài (essay)"
+      SINGLE_CHOICE:
+        description: "Chọn 1 đáp án"
+      MULTIPLE_CHOICE:
+        description: "Chọn nhiều đáp án"
+      YES_NO:
+        description: "Có/Không"
+      FILE_UPLOAD:
+        description: "Upload file"
+
+  Question:
+    description: "Câu hỏi trong bộ"
+    permissible_values:
+      # Placeholder - actual questions stored elsewhere
+      GENERIC_QUESTION:
+        description: "Câu hỏi chung"

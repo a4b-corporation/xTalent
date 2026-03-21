@@ -1,0 +1,200 @@
+id: https://xtalent.io/ontology/ats/application/attachment
+name: attachment_ontology
+version: "1.0.0"
+description: "Attachment - Files đính kèm (CV, certificates, etc.)"
+
+prefixes:
+  xt: https://xtalent.io/ontology/
+  oracle: https://oracle.com/hcm/
+  sap: https://successfactors.sap.com/
+  workday: https://workday.com/
+
+default_range: string
+
+slots:
+  # --- Identifier ---
+  attachment_id:
+    description: "Unique identifier cho Attachment"
+    identifier: true
+    required: true
+    pattern: "^ATT-\\d{6}$"
+    annotations:
+      example: "ATT-000001"
+
+  # --- Core Fields ---
+  application_id:
+    description: "Application ID mà attachment thuộc về"
+    required: true
+    annotations:
+      reference: "Application.application_id"
+
+  file_name:
+    description: "Tên file gốc"
+    required: true
+
+  file_type:
+    description: "Loại file (PDF, DOC, DOCX, XLS, XLSX, PPT, PPTX, IMG)"
+    required: true
+
+  file_size:
+    description: "Kích thước file (bytes)"
+    range: integer
+    minimum_value: 0
+    required: true
+
+  file_url:
+    description: "URL lưu trữ file"
+    required: true
+
+  attachment_type:
+    description: "Loại attachment (CV, CERTIFICATE, PORTFOLIO, OTHER)"
+    range: AttachmentTypeEnum
+    required: true
+
+  upload_status:
+    description: "Trạng thái upload"
+    range: UploadStatusEnum
+    required: true
+
+  # --- Audit Fields ---
+  uploaded_by:
+    description: "User ID upload file"
+    required: true
+    annotations:
+      reference: "Student.student_id"
+
+  uploaded_at:
+    description: "Timestamp upload file"
+    range: datetime
+    required: true
+
+classes:
+  Attachment:
+    description: |
+      Attachment - Files đính kèm (CV, certificates, etc.).
+      Student upload khi submit application.
+      Aggregate Root trong Application context.
+
+    annotations:
+      oracle_hcm_term: "ApplicationAttachment"
+      sap_term: "ApplicationAttachment"
+      workday_term: "ApplicationAttachment"
+      disambiguation: "xTalent: Attachment = File đính kèm application. Oracle: ApplicationAttachment. SAP: ApplicationAttachment. Workday: ApplicationAttachment. Xem docs.xtalent.io/ats/application/attachment."
+
+      module: "ats"
+      sub_module: "application"
+      version: "1.0.0"
+      bounded_context: "Application"
+      aggregate_root: true
+
+      ouroboros_evolution:
+        iteration: "1.0.0"
+        parent_version: null
+        evaluation_status: "pending"
+        last_evaluated: null
+        evolution_notes: "Initial version"
+
+      validation_hooks:
+        odds_system_builder:
+          required_for: true
+          validates: ["table_generation", "fk_references"]
+
+      see_also: "https://docs.xtalent.io/ats/application/attachment"
+
+    slots:
+      - attachment_id
+      - application_id
+      - file_name
+      - file_type
+      - file_size
+      - file_url
+      - attachment_type
+      - upload_status
+      - uploaded_by
+      - uploaded_at
+
+    slot_usage:
+      attachment_id:
+        required: true
+        identifier: true
+
+      application_id:
+        required: true
+
+      file_name:
+        required: true
+
+      file_type:
+        required: true
+
+      file_size:
+        required: true
+
+      file_url:
+        required: true
+
+      attachment_type:
+        required: true
+
+      upload_status:
+        required: true
+
+      uploaded_by:
+        required: true
+
+      uploaded_at:
+        required: true
+
+    rules:
+      - description: "BRS-ATT-001: File size tối đa 10MB (default, configurable)"
+        preconditions:
+          slot_conditions: {}
+        postconditions:
+          slot_conditions:
+            file_size:
+              maximum_value: 10485760
+
+      - description: "BRS-ATT-002: File type phải đúng format cho phép"
+        preconditions:
+          slot_conditions: {}
+        postconditions:
+          slot_conditions:
+            file_type:
+              one_of:
+                - "PDF"
+                - "DOC"
+                - "DOCX"
+                - "XLS"
+                - "XLSX"
+                - "PPT"
+                - "PPTX"
+                - "JPG"
+                - "PNG"
+
+# === ENUMS ===
+enums:
+  AttachmentTypeEnum:
+    description: "Loại attachment"
+    permissible_values:
+      CV:
+        description: "Curriculum Vitae"
+      CERTIFICATE:
+        description: "Chứng chỉ"
+      PORTFOLIO:
+        description: "Portfolio"
+      TRANSCRIPT:
+        description: "Bảng điểm"
+      OTHER:
+        description: "Khác"
+
+  UploadStatusEnum:
+    description: "Trạng thái upload"
+    permissible_values:
+      PENDING:
+        description: "Đang upload"
+      COMPLETED:
+        description: "Hoàn tất"
+      FAILED:
+        description: "Thất bại"
+      DELETED:
+        description: "Đã xóa"

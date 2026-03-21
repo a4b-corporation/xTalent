@@ -1,0 +1,164 @@
+id: https://xtalent.io/ontology/ats/test-session/grading
+name: grading_ontology
+version: "1.0.0"
+description: "Grading - Kết quả chấm Onsite Test"
+
+prefixes:
+  xt: https://xtalent.io/ontology/
+  oracle: https://oracle.com/hcm/
+  sap: https://successfactors.sap.com/
+  workday: https://workday.com/
+
+default_range: string
+
+slots:
+  # --- Identifier ---
+  grading_id:
+    description: "Unique identifier cho Grading"
+    identifier: true
+    required: true
+    pattern: "^TGRD-\\d{6}$"
+    annotations:
+      example: "TGRD-000001"
+
+  # --- Core Fields ---
+  schedule_id:
+    description: "Schedule ID được chấm"
+    required: true
+    annotations:
+      reference: "Schedule.schedule_id"
+
+  grader_id:
+    description: "User ID người chấm (Manager)"
+    required: true
+    annotations:
+      reference: "User.user_id"
+
+  score:
+    description: "Điểm số"
+    range: float
+    minimum_value: 0.0
+    maximum_value: 100.0
+    required: true
+
+  comment:
+    description: "Nhận xét của grader"
+    required: false
+
+  pass_fail:
+    description: "Đạt/Không đạt"
+    range: PassFailEnum
+    required: true
+
+  graded_at:
+    description: "Thời điểm chấm xong"
+    range: datetime
+    required: true
+
+  # --- Audit Fields ---
+  created_by:
+    description: "Grader ID"
+    required: true
+    annotations:
+      reference: "User.user_id"
+
+  created_at:
+    description: "Timestamp tạo Grading record"
+    range: datetime
+    required: true
+
+classes:
+  Grading:
+    description: |
+      Grading - Kết quả chấm Onsite Test.
+      Manager chấm bài sau khi Student hoàn thành thi.
+      Aggregate Root trong Test Session context.
+
+    annotations:
+      oracle_hcm_term: "TestGrading"
+      sap_term: "TestGrading"
+      workday_term: "TestGrading"
+      disambiguation: "xTalent: Grading = Kết quả chấm Onsite Test. Oracle: TestGrading. SAP: TestGrading. Workday: TestGrading. Xem docs.xtalent.io/ats/test-session/grading."
+
+      module: "ats"
+      sub_module: "test-session"
+      version: "1.0.0"
+      bounded_context: "Test Session"
+      aggregate_root: true
+
+      ouroboros_evolution:
+        iteration: "1.0.0"
+        parent_version: null
+        evaluation_status: "pending"
+        last_evaluated: null
+        evolution_notes: "Initial version"
+
+      validation_hooks:
+        odds_system_builder:
+          required_for: true
+          validates: ["table_generation", "fk_references"]
+
+      see_also: "https://docs.xtalent.io/ats/test-session/grading"
+
+    slots:
+      - grading_id
+      - schedule_id
+      - grader_id
+      - score
+      - comment
+      - pass_fail
+      - graded_at
+      - created_by
+      - created_at
+
+    slot_usage:
+      grading_id:
+        required: true
+        identifier: true
+
+      schedule_id:
+        required: true
+
+      grader_id:
+        required: true
+
+      score:
+        required: true
+
+      pass_fail:
+        required: true
+
+      graded_at:
+        required: true
+
+      created_by:
+        required: true
+
+      created_at:
+        required: true
+
+    rules:
+      - description: "BRS-TGRD-001: Chỉ Managers được phân công mới chấm được"
+        preconditions:
+          slot_conditions:
+            slot_id:
+              slot_value_conditions:
+                graders:
+                  list_has_length:
+                    min_length: 1
+        postconditions:
+          slot_conditions:
+            grader_id:
+              must_be_in_list: "testslot.graders"
+
+# === ENUMS ===
+enums:
+  PassFailEnum:
+    description: "Kết quả Đạt/Không đạt"
+    permissible_values:
+      PASS:
+        description: "Đạt"
+      FAIL:
+        description: "Không đạt"
+      NEEDS_DISCUSSION:
+        description: "Cần thảo luận thêm"

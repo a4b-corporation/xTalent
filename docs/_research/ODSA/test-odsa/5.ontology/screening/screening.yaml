@@ -1,0 +1,181 @@
+id: https://xtalent.io/ontology/ats/screening/screening
+name: screening_ontology
+version: "1.0.0"
+description: "Screening - Kết quả screening decision cho Application (Pass/Fail)"
+
+prefixes:
+  xt: https://xtalent.io/ontology/
+  oracle: https://oracle.com/hcm/
+  sap: https://successfactors.sap.com/
+  workday: https://workday.com/
+
+imports:
+  - ./candidate-rr.yaml
+  - ./failed-applicant.yaml
+
+default_range: string
+
+slots:
+  # --- Identifier ---
+  screening_id:
+    description: "Unique identifier cho Screening"
+    identifier: true
+    required: true
+    pattern: "^SCR-\\d{6}$"
+    annotations:
+      example: "SCR-000001"
+
+  # --- Core Fields ---
+  application_id:
+    description: "Application ID được screening"
+    required: true
+    annotations:
+      reference: "Application.application_id"
+
+  result:
+    description: "Kết quả screening (Pass/Fail)"
+    range: ScreeningResultEnum
+    required: true
+
+  notes:
+    description: "Ghi chú của TA khi screening"
+    required: false
+
+  decided_by:
+    description: "User ID quyết định (TA)"
+    required: true
+    annotations:
+      reference: "User.user_id"
+
+  decided_at:
+    description: "Thời điểm quyết định"
+    range: datetime
+    required: true
+
+  # --- Audit Fields ---
+  created_by:
+    description: "User ID tạo Screening record"
+    required: true
+    annotations:
+      reference: "User.user_id"
+
+  created_at:
+    description: "Timestamp tạo Screening record"
+    range: datetime
+    required: true
+
+  updated_at:
+    description: "Timestamp cập nhật Screening record"
+    range: datetime
+    required: false
+
+classes:
+  Screening:
+    description: |
+      Screening - Kết quả screening decision cho Application.
+      Khi Pass: auto tạo Candidate RR.
+      Khi Fail: không tạo Candidate RR, có thể gửi Thank You email.
+      Aggregate Root trong Screening context.
+
+    annotations:
+      oracle_hcm_term: "ApplicationReview"
+      sap_term: "ApplicationReview"
+      workday_term: "ApplicationReview"
+      disambiguation: "xTalent: Screening = Vòng đánh giá sơ bộ. Oracle: ApplicationReview. SAP: ApplicationReview. Workday: ApplicationReview. Xem docs.xtalent.io/ats/screening/screening."
+
+      module: "ats"
+      sub_module: "screening"
+      version: "1.0.0"
+      bounded_context: "Screening"
+      aggregate_root: true
+
+      ouroboros_evolution:
+        iteration: "1.0.0"
+        parent_version: null
+        evaluation_status: "pending"
+        last_evaluated: null
+        evolution_notes: "Initial version"
+
+      validation_hooks:
+        odds_system_builder:
+          required_for: true
+          validates: ["table_generation", "fk_references"]
+
+      see_also: "https://docs.xtalent.io/ats/screening/screening"
+
+    slots:
+      - screening_id
+      - application_id
+      - result
+      - notes
+      - decided_by
+      - decided_at
+      - created_by
+      - created_at
+      - updated_at
+
+    slot_usage:
+      screening_id:
+        required: true
+        identifier: true
+
+      application_id:
+        required: true
+
+      result:
+        required: true
+
+      decided_by:
+        required: true
+
+      decided_at:
+        required: true
+
+      created_by:
+        required: true
+
+      created_at:
+        required: true
+
+    rules:
+      - description: "BRS-SCR-001: Auto tạo Candidate RR khi Screening = Pass"
+        preconditions:
+          slot_conditions:
+            result:
+              equals_string: "PASS"
+        postconditions:
+          slot_conditions:
+            candidate_rr_id:
+              must_exist: true
+
+      - description: "BRS-SCR-002: KHÔNG tạo Candidate RR khi Screening = Fail"
+        preconditions:
+          slot_conditions:
+            result:
+              equals_string: "FAIL"
+        postconditions:
+          slot_conditions:
+            candidate_rr_id:
+              must_not_exist: true
+
+      - description: "BRS-SCR-005: Screening result có thể update trước khi qua vòng sau"
+        preconditions:
+          slot_conditions:
+            application_id:
+              slot_value_conditions:
+                status:
+                  equals_string: "SCREENING"
+        postconditions:
+          slot_conditions: {}
+
+# === ENUMS ===
+enums:
+  ScreeningResultEnum:
+    description: "Kết quả screening"
+    permissible_values:
+      PASS:
+        description: "Đạt, qua vòng tiếp theo"
+      FAIL:
+        description: "Không đạt, không qua vòng tiếp theo"
+      PENDING:
+        description: "Chưa quyết định"

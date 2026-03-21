@@ -1,0 +1,189 @@
+id: https://xtalent.io/ontology/ats/assessment/submission
+name: submission_ontology
+version: "1.0.0"
+description: "Submission - Bài nộp của Student cho Assignment"
+
+prefixes:
+  xt: https://xtalent.io/ontology/
+  oracle: https://oracle.com/hcm/
+  sap: https://successfactors.sap.com/
+  workday: https://workday.com/
+
+imports:
+  - ./grading.yaml
+
+default_range: string
+
+slots:
+  # --- Identifier ---
+  submission_id:
+    description: "Unique identifier cho Submission"
+    identifier: true
+    required: true
+    pattern: "^SUB-\\d{6}$"
+    annotations:
+      example: "SUB-000001"
+
+  # --- Core Fields ---
+  assignment_id:
+    description: "Assignment ID mà Student nộp bài"
+    required: true
+    annotations:
+      reference: "Assignment.assignment_id"
+
+  application_id:
+    description: "Application ID của Student nộp bài"
+    required: true
+    annotations:
+      reference: "Application.application_id"
+
+  candidate_rr_id:
+    description: "Candidate RR ID"
+    required: true
+    annotations:
+      reference: "CandidateRR.candidate_rr_id"
+
+  attachments:
+    description: "Danh sách attachment IDs nộp lên"
+    range: string
+    multivalued: true
+    required: true
+
+  submitted_at:
+    description: "Thời điểm nộp bài"
+    range: datetime
+    required: true
+
+  is_late:
+    description: "Nộp muộn (sau deadline)"
+    range: boolean
+    required: false
+
+  status:
+    description: "Trạng thái Submission"
+    range: SubmissionStatusEnum
+    required: true
+
+  # --- Audit Fields ---
+  created_by:
+    description: "Student ID người nộp"
+    required: true
+    annotations:
+      reference: "Student.student_id"
+
+  created_at:
+    description: "Timestamp tạo Submission"
+    range: datetime
+    required: true
+
+classes:
+  Submission:
+    description: |
+      Submission - Bài nộp của Student cho Assignment.
+      Student nộp qua link trước deadline.
+      Submission chỉ được nộp trước deadline (configurable grace period).
+      Aggregate Root trong Assessment context.
+
+    annotations:
+      oracle_hcm_term: "AssessmentSubmission"
+      sap_term: "AssessmentSubmission"
+      workday_term: "AssessmentSubmission"
+      disambiguation: "xTalent: Submission = Bài nộp Online Test. Oracle: AssessmentSubmission. SAP: AssessmentSubmission. Workday: AssessmentSubmission. Xem docs.xtalent.io/ats/assessment/submission."
+
+      module: "ats"
+      sub_module: "assessment"
+      version: "1.0.0"
+      bounded_context: "Assessment"
+      aggregate_root: true
+
+      ouroboros_evolution:
+        iteration: "1.0.0"
+        parent_version: null
+        evaluation_status: "pending"
+        last_evaluated: null
+        evolution_notes: "Initial version"
+
+      validation_hooks:
+        odds_system_builder:
+          required_for: true
+          validates: ["table_generation", "fk_references"]
+
+      see_also: "https://docs.xtalent.io/ats/assessment/submission"
+
+    slots:
+      - submission_id
+      - assignment_id
+      - application_id
+      - candidate_rr_id
+      - attachments
+      - submitted_at
+      - is_late
+      - status
+      - created_by
+      - created_at
+
+    slot_usage:
+      submission_id:
+        required: true
+        identifier: true
+
+      assignment_id:
+        required: true
+
+      application_id:
+        required: true
+
+      candidate_rr_id:
+        required: true
+
+      attachments:
+        required: true
+
+      submitted_at:
+        required: true
+
+      status:
+        required: true
+
+      created_by:
+        required: true
+
+      created_at:
+        required: true
+
+    rules:
+      - description: "BRS-SUB-001: Submission chỉ được nộp trước deadline (configurable grace period)"
+        preconditions:
+          slot_conditions:
+            assignment_id:
+              slot_value_conditions:
+                deadline:
+                  slot_value_conditions: {}
+        postconditions:
+          slot_conditions:
+            submitted_at:
+              must_be_before: "assignment.deadline"
+
+      - description: "BRS-SUB-002: File submission phải đúng format cho phép"
+        preconditions:
+          slot_conditions: {}
+        postconditions:
+          slot_conditions:
+            attachments:
+              file_types_must_match: "assignment.allowed_file_types"
+
+# === ENUMS ===
+enums:
+  SubmissionStatusEnum:
+    description: "Trạng thái Submission"
+    permissible_values:
+      SUBMITTED:
+        description: "Đã nộp"
+      GRADING:
+        description: "Đang chấm"
+      GRADED:
+        description: "Đã chấm xong"
+      LATE:
+        description: "Nộp muộn"
+      RESUBMITTED:
+        description: "Nộp lại"

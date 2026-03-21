@@ -1,0 +1,1379 @@
+openapi: "3.0.3"
+info:
+  title: Test Session API
+  description: |
+    API cho Test Session Bounded Context — Quản lý ca thi Onsite, auto allocate slots, check-in, và chấm thi.
+
+    ## Derived From
+    - **Glossary:** 6.glossary/test-session.md
+    - **Flow:** 7.flows/test-session-flow.md
+    - **Ontology:** 5.ontology/test-session/*.yaml
+
+    ## Business Rules
+    - **BR-TSLOT-001:** Auto gen SBD khi Student được chia vào slot
+    - **BR-TSLOT-002:** Student chỉ được đổi lịch 1 lần (lần thứ 2 chỉ còn Yes/No options)
+    - **BR-TSLOT-003:** Auto allocate slots theo FCFS với Time Window (configurable)
+    - **BR-TSLOT-004:** Time Window để confirm slot (default: 24h, configurable 1-72h)
+    - **BR-TSCH-001:** Chỉ Managers được phân công mới chấm được Onsite Test
+
+    ## Terminology (Ubiquitous Language)
+    - **TestSlot:** Ca thi Onsite với ngày giờ, địa điểm, phòng, và max capacity
+    - **Schedule:** Lịch thi của Student trong Test Session, auto gen SBD khi được chia vào slot
+    - **SBD:** Số Báo Danh (pattern: SBD-YYYYNNNN), auto-gen khi allocate
+    - **FCFS:** First-Come-First-Served allocation strategy
+
+  version: "1.0.0"
+  contact:
+    name: TA Operations Team + Tech Lead
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://api.xtalent.io/ats/v1
+    description: Production server
+  - url: https://staging-api.xtalent.io/ats/v1
+    description: Staging server
+
+tags:
+  - name: TestSlots
+    description: Operations on TestSlot aggregates (ca thi Onsite)
+  - name: Schedules
+    description: Operations on Schedule aggregates (lịch thi của Student)
+  - name: CheckIns
+    description: Operations on CheckIn aggregates (record check-in)
+  - name: Gradings
+    description: Operations on Grading aggregates (kết quả chấm thi)
+
+paths:
+  /test-slots/create:
+    post:
+      operationId: createTestSlot
+      summary: Create TestSlot
+      description: |
+        Tạo TestSlot mới với thông tin ca thi.
+
+        **Preconditions:**
+        - Event đã publish
+        - TA có quyền tạo TestSlot
+
+        **Postconditions:**
+        - TestSlot created ở status DRAFT
+
+        **Business Rules:**
+        - BR-TSLOT-003: Auto allocate slots theo FCFS với Time Window
+
+        Related: [CreateTestSlot Command](6.glossary/test-session.md#commands)
+      tags:
+        - TestSlots
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTestSlotRequest"
+            examples:
+              example-1:
+                summary: Create morning test slot in Hanoi
+                value:
+                  event_id: "EVT-000001"
+                  slot_name: "Ca sáng 08:00-12:00"
+                  description: "Ca thi sáng tại Hà Nội"
+                  test_date: "2026-04-27"
+                  start_time: "08:00"
+                  end_time: "12:00"
+                  location: "Hà Nội"
+                  room: "Phòng 301"
+                  max_capacity: 30
+                  graders: ["MGR-001", "MGR-002"]
+                  auto_allocate_enabled: true
+                  time_window_hours: 24
+                  max_retry: 2
+                  notify_ta_on_allocate: true
+                  photo_capture_required: false
+                  grace_period_minutes: 15
+      responses:
+        "201":
+          description: TestSlot created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TestSlot"
+              examples:
+                example-1:
+                  summary: TestSlot created in DRAFT status
+                  value:
+                    slot_id: "TSLOT-000001"
+                    event_id: "EVT-000001"
+                    slot_name: "Ca sáng 08:00-12:00"
+                    description: "Ca thi sáng tại Hà Nội"
+                    test_date: "2026-04-27"
+                    start_time: "08:00"
+                    end_time: "12:00"
+                    location: "Hà Nội"
+                    room: "Phòng 301"
+                    max_capacity: 30
+                    current_capacity: 0
+                    graders: ["MGR-001", "MGR-002"]
+                    status: "DRAFT"
+                    auto_allocate_enabled: true
+                    time_window_hours: 24
+                    max_retry: 2
+                    notify_ta_on_allocate: true
+                    photo_capture_required: false
+                    grace_period_minutes: 15
+                    created_by: "TA-001"
+                    created_at: "2026-03-20T10:30:00Z"
+                    updated_at: "2026-03-20T10:30:00Z"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /test-slots/{id}/publish:
+    post:
+      operationId: publishTestSlot
+      summary: Publish TestSlot
+      description: |
+        Publish TestSlot (mở đăng ký) để bắt đầu auto-allocate.
+
+        **Preconditions:**
+        - TestSlot có đủ thông tin (ngày giờ, địa điểm, room, capacity)
+        - TestSlot status = DRAFT
+
+        **Postconditions:**
+        - TestSlot status = ACTIVE
+        - Auto-allocate bắt đầu (nếu enabled)
+
+        **Business Rules:**
+        - BR-TSLOT-003: Auto allocate slots theo FCFS với Time Window
+        - BR-TSLOT-005: Notify TA khi auto-allocate thành công
+
+        Related: [PublishTestSlot Command](6.glossary/test-session.md#commands)
+      tags:
+        - TestSlots
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^TSLOT-\\d{6}$"
+          example: "TSLOT-000001"
+      responses:
+        "200":
+          description: TestSlot published successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TestSlot"
+              examples:
+                example-1:
+                  summary: TestSlot published to ACTIVE status
+                  value:
+                    slot_id: "TSLOT-000001"
+                    event_id: "EVT-000001"
+                    slot_name: "Ca sáng 08:00-12:00"
+                    test_date: "2026-04-27"
+                    start_time: "08:00"
+                    end_time: "12:00"
+                    location: "Hà Nội"
+                    room: "Phòng 301"
+                    max_capacity: 30
+                    current_capacity: 0
+                    status: "ACTIVE"
+                    auto_allocate_enabled: true
+                    time_window_hours: 24
+                    created_by: "TA-001"
+                    created_at: "2026-03-20T10:30:00Z"
+                    updated_at: "2026-03-20T10:35:00Z"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: TestSlot cannot be published in current status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                example-1:
+                  summary: TestSlot already published
+                  value:
+                    code: "INVALID_STATUS"
+                    message: "Cannot publish TestSlot TSLOT-000001: current status is ACTIVE, expected DRAFT"
+                    details:
+                      slot_id: "TSLOT-000001"
+                      current_status: "ACTIVE"
+                      expected_status: "DRAFT"
+
+  /test-slots/{id}/allocate:
+    post:
+      operationId: allocateSchedule
+      summary: Auto-allocate Candidate to TestSlot
+      description: |
+        Hệ thống auto allocate Student vào TestSlot theo FCFS + Time Window.
+
+        **Preconditions:**
+        - TestSlot status = ACTIVE
+        - Còn chỗ (current_capacity < max_capacity)
+
+        **Postconditions:**
+        - Schedule created với SBD (pattern: SBD-YYYYNNNN)
+        - confirm_deadline set (default: 24h từ khi allocate)
+        - Event ScheduleAllocated published
+
+        **Business Rules:**
+        - BR-TSLOT-001: Auto gen SBD khi Student được chia vào slot
+        - BR-TSLOT-003: Auto allocate slots theo FCFS với Time Window
+        - BR-TSLOT-004: Time Window để confirm slot
+
+        Related: [AllocateSchedule Command](6.glossary/test-session.md#commands)
+      tags:
+        - TestSlots
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^TSLOT-\\d{6}$"
+          example: "TSLOT-000001"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AllocateScheduleRequest"
+            examples:
+              example-1:
+                summary: Allocate candidate to slot
+                value:
+                  application_id: "APP-000001"
+                  candidate_rr_id: "CRR-000001"
+      responses:
+        "201":
+          description: Schedule allocated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Schedule"
+              examples:
+                example-1:
+                  summary: Schedule created with SBD
+                  value:
+                    schedule_id: "TSCH-000001"
+                    slot_id: "TSLOT-000001"
+                    application_id: "APP-000001"
+                    candidate_rr_id: "CRR-000001"
+                    sbd: "SBD-20260001"
+                    status: "PENDING"
+                    confirm_deadline: "2026-03-21T10:30:00Z"
+                    change_count: 0
+                    created_by: "SYSTEM"
+                    created_at: "2026-03-20T10:30:00Z"
+                    updated_at: "2026-03-20T10:30:00Z"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: TestSlot full or candidate already allocated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                example-1:
+                  summary: TestSlot at full capacity
+                  value:
+                    code: "SLOT_FULL"
+                    message: "TestSlot TSLOT-000001 has reached max capacity (30/30)"
+                    details:
+                      slot_id: "TSLOT-000001"
+                      current_capacity: 30
+                      max_capacity: 30
+                example-2:
+                  summary: Candidate already allocated
+                  value:
+                    code: "DUPLICATE_ALLOCATION"
+                    message: "Candidate CRR-000001 already has an active schedule"
+                    details:
+                      candidate_rr_id: "CRR-000001"
+                      existing_schedule_id: "TSCH-000000"
+
+  /schedules/{id}/confirm:
+    post:
+      operationId: confirmSchedule
+      summary: Confirm Schedule
+      description: |
+        Student confirm tham gia Test Session sau khi được auto-allocate.
+
+        **Preconditions:**
+        - Schedule.status = PENDING
+        - Confirm deadline chưa qua (default: 24h từ khi allocate)
+        - change_count < max_changes (default: 1)
+
+        **Postconditions:**
+        - Schedule.status = CONFIRMED
+        - confirmed_at = now
+        - TestSlot.current_capacity += 1
+        - Event ScheduleConfirmed published
+
+        **Business Rules:**
+        - BR-TSLOT-004: Time Window để confirm slot
+
+        Related: [ConfirmSchedule Command](6.glossary/test-session.md#commands)
+      tags:
+        - Schedules
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^TSCH-\\d{6}$"
+          example: "TSCH-000001"
+      responses:
+        "200":
+          description: Schedule confirmed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Schedule"
+              examples:
+                example-1:
+                  summary: Schedule confirmed
+                  value:
+                    schedule_id: "TSCH-000001"
+                    slot_id: "TSLOT-000001"
+                    application_id: "APP-000001"
+                    candidate_rr_id: "CRR-000001"
+                    sbd: "SBD-20260001"
+                    status: "CONFIRMED"
+                    confirmed_at: "2026-03-20T11:00:00Z"
+                    confirm_deadline: "2026-03-21T10:30:00Z"
+                    change_count: 0
+                    created_by: "SYSTEM"
+                    created_at: "2026-03-20T10:30:00Z"
+                    updated_at: "2026-03-20T11:00:00Z"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Schedule cannot be confirmed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                example-1:
+                  summary: Confirm deadline expired
+                  value:
+                    code: "DEADLINE_EXPIRED"
+                    message: "Cannot confirm Schedule TSCH-000001: confirm deadline has passed"
+                    details:
+                      schedule_id: "TSCH-000001"
+                      confirm_deadline: "2026-03-19T10:30:00Z"
+                      current_time: "2026-03-21T10:30:00Z"
+                example-2:
+                  summary: Invalid schedule status
+                  value:
+                    code: "INVALID_STATUS"
+                    message: "Cannot confirm Schedule TSCH-000001: current status is CONFIRMED, expected PENDING"
+                    details:
+                      schedule_id: "TSCH-000001"
+                      current_status: "CONFIRMED"
+                      expected_status: "PENDING"
+
+  /schedules/{id}/reschedule:
+    post:
+      operationId: rescheduleTest
+      summary: Reschedule Test
+      description: |
+        Student đổi lịch thi (lần 1).
+
+        **Preconditions:**
+        - Schedule.status = CONFIRMED
+        - change_count < 1 (Student chỉ được đổi lịch 1 lần)
+
+        **Postconditions:**
+        - Schedule.slot_id = new slot
+        - change_count += 1
+        - status = RESCHEDULED
+        - confirmDeadline mới (24h)
+        - Event ScheduleRescheduled published
+
+        **Business Rules:**
+        - BR-TSLOT-002: Student chỉ được đổi lịch 1 lần (lần thứ 2 chỉ còn Yes/No options)
+
+        Related: [RescheduleTest Command](6.glossary/test-session.md#commands)
+
+        **Note:** Lần đổi thứ 2, endpoint này sẽ trả về lỗi `MAX_CHANGES_REACHED` và Student chỉ còn Yes/No options (TA manual xử lý).
+      tags:
+        - Schedules
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^TSCH-\\d{6}$"
+          example: "TSCH-000001"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RescheduleTestRequest"
+            examples:
+              example-1:
+                summary: Reschedule to new slot
+                value:
+                  new_slot_id: "TSLOT-000002"
+      responses:
+        "200":
+          description: Schedule rescheduled successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Schedule"
+              examples:
+                example-1:
+                  summary: Schedule rescheduled with new slot
+                  value:
+                    schedule_id: "TSCH-000001"
+                    slot_id: "TSLOT-000002"
+                    application_id: "APP-000001"
+                    candidate_rr_id: "CRR-000001"
+                    sbd: "SBD-20260001"
+                    status: "RESCHEDULED"
+                    confirmed_at: null
+                    confirm_deadline: "2026-03-22T10:30:00Z"
+                    change_count: 1
+                    created_by: "SYSTEM"
+                    created_at: "2026-03-20T10:30:00Z"
+                    updated_at: "2026-03-21T10:30:00Z"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Reschedule not allowed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                example-1:
+                  summary: Maximum changes reached
+                  value:
+                    code: "MAX_CHANGES_REACHED"
+                    message: "Cannot reschedule TSCH-000001: Student đã đổi lịch 1 lần. Lần này chỉ còn Yes/No options — liên hệ TA để manual assign"
+                    details:
+                      schedule_id: "TSCH-000001"
+                      change_count: 1
+                      max_changes: 1
+                      action_required: "TA_MANUAL_ASSIGN"
+                example-2:
+                  summary: New slot at full capacity
+                  value:
+                    code: "SLOT_FULL"
+                    message: "Cannot reschedule to TSLOT-000002: slot has reached max capacity"
+                    details:
+                      new_slot_id: "TSLOT-000002"
+                      current_capacity: 30
+                      max_capacity: 30
+
+  /schedules/{id}:
+    get:
+      operationId: getSchedule
+      summary: Get Test Schedule
+      description: |
+        Lấy thông tin Schedule của Student.
+
+        **Response includes:**
+        - Schedule thông tin (slot, application, candidate)
+        - SBD (Số Báo Danh)
+        - status, confirmed_at, confirm_deadline
+        - change_count
+
+        Related: [Schedule Entity](6.glossary/test-session.md#entities)
+      tags:
+        - Schedules
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^TSCH-\\d{6}$"
+          example: "TSCH-000001"
+      responses:
+        "200":
+          description: Schedule retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Schedule"
+              examples:
+                example-1:
+                  summary: Schedule with PENDING status
+                  value:
+                    schedule_id: "TSCH-000001"
+                    slot_id: "TSLOT-000001"
+                    application_id: "APP-000001"
+                    candidate_rr_id: "CRR-000001"
+                    sbd: "SBD-20260001"
+                    status: "PENDING"
+                    confirmed_at: null
+                    confirm_deadline: "2026-03-21T10:30:00Z"
+                    change_count: 0
+                    created_by: "SYSTEM"
+                    created_at: "2026-03-20T10:30:00Z"
+                    updated_at: "2026-03-20T10:30:00Z"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /checkins:
+    post:
+      operationId: recordCheckIn
+      summary: Record Check-in
+      description: |
+        Ghi nhận check-in cho Student trong Test Session.
+
+        **Preconditions:**
+        - Schedule.status = CONFIRMED
+        - Student đến địa điểm thi
+
+        **Postconditions:**
+        - CheckIn created với actual_time, is_late flag
+        - Event CheckInRecorded published
+
+        **Business Rules:**
+        - BR-TCI-001: Check-in muộn vẫn cho phép với lý do (trong grace period)
+        - BR-TSLOT-006: Photo capture khi check-in không bắt buộc (configurable)
+        - BR-TSLOT-007: Grace period cho check-in muộn (default: 15 phút)
+
+        Related: [RecordCheckIn Command](6.glossary/test-session.md#commands)
+      tags:
+        - CheckIns
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecordCheckInRequest"
+            examples:
+              example-1:
+                summary: On-time check-in
+                value:
+                  schedule_id: "TSCH-000001"
+                  actual_time: "2026-04-27T07:45:00Z"
+                  photo_id: "ATT-001"
+                  checked_in_by: "TA-001"
+              example-2:
+                summary: Late check-in with reason
+                value:
+                  schedule_id: "TSCH-000001"
+                  actual_time: "2026-04-27T08:20:00Z"
+                  late_reason: "Kẹt xe"
+                  photo_id: "ATT-002"
+                  checked_in_by: "TA-001"
+      responses:
+        "201":
+          description: Check-in recorded successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckIn"
+              examples:
+                example-1:
+                  summary: On-time check-in
+                  value:
+                    check_in_id: "TCI-000001"
+                    schedule_id: "TSCH-000001"
+                    actual_time: "2026-04-27T07:45:00Z"
+                    is_late: false
+                    late_reason: null
+                    photo_id: "ATT-001"
+                    checked_in_by: "TA-001"
+                    created_at: "2026-04-27T07:45:00Z"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Check-in not allowed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                example-1:
+                  summary: Very late check-in (past grace period)
+                  value:
+                    code: "VERY_LATE"
+                    message: "Check-in rejected: Student đến muộn quá grace period (15 phút)"
+                    details:
+                      schedule_id: "TSCH-000001"
+                      scheduled_time: "2026-04-27T08:00:00Z"
+                      actual_time: "2026-04-27T08:30:00Z"
+                      grace_period_minutes: 15
+                      minutes_late: 30
+
+  /gradings:
+    post:
+      operationId: completeGrading
+      summary: Complete Grading
+      description: |
+        Manager hoàn thành chấm Onsite Test.
+
+        **Preconditions:**
+        - CheckIn.status = ON_TIME/LATE (Student đã thi xong)
+        - Grader là Manager được phân công (BR-TSCH-001)
+
+        **Postconditions:**
+        - Grading created với score, comment, pass_fail
+        - Event GradingCompleted published
+
+        **Business Rules:**
+        - BR-TSCH-001: Chỉ Managers được phân công mới chấm được Onsite Test
+
+        Related: [CompleteGrading Command](6.glossary/test-session.md#commands)
+      tags:
+        - Gradings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompleteGradingRequest"
+            examples:
+              example-1:
+                summary: Passing grade
+                value:
+                  schedule_id: "TSCH-000001"
+                  grader_id: "MGR-001"
+                  score: 78.5
+                  comment: "Làm bài tốt, code sạch"
+                  pass_fail: "PASS"
+              example-2:
+                summary: Failing grade
+                value:
+                  schedule_id: "TSCH-000001"
+                  grader_id: "MGR-001"
+                  score: 45.0
+                  comment: "Chưa đạt yêu cầu"
+                  pass_fail: "FAIL"
+      responses:
+        "201":
+          description: Grading completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Grading"
+              examples:
+                example-1:
+                  summary: Passing grade
+                  value:
+                    grading_id: "TGRD-000001"
+                    schedule_id: "TSCH-000001"
+                    grader_id: "MGR-001"
+                    score: 78.5
+                    comment: "Làm bài tốt, code sạch"
+                    pass_fail: "PASS"
+                    graded_at: "2026-04-27T14:00:00Z"
+                    created_by: "MGR-001"
+                    created_at: "2026-04-27T14:00:00Z"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          description: Grader not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                example-1:
+                  summary: Grader not in assigned graders list
+                  value:
+                    code: "NOT_AUTHORIZED"
+                    message: "Grader MGR-002 không được phân công chấm TestSlot TSLOT-000001"
+                    details:
+                      grader_id: "MGR-002"
+                      slot_id: "TSLOT-000001"
+                      assigned_graders: ["MGR-001", "MGR-003"]
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+components:
+  schemas:
+    # === Request Schemas ===
+
+    CreateTestSlotRequest:
+      type: object
+      required:
+        - event_id
+        - slot_name
+        - test_date
+        - start_time
+        - end_time
+        - location
+        - room
+        - max_capacity
+      properties:
+        event_id:
+          type: string
+          pattern: "^EVT-\\d{6}$"
+          description: "Event ID mà TestSlot thuộc về"
+          example: "EVT-000001"
+        slot_name:
+          type: string
+          description: "Tên ca thi"
+          example: "Ca sáng 08:00-12:00"
+        description:
+          type: string
+          description: "Mô tả ca thi"
+          example: "Ca thi sáng tại Hà Nội"
+        test_date:
+          type: string
+          format: date
+          description: "Ngày thi"
+          example: "2026-04-27"
+        start_time:
+          type: string
+          format: time
+          description: "Giờ bắt đầu"
+          example: "08:00"
+        end_time:
+          type: string
+          format: time
+          description: "Giờ kết thúc"
+          example: "12:00"
+        location:
+          type: string
+          description: "Địa điểm thi"
+          example: "Hà Nội"
+        room:
+          type: string
+          description: "Phòng thi"
+          example: "Phòng 301"
+        max_capacity:
+          type: integer
+          minimum: 1
+          description: "Số lượng tối đa"
+          example: 30
+        graders:
+          type: array
+          items:
+            type: string
+            pattern: "^MGR-\\d{3}$"
+          description: "Danh sách Grader IDs được phân công chấm"
+          example: ["MGR-001", "MGR-002"]
+        auto_allocate_enabled:
+          type: boolean
+          description: "Bật auto allocate (FCFS + Time Window)"
+          default: true
+        time_window_hours:
+          type: integer
+          minimum: 1
+          maximum: 72
+          description: "Time Window để confirm (giờ, configurable, default: 24h)"
+          default: 24
+        max_retry:
+          type: integer
+          minimum: 0
+          maximum: 5
+          description: "Số lần retry auto-allocate (configurable, default: 2)"
+          default: 2
+        notify_ta_on_allocate:
+          type: boolean
+          description: "Notify TA khi auto-allocate thành công"
+          default: true
+        photo_capture_required:
+          type: boolean
+          description: "Bắt buộc chụp hình khi check-in (configurable)"
+          default: false
+        grace_period_minutes:
+          type: integer
+          minimum: 0
+          maximum: 60
+          description: "Grace period cho check-in muộn (phút, default: 15)"
+          default: 15
+
+    AllocateScheduleRequest:
+      type: object
+      required:
+        - application_id
+        - candidate_rr_id
+      properties:
+        application_id:
+          type: string
+          pattern: "^APP-\\d{6}$"
+          description: "Application ID của Student"
+          example: "APP-000001"
+        candidate_rr_id:
+          type: string
+          pattern: "^CRR-\\d{6}$"
+          description: "Candidate RR ID"
+          example: "CRR-000001"
+
+    RescheduleTestRequest:
+      type: object
+      required:
+        - new_slot_id
+      properties:
+        new_slot_id:
+          type: string
+          pattern: "^TSLOT-\\d{6}$"
+          description: "TestSlot ID mới"
+          example: "TSLOT-000002"
+
+    RecordCheckInRequest:
+      type: object
+      required:
+        - schedule_id
+        - actual_time
+        - checked_in_by
+      properties:
+        schedule_id:
+          type: string
+          pattern: "^TSCH-\\d{6}$"
+          description: "Schedule ID mà Student check-in"
+          example: "TSCH-000001"
+        actual_time:
+          type: string
+          format: date-time
+          description: "Thời gian check-in thực tế"
+          example: "2026-04-27T07:45:00Z"
+        is_late:
+          type: boolean
+          description: "Check-in muộn (sau grace period). Auto-calculated nếu không cung cấp."
+          readOnly: true
+        late_reason:
+          type: string
+          description: "Lý do check-in muộn"
+          example: "Kẹt xe"
+        photo_id:
+          type: string
+          pattern: "^ATT-\\d{3}$"
+          description: "Photo ID (chụp hình khi check-in, configurable)"
+          example: "ATT-001"
+        checked_in_by:
+          type: string
+          pattern: "^(TA|USER)-\\d{3}$"
+          description: "User ID thực hiện check-in (TA hoặc self)"
+          example: "TA-001"
+
+    CompleteGradingRequest:
+      type: object
+      required:
+        - schedule_id
+        - grader_id
+        - score
+        - pass_fail
+      properties:
+        schedule_id:
+          type: string
+          pattern: "^TSCH-\\d{6}$"
+          description: "Schedule ID được chấm"
+          example: "TSCH-000001"
+        grader_id:
+          type: string
+          pattern: "^MGR-\\d{3}$"
+          description: "User ID người chấm (Manager)"
+          example: "MGR-001"
+        score:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 100.0
+          description: "Điểm số"
+          example: 78.5
+        comment:
+          type: string
+          description: "Nhận xét của grader"
+          example: "Làm bài tốt, code sạch"
+        pass_fail:
+          $ref: "#/components/schemas/PassFailEnum"
+
+    # === Entity Schemas ===
+
+    TestSlot:
+      type: object
+      required:
+        - slot_id
+        - event_id
+        - slot_name
+        - test_date
+        - start_time
+        - end_time
+        - location
+        - room
+        - max_capacity
+        - status
+        - created_by
+        - created_at
+      properties:
+        slot_id:
+          type: string
+          pattern: "^TSLOT-\\d{6}$"
+          description: "Unique identifier cho TestSlot"
+          example: "TSLOT-000001"
+        event_id:
+          type: string
+          pattern: "^EVT-\\d{6}$"
+          description: "Event ID mà TestSlot thuộc về"
+          example: "EVT-000001"
+        slot_name:
+          type: string
+          description: "Tên ca thi"
+          example: "Ca sáng 08:00-12:00"
+        description:
+          type: string
+          description: "Mô tả ca thi"
+          example: "Ca thi sáng tại Hà Nội"
+        test_date:
+          type: string
+          format: date
+          description: "Ngày thi"
+          example: "2026-04-27"
+        start_time:
+          type: string
+          format: time
+          description: "Giờ bắt đầu"
+          example: "08:00"
+        end_time:
+          type: string
+          format: time
+          description: "Giờ kết thúc"
+          example: "12:00"
+        location:
+          type: string
+          description: "Địa điểm thi"
+          example: "Hà Nội"
+        room:
+          type: string
+          description: "Phòng thi"
+          example: "Phòng 301"
+        max_capacity:
+          type: integer
+          minimum: 1
+          description: "Số lượng tối đa"
+          example: 30
+        current_capacity:
+          type: integer
+          minimum: 0
+          description: "Số lượng hiện tại đã allocate"
+          example: 25
+        graders:
+          type: array
+          items:
+            type: string
+            pattern: "^MGR-\\d{3}$"
+          description: "Danh sách Grader IDs được phân công chấm"
+          example: ["MGR-001", "MGR-002"]
+        status:
+          $ref: "#/components/schemas/TestSlotStatusEnum"
+        auto_allocate_enabled:
+          type: boolean
+          description: "Bật auto allocate (FCFS + Time Window)"
+          example: true
+        time_window_hours:
+          type: integer
+          minimum: 1
+          maximum: 72
+          description: "Time Window để confirm (giờ)"
+          example: 24
+        max_retry:
+          type: integer
+          minimum: 0
+          maximum: 5
+          description: "Số lần retry auto-allocate"
+          example: 2
+        notify_ta_on_allocate:
+          type: boolean
+          description: "Notify TA khi auto-allocate thành công"
+          example: true
+        photo_capture_required:
+          type: boolean
+          description: "Bắt buộc chụp hình khi check-in"
+          example: false
+        grace_period_minutes:
+          type: integer
+          minimum: 0
+          maximum: 60
+          description: "Grace period cho check-in muộn (phút)"
+          example: 15
+        created_by:
+          type: string
+          pattern: "^(TA|USER)-\\d{3}$"
+          description: "User ID tạo TestSlot (TA)"
+          example: "TA-001"
+        created_at:
+          type: string
+          format: date-time
+          description: "Timestamp tạo TestSlot"
+          example: "2026-03-20T10:30:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: "Timestamp cập nhật TestSlot"
+          example: "2026-03-20T10:35:00Z"
+
+    Schedule:
+      type: object
+      required:
+        - schedule_id
+        - slot_id
+        - application_id
+        - candidate_rr_id
+        - status
+        - created_by
+        - created_at
+      properties:
+        schedule_id:
+          type: string
+          pattern: "^TSCH-\\d{6}$"
+          description: "Unique identifier cho Schedule"
+          example: "TSCH-000001"
+        slot_id:
+          type: string
+          pattern: "^TSLOT-\\d{6}$"
+          description: "TestSlot ID mà Student được chia"
+          example: "TSLOT-000001"
+        application_id:
+          type: string
+          pattern: "^APP-\\d{6}$"
+          description: "Application ID của Student"
+          example: "APP-000001"
+        candidate_rr_id:
+          type: string
+          pattern: "^CRR-\\d{6}$"
+          description: "Candidate RR ID"
+          example: "CRR-000001"
+        sbd:
+          type: string
+          pattern: "^SBD-\\d{8}$"
+          description: "Số báo danh (auto gen khi được chia vào slot, pattern: SBD-YYYYNNNN)"
+          example: "SBD-20260001"
+        status:
+          $ref: "#/components/schemas/ScheduleStatusEnum"
+        confirmed_at:
+          type: string
+          format: date-time
+          description: "Thời điểm confirm tham gia"
+          example: "2026-03-20T11:00:00Z"
+        confirm_deadline:
+          type: string
+          format: date-time
+          description: "Deadline confirm (Time Window, configurable)"
+          example: "2026-03-21T10:30:00Z"
+        change_count:
+          type: integer
+          minimum: 0
+          maximum: 2
+          description: "Số lần đổi lịch (max 1 lần)"
+          example: 0
+        created_by:
+          type: string
+          description: "System auto tạo"
+          example: "SYSTEM"
+        created_at:
+          type: string
+          format: date-time
+          description: "Timestamp tạo Schedule"
+          example: "2026-03-20T10:30:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: "Timestamp cập nhật Schedule"
+          example: "2026-03-20T11:00:00Z"
+
+    CheckIn:
+      type: object
+      required:
+        - check_in_id
+        - schedule_id
+        - actual_time
+        - checked_in_by
+        - created_at
+      properties:
+        check_in_id:
+          type: string
+          pattern: "^TCI-\\d{6}$"
+          description: "Unique identifier cho CheckIn"
+          example: "TCI-000001"
+        schedule_id:
+          type: string
+          pattern: "^TSCH-\\d{6}$"
+          description: "Schedule ID mà Student check-in"
+          example: "TSCH-000001"
+        actual_time:
+          type: string
+          format: date-time
+          description: "Thời gian check-in thực tế"
+          example: "2026-04-27T07:45:00Z"
+        is_late:
+          type: boolean
+          description: "Check-in muộn (sau grace period)"
+          example: false
+        late_reason:
+          type: string
+          description: "Lý do check-in muộn"
+          example: "Kẹt xe"
+        photo_id:
+          type: string
+          pattern: "^ATT-\\d{3}$"
+          description: "Photo ID (chụp hình khi check-in, configurable)"
+          example: "ATT-001"
+        checked_in_by:
+          type: string
+          pattern: "^(TA|USER)-\\d{3}$"
+          description: "User ID thực hiện check-in (TA hoặc self)"
+          example: "TA-001"
+        created_at:
+          type: string
+          format: date-time
+          description: "Timestamp tạo CheckIn record"
+          example: "2026-04-27T07:45:00Z"
+
+    Grading:
+      type: object
+      required:
+        - grading_id
+        - schedule_id
+        - grader_id
+        - score
+        - pass_fail
+        - graded_at
+        - created_by
+        - created_at
+      properties:
+        grading_id:
+          type: string
+          pattern: "^TGRD-\\d{6}$"
+          description: "Unique identifier cho Grading"
+          example: "TGRD-000001"
+        schedule_id:
+          type: string
+          pattern: "^TSCH-\\d{6}$"
+          description: "Schedule ID được chấm"
+          example: "TSCH-000001"
+        grader_id:
+          type: string
+          pattern: "^MGR-\\d{3}$"
+          description: "User ID người chấm (Manager)"
+          example: "MGR-001"
+        score:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 100.0
+          description: "Điểm số"
+          example: 78.5
+        comment:
+          type: string
+          description: "Nhận xét của grader"
+          example: "Làm bài tốt, code sạch"
+        pass_fail:
+          $ref: "#/components/schemas/PassFailEnum"
+        graded_at:
+          type: string
+          format: date-time
+          description: "Thời điểm chấm xong"
+          example: "2026-04-27T14:00:00Z"
+        created_by:
+          type: string
+          pattern: "^(MGR|USER)-\\d{3}$"
+          description: "Grader ID"
+          example: "MGR-001"
+        created_at:
+          type: string
+          format: date-time
+          description: "Timestamp tạo Grading record"
+          example: "2026-04-27T14:00:00Z"
+
+    # === Enum Schemas ===
+
+    TestSlotStatusEnum:
+      type: string
+      enum:
+        - DRAFT
+        - ACTIVE
+        - IN_PROGRESS
+        - COMPLETED
+        - CANCELLED
+      description: |
+        Trạng thái ca thi
+
+        - **DRAFT:** Đang nháp
+        - **ACTIVE:** Đang mở đăng ký
+        - **IN_PROGRESS:** Đang diễn ra
+        - **COMPLETED:** Hoàn tất
+        - **CANCELLED:** Đã hủy
+
+      x-lifecycle:
+        transitions:
+          DRAFT:
+            to: ACTIVE
+            by: "TA publish TestSlot"
+          ACTIVE:
+            to:
+              - IN_PROGRESS
+              - CANCELLED
+            by:
+              - "Đến ngày giờ thi (test_date + start_time)"
+              - "TA hủy TestSlot"
+          IN_PROGRESS:
+            to: COMPLETED
+            by: "Tất cả Candidates đã thi và chấm xong"
+
+    ScheduleStatusEnum:
+      type: string
+      enum:
+        - PENDING
+        - CONFIRMED
+        - RESCHEDULED
+        - COMPLETED
+        - NO_SHOW
+        - CANCELLED
+      description: |
+        Trạng thái lịch thi
+
+        - **PENDING:** Chưa confirm
+        - **CONFIRMED:** Đã confirm
+        - **RESCHEDULED:** Đã đổi lịch
+        - **COMPLETED:** Hoàn tất
+        - **NO_SHOW:** Không đến
+        - **CANCELLED:** Đã hủy
+
+      x-lifecycle:
+        transitions:
+          PENDING:
+            to:
+              - CONFIRMED
+              - RESCHEDULED
+              - CANCELLED
+            by:
+              - "Student confirm tham gia"
+              - "Student đổi lịch (change_count = 1)"
+              - "TA hủy schedule"
+          CONFIRMED:
+            to:
+              - COMPLETED
+              - NO_SHOW
+            by:
+              - "Student hoàn thành thi"
+              - "Student không đến (không check-in)"
+          RESCHEDULED:
+            to: CONFIRMED
+            by: "Student confirm lịch mới"
+
+    PassFailEnum:
+      type: string
+      enum:
+        - PASS
+        - FAIL
+        - NEEDS_DISCUSSION
+      description: |
+        Kết quả Đạt/Không đạt
+
+        - **PASS:** Đạt
+        - **FAIL:** Không đạt
+        - **NEEDS_DISCUSSION:** Cần thảo luận thêm
+
+    # === Error Schemas ===
+
+    Error:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          description: "Error code"
+          example: "INVALID_STATUS"
+        message:
+          type: string
+          description: "Human-readable error message"
+          example: "Cannot confirm Schedule TSCH-000001: confirm deadline has passed"
+        details:
+          type: object
+          description: "Additional error details"
+          additionalProperties: true
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            example-1:
+              summary: Invalid date format
+              value:
+                code: "INVALID_FORMAT"
+                message: "Invalid date format for test_date: expected YYYY-MM-DD"
+                details:
+                  field: "test_date"
+                  value: "04-27-2026"
+                  expected_format: "YYYY-MM-DD"
+            example-2:
+              summary: Missing required field
+              value:
+                code: "MISSING_FIELD"
+                message: "Missing required field: max_capacity"
+                details:
+                  field: "max_capacity"
+                  required: true
+
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            code: "UNAUTHORIZED"
+            message: "Authentication required"
+
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            code: "FORBIDDEN"
+            message: "User TA-002 does not have permission to create TestSlots for Event EVT-000001"
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            example-1:
+              summary: TestSlot not found
+              value:
+                code: "NOT_FOUND"
+                message: "TestSlot TSLOT-000001 not found"
+                details:
+                  resource_type: "TestSlot"
+                  resource_id: "TSLOT-000001"
+            example-2:
+              summary: Schedule not found
+              value:
+                code: "NOT_FOUND"
+                message: "Schedule TSCH-000001 not found"
+                details:
+                  resource_type: "Schedule"
+                  resource_id: "TSCH-000001"

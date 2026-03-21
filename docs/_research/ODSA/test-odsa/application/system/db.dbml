@@ -1,0 +1,208 @@
+// ODDS System - Application Context Database Schema
+// Generated from ontology: 5.ontology/application/*.yaml
+// Bounded Context: Application (ATS)
+
+// === ENUMS ===
+
+// ApplicationLifecycle - từ application.yaml
+Enum ApplicationLifecycle {
+  DRAFT
+  SUBMITTED
+  SCREENING
+  TEST
+  INTERVIEW
+  OFFER
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+// GenderEnum - từ student.yaml
+Enum GenderEnum {
+  MALE
+  FEMALE
+  OTHER
+  PREFER_NOT_TO_SAY
+}
+
+// MatchTypeEnum - từ duplicate.yaml
+Enum MatchTypeEnum {
+  PHONE
+  STUDENT_ID
+  EMAIL
+  BOTH
+}
+
+// DuplicateStatusEnum - từ duplicate.yaml
+Enum DuplicateStatusEnum {
+  PENDING
+  REVIEWING
+  RESOLVED
+  IGNORED
+}
+
+// ResolutionMethodEnum - từ duplicate.yaml
+Enum ResolutionMethodEnum {
+  REMOVE
+  MERGE
+  NO_ACTION
+}
+
+// FieldTypeEnum - từ form-field-value.yaml
+Enum FieldTypeEnum {
+  TEXT
+  LONG_TEXT
+  NUMBER
+  DATE
+  EMAIL
+  PHONE
+  DROPDOWN
+  RADIO
+  CHECKBOX
+  FILE
+}
+
+// QuestionTypeEnum - từ question-answer.yaml
+Enum QuestionTypeEnum {
+  SHORT_TEXT
+  LONG_TEXT
+  SINGLE_CHOICE
+  MULTIPLE_CHOICE
+  YES_NO
+}
+
+// AttachmentTypeEnum - từ attachment.yaml
+Enum AttachmentTypeEnum {
+  CV
+  CERTIFICATE
+  PORTFOLIO
+  TRANSCRIPT
+  OTHER
+}
+
+// UploadStatusEnum - từ attachment.yaml
+Enum UploadStatusEnum {
+  PENDING
+  COMPLETED
+  FAILED
+  DELETED
+}
+
+// === TABLES ===
+
+// Student - thông tin sinh viên applicant
+// Source: 5.ontology/application/student.yaml
+Table student {
+  student_id varchar [pk, not null, note: "Pattern: ^STU-\\d{6}$"]
+  full_name varchar [not null]
+  email varchar [not null, note: "Email liên lạc"]
+  phone varchar [not null]
+  date_of_birth date [not null]
+  gender GenderEnum [null, note: "Giới tính"]
+  university varchar [not null]
+  major varchar [not null]
+  gpa float [null, note: "GPA 0.0-4.0"]
+  graduation_year integer [null, note: "Năm tốt nghiệp dự kiến"]
+  address varchar [null, note: "Địa chỉ liên lạc"]
+  created_by varchar [not null, note: "User ID tạo Student record"]
+  created_at timestamp [not null]
+  updated_at timestamp [null]
+}
+
+// Application - đơn apply của Student vào Event/Track
+// Source: 5.ontology/application/application.yaml
+Table application {
+  application_id varchar [pk, not null, note: "Pattern: ^APP-\\d{6}$"]
+  event_id varchar [not null, note: "Event ID mà Student apply vào"]
+  track_id varchar [not null, note: "Track ID mà Student apply vào"]
+  student_id varchar [not null, ref: > student.student_id, note: "Student ID người apply"]
+  status ApplicationLifecycle [not null, note: "Trạng thái Application"]
+  submitted_at timestamp [not null, note: "Thời điểm submit application"]
+  created_by varchar [not null, note: "User ID tạo Application (student_id)"]
+  created_at timestamp [not null]
+  updated_at timestamp [null]
+}
+
+// Duplicate - record phát hiện ứng viên trùng
+// Source: 5.ontology/application/duplicate.yaml
+Table duplicate {
+  duplicate_id varchar [pk, not null, note: "Pattern: ^DUP-\\d{6}$"]
+  application_id_1 varchar [not null, ref: > application.application_id, note: "Application ID thứ 1 (giữ lại)"]
+  application_id_2 varchar [not null, ref: > application.application_id, note: "Application ID thứ 2 (xóa/merge)"]
+  match_type MatchTypeEnum [not null, note: "Loại match (PHONE, STUDENT_ID, BOTH)"]
+  status DuplicateStatusEnum [not null, note: "Trạng thái xử lý duplicate"]
+  resolved_at timestamp [null, note: "Thời điểm resolve duplicate"]
+  resolved_by varchar [null, note: "User ID resolve duplicate"]
+  resolution_method ResolutionMethodEnum [null, note: "Phương thức resolve"]
+  created_by varchar [not null, note: "System auto tạo"]
+  created_at timestamp [not null]
+}
+
+// form_field_value - Giá trị các form fields động theo Event config
+// Source: 5.ontology/application/form-field-value.yaml
+Table form_field_value {
+  field_value_id varchar [pk, not null, note: "Pattern: ^FV-\\d{6}$"]
+  application_id varchar [not null, ref: > application.application_id, note: "Application ID mà field value thuộc về"]
+  field_name varchar [not null, note: "Tên field (dynamic theo Event config)"]
+  field_label varchar [not null, note: "Label hiển thị của field"]
+  field_type FieldTypeEnum [not null, note: "Loại field (text, number, date, dropdown, etc.)"]
+  field_value varchar [not null, note: "Giá trị của field"]
+  is_required boolean [null, note: "Field có bắt buộc không"]
+  created_at timestamp [not null]
+}
+
+// question_answer - Câu trả lời cho questions theo Track
+// Source: 5.ontology/application/question-answer.yaml
+Table question_answer {
+  answer_id varchar [pk, not null, note: "Pattern: ^ANS-\\d{6}$"]
+  application_id varchar [not null, ref: > application.application_id, note: "Application ID mà câu trả lời thuộc về"]
+  question_id varchar [not null, note: "Question ID từ QuestionSet"]
+  question_text varchar [not null, note: "Nội dung câu hỏi"]
+  question_type QuestionTypeEnum [not null, note: "Loại câu hỏi"]
+  answer_text varchar [not null, note: "Câu trả lời"]
+  created_at timestamp [not null]
+}
+
+// attachment - Files đính kèm (CV, certificates, etc.)
+// Source: 5.ontology/application/attachment.yaml
+Table attachment {
+  attachment_id varchar [pk, not null, note: "Pattern: ^ATT-\\d{6}$"]
+  application_id varchar [not null, ref: > application.application_id, note: "Application ID mà attachment thuộc về"]
+  file_name varchar [not null, note: "Tên file gốc"]
+  file_type varchar [not null, note: "Loại file (PDF, DOC, DOCX, etc.)"]
+  file_size integer [not null, note: "Kích thước file (bytes)"]
+  file_url varchar [not null, note: "URL lưu trữ file"]
+  attachment_type AttachmentTypeEnum [not null, note: "Loại attachment (CV, CERTIFICATE, etc.)"]
+  upload_status UploadStatusEnum [not null, note: "Trạng thái upload"]
+  uploaded_by varchar [not null, note: "User ID upload file"]
+  uploaded_at timestamp [not null]
+}
+
+// === INDEXES ===
+
+// Student indexes
+CREATE INDEX idx_student_email ON student(email)
+CREATE INDEX idx_student_phone ON student(phone)
+
+// Application indexes
+CREATE INDEX idx_application_student ON application(student_id)
+CREATE INDEX idx_application_event ON application(event_id)
+CREATE INDEX idx_application_track ON application(track_id)
+CREATE INDEX idx_application_status ON application(status)
+
+// Duplicate indexes
+CREATE INDEX idx_duplicate_app1 ON duplicate(application_id_1)
+CREATE INDEX idx_duplicate_app2 ON duplicate(application_id_2)
+CREATE INDEX idx_duplicate_status ON duplicate(status)
+
+// FormFieldValue indexes
+CREATE INDEX idx_ffv_application ON form_field_value(application_id)
+CREATE INDEX idx_ffv_field_name ON form_field_value(field_name)
+
+// QuestionAnswer indexes
+CREATE INDEX idx_qa_application ON question_answer(application_id)
+CREATE INDEX idx_qa_question ON question_answer(question_id)
+
+// Attachment indexes
+CREATE INDEX idx_attachment_application ON attachment(application_id)
+CREATE INDEX idx_attachment_type ON attachment(attachment_type)

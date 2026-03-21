@@ -1,0 +1,160 @@
+id: https://xtalent.io/ontology/ats/application/form-field-value
+name: form_field_value_ontology
+version: "1.0.0"
+description: "FormFieldValue - Giá trị các form fields động theo Event config"
+
+prefixes:
+  xt: https://xtalent.io/ontology/
+  oracle: https://oracle.com/hcm/
+  sap: https://successfactors.sap.com/
+  workday: https://workday.com/
+
+default_range: string
+
+slots:
+  # --- Identifier ---
+  field_value_id:
+    description: "Unique identifier cho FormFieldValue"
+    identifier: true
+    required: true
+    pattern: "^FV-\\d{6}$"
+    annotations:
+      example: "FV-000001"
+
+  # --- Core Fields ---
+  application_id:
+    description: "Application ID mà field value thuộc về"
+    required: true
+    annotations:
+      reference: "Application.application_id"
+
+  field_name:
+    description: "Tên field (dynamic theo Event config)"
+    required: true
+
+  field_label:
+    description: "Label hiển thị của field"
+    required: true
+
+  field_type:
+    description: "Loại field (text, number, date, dropdown, etc.)"
+    range: FieldTypeEnum
+    required: true
+
+  field_value:
+    description: "Giá trị của field"
+    required: true
+
+  is_required:
+    description: "Field có bắt buộc không"
+    range: boolean
+    required: false
+
+  # --- Audit Fields ---
+  created_at:
+    description: "Timestamp tạo record"
+    range: datetime
+    required: true
+
+classes:
+  FormFieldValue:
+    description: |
+      FormFieldValue - Giá trị các form fields động theo Event config.
+      Mỗi Event có thể config các form fields khác nhau.
+      Aggregate Root trong Application context.
+
+    annotations:
+      oracle_hcm_term: "ApplicationField"
+      sap_term: "ApplicationField"
+      workday_term: "ApplicationField"
+      disambiguation: "xTalent: FormFieldValue = Giá trị field động. Oracle: ApplicationField. SAP: ApplicationField. Workday: ApplicationField. Xem docs.xtalent.io/ats/application/form-field-value."
+
+      module: "ats"
+      sub_module: "application"
+      version: "1.0.0"
+      bounded_context: "Application"
+      aggregate_root: true
+
+      ouroboros_evolution:
+        iteration: "1.0.0"
+        parent_version: null
+        evaluation_status: "pending"
+        last_evaluated: null
+        evolution_notes: "Initial version"
+
+      validation_hooks:
+        odds_system_builder:
+          required_for: true
+          validates: ["table_generation", "fk_references"]
+
+      see_also: "https://docs.xtalent.io/ats/application/form-field-value"
+
+    slots:
+      - field_value_id
+      - application_id
+      - field_name
+      - field_label
+      - field_type
+      - field_value
+      - is_required
+      - created_at
+
+    slot_usage:
+      field_value_id:
+        required: true
+        identifier: true
+
+      application_id:
+        required: true
+
+      field_name:
+        required: true
+
+      field_label:
+        required: true
+
+      field_type:
+        required: true
+
+      field_value:
+        required: true
+
+      created_at:
+        required: true
+
+    rules:
+      - description: "BRS-FV-001: Field required phải có giá trị"
+        preconditions:
+          slot_conditions:
+            is_required:
+              equals_boolean: true
+        postconditions:
+          slot_conditions:
+            field_value:
+              not_equals_string: ""
+
+# === ENUMS ===
+enums:
+  FieldTypeEnum:
+    description: "Loại field trong form"
+    permissible_values:
+      TEXT:
+        description: "Text ngắn"
+      LONG_TEXT:
+        description: "Text dài"
+      NUMBER:
+        description: "Số"
+      DATE:
+        description: "Ngày"
+      EMAIL:
+        description: "Email"
+      PHONE:
+        description: "Số điện thoại"
+      DROPDOWN:
+        description: "Dropdown chọn"
+      RADIO:
+        description: "Radio button"
+      CHECKBOX:
+        description: "Checkbox"
+      FILE:
+        description: "File upload"

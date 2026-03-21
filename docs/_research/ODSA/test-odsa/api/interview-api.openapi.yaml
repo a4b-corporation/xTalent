@@ -1,0 +1,1365 @@
+openapi: "3.0.3"
+info:
+  title: Interview API
+  description: |
+    API cho Interview Bounded Context - Quản lý ca phỏng vấn, invitation Interviewers, check-in, và grading.
+
+    ## Derived From
+    - **Glossary**: `6.glossary/interview.md`
+    - **Flow**: `7.flows/interview-flow.md`
+    - **Ontology**: `5.ontology/interview/*.yaml`
+
+    ## Business Rules
+    - **BR-ISLOT-001**: Interviewer chỉ thấy Candidates được phân công
+    - **BR-ISLOT-003**: Auto-allocate với FCFS + Time Window (configurable)
+    - **BR-ISLOT-004**: Time Window để confirm slot (default: 24h, configurable 1-72h)
+    - **BR-ISCH-001**: Candidate chỉ được đổi lịch 1 lần (lần thứ 2 chỉ còn Yes/No options)
+    - **BR-IGRD-001**: Interviewer chỉ submit grading cho Candidates được phân công
+    - **BR-IGRD-002**: Grading có thể update trước khi TA review (configurable deadline)
+
+    ## Lifecycle States
+    - **InterviewSlot**: DRAFT → ACTIVE → IN_PROGRESS → COMPLETED | CANCELLED
+    - **InterviewSchedule**: PENDING → CONFIRMED → COMPLETED | RESCHEDULED | NO_SHOW | CANCELLED
+    - **InterviewerInvitation**: PENDING → ACCEPTED | DECLINED → INTERVIEW_COMPLETED | CANCELLED
+
+    ## Configurable Parameters
+    | Parameter | Default | Range |
+    |-----------|---------|-------|
+    | time_window_hours | 24 | 1-72 |
+    | max_retry | 2 | 0-5 |
+    | grace_period_minutes | 15 | 0-60 |
+    | max_schedule_changes | 1 | 0-3 |
+  version: "1.0.0"
+  contact:
+    name: xTalent ATS Team
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://api.xtalent.io/v1
+    description: Production
+  - url: https://staging-api.xtalent.io/v1
+    description: Staging
+  - url: http://localhost:8080/v1
+    description: Local Development
+
+tags:
+  - name: Interview Slots
+    description: Quản lý InterviewSlot - Ca phỏng vấn
+  - name: Interview Schedules
+    description: Quản lý InterviewSchedule - Lịch phỏng vấn của Candidate
+  - name: Interviewer Invitations
+    description: Quản lý InterviewerInvitation - Invitation cho Interviewer
+  - name: Check-in
+    description: Quản lý CheckIn - Record check-in cho Interview
+  - name: Grading
+    description: Quản lý Grading - Kết quả phỏng vấn
+
+paths:
+  /interview-slots/create:
+    post:
+      operationId: createInterviewSlot
+      tags:
+        - Interview Slots
+      summary: Create InterviewSlot
+      description: |
+        Tạo InterviewSlot mới với thông tin ca phỏng vấn.
+
+        **Preconditions** (từ Flow):
+        - Event đã publish
+        - TA có quyền tạo InterviewSlot
+
+        **Postconditions**:
+        - InterviewSlot created ở status = DRAFT
+
+        **Flow Reference**: `7.flows/interview-flow.md#phase-1-create--publish-interviewslot`
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInterviewSlotRequest"
+            examples:
+              online_slot:
+                summary: Online Interview Slot
+                value:
+                  event_id: "EVT-000001"
+                  slot_name: "Ca sáng 09:00-12:00"
+                  description: "Phỏng vấn Fresher Developer - Backend"
+                  interview_date: "2026-05-05"
+                  start_time: "09:00"
+                  end_time: "12:00"
+                  format: "ONLINE"
+                  link: "https://meet.google.com/abc-defg"
+                  interviewers:
+                    - "MGR-001"
+                    - "MGR-002"
+                  max_capacity: 10
+                  auto_allocate_enabled: true
+                  time_window_hours: 24
+              offline_slot:
+                summary: Offline Interview Slot
+                value:
+                  event_id: "EVT-000001"
+                  slot_name: "Ca chiều 14:00-17:00"
+                  interview_date: "2026-05-06"
+                  start_time: "14:00"
+                  end_time: "17:00"
+                  format: "OFFLINE"
+                  location: "Tầng 10, Tòa nhà FPT, Duy Tân, Hà Nội"
+                  room: "Phòng Meeting 3"
+                  interviewers:
+                    - "MGR-003"
+                  max_capacity: 5
+      responses:
+        "201":
+          description: InterviewSlot created successfully
+          headers:
+            Location:
+              description: URL của InterviewSlot vừa tạo
+              schema:
+                type: string
+                example: "/v1/interview-slots/ISLOT-000001"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InterviewSlot"
+              examples:
+                created:
+                  summary: InterviewSlot created
+                  value:
+                    slot_id: "ISLOT-000001"
+                    event_id: "EVT-000001"
+                    slot_name: "Ca sáng 09:00-12:00"
+                    description: "Phỏng vấn Fresher Developer - Backend"
+                    interview_date: "2026-05-05"
+                    start_time: "09:00"
+                    end_time: "12:00"
+                    format: "ONLINE"
+                    link: "https://meet.google.com/abc-defg"
+                    max_capacity: 10
+                    current_capacity: 0
+                    interviewers:
+                      - "MGR-001"
+                      - "MGR-002"
+                    status: "DRAFT"
+                    auto_allocate_enabled: true
+                    time_window_hours: 24
+                    max_retry: 2
+                    notify_ta_on_allocate: true
+                    created_by: "TA-001"
+                    created_at: "2026-04-25T08:30:00Z"
+        "400":
+          description: Bad Request - Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                missing_interviewers:
+                  summary: Missing interviewers
+                  value:
+                    error:
+                      code: "VALIDATION_ERROR"
+                      message: "interviewers is required and must have at least 1 interviewer"
+                      details:
+                        field: "interviewers"
+                        constraint: "min_length: 1"
+                invalid_format:
+                  summary: Invalid format for time
+                  value:
+                    error:
+                      code: "VALIDATION_ERROR"
+                      message: "start_time must be in HH:mm format"
+                      details:
+                        field: "start_time"
+                        constraint: "pattern: ^[0-2]?[0-9]:[0-5][0-9]$"
+        "401":
+          description: Unauthorized - User not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden - User not authorized to create InterviewSlot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "FORBIDDEN"
+                  message: "Only TA role can create InterviewSlots"
+        "404":
+          description: Not Found - Event not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "EVENT_NOT_FOUND"
+                  message: "Event EVT-000001 does not exist"
+        "409":
+          description: Conflict - InterviewSlot with same time slot already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /interview-slots/{id}/publish:
+    post:
+      operationId: publishInterviewSlot
+      tags:
+        - Interview Slots
+      summary: Publish InterviewSlot
+      description: |
+        Publish InterviewSlot (mở đăng ký, status = ACTIVE).
+
+        **Preconditions** (từ Flow):
+        - InterviewSlot có đủ thông tin (ngày giờ, format, interviewers)
+        - InterviewSlot.status = DRAFT
+
+        **Postconditions**:
+        - InterviewSlot.status = ACTIVE
+        - Auto-allocate bắt đầu (nếu enabled)
+        - InterviewSchedule created cho mỗi Candidate
+        - InterviewerInvitation created cho mỗi interviewer
+
+        **Flow Reference**: `7.flows/interview-flow.md#phase-1-create--publish-interviewslot`
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^ISLOT-\\d{6}$"
+          example: "ISLOT-000001"
+      responses:
+        "200":
+          description: InterviewSlot published successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InterviewSlot"
+              example:
+                slot_id: "ISLOT-000001"
+                status: "ACTIVE"
+                updated_at: "2026-04-25T09:00:00Z"
+        "400":
+          description: Bad Request - InterviewSlot không đủ thông tin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "INVALID_STATE"
+                  message: "InterviewSlot thiếu thông tin: interviewers required"
+        "404":
+          description: Not Found - InterviewSlot not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conflict - InterviewSlot đã được publish
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "INVALID_STATE_TRANSITION"
+                  message: "InterviewSlot ISLOT-000001 đã ở trạng thái ACTIVE"
+        "500":
+          description: Internal Server Error - Auto-allocate failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /interview-slots/{id}/schedule:
+    post:
+      operationId: scheduleCandidates
+      tags:
+        - Interview Slots
+      summary: Schedule Candidates vào InterviewSlot
+      description: |
+        Auto-allocate hoặc Manual assign Candidates vào InterviewSlot.
+
+        **Business Rules**:
+        - **BR-ISLOT-003**: Auto-allocate với FCFS + Time Window (configurable)
+        - **BR-ISLOT-004**: Time Window để confirm slot (default: 24h)
+        - **BR-ISLOT-005**: Notify TA khi auto-allocate thành công
+
+        **Error Handling** (từ Flow):
+        - Candidate không confirm trong Time Window: Auto retry allocate (max 2 lần)
+        - Sau 2 lần vẫn không confirm: Notify TA manual assign
+
+        **Flow Reference**: `7.flows/interview-flow.md#phase-1-create--publish-interviewslot`
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "ISLOT-000001"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScheduleCandidatesRequest"
+            examples:
+              auto_allocate:
+                summary: Auto-allocate với FCFS
+                value:
+                  method: "AUTO"
+                  allocation_rules:
+                    fcfs: true
+                    time_window_hours: 24
+              manual_assign:
+                summary: Manual assign specific candidates
+                value:
+                  method: "MANUAL"
+                  candidate_rr_ids:
+                    - "CRR-000001"
+                    - "CRR-000002"
+      responses:
+        "200":
+          description: Candidates scheduled successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduleCandidatesResponse"
+              example:
+                allocated_schedules:
+                  - schedule_id: "ISCH-000001"
+                    candidate_rr_id: "CRR-000001"
+                    slot_id: "ISLOT-000001"
+                    status: "PENDING"
+                    confirm_deadline: "2026-04-26T09:00:00Z"
+                  - schedule_id: "ISCH-000002"
+                    candidate_rr_id: "CRR-000002"
+                    slot_id: "ISLOT-000001"
+                    status: "PENDING"
+                    confirm_deadline: "2026-04-26T09:00:00Z"
+                notification_sent: true
+        "400":
+          description: Bad Request - Invalid allocation method or slot full
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not Found - InterviewSlot not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conflict - Slot đã hết chỗ (current_capacity >= max_capacity)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "SLOT_FULL"
+                  message: "InterviewSlot ISLOT-000001 đã hết chỗ (10/10)"
+
+  /interview-schedules/{id}/confirm:
+    post:
+      operationId: confirmInterviewSchedule
+      tags:
+        - Interview Schedules
+      summary: Confirm Interview Schedule
+      description: |
+        Candidate confirm tham gia phỏng vấn.
+
+        **Preconditions** (từ Flow):
+        - InterviewSchedule.status = PENDING
+        - Chưa qua confirm_deadline
+
+        **Postconditions**:
+        - InterviewSchedule.status = CONFIRMED
+        - Notify TA
+
+        **Business Rules**:
+        - **BR-ISCH-001**: Candidate chỉ được đổi lịch 1 lần
+
+        **Flow Reference**: `7.flows/interview-flow.md#phase-2-candidate-confirm--interviewer-accept`
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^ISCH-\\d{6}$"
+          example: "ISCH-000001"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmScheduleRequest"
+      responses:
+        "200":
+          description: Interview schedule confirmed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InterviewSchedule"
+              example:
+                schedule_id: "ISCH-000001"
+                slot_id: "ISLOT-000001"
+                application_id: "APP-000001"
+                candidate_rr_id: "CRR-000001"
+                status: "CONFIRMED"
+                confirmed_at: "2026-04-25T10:30:00Z"
+                confirm_deadline: "2026-04-26T09:00:00Z"
+                change_count: 0
+        "400":
+          description: Bad Request - Invalid state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "INVALID_STATE"
+                  message: "InterviewSchedule đã được confirm"
+        "404":
+          description: Not Found - InterviewSchedule not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conflict - Confirm deadline đã qua
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "DEADLINE_EXCEEDED"
+                  message: "Confirm deadline đã qua. Vui lòng liên hệ TA để được hỗ trợ."
+        "410":
+          description: Gone - Schedule đã bị hủy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /interview-schedules/{id}/reschedule:
+    post:
+      operationId: rescheduleInterview
+      tags:
+        - Interview Schedules
+      summary: Reschedule Interview
+      description: |
+        Candidate yêu cầu đổi lịch phỏng vấn.
+
+        **Business Rules**:
+        - **BR-ISCH-001**: Lần thứ 1: Candidate tự chọn slot. Lần thứ 2: Chỉ còn Yes/No options (không tự chọn)
+
+        **Error Handling** (từ Flow):
+        - Candidate đổi lịch lần 2: Hệ thống hiển thị "Bạn đã đổi lịch 1 lần. Lần này chỉ còn Yes/No options"
+        - TA nhận request, manual xử lý
+
+        **Flow Reference**: `7.flows/interview-flow.md#case-candidate-đổi-lịch-lần-2`
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "ISCH-000001"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RescheduleRequest"
+            examples:
+              first_change:
+                summary: Đổi lịch lần 1 (tự chọn slot)
+                value:
+                  reason: "Trùng lịch thi"
+                  preferred_slot_id: "ISLOT-000002"
+              second_change:
+                summary: Đổi lịch lần 2 (Yes/No only)
+                value:
+                  reason: "Việc gia đình đột xuất"
+                  accept_reassignment: true
+      responses:
+        "200":
+          description: Reschedule request successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InterviewSchedule"
+              example:
+                schedule_id: "ISCH-000001"
+                status: "RESCHEDULED"
+                change_count: 1
+                updated_at: "2026-04-25T11:00:00Z"
+        "400":
+          description: Bad Request - change_count >= max_changes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "MAX_CHANGES_EXCEEDED"
+                  message: "Bạn đã đổi lịch 1 lần. Lần này chỉ còn Yes/No options"
+        "404":
+          description: Not Found - InterviewSchedule not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Unprocessable Entity - Preferred slot not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /interview-schedules/{id}:
+    get:
+      operationId: getInterviewSchedule
+      tags:
+        - Interview Schedules
+      summary: Get Interview Schedule
+      description: |
+        Lấy thông tin InterviewSchedule của Candidate.
+
+        **Flow Reference**: `7.flows/interview-flow.md#phase-2-candidate-confirm--interviewer-accept`
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "ISCH-000001"
+        - name: include
+          in: query
+          required: false
+          schema:
+            type: array
+            items:
+              type: string
+              enum:
+                - slot_details
+                - candidate_info
+                - grading
+          description: Các thông tin include thêm
+      responses:
+        "200":
+          description: InterviewSchedule details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InterviewSchedule"
+              example:
+                schedule_id: "ISCH-000001"
+                slot_id: "ISLOT-000001"
+                application_id: "APP-000001"
+                candidate_rr_id: "CRR-000001"
+                status: "CONFIRMED"
+                confirmed_at: "2026-04-25T10:30:00Z"
+                confirm_deadline: "2026-04-26T09:00:00Z"
+                change_count: 0
+                created_at: "2026-04-25T09:00:00Z"
+        "404":
+          description: Not Found - InterviewSchedule not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /interviewer-invitations/{id}/respond:
+    post:
+      operationId: respondToInvitation
+      tags:
+        - Interviewer Invitations
+      summary: Respond to Interviewer Invitation
+      description: |
+        Interviewer phản hồi invitation (Accept/Decline).
+
+        **Postconditions**:
+        - InterviewerInvitation.status = ACCEPTED/DECLINED
+
+        **Error Handling** (từ Flow):
+        - Nếu DECLINED: Notify TA, auto-send invitation cho interviewer thay thế
+
+        **Flow Reference**: `7.flows/interview-flow.md#phase-2-candidate-confirm--interviewer-accept`
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^IINV-\\d{6}$"
+          example: "IINV-000001"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RespondToInvitationRequest"
+            examples:
+              accept:
+                summary: Accept invitation
+                value:
+                  response: "ACCEPT"
+              decline:
+                summary: Decline invitation
+                value:
+                  response: "DECLINE"
+                  reason: "Trùng lịch họp"
+      responses:
+        "200":
+          description: Invitation response recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InterviewerInvitation"
+              example:
+                invitation_id: "IINV-000001"
+                slot_id: "ISLOT-000001"
+                interviewer_id: "MGR-001"
+                status: "ACCEPTED"
+                response: "ACCEPT"
+                responded_at: "2026-04-25T14:30:00Z"
+        "400":
+          description: Bad Request - Invalid response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not Found - Invitation not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conflict - Invitation đã được respond
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /interviews/{id}/submit-grading:
+    post:
+      operationId: submitGrading
+      tags:
+        - Grading
+      summary: Submit Grading
+      description: |
+        Interviewer submit kết quả phỏng vấn cho Candidate.
+
+        **Preconditions** (từ Flow):
+        - Interviewer được phân công cho Candidate này (BR-IGRD-001)
+        - Score trong khoảng 0-100
+
+        **Postconditions**:
+        - Grading created với score, comment, proposal
+        - Notify TA grading đã submit
+        - Publish event `GradingSubmitted`
+
+        **Business Rules**:
+        - **BR-IGRD-001**: Interviewer chỉ submit grading cho Candidates được phân công
+        - **BR-IGRD-002**: Grading có thể update trước khi TA review (configurable deadline)
+
+        **Error Handling** (từ Flow):
+        - Interviewer không submit grading: Auto-send reminder sau 24h
+        - Grading proposal = NEED_DISCUSSION: TA tổ chức discussion meeting
+
+        **Flow Reference**: `7.flows/interview-flow.md#phase-4-submit-grading`
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^ISCH-\\d{6}$"
+          description: InterviewSchedule ID
+          example: "ISCH-000001"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmitGradingRequest"
+            examples:
+              offer:
+                summary: Grading với proposal OFFER
+                value:
+                  score: 88.0
+                  comment: "Giao tiếp tốt, kỹ thuật vững. Ứng viên nắm chắc kiến thức cơ bản."
+                  proposal: "OFFER"
+              reject:
+                summary: Grading với proposal REJECT
+                value:
+                  score: 45.0
+                  comment: "Kỹ thuật chưa đạt, cần cải thiện thêm."
+                  proposal: "REJECT"
+              need_discussion:
+                summary: Grading với proposal NEED_DISCUSSION
+                value:
+                  score: 70.0
+                  comment: "Ứng viên có tiềm năng nhưng cần đánh giá thêm về văn hóa phù hợp."
+                  proposal: "NEED_DISCUSSION"
+      responses:
+        "201":
+          description: Grading submitted successfully
+          headers:
+            Location:
+              description: URL của Grading vừa tạo
+              schema:
+                type: string
+                example: "/v1/gradings/IGRD-000001"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Grading"
+              example:
+                grading_id: "IGRD-000001"
+                schedule_id: "ISCH-000001"
+                interviewer_id: "MGR-001"
+                score: 88.0
+                comment: "Giao tiếp tốt, kỹ thuật vững. Ứng viên nắm chắc kiến thức cơ bản."
+                proposal: "OFFER"
+                graded_at: "2026-05-05T11:30:00Z"
+                can_update_before_review: true
+                update_deadline: "2026-05-06T11:30:00Z"
+                created_by: "MGR-001"
+                created_at: "2026-05-05T11:30:00Z"
+        "400":
+          description: Bad Request - Invalid score or comment required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "VALIDATION_ERROR"
+                  message: "score phải trong khoảng 0-100"
+                  details:
+                    field: "score"
+                    constraint: "minimum: 0, maximum: 100"
+        "403":
+          description: Forbidden - Interviewer không được phân công cho Candidate này
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "FORBIDDEN"
+                  message: "Bạn không được phân công phỏng vấn Candidate này"
+        "404":
+          description: Not Found - InterviewSchedule not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conflict - Grading đã được submit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "GRADING_ALREADY_SUBMITTED"
+                  message: "Grading cho ISCH-000001 đã được submit"
+
+  /checkin/record:
+    post:
+      operationId: recordCheckIn
+      tags:
+        - Check-in
+      summary: Record Check-in
+      description: |
+        Ghi nhận check-in cho Candidate trong Interview.
+
+        **Preconditions** (từ Flow):
+        - InterviewSchedule.status = CONFIRMED
+        - Candidate đến phòng phỏng vấn
+
+        **Postconditions**:
+        - CheckIn created với:
+          - actual_time
+          - is_late flag (so với start_time + grace_period)
+          - late_reason (nếu is_late = true)
+          - optional photo_id
+
+        **Business Rules**:
+        - **BR-ICI-001**: Check-in muộn vẫn cho phép với lý do
+
+        **Flow Reference**: `7.flows/interview-flow.md#phase-3-conduct-interview--check-in`
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecordCheckInRequest"
+            examples:
+              on_time:
+                summary: Check-in đúng giờ
+                value:
+                  schedule_id: "ISCH-000001"
+                  actual_time: "2026-05-05T08:55:00Z"
+                  photo_id: "ATT-001"
+              late:
+                summary: Check-in muộn
+                value:
+                  schedule_id: "ISCH-000001"
+                  actual_time: "2026-05-05T09:20:00Z"
+                  late_reason: "Kẹt xe"
+                  photo_id: "ATT-002"
+      responses:
+        "201":
+          description: Check-in recorded successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckIn"
+              example:
+                check_in_id: "ICI-000001"
+                schedule_id: "ISCH-000001"
+                actual_time: "2026-05-05T08:55:00Z"
+                is_late: false
+                status: "ON_TIME"
+                photo_id: "ATT-001"
+                checked_in_by: "TA-001"
+                created_at: "2026-05-05T08:55:00Z"
+        "400":
+          description: Bad Request - Invalid schedule_id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not Found - InterviewSchedule not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conflict - Check-in đã được record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  schemas:
+    # === Request Schemas ===
+    CreateInterviewSlotRequest:
+      type: object
+      required:
+        - event_id
+        - slot_name
+        - interview_date
+        - start_time
+        - end_time
+        - format
+        - interviewers
+        - max_capacity
+      properties:
+        event_id:
+          type: string
+          description: Event ID mà InterviewSlot thuộc về
+          pattern: "^EVT-\\d{6}$"
+          example: "EVT-000001"
+        slot_name:
+          type: string
+          description: Tên ca phỏng vấn
+          example: "Ca sáng 09:00-12:00"
+        description:
+          type: string
+          description: Mô tả ca phỏng vấn
+          example: "Phỏng vấn Fresher Developer - Backend"
+        interview_date:
+          type: string
+          format: date
+          description: Ngày phỏng vấn
+          example: "2026-05-05"
+        start_time:
+          type: string
+          format: time
+          pattern: "^[0-2]?[0-9]:[0-5][0-9]$"
+          description: Giờ bắt đầu
+          example: "09:00"
+        end_time:
+          type: string
+          format: time
+          pattern: "^[0-2]?[0-9]:[0-5][0-9]$"
+          description: Giờ kết thúc
+          example: "12:00"
+        format:
+          $ref: "#/components/schemas/InterviewFormatEnum"
+        location:
+          type: string
+          description: Địa điểm phỏng vấn (nếu OFFLINE)
+          example: "Tầng 10, Tòa nhà FPT, Duy Tân, Hà Nội"
+        room:
+          type: string
+          description: Phòng phỏng vấn (nếu OFFLINE)
+          example: "Phòng Meeting 3"
+        link:
+          type: string
+          format: uri
+          description: Link phỏng vấn (nếu ONLINE)
+          example: "https://meet.google.com/abc-defg"
+        max_capacity:
+          type: integer
+          minimum: 1
+          description: Số lượng tối đa
+          example: 10
+        interviewers:
+          type: array
+          items:
+            type: string
+            pattern: "^MGR-\\d{3}$"
+          minItems: 1
+          description: Danh sách Interviewer IDs
+          example:
+            - "MGR-001"
+            - "MGR-002"
+        auto_allocate_enabled:
+          type: boolean
+          default: true
+          description: Bật auto allocate (FCFS + Time Window)
+        time_window_hours:
+          type: integer
+          minimum: 1
+          maximum: 72
+          default: 24
+          description: Time Window để confirm (giờ)
+        max_retry:
+          type: integer
+          minimum: 0
+          maximum: 5
+          default: 2
+          description: Số lần retry auto-allocate
+        notify_ta_on_allocate:
+          type: boolean
+          default: true
+          description: Notify TA khi auto-allocate thành công
+
+    ScheduleCandidatesRequest:
+      type: object
+      required:
+        - method
+      properties:
+        method:
+          type: string
+          enum:
+            - AUTO
+            - MANUAL
+          description: Phương thức schedule
+        candidate_rr_ids:
+          type: array
+          items:
+            type: string
+            pattern: "^CRR-\\d{6}$"
+          description: Danh sách Candidate RR IDs (cho MANUAL method)
+        allocation_rules:
+          type: object
+          description: Rules cho auto-allocate
+          properties:
+            fcfs:
+              type: boolean
+              default: true
+              description: First Come First Served
+            time_window_hours:
+              type: integer
+              minimum: 1
+              maximum: 72
+              default: 24
+              description: Confirm deadline (giờ)
+
+    ConfirmScheduleRequest:
+      type: object
+      properties:
+        confirmed_at:
+          type: string
+          format: date-time
+          description: Thời điểm confirm (default: now)
+
+    RescheduleRequest:
+      type: object
+      required:
+        - reason
+      properties:
+        reason:
+          type: string
+          description: Lý do đổi lịch
+          example: "Trùng lịch thi"
+        preferred_slot_id:
+          type: string
+          pattern: "^ISLOT-\\d{6}$"
+          description: Preferred InterviewSlot ID (cho lần đổi thứ 1)
+          example: "ISLOT-000002"
+        accept_reassignment:
+          type: boolean
+          description: Chấp nhận TA assign slot mới (cho lần đổi thứ 2)
+
+    RespondToInvitationRequest:
+      type: object
+      required:
+        - response
+      properties:
+        response:
+          $ref: "#/components/schemas/InvitationResponseEnum"
+        reason:
+          type: string
+          description: Lý do (nếu DECLINE)
+          example: "Trùng lịch họp"
+
+    SubmitGradingRequest:
+      type: object
+      required:
+        - score
+        - proposal
+      properties:
+        score:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 100
+          description: Điểm số (0-100)
+          example: 88.0
+        comment:
+          type: string
+          description: Nhận xét của interviewer
+          example: "Giao tiếp tốt, kỹ thuật vững"
+        proposal:
+          $ref: "#/components/schemas/InterviewProposalEnum"
+
+    RecordCheckInRequest:
+      type: object
+      required:
+        - schedule_id
+        - actual_time
+      properties:
+        schedule_id:
+          type: string
+          pattern: "^ISCH-\\d{6}$"
+          description: InterviewSchedule ID
+        actual_time:
+          type: string
+          format: date-time
+          description: Thời gian check-in thực tế
+        is_late:
+          type: boolean
+          description: Check-in muộn (auto-calculated nếu không cung cấp)
+        late_reason:
+          type: string
+          description: Lý do check-in muộn (nếu is_late = true)
+        photo_id:
+          type: string
+          pattern: "^ATT-\\d{6}$"
+          description: Photo ID (chụp hình khi check-in)
+
+    # === Response Schemas ===
+    InterviewSlot:
+      type: object
+      properties:
+        slot_id:
+          type: string
+          pattern: "^ISLOT-\\d{6}$"
+          example: "ISLOT-000001"
+        event_id:
+          type: string
+          example: "EVT-000001"
+        slot_name:
+          type: string
+          example: "Ca sáng 09:00-12:00"
+        description:
+          type: string
+        interview_date:
+          type: string
+          format: date
+        start_time:
+          type: string
+          format: time
+        end_time:
+          type: string
+          format: time
+        format:
+          $ref: "#/components/schemas/InterviewFormatEnum"
+        location:
+          type: string
+        room:
+          type: string
+        link:
+          type: string
+        max_capacity:
+          type: integer
+          minimum: 1
+        current_capacity:
+          type: integer
+          minimum: 0
+        interviewers:
+          type: array
+          items:
+            type: string
+        status:
+          $ref: "#/components/schemas/InterviewSlotStatusEnum"
+        auto_allocate_enabled:
+          type: boolean
+        time_window_hours:
+          type: integer
+        max_retry:
+          type: integer
+        notify_ta_on_allocate:
+          type: boolean
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    InterviewSchedule:
+      type: object
+      properties:
+        schedule_id:
+          type: string
+          pattern: "^ISCH-\\d{6}$"
+          example: "ISCH-000001"
+        slot_id:
+          type: string
+          example: "ISLOT-000001"
+        application_id:
+          type: string
+          example: "APP-000001"
+        candidate_rr_id:
+          type: string
+          example: "CRR-000001"
+        status:
+          $ref: "#/components/schemas/InterviewScheduleStatusEnum"
+        confirmed_at:
+          type: string
+          format: date-time
+        confirm_deadline:
+          type: string
+          format: date-time
+        change_count:
+          type: integer
+          minimum: 0
+          maximum: 2
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ScheduleCandidatesResponse:
+      type: object
+      properties:
+        allocated_schedules:
+          type: array
+          items:
+            type: object
+            properties:
+              schedule_id:
+                type: string
+              candidate_rr_id:
+                type: string
+              slot_id:
+                type: string
+              status:
+                type: string
+              confirm_deadline:
+                type: string
+                format: date-time
+        notification_sent:
+          type: boolean
+
+    InterviewerInvitation:
+      type: object
+      properties:
+        invitation_id:
+          type: string
+          pattern: "^IINV-\\d{6}$"
+          example: "IINV-000001"
+        slot_id:
+          type: string
+        interviewer_id:
+          type: string
+        calendar_event_id:
+          type: string
+        status:
+          $ref: "#/components/schemas/InvitationStatusEnum"
+        sent_at:
+          type: string
+          format: date-time
+        responded_at:
+          type: string
+          format: date-time
+        response:
+          $ref: "#/components/schemas/InvitationResponseEnum"
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    Grading:
+      type: object
+      properties:
+        grading_id:
+          type: string
+          pattern: "^IGRD-\\d{6}$"
+          example: "IGRD-000001"
+        schedule_id:
+          type: string
+        interviewer_id:
+          type: string
+        score:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 100
+        comment:
+          type: string
+        proposal:
+          $ref: "#/components/schemas/InterviewProposalEnum"
+        graded_at:
+          type: string
+          format: date-time
+        can_update_before_review:
+          type: boolean
+        update_deadline:
+          type: string
+          format: date-time
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    CheckIn:
+      type: object
+      properties:
+        check_in_id:
+          type: string
+          pattern: "^ICI-\\d{6}$"
+          example: "ICI-000001"
+        schedule_id:
+          type: string
+        actual_time:
+          type: string
+          format: date-time
+        is_late:
+          type: boolean
+        late_reason:
+          type: string
+        photo_id:
+          type: string
+        checked_in_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    # === Enums ===
+    InterviewFormatEnum:
+      type: string
+      enum:
+        - ONLINE
+        - OFFLINE
+        - HYBRID
+      description: Hình thức phỏng vấn
+
+    InterviewSlotStatusEnum:
+      type: string
+      enum:
+        - DRAFT
+        - ACTIVE
+        - IN_PROGRESS
+        - COMPLETED
+        - CANCELLED
+      description: Trạng thái ca phỏng vấn
+
+    InterviewScheduleStatusEnum:
+      type: string
+      enum:
+        - PENDING
+        - CONFIRMED
+        - RESCHEDULED
+        - COMPLETED
+        - NO_SHOW
+        - CANCELLED
+      description: Trạng thái lịch phỏng vấn
+
+    InvitationStatusEnum:
+      type: string
+      enum:
+        - PENDING
+        - ACCEPTED
+        - DECLINED
+        - CANCELLED
+      description: Trạng thái invitation
+
+    InvitationResponseEnum:
+      type: string
+      enum:
+        - ACCEPT
+        - DECLINE
+        - TENTATIVE
+      description: Phản hồi của Interviewer
+
+    InterviewProposalEnum:
+      type: string
+      enum:
+        - OFFER
+        - REJECT
+        - NEED_DISCUSSION
+      description: Đề xuất sau phỏng vấn
+
+    CheckInStatusEnum:
+      type: string
+      enum:
+        - ON_TIME
+        - LATE
+        - ABSENT
+      description: Trạng thái check-in
+
+    # === Error Schemas ===
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              description: Error code
+              example: "VALIDATION_ERROR"
+            message:
+              type: string
+              description: Error message
+              example: "Validation failed"
+            details:
+              type: object
+              description: Chi tiết lỗi (nếu có)
+              additionalProperties: true
