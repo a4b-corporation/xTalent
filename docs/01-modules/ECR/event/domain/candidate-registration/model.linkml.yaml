@@ -1,0 +1,559 @@
+id: https://xtalent.vng.com.vn/ecr/candidate-registration
+name: ECRCandidateRegistration
+description: >-
+  Domain model for the Candidate Registration bounded context of the ECR module.
+  This context owns CandidateEventRegistration as the event-scoped candidate record,
+  SBD assignment, duplicate detection, and waitlist management.
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  ecr: https://xtalent.vng.com.vn/ecr/
+  ecr_cr: https://xtalent.vng.com.vn/ecr/candidate-registration/
+
+default_prefix: ecr_cr
+default_range: string
+
+imports:
+  - linkml:types
+
+classes:
+
+  # ── Aggregate Root ──────────────────────────────────────────────────────────
+
+  CandidateEventRegistration:
+    tree_root: true
+    description: >-
+      Event-scoped candidate record. The primary aggregate in this context.
+      Not a projection of a global identity — each Event registration is independent.
+      SBD is assigned at capture and is immutable.
+    slots:
+      - registration_id
+      - event_id
+      - track_id
+      - sbd
+      - personal_info
+      - registration_status
+      - registration_source
+      - registered_at
+      - confirmed_at
+      - cancelled_at
+      - slot_reference
+      - duplicate_flags
+      - waitlist_entry
+      - pipeline_stage
+      - created_at
+      - updated_at
+    slot_usage:
+      registration_id:
+        required: true
+      event_id:
+        required: true
+      track_id:
+        required: true
+      sbd:
+        required: true
+      personal_info:
+        required: true
+      registration_status:
+        required: true
+      registration_source:
+        required: true
+      registered_at:
+        required: true
+
+  # ── Value Objects ────────────────────────────────────────────────────────────
+
+  SBD:
+    description: >-
+      Số Báo Danh. A short numeric identifier, unique within one Event.
+      Assigned at registration capture. Immutable after assignment.
+      Generated from a pre-allocated block in offline mode.
+    slots:
+      - sbd_number
+      - event_id
+      - assigned_at
+      - assigned_by_kiosk_id
+    slot_usage:
+      sbd_number:
+        required: true
+      event_id:
+        required: true
+      assigned_at:
+        required: true
+
+  PersonalInfo:
+    description: >-
+      Value object containing candidate's captured data. Immutable after
+      registration capture. Used as the multi-factor dedup key.
+    slots:
+      - full_name
+      - phone_number
+      - email_address
+      - student_id
+      - date_of_birth
+      - additional_fields
+    slot_usage:
+      full_name:
+        required: true
+      phone_number:
+        required: true
+      email_address:
+        required: true
+
+  SlotReference:
+    description: >-
+      A reference from a CandidateEventRegistration to the schedule slot
+      allocated by the Schedule & Capacity BC. Read-only in this context.
+    slots:
+      - slot_id
+      - allocated_at
+      - room_name
+      - shift_start
+      - shift_end
+
+  # ── Entities ─────────────────────────────────────────────────────────────────
+
+  DuplicateFlag:
+    description: >-
+      Marks a suspected duplicate relationship between two registrations.
+      Must be resolved by a human TA Coordinator (BR-02).
+      Unresolved flags block bulk advancement operations (BR-03).
+    slots:
+      - flag_id
+      - registration_id
+      - matched_registration_id
+      - match_dimensions
+      - resolution_state
+      - resolved_by
+      - resolved_at
+      - resolution_action
+    slot_usage:
+      flag_id:
+        required: true
+      registration_id:
+        required: true
+      matched_registration_id:
+        required: true
+      match_dimensions:
+        required: true
+      resolution_state:
+        required: true
+
+  WaitlistEntry:
+    description: >-
+      Tracks a candidate's position and status in the event waitlist.
+      Ordering is strictly FCFS (by registeredAt). No manual reordering (BR-10).
+    slots:
+      - waitlist_id
+      - registration_id
+      - event_id
+      - track_id
+      - waitlist_position
+      - waitlisted_at
+      - activation_state
+      - activated_at
+    slot_usage:
+      waitlist_id:
+        required: true
+      registration_id:
+        required: true
+      event_id:
+        required: true
+      track_id:
+        required: true
+      waitlist_position:
+        required: true
+      waitlisted_at:
+        required: true
+      activation_state:
+        required: true
+
+  # ── SBD Block (for offline kiosk pre-allocation) ────────────────────────────
+
+  SBDBlock:
+    description: >-
+      A pre-allocated contiguous range of SBD numbers assigned to a specific kiosk
+      session. Ensures SBD uniqueness across multiple offline kiosks without
+      server coordination (OQ-D3 resolution).
+    slots:
+      - block_id
+      - event_id
+      - kiosk_session_id
+      - start_sbd
+      - end_sbd
+      - next_available
+      - exhausted
+      - allocated_at
+    slot_usage:
+      block_id:
+        required: true
+      event_id:
+        required: true
+      kiosk_session_id:
+        required: true
+      start_sbd:
+        required: true
+      end_sbd:
+        required: true
+      next_available:
+        required: true
+      exhausted:
+        required: true
+
+  # ── Domain Events ────────────────────────────────────────────────────────────
+
+  RegistrationDomainEvent:
+    description: Base class for domain events published by the Candidate Registration context.
+    slots:
+      - domain_event_id
+      - registration_id
+      - event_id
+      - occurred_at
+      - actor_id
+    slot_usage:
+      domain_event_id:
+        required: true
+      registration_id:
+        required: true
+      event_id:
+        required: true
+      occurred_at:
+        required: true
+
+  CandidateRegisteredEvent:
+    is_a: RegistrationDomainEvent
+    description: >-
+      Emitted when a new CandidateEventRegistration is captured and SBD assigned.
+      Triggers duplicate detection.
+    slots:
+      - sbd_number
+      - track_id
+      - registration_source
+
+  CandidateConfirmedEvent:
+    is_a: RegistrationDomainEvent
+    description: >-
+      Emitted when a registration status transitions to Confirmed.
+      Triggers slot allocation in Schedule & Capacity BC.
+      Signals eligibility for assessment (BR-07).
+    slots:
+      - track_id
+      - confirmed_at
+
+  DuplicateFlagRaisedEvent:
+    is_a: RegistrationDomainEvent
+    description: >-
+      Emitted when duplicate detection finds a potential match.
+      Does not auto-resolve (BR-02).
+    slots:
+      - flag_id
+      - matched_registration_id
+      - match_dimensions
+
+  DuplicateResolvedEvent:
+    is_a: RegistrationDomainEvent
+    description: Emitted when a TA Coordinator resolves a DuplicateFlag.
+    slots:
+      - flag_id
+      - resolution_action
+      - resolved_by
+
+  WaitlistActivatedEvent:
+    is_a: RegistrationDomainEvent
+    description: >-
+      Emitted when a waitlisted candidate is promoted to Confirmed status.
+      Triggers slot allocation and confirmation email.
+    slots:
+      - waitlist_id
+      - track_id
+      - activated_at
+
+# ── Slots ─────────────────────────────────────────────────────────────────────
+
+slots:
+
+  registration_id:
+    range: string
+    description: UUID uniquely identifying a CandidateEventRegistration.
+
+  event_id:
+    range: string
+    description: Reference to the Event this registration belongs to.
+
+  track_id:
+    range: string
+    description: Reference to the Track this candidate is registered for.
+
+  sbd:
+    range: SBD
+    description: The Số Báo Danh value object. Assigned at capture. Immutable.
+    inlined: true
+
+  sbd_number:
+    range: string
+    description: The numeric SBD string, zero-padded (e.g., "042"). Unique per event.
+
+  personal_info:
+    range: PersonalInfo
+    description: Value object containing the candidate's captured personal data.
+    inlined: true
+
+  registration_status:
+    range: RegistrationStatus
+    description: Current lifecycle status of the registration.
+
+  registration_source:
+    range: RegistrationSource
+    description: The channel through which this registration was created.
+
+  registered_at:
+    range: datetime
+    description: Timestamp of registration capture. Used as FCFS ordering key for waitlist.
+
+  confirmed_at:
+    range: datetime
+    description: Timestamp when registration was confirmed. Null until confirmed.
+
+  cancelled_at:
+    range: datetime
+    description: Timestamp when registration was cancelled. Null unless cancelled.
+
+  slot_reference:
+    range: SlotReference
+    description: Read-only reference to the allocated schedule slot.
+    inlined: true
+
+  duplicate_flags:
+    range: DuplicateFlag
+    multivalued: true
+    inlined_as_list: true
+    description: List of duplicate flags associated with this registration.
+
+  waitlist_entry:
+    range: WaitlistEntry
+    description: Waitlist position data. Null unless status is Waitlisted.
+    inlined: true
+
+  pipeline_stage:
+    range: string
+    description: Current stage in the Track's recruitment pipeline.
+
+  full_name:
+    range: string
+    description: Candidate's full name as provided at registration.
+
+  phone_number:
+    range: string
+    description: Candidate's phone number. Part of multi-factor dedup key.
+
+  email_address:
+    range: string
+    description: Candidate's email address. Delivery channel for notifications.
+
+  student_id:
+    range: string
+    description: Student ID number. Part of multi-factor dedup key. Optional for non-students.
+
+  date_of_birth:
+    range: date
+    description: Candidate's date of birth. Optional.
+
+  additional_fields:
+    range: string
+    description: JSON map of additional RegistrationForm field responses.
+
+  slot_id:
+    range: string
+    description: UUID of the allocated ScheduleSlot.
+
+  allocated_at:
+    range: datetime
+    description: Timestamp when slot was allocated.
+
+  room_name:
+    range: string
+    description: Display name of the allocated room.
+
+  shift_start:
+    range: datetime
+    description: Start time of the allocated shift.
+
+  shift_end:
+    range: datetime
+    description: End time of the allocated shift.
+
+  flag_id:
+    range: string
+    description: UUID of the DuplicateFlag.
+
+  matched_registration_id:
+    range: string
+    description: ID of the other registration flagged as a potential duplicate.
+
+  match_dimensions:
+    range: DedupMatchDimension
+    multivalued: true
+    description: Which dedup key dimensions matched (phone, student ID, or both).
+
+  resolution_state:
+    range: DuplicateResolutionState
+    description: Current resolution state of the DuplicateFlag.
+
+  resolved_by:
+    range: string
+    description: xTalent User ID of the TA Coordinator who resolved the flag.
+
+  resolved_at:
+    range: datetime
+    description: Timestamp when the flag was resolved.
+
+  resolution_action:
+    range: DuplicateResolutionAction
+    description: The resolution decision made by the TA Coordinator.
+
+  waitlist_id:
+    range: string
+    description: UUID of the WaitlistEntry.
+
+  waitlist_position:
+    range: integer
+    description: Queue position (1-indexed). Informational only; FCFS timestamp governs promotion order.
+    minimum_value: 1
+
+  waitlisted_at:
+    range: datetime
+    description: Timestamp when the candidate was placed on the waitlist. FCFS key.
+
+  activation_state:
+    range: WaitlistActivationState
+    description: Whether the waitlist entry has been activated (promoted to Confirmed).
+
+  activated_at:
+    range: datetime
+    description: Timestamp when waitlist entry was activated. Null until activated.
+
+  block_id:
+    range: string
+    description: UUID of the SBDBlock.
+
+  kiosk_session_id:
+    range: string
+    description: ID of the kiosk session this block is assigned to.
+
+  start_sbd:
+    range: integer
+    description: First SBD number in the pre-allocated block.
+
+  end_sbd:
+    range: integer
+    description: Last SBD number in the pre-allocated block.
+
+  next_available:
+    range: integer
+    description: Next SBD number to be assigned from this block.
+
+  exhausted:
+    range: boolean
+    description: True when all SBD numbers in this block have been assigned.
+
+  domain_event_id:
+    range: string
+    description: UUID of the domain event message.
+
+  occurred_at:
+    range: datetime
+    description: Timestamp when the domain event occurred.
+
+  actor_id:
+    range: string
+    description: xTalent User ID (or system) that triggered the event.
+
+  assigned_at:
+    range: datetime
+    description: Timestamp when the SBD was assigned.
+
+  assigned_by_kiosk_id:
+    range: string
+    description: Kiosk session ID if assigned offline. Null for online registrations.
+
+  allocated_at:
+    range: datetime
+    description: Timestamp of block allocation.
+
+  created_at:
+    range: datetime
+    description: Record creation timestamp.
+
+  updated_at:
+    range: datetime
+    description: Last update timestamp.
+
+# ── Enumerations ──────────────────────────────────────────────────────────────
+
+enums:
+
+  RegistrationStatus:
+    description: Lifecycle status of a CandidateEventRegistration.
+    permissible_values:
+      PENDING:
+        description: Registration captured; awaiting confirmation.
+      CONFIRMED:
+        description: Accepted into the event. Eligible for check-in and assessment (BR-07).
+      WAITLISTED:
+        description: Capacity full; candidate holds a FCFS queue position.
+      CANCELLED:
+        description: Registration cancelled (candidate-withdrawn or admin-cancelled). Terminal state.
+
+  RegistrationSource:
+    description: Channel through which a registration was created.
+    permissible_values:
+      ONLINE:
+        description: Candidate self-served via the registration portal.
+      KIOSK:
+        description: Registered at an on-site kiosk in online mode.
+      OFFLINE:
+        description: Registered at an on-site kiosk operating without connectivity. Record is Provisional until sync.
+      IMPORT:
+        description: Bulk-uploaded by a TA Coordinator from a file.
+
+  DedupMatchDimension:
+    description: Which dimension of the multi-factor dedup key matched.
+    permissible_values:
+      PHONE:
+        description: Phone number matched an existing registration.
+      STUDENT_ID:
+        description: Student ID matched an existing registration.
+      BOTH:
+        description: Both phone number and student ID matched.
+
+  DuplicateResolutionState:
+    description: Resolution state of a DuplicateFlag.
+    permissible_values:
+      UNRESOLVED:
+        description: Flag raised; awaiting TA Coordinator review.
+      RESOLVED_KEEP_BOTH:
+        description: TA Coordinator determined both registrations are legitimate.
+      RESOLVED_KEEP_PRIMARY:
+        description: TA Coordinator kept this registration and discarded the matched one.
+      RESOLVED_KEEP_MATCHED:
+        description: TA Coordinator kept the matched registration and cancelled this one.
+
+  DuplicateResolutionAction:
+    description: The action taken when resolving a DuplicateFlag.
+    permissible_values:
+      KEEP_BOTH:
+        description: Both registrations are confirmed as distinct candidates.
+      KEEP_THIS:
+        description: This registration is valid; the matched one is cancelled.
+      KEEP_MATCHED:
+        description: The matched registration is valid; this one is cancelled.
+
+  WaitlistActivationState:
+    description: Whether a WaitlistEntry has been promoted.
+    permissible_values:
+      WAITING:
+        description: Still on the waitlist; not yet activated.
+      ACTIVATED:
+        description: Promoted to Confirmed status; slot allocation triggered.
+      EXPIRED:
+        description: Waitlist entry expired without activation (event closed).

@@ -1,0 +1,563 @@
+id: https://xtalent.vng.com.vn/ecr/schedule-capacity
+name: ECRScheduleCapacity
+description: >-
+  Domain model for the Schedule & Capacity bounded context of the ECR module.
+  This context owns the schedule matrix (EventSchedule), the ScheduleSlot entities,
+  AllocationRun execution, and capacity override audit. It allocates confirmed
+  candidates to slots and handles waitlist backfill.
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  ecr: https://xtalent.vng.com.vn/ecr/
+  ecr_sc: https://xtalent.vng.com.vn/ecr/schedule-capacity/
+
+default_prefix: ecr_sc
+default_range: string
+
+imports:
+  - linkml:types
+
+classes:
+
+  # ── Aggregate Root ────────────────────────────────────────────────────────────
+
+  EventSchedule:
+    tree_root: true
+    description: >-
+      The complete schedule matrix for one Event. Owns all ScheduleSlots.
+      Enforces room double-booking prevention and structural lock (BR-06).
+      One EventSchedule per Event.
+    slots:
+      - schedule_id
+      - event_id
+      - schedule_state
+      - structural_locked
+      - allocation_strategy
+      - slots
+      - created_at
+      - updated_at
+    slot_usage:
+      schedule_id:
+        required: true
+      event_id:
+        required: true
+      schedule_state:
+        required: true
+      structural_locked:
+        required: true
+      allocation_strategy:
+        required: true
+
+  # ── Entity: ScheduleSlot ──────────────────────────────────────────────────────
+
+  ScheduleSlot:
+    description: >-
+      An allocatable unit: one Room + one Shift + one Track combination within
+      an EventSchedule. Holds a configured capacity and tracks current
+      allocation count. The atomic target of candidate assignment.
+    slots:
+      - slot_id
+      - schedule_id
+      - event_id
+      - track_id
+      - room
+      - shift
+      - configured_capacity
+      - effective_capacity
+      - allocated_count
+      - slot_allocation_state
+      - capacity_overrides
+      - created_at
+    slot_usage:
+      slot_id:
+        required: true
+      schedule_id:
+        required: true
+      event_id:
+        required: true
+      track_id:
+        required: true
+      room:
+        required: true
+      shift:
+        required: true
+      configured_capacity:
+        required: true
+      effective_capacity:
+        required: true
+      allocated_count:
+        required: true
+      slot_allocation_state:
+        required: true
+
+  # ── Value Object: Room ────────────────────────────────────────────────────────
+
+  Room:
+    description: >-
+      A physical or virtual space where candidates convene. The physical_capacity
+      is the hard upper bound — ScheduleSlot capacity cannot exceed this value
+      without a documented CapacityOverride.
+    slots:
+      - room_id
+      - room_name
+      - physical_capacity
+      - location_notes
+    slot_usage:
+      room_id:
+        required: true
+      room_name:
+        required: true
+      physical_capacity:
+        required: true
+
+  # ── Value Object: Shift ───────────────────────────────────────────────────────
+
+  Shift:
+    description: >-
+      A time window within the Event day. Shifts are the time dimension of
+      the schedule matrix. Multiple Shifts may overlap on the same day but
+      must not double-book the same Room.
+    slots:
+      - shift_id
+      - shift_label
+      - shift_start
+      - shift_end
+    slot_usage:
+      shift_id:
+        required: true
+      shift_label:
+        required: true
+      shift_start:
+        required: true
+      shift_end:
+        required: true
+
+  # ── Value Object: CapacityOverride ────────────────────────────────────────────
+
+  CapacityOverride:
+    description: >-
+      An immutable audit record of a capacity change made to a ScheduleSlot.
+      Every override requires a reason string and records who authorized it.
+      Multiple overrides on the same slot are append-only.
+    slots:
+      - override_id
+      - slot_id
+      - previous_capacity
+      - new_capacity
+      - reason
+      - authorized_by
+      - overridden_at
+    slot_usage:
+      override_id:
+        required: true
+      slot_id:
+        required: true
+      previous_capacity:
+        required: true
+      new_capacity:
+        required: true
+      reason:
+        required: true
+      authorized_by:
+        required: true
+      overridden_at:
+        required: true
+
+  # ── Entity: AllocationRun ─────────────────────────────────────────────────────
+
+  AllocationRun:
+    description: >-
+      A single execution of the candidate-to-slot allocation algorithm.
+      Idempotent: re-running with the same candidate set produces the same result.
+      Records the strategy used, candidates processed, and slots assigned.
+    slots:
+      - run_id
+      - event_id
+      - track_id
+      - strategy_used
+      - candidates_processed
+      - allocations_made
+      - run_status
+      - triggered_by
+      - started_at
+      - completed_at
+    slot_usage:
+      run_id:
+        required: true
+      event_id:
+        required: true
+      track_id:
+        required: true
+      strategy_used:
+        required: true
+      run_status:
+        required: true
+      started_at:
+        required: true
+
+  # ── Entity: CandidateSlotAssignment ──────────────────────────────────────────
+
+  CandidateSlotAssignment:
+    description: >-
+      The record linking one candidate (by registration_id) to one ScheduleSlot
+      within an AllocationRun. Produced by the allocation algorithm.
+      Read by Candidate Registration BC via the SlotAllocated domain event.
+    slots:
+      - assignment_id
+      - run_id
+      - registration_id
+      - slot_id
+      - event_id
+      - sbd_number
+      - assigned_at
+    slot_usage:
+      assignment_id:
+        required: true
+      run_id:
+        required: true
+      registration_id:
+        required: true
+      slot_id:
+        required: true
+      event_id:
+        required: true
+      sbd_number:
+        required: true
+      assigned_at:
+        required: true
+
+  # ── Domain Events ─────────────────────────────────────────────────────────────
+
+  ScheduleDomainEvent:
+    description: Base class for domain events published by the Schedule & Capacity context.
+    slots:
+      - domain_event_id
+      - event_id
+      - occurred_at
+      - actor_id
+    slot_usage:
+      domain_event_id:
+        required: true
+      event_id:
+        required: true
+      occurred_at:
+        required: true
+
+  ScheduleCreatedEvent:
+    is_a: ScheduleDomainEvent
+    description: Emitted when the EventSchedule matrix is first defined for an event.
+    slots:
+      - schedule_id
+
+  SlotAllocatedEvent:
+    is_a: ScheduleDomainEvent
+    description: >-
+      Emitted when a single candidate is assigned to a ScheduleSlot.
+      Consumed by Candidate Registration BC (SlotReference update) and
+      Interview Management BC (room/time linkage).
+    slots:
+      - slot_id
+      - registration_id
+      - sbd_number
+      - track_id
+      - room_name
+      - shift_start
+      - shift_end
+
+  CandidatesAllocatedToSlotsEvent:
+    is_a: ScheduleDomainEvent
+    description: >-
+      Emitted after a full AllocationRun completes successfully.
+      Carries summary counts. Individual SlotAllocated events carry per-candidate detail.
+    slots:
+      - run_id
+      - track_id
+      - total_allocated
+      - strategy_used
+
+  CapacityOverriddenEvent:
+    is_a: ScheduleDomainEvent
+    description: >-
+      Emitted when a ScheduleSlot's capacity is changed via CapacityOverride.
+      Consumed by Analytics & Audit BC for tamper-evident record.
+    slots:
+      - slot_id
+      - previous_capacity
+      - new_capacity
+      - reason
+      - authorized_by
+
+  WaitlistBackfillTriggeredEvent:
+    is_a: ScheduleDomainEvent
+    description: >-
+      Emitted when a slot vacancy (from RegistrationCancelled) causes a
+      waitlisted candidate to be promoted. Signals Candidate Registration BC
+      to activate the WaitlistEntry.
+    slots:
+      - slot_id
+      - promoted_registration_id
+      - promoted_sbd_number
+
+# ── Slots ─────────────────────────────────────────────────────────────────────
+
+slots:
+
+  schedule_id:
+    range: string
+    description: UUID of the EventSchedule.
+
+  event_id:
+    range: string
+    description: Reference to the Event this schedule belongs to.
+
+  schedule_state:
+    range: ScheduleState
+    description: Current operational state of the EventSchedule.
+
+  structural_locked:
+    range: boolean
+    description: >-
+      True once Event is In Progress (BR-06). When true, structural mutations
+      (add/remove slots, change room, change strategy) are rejected.
+
+  allocation_strategy:
+    range: AllocationStrategy
+    description: Default strategy applied to AllocationRuns for this schedule.
+
+  slots:
+    range: ScheduleSlot
+    multivalued: true
+    inlined_as_list: true
+    description: All ScheduleSlots belonging to this EventSchedule.
+
+  slot_id:
+    range: string
+    description: UUID of the ScheduleSlot.
+
+  track_id:
+    range: string
+    description: Reference to the Track this slot serves.
+
+  room:
+    range: Room
+    inlined: true
+    description: The Room assigned to this ScheduleSlot.
+
+  shift:
+    range: Shift
+    inlined: true
+    description: The Shift time window for this ScheduleSlot.
+
+  configured_capacity:
+    range: integer
+    description: Original capacity set at slot creation time.
+    minimum_value: 1
+
+  effective_capacity:
+    range: integer
+    description: Current operative capacity after any CapacityOverrides applied.
+    minimum_value: 1
+
+  allocated_count:
+    range: integer
+    description: Number of candidates currently assigned to this slot.
+    minimum_value: 0
+
+  slot_allocation_state:
+    range: SlotAllocationState
+    description: Current allocation fill state of the slot.
+
+  capacity_overrides:
+    range: CapacityOverride
+    multivalued: true
+    inlined_as_list: true
+    description: Append-only list of capacity override records for this slot.
+
+  room_id:
+    range: string
+    description: Unique identifier for the Room.
+
+  room_name:
+    range: string
+    description: Display name of the Room.
+
+  physical_capacity:
+    range: integer
+    description: Maximum physical capacity of the Room. Hard upper bound.
+    minimum_value: 1
+
+  location_notes:
+    range: string
+    description: Optional notes on room location or access instructions.
+
+  shift_id:
+    range: string
+    description: Unique identifier for the Shift.
+
+  shift_label:
+    range: string
+    description: Human-readable label for the shift (e.g., "Morning Session 1").
+
+  shift_start:
+    range: datetime
+    description: Start timestamp of the shift.
+
+  shift_end:
+    range: datetime
+    description: End timestamp of the shift.
+
+  override_id:
+    range: string
+    description: UUID of the CapacityOverride record.
+
+  previous_capacity:
+    range: integer
+    description: Slot capacity before this override was applied.
+
+  new_capacity:
+    range: integer
+    description: Slot capacity after this override.
+
+  reason:
+    range: string
+    description: Mandatory reason string explaining why the capacity override was made.
+
+  authorized_by:
+    range: string
+    description: xTalent User ID of the TA Coordinator who authorized the override.
+
+  overridden_at:
+    range: datetime
+    description: Timestamp when the override was applied.
+
+  run_id:
+    range: string
+    description: UUID of the AllocationRun.
+
+  strategy_used:
+    range: AllocationStrategy
+    description: The allocation strategy applied in this run.
+
+  candidates_processed:
+    range: integer
+    description: Total number of candidates considered in this run.
+    minimum_value: 0
+
+  allocations_made:
+    range: integer
+    description: Number of successful slot assignments made in this run.
+    minimum_value: 0
+
+  run_status:
+    range: AllocationRunStatus
+    description: Current execution status of the AllocationRun.
+
+  triggered_by:
+    range: string
+    description: Actor ID or "system" that initiated the AllocationRun.
+
+  started_at:
+    range: datetime
+    description: Timestamp when the run started.
+
+  completed_at:
+    range: datetime
+    description: Timestamp when the run completed. Null while in progress.
+
+  assignment_id:
+    range: string
+    description: UUID of the CandidateSlotAssignment.
+
+  registration_id:
+    range: string
+    description: Reference to the CandidateEventRegistration (from Candidate Registration BC).
+
+  sbd_number:
+    range: string
+    description: Số Báo Danh — event-scoped candidate identifier.
+
+  assigned_at:
+    range: datetime
+    description: Timestamp when the candidate was assigned to the slot.
+
+  domain_event_id:
+    range: string
+    description: UUID of the domain event message.
+
+  occurred_at:
+    range: datetime
+    description: Timestamp when the domain event occurred.
+
+  actor_id:
+    range: string
+    description: xTalent User ID or "system" that triggered the event.
+
+  total_allocated:
+    range: integer
+    description: Total number of candidates allocated in this run.
+
+  promoted_registration_id:
+    range: string
+    description: Registration ID of the waitlisted candidate promoted by backfill.
+
+  promoted_sbd_number:
+    range: string
+    description: SBD of the waitlisted candidate promoted by backfill.
+
+  created_at:
+    range: datetime
+    description: Record creation timestamp.
+
+  updated_at:
+    range: datetime
+    description: Last update timestamp.
+
+# ── Enumerations ──────────────────────────────────────────────────────────────
+
+enums:
+
+  ScheduleState:
+    description: Operational state of the EventSchedule.
+    permissible_values:
+      UNDEFINED:
+        description: No schedule matrix defined yet for this Event.
+      DRAFT:
+        description: Schedule matrix defined; no candidates allocated yet.
+      ACTIVE:
+        description: Allocation is running; candidates assigned to slots.
+      LOCKED:
+        description: Event is In Progress; structural changes blocked (BR-06).
+
+  AllocationStrategy:
+    description: Algorithm for distributing candidates across ScheduleSlots.
+    permissible_values:
+      ROUND_ROBIN:
+        description: Distribute candidates evenly across all available slots.
+      FILL_FIRST:
+        description: Fill each slot to capacity before assigning to the next slot.
+
+  SlotAllocationState:
+    description: Fill state of a ScheduleSlot relative to its effective capacity.
+    permissible_values:
+      OPEN:
+        description: Slot exists but has zero candidates assigned.
+      PARTIAL:
+        description: Some capacity used; further allocations are accepted.
+      FULL:
+        description: Slot capacity reached; no new direct allocations permitted.
+      OVERRIDDEN:
+        description: A CapacityOverride has changed the slot's effective capacity.
+
+  AllocationRunStatus:
+    description: Execution state of an AllocationRun.
+    permissible_values:
+      PENDING:
+        description: Run has been queued but not yet started.
+      RUNNING:
+        description: Algorithm is currently executing.
+      COMPLETED:
+        description: Run finished successfully; all eligible candidates allocated.
+      PARTIAL:
+        description: Run finished but some candidates could not be allocated (all slots full).
+      FAILED:
+        description: Run aborted due to an unexpected error.

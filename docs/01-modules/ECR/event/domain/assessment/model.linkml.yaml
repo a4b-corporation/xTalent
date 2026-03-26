@@ -1,0 +1,311 @@
+id: https://xtalent.vng.com.vn/ecr/assessment
+name: ECRAssessment
+description: >-
+  Domain model for the Assessment bounded context of the ECR module.
+  This context is an INTERFACE BOUNDARY ONLY. Internal assessment domain models
+  (question bank, blueprint engine, scoring) are intentionally undefined pending
+  the build vs. integrate decision. This schema models only the ACL contract:
+  the value objects exchanged at the boundary and the translated domain events.
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  ecr: https://xtalent.vng.com.vn/ecr/
+  ecr_as: https://xtalent.vng.com.vn/ecr/assessment/
+
+default_prefix: ecr_as
+default_range: string
+
+imports:
+  - linkml:types
+
+classes:
+
+  # ── ACL Input Value Object ───────────────────────────────────────────────────
+
+  CandidateAssessmentRef:
+    tree_root: true
+    description: >-
+      Value object used as the input to the external Assessment Engine.
+      Identifies the candidate and assessment configuration without exposing
+      internal registration IDs to the engine. Composed by the ACL at dispatch time.
+      This is the "translation key" — the engine echoes it in result callbacks
+      for correlation.
+    slots:
+      - event_id
+      - sbd_number
+      - track_id
+      - blueprint_id
+      - delivery_context
+    slot_usage:
+      event_id:
+        required: true
+      sbd_number:
+        required: true
+      track_id:
+        required: true
+      blueprint_id:
+        required: true
+      delivery_context:
+        required: true
+
+  # ── ACL Value Object: Delivery Context ───────────────────────────────────────
+
+  DeliveryContext:
+    description: >-
+      Metadata attached to an assessment dispatch action. Records when and by
+      whom (or by what system process) the dispatch was triggered.
+    slots:
+      - dispatched_at
+      - dispatched_by
+    slot_usage:
+      dispatched_at:
+        required: true
+      dispatched_by:
+        required: true
+
+  # ── ACL Output Value Object ───────────────────────────────────────────────────
+
+  AssessmentResult:
+    description: >-
+      The output value object produced by the external Assessment Engine and
+      ingested by the ECR ACL. The ACL translates this into an AssessmentCompleted
+      domain event. rawData is opaque to ECR — stored as-is for audit purposes.
+      ECR domain logic uses only score and passed fields.
+    slots:
+      - candidate_ref
+      - completed_at
+      - score
+      - passed
+      - raw_data
+    slot_usage:
+      candidate_ref:
+        required: true
+      completed_at:
+        required: true
+      score:
+        required: true
+      passed:
+        required: true
+
+  # ── Delivery Gate Record ──────────────────────────────────────────────────────
+
+  DeliveryGateCheck:
+    description: >-
+      A record of the eligibility check performed by the ACL before dispatching
+      an assessment (BR-07). Persisted for audit trail. If the check fails,
+      dispatch is rejected and this record documents the rejection reason.
+    slots:
+      - gate_check_id
+      - event_id
+      - sbd_number
+      - registration_status_at_check
+      - check_in_status_at_check
+      - gate_passed
+      - checked_at
+      - rejection_reason
+    slot_usage:
+      gate_check_id:
+        required: true
+      event_id:
+        required: true
+      sbd_number:
+        required: true
+      gate_passed:
+        required: true
+      checked_at:
+        required: true
+
+  # ── Domain Events (translated by ACL) ────────────────────────────────────────
+
+  AssessmentDomainEvent:
+    description: >-
+      Base class for domain events published by the Assessment ACL.
+      These events are produced by the ACL translating external engine callbacks
+      into ECR domain language.
+    slots:
+      - domain_event_id
+      - event_id
+      - sbd_number
+      - track_id
+      - occurred_at
+    slot_usage:
+      domain_event_id:
+        required: true
+      event_id:
+        required: true
+      sbd_number:
+        required: true
+      occurred_at:
+        required: true
+
+  AssessmentDispatchedEvent:
+    is_a: AssessmentDomainEvent
+    description: >-
+      Emitted by the ACL after the delivery gate passes and the Assessment Engine
+      confirms receipt of the dispatch request. Records what blueprint was dispatched.
+    slots:
+      - blueprint_id
+      - dispatched_at
+      - dispatched_by
+
+  AssessmentCompletedEvent:
+    is_a: AssessmentDomainEvent
+    description: >-
+      Emitted by the ACL when the Assessment Engine delivers a result callback.
+      Contains the translated score and pass/fail outcome. rawData is included
+      for downstream audit consumption (BC-08).
+    slots:
+      - blueprint_id
+      - completed_at
+      - score
+      - passed
+      - raw_data
+
+  AssessmentFailedEvent:
+    is_a: AssessmentDomainEvent
+    description: >-
+      Emitted by the ACL when assessment dispatch fails (engine unavailable,
+      delivery timeout) or when a result cannot be parsed from the engine callback.
+    slots:
+      - blueprint_id
+      - failure_reason
+      - failed_at
+
+# ── Slots ─────────────────────────────────────────────────────────────────────
+
+slots:
+
+  event_id:
+    range: string
+    description: ECR Event UUID. Scopes all assessment activity to one Event.
+
+  sbd_number:
+    range: string
+    description: >-
+      Số Báo Danh. Event-scoped candidate identifier. Used instead of internal
+      registration_id to avoid exposing ECR internals to the Assessment Engine.
+
+  track_id:
+    range: string
+    description: ECR Track UUID. Identifies which pipeline the candidate is assessed under.
+
+  blueprint_id:
+    range: string
+    description: >-
+      Opaque identifier for the assessment Blueprint in the external engine.
+      ECR treats this as a foreign key — internal structure is unknown and irrelevant.
+      Configured per-Track by TA Coordinators.
+
+  delivery_context:
+    range: DeliveryContext
+    description: Metadata about when and by whom the dispatch was triggered.
+    inlined: true
+
+  dispatched_at:
+    range: datetime
+    description: Timestamp when the assessment was dispatched to the engine.
+
+  dispatched_by:
+    range: string
+    description: Actor ID (user or "system") that triggered the dispatch.
+
+  candidate_ref:
+    range: CandidateAssessmentRef
+    description: Echo of the dispatch input — used by ACL to correlate engine results.
+    inlined: true
+
+  completed_at:
+    range: datetime
+    description: Timestamp when the candidate completed the assessment (engine-reported).
+
+  score:
+    range: float
+    description: Numeric assessment score on a 0.0 to 100.0 scale (engine-reported).
+    minimum_value: 0.0
+    maximum_value: 100.0
+
+  passed:
+    range: boolean
+    description: >-
+      Boolean pass/fail outcome as determined by the Assessment Engine against
+      the Blueprint's passing threshold. ECR uses this field for pipeline advancement logic.
+
+  raw_data:
+    range: string
+    description: >-
+      Opaque JSON payload from the Assessment Engine. Passed through unmodified
+      and stored for audit purposes. ECR domain logic does not parse this field.
+
+  gate_check_id:
+    range: string
+    description: UUID of the DeliveryGateCheck record.
+
+  registration_status_at_check:
+    range: string
+    description: >-
+      The candidate's registration_status value at the moment of gate check.
+      Stored for audit; valid values are CONFIRMED or CHECKED_IN for a passing gate.
+
+  check_in_status_at_check:
+    range: string
+    description: >-
+      The candidate's check_in_status value at the moment of gate check.
+      Null if candidate has not checked in.
+
+  gate_passed:
+    range: boolean
+    description: True if the candidate met eligibility criteria (BR-07). False if rejected.
+
+  checked_at:
+    range: datetime
+    description: Timestamp when the delivery gate check was performed.
+
+  rejection_reason:
+    range: AssessmentGateRejectionReason
+    description: Reason for gate rejection. Null when gate_passed is true.
+
+  domain_event_id:
+    range: string
+    description: UUID of the domain event message.
+
+  occurred_at:
+    range: datetime
+    description: Timestamp when the domain event occurred.
+
+  failure_reason:
+    range: AssessmentFailureReason
+    description: Category of failure that caused AssessmentFailed to be emitted.
+
+  failed_at:
+    range: datetime
+    description: Timestamp when the failure was detected by the ACL.
+
+# ── Enumerations ──────────────────────────────────────────────────────────────
+
+enums:
+
+  AssessmentGateRejectionReason:
+    description: >-
+      Reason codes for delivery gate rejection (BR-07).
+      Recorded in DeliveryGateCheck for audit purposes.
+    permissible_values:
+      STATUS_PENDING:
+        description: Candidate registration status is PENDING — not yet confirmed.
+      STATUS_WAITLISTED:
+        description: Candidate is on the waitlist — not confirmed into the event.
+      STATUS_CANCELLED:
+        description: Candidate registration has been cancelled.
+      NO_BLUEPRINT_CONFIGURED:
+        description: The Track has no BlueprintID configured for assessment dispatch.
+
+  AssessmentFailureReason:
+    description: Categories of failure recorded in AssessmentFailedEvent.
+    permissible_values:
+      ENGINE_UNAVAILABLE:
+        description: The Assessment Engine did not respond within the timeout window.
+      DISPATCH_REJECTED:
+        description: The Assessment Engine accepted the request but rejected the dispatch.
+      RESULT_PARSE_ERROR:
+        description: The engine's result callback could not be parsed into AssessmentResult.
+      TIMEOUT:
+        description: No result received from the engine within the maximum wait period.

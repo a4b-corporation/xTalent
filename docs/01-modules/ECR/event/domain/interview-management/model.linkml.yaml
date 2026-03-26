@@ -1,0 +1,725 @@
+id: https://xtalent.vng.com.vn/ecr/interview-management
+name: ECRInterviewManagement
+description: >-
+  Domain model for the Interview Management bounded context of the ECR module.
+  This context owns InterviewSession lifecycle, Panel assignment, SessionDigest
+  dispatch with KitLink generation, real-time candidate queue management
+  (provisional and confirmed), InterviewScore immutability (BR-04), and
+  ScoreEditRequest workflow with TA Coordinator approval.
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  ecr: https://xtalent.vng.com.vn/ecr/
+  ecr_im: https://xtalent.vng.com.vn/ecr/interview-management/
+
+default_prefix: ecr_im
+default_range: string
+
+imports:
+  - linkml:types
+
+classes:
+
+  # ── Aggregate Root: InterviewSession ──────────────────────────────────────────
+
+  InterviewSession:
+    tree_root: true
+    description: >-
+      A scheduled block of time during which one or more interviewers evaluate
+      candidates assigned to a specific room and track. Owns Panel assignments,
+      the SessionDigest, and the real-time candidate queue state.
+      An InterviewSession must have at least 1 HardAssigned interviewer before
+      it can transition to Active state.
+    slots:
+      - session_id
+      - event_id
+      - track_id
+      - slot_id
+      - room_name
+      - session_start_time
+      - session_end_time
+      - session_status
+      - assignments
+      - session_digest
+      - queue_order_mode
+      - created_at
+      - updated_at
+    slot_usage:
+      session_id:
+        required: true
+      event_id:
+        required: true
+      track_id:
+        required: true
+      slot_id:
+        required: true
+      session_status:
+        required: true
+      queue_order_mode:
+        required: true
+      created_at:
+        required: true
+
+  # ── Entity: InterviewerAssignment ─────────────────────────────────────────────
+
+  InterviewerAssignment:
+    description: >-
+      Links an xTalent User (Interviewer role) to an InterviewSession.
+      Assignment mode determines whether the interviewer is committed (Hard)
+      or tentative (Soft). Only HardAssigned interviewers receive the SessionDigest
+      and are counted toward the active Panel.
+    slots:
+      - assignment_id
+      - session_id
+      - interviewer_user_id
+      - interviewer_display_name
+      - assignment_mode
+      - assigned_at
+      - assigned_by
+    slot_usage:
+      assignment_id:
+        required: true
+      session_id:
+        required: true
+      interviewer_user_id:
+        required: true
+      assignment_mode:
+        required: true
+      assigned_at:
+        required: true
+      assigned_by:
+        required: true
+
+  # ── Entity: SessionDigest ─────────────────────────────────────────────────────
+
+  SessionDigest:
+    description: >-
+      The notification package dispatched to all HardAssigned interviewers
+      for an InterviewSession. Contains event metadata, room/time assignment,
+      a candidate summary list, and a KitLink per interviewer.
+      Dispatched once per send command; re-dispatch creates a new SessionDigest.
+    slots:
+      - digest_id
+      - session_id
+      - event_id
+      - dispatched_at
+      - dispatched_by
+      - kit_links
+      - candidate_count_at_dispatch
+    slot_usage:
+      digest_id:
+        required: true
+      session_id:
+        required: true
+      event_id:
+        required: true
+      dispatched_at:
+        required: true
+      dispatched_by:
+        required: true
+
+  # ── Value Object: KitLink ─────────────────────────────────────────────────────
+
+  KitLink:
+    description: >-
+      A time-limited URL giving one HardAssigned interviewer access to their
+      digital interview kit (live queue, scoring forms, session notes).
+      Expires 24 hours after the event day (event_date + 24h).
+      Server-side validation on every request enforces the expiry (BR-05).
+      An expired KitLink returns HTTP 403; no refresh mechanism exists post-expiry.
+    slots:
+      - kit_link_id
+      - session_id
+      - interviewer_user_id
+      - url_token
+      - expiry_at
+      - is_active
+      - created_at
+    slot_usage:
+      kit_link_id:
+        required: true
+      session_id:
+        required: true
+      interviewer_user_id:
+        required: true
+      url_token:
+        required: true
+      expiry_at:
+        required: true
+        range: datetime
+      is_active:
+        required: true
+      created_at:
+        required: true
+
+  # ── Aggregate Root: InterviewScore ────────────────────────────────────────────
+
+  InterviewScore:
+    description: >-
+      An immutable record of the score awarded by one interviewer to one candidate
+      in one InterviewSession. Created at submission time. No direct edits permitted
+      post-submission (BR-04). Score amendments require an approved ScoreEditRequest,
+      which creates a NEW InterviewScore; the original is retained for audit.
+      The latest active score for a (session, candidate, interviewer) triple is the
+      one without a superseded_by reference.
+    slots:
+      - score_id
+      - session_id
+      - event_id
+      - candidate_registration_id
+      - sbd_number
+      - interviewer_user_id
+      - score_components
+      - total_score
+      - recommendation
+      - submitted_at
+      - score_status
+      - superseded_by_score_id
+      - supersedes_score_id
+      - edit_request_id
+    slot_usage:
+      score_id:
+        required: true
+      session_id:
+        required: true
+      event_id:
+        required: true
+      candidate_registration_id:
+        required: true
+      sbd_number:
+        required: true
+      interviewer_user_id:
+        required: true
+      total_score:
+        required: true
+      submitted_at:
+        required: true
+      score_status:
+        required: true
+
+  # ── Value Object: ScoreComponent ──────────────────────────────────────────────
+
+  ScoreComponent:
+    description: >-
+      A per-criterion score within an InterviewScore. Criterion name and weight
+      are defined by the scoring template attached to the Track. Captured as part
+      of the InterviewScore value object at submission time; immutable thereafter.
+    slots:
+      - criterion_name
+      - criterion_weight
+      - raw_score
+      - weighted_score
+      - notes
+    slot_usage:
+      criterion_name:
+        required: true
+      raw_score:
+        required: true
+      weighted_score:
+        required: true
+
+  # ── Entity: ScoreEditRequest ───────────────────────────────────────────────────
+
+  ScoreEditRequest:
+    description: >-
+      A formal request to amend a submitted InterviewScore. Requires TA Coordinator
+      approval. On approval, a new InterviewScore is created with the amended values;
+      the original score's status is updated to SUPERSEDED. On rejection, the original
+      score remains authoritative. All edit requests are captured in the audit log
+      regardless of outcome (BR-04).
+    slots:
+      - edit_request_id
+      - original_score_id
+      - session_id
+      - event_id
+      - interviewer_user_id
+      - requested_by
+      - requested_at
+      - reason
+      - proposed_score_components
+      - proposed_total_score
+      - proposed_recommendation
+      - edit_request_status
+      - reviewed_by
+      - reviewed_at
+      - review_notes
+    slot_usage:
+      edit_request_id:
+        required: true
+      original_score_id:
+        required: true
+      session_id:
+        required: true
+      event_id:
+        required: true
+      interviewer_user_id:
+        required: true
+      requested_by:
+        required: true
+      requested_at:
+        required: true
+      reason:
+        required: true
+      edit_request_status:
+        required: true
+
+  # ── Domain Events ──────────────────────────────────────────────────────────────
+
+  InterviewMgmtDomainEvent:
+    description: Base class for domain events published by Interview Management.
+    slots:
+      - domain_event_id
+      - event_id
+      - occurred_at
+      - actor_id
+    slot_usage:
+      domain_event_id:
+        required: true
+      event_id:
+        required: true
+      occurred_at:
+        required: true
+
+  InterviewerAssignedEvent:
+    is_a: InterviewMgmtDomainEvent
+    description: Emitted when an interviewer is assigned (Hard or Soft) to an InterviewSession.
+    slots:
+      - session_id
+      - assignment_id
+      - interviewer_user_id
+      - assignment_mode
+
+  SessionDigestDispatchedEvent:
+    is_a: InterviewMgmtDomainEvent
+    description: >-
+      Emitted when a TA Coordinator dispatches the SessionDigest to all
+      HardAssigned interviewers. Consumed by Communication BC to trigger
+      the kit email dispatch.
+    slots:
+      - session_id
+      - digest_id
+      - interviewer_count
+      - dispatched_at
+
+  KitLinkExpiredEvent:
+    is_a: InterviewMgmtDomainEvent
+    description: >-
+      Emitted when server-side validation detects that a KitLink has passed
+      its expiry_at timestamp. Triggered on first rejected request after expiry.
+    slots:
+      - kit_link_id
+      - session_id
+      - interviewer_user_id
+      - expired_at
+
+  InterviewScoreSubmittedEvent:
+    is_a: InterviewMgmtDomainEvent
+    description: >-
+      Emitted when an interviewer submits their scoring form. Score is now
+      immutable (BR-04). Consumed by Analytics & Audit.
+    slots:
+      - score_id
+      - session_id
+      - candidate_registration_id
+      - sbd_number
+      - interviewer_user_id
+      - total_score
+      - submitted_at
+
+  ScoreEditRequestedEvent:
+    is_a: InterviewMgmtDomainEvent
+    description: Emitted when an interviewer submits a ScoreEditRequest.
+    slots:
+      - edit_request_id
+      - original_score_id
+      - session_id
+      - interviewer_user_id
+      - requested_by
+
+  ScoreEditApprovedEvent:
+    is_a: InterviewMgmtDomainEvent
+    description: >-
+      Emitted when a TA Coordinator approves a ScoreEditRequest. A new
+      InterviewScore has been created; the original is SUPERSEDED.
+      Consumed by Analytics & Audit (required audit entry per BR-04).
+    slots:
+      - edit_request_id
+      - original_score_id
+      - new_score_id
+      - session_id
+      - reviewed_by
+      - reviewed_at
+
+  ScoreEditRejectedEvent:
+    is_a: InterviewMgmtDomainEvent
+    description: Emitted when a TA Coordinator rejects a ScoreEditRequest.
+    slots:
+      - edit_request_id
+      - original_score_id
+      - session_id
+      - reviewed_by
+      - reviewed_at
+      - review_notes
+
+  CandidateSkippedEvent:
+    is_a: InterviewMgmtDomainEvent
+    description: Emitted when a candidate is marked as skipped in a session.
+    slots:
+      - session_id
+      - candidate_registration_id
+      - sbd_number
+      - skip_reason
+      - skipped_by
+
+# ── Slots ──────────────────────────────────────────────────────────────────────
+
+slots:
+
+  session_id:
+    range: string
+    description: UUID of the InterviewSession.
+
+  event_id:
+    range: string
+    description: Reference to the ECR Event this session belongs to.
+
+  track_id:
+    range: string
+    description: Reference to the Track this session evaluates candidates for.
+
+  slot_id:
+    range: string
+    description: Reference to the ScheduleSlot (owned by Schedule & Capacity BC).
+
+  room_name:
+    range: string
+    description: Human-readable room name for display to interviewers.
+
+  session_start_time:
+    range: datetime
+    description: Scheduled start time of the interview session.
+
+  session_end_time:
+    range: datetime
+    description: Scheduled end time of the interview session.
+
+  session_status:
+    range: SessionStatus
+    description: Current operational state of the InterviewSession.
+
+  assignments:
+    range: InterviewerAssignment
+    multivalued: true
+    inlined_as_list: true
+    description: All interviewer assignments (Hard and Soft) for this session.
+
+  session_digest:
+    range: SessionDigest
+    inlined: true
+    description: The most recently dispatched SessionDigest for this session. Null if not yet dispatched.
+
+  queue_order_mode:
+    range: QueueOrderMode
+    description: How candidates are ordered in the interview queue for this session.
+
+  created_at:
+    range: datetime
+    description: Timestamp when the InterviewSession was created.
+
+  updated_at:
+    range: datetime
+    description: Timestamp of the last update to the InterviewSession record.
+
+  assignment_id:
+    range: string
+    description: UUID of the InterviewerAssignment.
+
+  interviewer_user_id:
+    range: string
+    description: xTalent User ID of the interviewer.
+
+  interviewer_display_name:
+    range: string
+    description: Display name of the interviewer at assignment time.
+
+  assignment_mode:
+    range: AssignmentMode
+    description: Whether this is a HardAssignment (committed) or SoftAssignment (tentative).
+
+  assigned_at:
+    range: datetime
+    description: Timestamp when the assignment was made.
+
+  assigned_by:
+    range: string
+    description: xTalent User ID of the TA Coordinator who made the assignment.
+
+  digest_id:
+    range: string
+    description: UUID of the SessionDigest.
+
+  dispatched_at:
+    range: datetime
+    description: Timestamp when the SessionDigest was dispatched.
+
+  dispatched_by:
+    range: string
+    description: xTalent User ID of the TA Coordinator who triggered the dispatch.
+
+  kit_links:
+    range: KitLink
+    multivalued: true
+    inlined_as_list: true
+    description: One KitLink per HardAssigned interviewer included in this dispatch.
+
+  candidate_count_at_dispatch:
+    range: integer
+    description: Number of candidates in the session's queue at the time of dispatch.
+    minimum_value: 0
+
+  kit_link_id:
+    range: string
+    description: UUID of the KitLink.
+
+  url_token:
+    range: string
+    description: Opaque secure token embedded in the KitLink URL. Used for server-side validation.
+
+  expiry_at:
+    range: datetime
+    description: >-
+      Expiry timestamp of the KitLink. Set to event_date + 24 hours at creation.
+      Server-side validated on every request (BR-05). Requests after this time return HTTP 403.
+
+  is_active:
+    range: boolean
+    description: Whether this KitLink is currently active (not expired, not revoked).
+
+  score_id:
+    range: string
+    description: UUID of the InterviewScore.
+
+  candidate_registration_id:
+    range: string
+    description: Reference to the CandidateEventRegistration in Candidate Registration BC.
+
+  sbd_number:
+    range: string
+    description: Số Báo Danh of the candidate at the time of scoring. Captured for audit stability.
+
+  score_components:
+    range: ScoreComponent
+    multivalued: true
+    inlined_as_list: true
+    description: Per-criterion score breakdown. Immutable after submission.
+
+  total_score:
+    range: float
+    description: Aggregate total score. May be a direct sum or weighted aggregate of components.
+    minimum_value: 0.0
+
+  recommendation:
+    range: InterviewRecommendation
+    description: Interviewer's pass/fail/hold recommendation for this candidate.
+
+  submitted_at:
+    range: datetime
+    description: Timestamp when the interviewer submitted the scoring form.
+
+  score_status:
+    range: ScoreStatus
+    description: Current status of this InterviewScore (Active or Superseded).
+
+  superseded_by_score_id:
+    range: string
+    description: >-
+      If this score was superseded by an approved ScoreEditRequest, references the new
+      InterviewScore ID. Null for the currently active score.
+
+  supersedes_score_id:
+    range: string
+    description: If this score was created via an approved ScoreEditRequest, references the original score ID.
+
+  edit_request_id:
+    range: string
+    description: If this score was created via an approved ScoreEditRequest, references the ScoreEditRequest ID.
+
+  criterion_name:
+    range: string
+    description: Name of the scoring criterion (e.g., "Technical Knowledge", "Communication").
+
+  criterion_weight:
+    range: float
+    description: Weight of this criterion in the total score calculation (0.0–1.0).
+    minimum_value: 0.0
+    maximum_value: 1.0
+
+  raw_score:
+    range: float
+    description: The raw score entered by the interviewer for this criterion.
+    minimum_value: 0.0
+
+  weighted_score:
+    range: float
+    description: raw_score multiplied by criterion_weight.
+    minimum_value: 0.0
+
+  notes:
+    range: string
+    description: Optional interviewer notes for this criterion.
+
+  original_score_id:
+    range: string
+    description: Reference to the InterviewScore being requested for amendment.
+
+  requested_by:
+    range: string
+    description: xTalent User ID of the requester (interviewer or TA Coordinator acting on their behalf).
+
+  requested_at:
+    range: datetime
+    description: Timestamp when the ScoreEditRequest was submitted.
+
+  reason:
+    range: string
+    description: Mandatory justification for the score amendment request.
+
+  proposed_score_components:
+    range: ScoreComponent
+    multivalued: true
+    inlined_as_list: true
+    description: The proposed amended score breakdown.
+
+  proposed_total_score:
+    range: float
+    description: Proposed amended total score.
+    minimum_value: 0.0
+
+  proposed_recommendation:
+    range: InterviewRecommendation
+    description: Proposed amended recommendation.
+
+  edit_request_status:
+    range: ScoreEditRequestStatus
+    description: Current approval state of the ScoreEditRequest.
+
+  reviewed_by:
+    range: string
+    description: xTalent User ID of the TA Coordinator who reviewed the ScoreEditRequest.
+
+  reviewed_at:
+    range: datetime
+    description: Timestamp when the TA Coordinator made their approval decision.
+
+  review_notes:
+    range: string
+    description: Optional notes from the TA Coordinator on the approval decision.
+
+  domain_event_id:
+    range: string
+    description: UUID of the domain event message.
+
+  occurred_at:
+    range: datetime
+    description: Timestamp when the domain event occurred.
+
+  actor_id:
+    range: string
+    description: xTalent User ID or "system" that triggered the event.
+
+  interviewer_count:
+    range: integer
+    description: Number of interviewers to whom the SessionDigest was dispatched.
+    minimum_value: 1
+
+  expired_at:
+    range: datetime
+    description: Timestamp when the KitLink expiry was detected/enforced.
+
+  new_score_id:
+    range: string
+    description: ID of the new InterviewScore created on ScoreEditRequest approval.
+
+  skip_reason:
+    range: SkipReason
+    description: Reason a candidate was not interviewed in this session.
+
+  skipped_by:
+    range: string
+    description: xTalent User ID of the interviewer or operator who recorded the skip.
+
+# ── Enumerations ───────────────────────────────────────────────────────────────
+
+enums:
+
+  SessionStatus:
+    description: Operational state of an InterviewSession.
+    permissible_values:
+      SCHEDULED:
+        description: Panel assigned; session not yet started. SessionDigest may or may not have been sent.
+      ACTIVE:
+        description: Event is In Progress; candidates are being queued and interviewed.
+      COMPLETED:
+        description: All assigned candidates have been scored or skipped.
+      DEFERRED:
+        description: Session postponed to a different slot.
+      SKIPPED:
+        description: Entire session was not conducted.
+
+  AssignmentMode:
+    description: Whether an InterviewerAssignment is committed or tentative.
+    permissible_values:
+      HARD:
+        description: Committed assignment. Interviewer receives SessionDigest and counts toward active Panel.
+      SOFT:
+        description: Tentative assignment. Interviewer receives preliminary notice only; not counted in Panel.
+
+  QueueOrderMode:
+    description: How candidates are ordered in the interview queue.
+    permissible_values:
+      SLOT_TIME:
+        description: Ordered by the time of their allocated slot.
+      SBD_ORDER:
+        description: Ordered by SBD number (ascending).
+      CHECKIN_ARRIVAL:
+        description: Ordered by check-in arrival time (FCFS on the day).
+
+  ScoreStatus:
+    description: Whether an InterviewScore is the current authoritative score or has been superseded.
+    permissible_values:
+      ACTIVE:
+        description: The current authoritative score for this (session, candidate, interviewer) triple.
+      SUPERSEDED:
+        description: This score was replaced by a newer score via an approved ScoreEditRequest. Retained for audit.
+
+  ScoreEditRequestStatus:
+    description: Approval state of a ScoreEditRequest.
+    permissible_values:
+      PENDING:
+        description: Submitted; awaiting TA Coordinator review.
+      APPROVED:
+        description: TA Coordinator approved. A new InterviewScore has been created.
+      REJECTED:
+        description: TA Coordinator rejected. The original score remains authoritative.
+
+  InterviewRecommendation:
+    description: Interviewer's pass/fail/hold recommendation for a candidate.
+    permissible_values:
+      PASS:
+        description: Candidate recommended to advance to the next stage.
+      FAIL:
+        description: Candidate not recommended to advance.
+      HOLD:
+        description: Interviewer is uncertain; flagged for further discussion.
+
+  SkipReason:
+    description: Reason a candidate was not interviewed in a session.
+    permissible_values:
+      NO_SHOW:
+        description: Candidate did not appear for the session.
+      TECHNICAL_ISSUE:
+        description: Technical problem prevented the interview from proceeding.
+      CANDIDATE_WITHDREW:
+        description: Candidate withdrew from the interview after checking in.
+      OTHER:
+        description: Other reason; captured in notes.

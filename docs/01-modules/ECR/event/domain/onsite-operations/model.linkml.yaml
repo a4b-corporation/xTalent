@@ -1,0 +1,569 @@
+id: https://xtalent.vng.com.vn/ecr/onsite-operations
+name: ECROnsiteOperations
+description: >-
+  Domain model for the Onsite Operations bounded context of the ECR module.
+  This context owns check-in capture (QR, SBD lookup, manual entry), kiosk session
+  management, offline-first data integrity via SBDBlock pre-allocation (OQ-D3),
+  sync queue management (BR-08), and conflict resolution via ManualReviewQueue.
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  ecr: https://xtalent.vng.com.vn/ecr/
+  ecr_oo: https://xtalent.vng.com.vn/ecr/onsite-operations/
+
+default_prefix: ecr_oo
+default_range: string
+
+imports:
+  - linkml:types
+
+classes:
+
+  # ── Aggregate Root: CheckInRecord ─────────────────────────────────────────────
+
+  CheckInRecord:
+    tree_root: true
+    description: >-
+      The single source of truth for a candidate's physical presence at the event.
+      All records begin in Provisional state at capture time. Transitions to Synced
+      after server confirmation, or to Conflict if a sync inconsistency is detected.
+      A candidate may have at most one non-cancelled CheckInRecord per event.
+    slots:
+      - checkin_id
+      - event_id
+      - registration_id
+      - sbd_number
+      - check_in_method
+      - sync_status
+      - kiosk_session_id
+      - captured_at
+      - synced_at
+      - cancelled_at
+      - operator_id
+      - conflict_type
+      - manual_review_item_id
+      - created_at
+    slot_usage:
+      checkin_id:
+        required: true
+      event_id:
+        required: true
+      sbd_number:
+        required: true
+      check_in_method:
+        required: true
+      sync_status:
+        required: true
+      kiosk_session_id:
+        required: true
+      captured_at:
+        required: true
+
+  # ── Aggregate Root: KioskSession ─────────────────────────────────────────────
+
+  KioskSession:
+    description: >-
+      Represents an active kiosk device's operational session for one event.
+      Holds the SBDBlock assignment for offline SBD generation.
+      Owns the OfflineSyncQueue of records captured while disconnected.
+    slots:
+      - session_id
+      - event_id
+      - kiosk_device_id
+      - kiosk_label
+      - session_state
+      - sbd_block
+      - offline_sync_queue
+      - session_started_at
+      - last_sync_at
+      - session_closed_at
+    slot_usage:
+      session_id:
+        required: true
+      event_id:
+        required: true
+      kiosk_device_id:
+        required: true
+      session_state:
+        required: true
+      sbd_block:
+        required: true
+      session_started_at:
+        required: true
+
+  # ── Value Object: SBDBlock ────────────────────────────────────────────────────
+
+  SBDBlock:
+    description: >-
+      A pre-allocated contiguous range of SBD numbers assigned exclusively to
+      one KioskSession. The kiosk uses numbers sequentially from this block
+      without server coordination, eliminating inter-kiosk SBD conflicts (OQ-D3).
+      When near-exhausted (< 10 remaining), the kiosk requests a new block
+      at next sync. Unused numbers at session end are reclaimed (gaps are permitted).
+    slots:
+      - block_id
+      - event_id
+      - kiosk_session_id
+      - start_sbd
+      - end_sbd
+      - next_available
+      - block_state
+      - allocated_at
+    slot_usage:
+      block_id:
+        required: true
+      event_id:
+        required: true
+      kiosk_session_id:
+        required: true
+      start_sbd:
+        required: true
+      end_sbd:
+        required: true
+      next_available:
+        required: true
+      block_state:
+        required: true
+      allocated_at:
+        required: true
+
+  # ── Entity: OfflineSyncQueueItem ──────────────────────────────────────────────
+
+  OfflineSyncQueueItem:
+    description: >-
+      A single CheckInRecord captured while the kiosk was offline, queued for
+      server sync. Records are processed atomically and in order. A failed sync
+      on one item routes it to ManualReviewQueue — it never blocks subsequent items
+      and is never silently discarded (BR-08).
+    slots:
+      - queue_item_id
+      - session_id
+      - checkin_id
+      - queue_position
+      - sync_attempt_count
+      - last_sync_attempt_at
+      - sync_item_status
+      - sync_error_detail
+    slot_usage:
+      queue_item_id:
+        required: true
+      session_id:
+        required: true
+      checkin_id:
+        required: true
+      queue_position:
+        required: true
+      sync_attempt_count:
+        required: true
+      sync_item_status:
+        required: true
+
+  # ── Entity: ManualReviewItem ──────────────────────────────────────────────────
+
+  ManualReviewItem:
+    description: >-
+      A CheckInRecord or sync event that could not be auto-resolved and requires
+      TA Coordinator review. Created on sync conflict detection or check-in exception.
+      TA Coordinator resolves by approving, rejecting, or merging.
+    slots:
+      - review_item_id
+      - event_id
+      - checkin_id
+      - conflict_type
+      - conflict_detail
+      - review_state
+      - created_at
+      - reviewed_by
+      - reviewed_at
+      - resolution_action
+      - resolution_notes
+    slot_usage:
+      review_item_id:
+        required: true
+      event_id:
+        required: true
+      checkin_id:
+        required: true
+      conflict_type:
+        required: true
+      review_state:
+        required: true
+      created_at:
+        required: true
+
+  # ── Domain Events ─────────────────────────────────────────────────────────────
+
+  OnsiteDomainEvent:
+    description: Base class for domain events published by the Onsite Operations context.
+    slots:
+      - domain_event_id
+      - event_id
+      - occurred_at
+      - actor_id
+    slot_usage:
+      domain_event_id:
+        required: true
+      event_id:
+        required: true
+      occurred_at:
+        required: true
+
+  CheckInCapturedEvent:
+    is_a: OnsiteDomainEvent
+    description: >-
+      Emitted when a CheckInRecord is first created in Provisional state at the
+      kiosk. This is the early signal for Interview Management BC's provisional
+      queue display (OQ-D2 resolution). Does NOT indicate server confirmation.
+    slots:
+      - checkin_id
+      - sbd_number
+      - check_in_method
+      - kiosk_session_id
+      - captured_at
+
+  CheckInConfirmedEvent:
+    is_a: OnsiteDomainEvent
+    description: >-
+      Emitted when a Provisional CheckInRecord is confirmed by the server (sync
+      successful). This is the authoritative "candidate is onsite" signal.
+      Interview Management BC updates the queue on receipt of this event.
+      Assessment ACL uses this as an eligibility signal (BR-07).
+    slots:
+      - checkin_id
+      - sbd_number
+      - synced_at
+
+  CheckInConflictEvent:
+    is_a: OnsiteDomainEvent
+    description: >-
+      Emitted when server-side sync validation detects an unresolvable conflict.
+      The record is routed to ManualReviewQueue. Consumed by Analytics & Audit.
+    slots:
+      - checkin_id
+      - sbd_number
+      - conflict_type
+      - review_item_id
+
+  KioskSessionStartedEvent:
+    is_a: OnsiteDomainEvent
+    description: >-
+      Emitted when a kiosk authenticates and comes online with an assigned SBDBlock.
+    slots:
+      - session_id
+      - kiosk_device_id
+      - block_id
+      - start_sbd
+      - end_sbd
+
+  KioskSessionSyncedEvent:
+    is_a: OnsiteDomainEvent
+    description: Emitted when a kiosk completes a sync run.
+    slots:
+      - session_id
+      - records_synced
+      - conflicts_routed
+      - synced_at
+
+  ManualReviewResolvedEvent:
+    is_a: OnsiteDomainEvent
+    description: Emitted when a TA Coordinator resolves a ManualReviewItem.
+    slots:
+      - review_item_id
+      - checkin_id
+      - resolution_action
+      - reviewed_by
+
+# ── Slots ─────────────────────────────────────────────────────────────────────
+
+slots:
+
+  checkin_id:
+    range: string
+    description: UUID of the CheckInRecord.
+
+  event_id:
+    range: string
+    description: Reference to the Event this check-in belongs to.
+
+  registration_id:
+    range: string
+    description: >-
+      Reference to the CandidateEventRegistration. May be null for Manual Entry
+      walk-ins until a TA Coordinator resolves the ManualReviewItem.
+
+  sbd_number:
+    range: string
+    description: Số Báo Danh. Event-scoped identifier. From SBDBlock if offline walk-in.
+
+  check_in_method:
+    range: CheckInMethod
+    description: The method used to capture this check-in.
+
+  sync_status:
+    range: SyncStatus
+    description: Current sync state of the CheckInRecord.
+
+  kiosk_session_id:
+    range: string
+    description: ID of the KioskSession that captured this check-in.
+
+  captured_at:
+    range: datetime
+    description: Timestamp when the check-in was captured at the kiosk (device clock).
+
+  synced_at:
+    range: datetime
+    description: Timestamp when sync was confirmed by the server. Null until Synced.
+
+  cancelled_at:
+    range: datetime
+    description: Timestamp if the check-in record was cancelled. Null unless cancelled.
+
+  operator_id:
+    range: string
+    description: xTalent User ID of the kiosk operator who performed the check-in. Optional.
+
+  conflict_type:
+    range: ConflictType
+    description: Type of conflict detected. Null unless sync_status = CONFLICT.
+
+  manual_review_item_id:
+    range: string
+    description: Reference to the ManualReviewItem if this record is in conflict or under review.
+
+  session_id:
+    range: string
+    description: UUID of the KioskSession.
+
+  kiosk_device_id:
+    range: string
+    description: Unique device identifier for the kiosk hardware/app installation.
+
+  kiosk_label:
+    range: string
+    description: Human-readable label for the kiosk (e.g., "Gate A - Kiosk 1").
+
+  session_state:
+    range: KioskSessionState
+    description: Current operational state of the KioskSession.
+
+  sbd_block:
+    range: SBDBlock
+    inlined: true
+    description: The SBDBlock currently assigned to this KioskSession.
+
+  offline_sync_queue:
+    range: OfflineSyncQueueItem
+    multivalued: true
+    inlined_as_list: true
+    description: Ordered queue of records captured offline, awaiting server sync.
+
+  session_started_at:
+    range: datetime
+    description: Timestamp when the KioskSession was initialized.
+
+  last_sync_at:
+    range: datetime
+    description: Timestamp of the most recent completed sync run.
+
+  session_closed_at:
+    range: datetime
+    description: Timestamp when the KioskSession was closed. Null while active.
+
+  block_id:
+    range: string
+    description: UUID of the SBDBlock.
+
+  start_sbd:
+    range: integer
+    description: First SBD number in the block.
+
+  end_sbd:
+    range: integer
+    description: Last SBD number in the block.
+
+  next_available:
+    range: integer
+    description: Next SBD number to be assigned from this block.
+
+  block_state:
+    range: SBDBlockState
+    description: Current fill state of the SBDBlock.
+
+  allocated_at:
+    range: datetime
+    description: Timestamp when this SBDBlock was allocated to the kiosk session.
+
+  queue_item_id:
+    range: string
+    description: UUID of the OfflineSyncQueueItem.
+
+  queue_position:
+    range: integer
+    description: Processing order position in the sync queue (1-indexed, ascending).
+    minimum_value: 1
+
+  sync_attempt_count:
+    range: integer
+    description: Number of sync attempts made for this queue item.
+    minimum_value: 0
+
+  last_sync_attempt_at:
+    range: datetime
+    description: Timestamp of the most recent sync attempt.
+
+  sync_item_status:
+    range: SyncItemStatus
+    description: Current processing state of this queue item.
+
+  sync_error_detail:
+    range: string
+    description: Error message from the last failed sync attempt. Null if no failures.
+
+  review_item_id:
+    range: string
+    description: UUID of the ManualReviewItem.
+
+  conflict_detail:
+    range: string
+    description: Human-readable description of the conflict or exception.
+
+  review_state:
+    range: ReviewState
+    description: Current resolution state of the ManualReviewItem.
+
+  reviewed_by:
+    range: string
+    description: xTalent User ID of the TA Coordinator who resolved this item.
+
+  reviewed_at:
+    range: datetime
+    description: Timestamp when the TA Coordinator resolved this item.
+
+  resolution_action:
+    range: ReviewResolutionAction
+    description: The action taken by the TA Coordinator to resolve this item.
+
+  resolution_notes:
+    range: string
+    description: Optional notes from the TA Coordinator explaining the resolution.
+
+  domain_event_id:
+    range: string
+    description: UUID of the domain event message.
+
+  occurred_at:
+    range: datetime
+    description: Timestamp when the domain event occurred.
+
+  actor_id:
+    range: string
+    description: xTalent User ID or "system" that triggered the event.
+
+  records_synced:
+    range: integer
+    description: Number of records successfully synced in this sync run.
+
+  conflicts_routed:
+    range: integer
+    description: Number of records routed to ManualReviewQueue during this sync run.
+
+  created_at:
+    range: datetime
+    description: Record creation timestamp.
+
+# ── Enumerations ──────────────────────────────────────────────────────────────
+
+enums:
+
+  CheckInMethod:
+    description: The method used to capture a check-in.
+    permissible_values:
+      QR_SCAN:
+        description: Candidate presented a QR code; kiosk scanner read it.
+      SBD_LOOKUP:
+        description: Operator or candidate typed in the Số Báo Danh.
+      MANUAL_ENTRY:
+        description: Operator manually entered candidate details. Always creates a ManualReviewItem.
+
+  SyncStatus:
+    description: Server sync state of a CheckInRecord.
+    permissible_values:
+      PROVISIONAL:
+        description: Captured locally; not yet confirmed by server. Visible in queue with indicator.
+      SYNCED:
+        description: Server confirmed receipt and validated the record. Authoritative state.
+      CONFLICT:
+        description: Server detected an inconsistency; routed to ManualReviewQueue.
+      REVIEW_REQUIRED:
+        description: Record requires TA Coordinator review before server acceptance.
+
+  ConflictType:
+    description: Type of conflict detected during sync validation.
+    permissible_values:
+      DUPLICATE_CHECKIN:
+        description: Another non-cancelled CheckInRecord exists for the same candidate in this event.
+      SBD_CONFLICT:
+        description: The SBD number is already assigned to a different candidate in server records.
+      RECORD_MISMATCH:
+        description: The candidate data in the record does not match server registration records.
+      SBD_NOT_FOUND:
+        description: The SBD number is not found in any server registration for this event.
+
+  KioskSessionState:
+    description: Operational state of a KioskSession.
+    permissible_values:
+      INITIALIZED:
+        description: Session created; SBDBlock assigned; not yet accepting check-ins.
+      ACTIVE:
+        description: Kiosk is online and accepting check-ins.
+      SUSPENDED:
+        description: Kiosk is offline; capturing to OfflineSyncQueue.
+      SYNCING:
+        description: Kiosk is connected and executing a sync run.
+      CLOSED:
+        description: Session ended; SBDBlock reclaimed; no further check-ins.
+
+  SBDBlockState:
+    description: Fill state of a SBDBlock.
+    permissible_values:
+      ACTIVE:
+        description: Numbers available; kiosk is drawing from this block.
+      NEAR_EXHAUSTED:
+        description: Fewer than 10 numbers remaining. New block request triggered at next sync.
+      EXHAUSTED:
+        description: All numbers used. Kiosk cannot create new registrations until new block received.
+      RECLAIMED:
+        description: Session closed; unused numbers returned to server pool.
+
+  SyncItemStatus:
+    description: Processing state of an OfflineSyncQueueItem.
+    permissible_values:
+      PENDING:
+        description: Queued; not yet submitted to server.
+      PROCESSING:
+        description: Currently being submitted to server.
+      ACKNOWLEDGED:
+        description: Server confirmed receipt. Record promoted to SYNCED.
+      CONFLICT_ROUTED:
+        description: Server rejected; routed to ManualReviewQueue. Not retried automatically.
+      FAILED:
+        description: Network error; will retry on next sync run.
+
+  ReviewState:
+    description: Resolution state of a ManualReviewItem.
+    permissible_values:
+      OPEN:
+        description: Awaiting TA Coordinator review.
+      RESOLVED:
+        description: TA Coordinator has made a resolution decision.
+
+  ReviewResolutionAction:
+    description: The action taken by the TA Coordinator to resolve a ManualReviewItem.
+    permissible_values:
+      APPROVE:
+        description: Record is valid; promote to SYNCED.
+      REJECT:
+        description: Record is invalid; cancel the CheckInRecord.
+      MERGE:
+        description: Record matches an existing registration; link and promote.

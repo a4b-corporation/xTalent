@@ -1,0 +1,2015 @@
+openapi: 3.0.3
+
+info:
+  title: ECR Use-Case API
+  description: |
+    Use-case driven API for the Event-Centric Recruitment (ECR) module.
+    xTalent HCM Solution — Vietnam Data Residency (NFR-09).
+
+    All endpoints are derived from ECR use case flows and business intent.
+    Naming follows business operations, not CRUD verbs.
+
+    **Authentication:** All endpoints require a valid xTalent JWT bearer token.
+    Token is validated against the xTalent RBAC Service on every request.
+    Expired or invalid tokens return HTTP 401.
+
+    **Authorization:** Role-based. Relevant permissions noted per endpoint.
+
+    **Data Residency:** All PII data is stored exclusively in Vietnam-region
+    infrastructure. No cross-border data transfer (NFR-09).
+  version: "1.0.0"
+  contact:
+    name: xTalent Engineering Team
+    email: engineering@xtalent.vng.com.vn
+
+servers:
+  - url: https://api.xtalent.vng.com.vn/ecr/v1
+    description: Production (Vietnam Data Center — NFR-09 compliant)
+  - url: https://api-staging.xtalent.vng.com.vn/ecr/v1
+    description: Staging
+
+security:
+  - BearerAuth: []
+
+tags:
+  - name: Event Management
+    description: Commands on the Event aggregate root lifecycle (BC-01)
+  - name: Candidate Registration
+    description: Registration intake and duplicate management (BC-02)
+  - name: Schedule & Capacity
+    description: Schedule matrix, allocation, and waitlist (BC-04)
+  - name: Onsite Operations
+    description: Kiosk check-in and offline sync (BC-05)
+  - name: Interview Management
+    description: Session digest dispatch, kit access, and score submission (BC-06)
+  - name: Communication
+    description: Bulk email dispatch and job status (BC-07)
+  - name: Analytics
+    description: Dashboard, reports, and audit log queries (BC-08)
+
+paths:
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # EVENT MANAGEMENT — BC-01
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  /events/create-recruitment-event:
+    post:
+      tags: [Event Management]
+      operationId: createRecruitmentEvent
+      summary: Create a new recruitment event
+      description: |
+        Creates a new ECR event in DRAFT lifecycle state.
+        At least one Track and a RegistrationForm must be added before the event
+        can be published. Corresponds to CMD-01 / DE-01 (EventDraftCreated).
+        Required permission: `ecr.event.create`
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRecruitmentEventRequest'
+      responses:
+        '201':
+          description: Event created in DRAFT state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventSummary'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /events/{eventId}/publish:
+    post:
+      tags: [Event Management]
+      operationId: publishEvent
+      summary: Publish a recruitment event
+      description: |
+        Transitions the event from DRAFT to PUBLISHED state.
+        Validation guards: >= 1 Track, valid date range, RegistrationForm defined.
+        Triggers `EventPublished` domain event (DE-02).
+        Required permission: `ecr.event.publish`
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      responses:
+        '200':
+          description: Event published successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventSummary'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /events/{eventId}/clone:
+    post:
+      tags: [Event Management]
+      operationId: cloneEvent
+      summary: Clone an existing event (copy by value)
+      description: |
+        Creates a new DRAFT event by copying all structural data from the source
+        event: tracks, capacities, registration form schema, schedule blueprint.
+        Operational data (registrations, scores) is NOT copied.
+        Clone is independent of source — no runtime reference (OQ-D5 resolution).
+        Triggers `EventCloned` domain event (DE-04).
+        Required permission: `ecr.event.create`
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CloneEventRequest'
+      responses:
+        '201':
+          description: New event created as a clone
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /events/{eventId}/open-registration:
+    patch:
+      tags: [Event Management]
+      operationId: openEventRegistration
+      summary: Open registration window for candidates
+      description: |
+        Transitions event from PUBLISHED to REGISTRATION_OPEN.
+        Guard: event date must be in the future.
+        Triggers `RegistrationOpened` domain event (DE-03).
+        Required permission: `ecr.event.manage`
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      responses:
+        '200':
+          description: Registration opened
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /events/{eventId}/start:
+    patch:
+      tags: [Event Management]
+      operationId: startEvent
+      summary: Start the event (transition to In Progress)
+      description: |
+        Transitions event to IN_PROGRESS. Engages structural lock (BR-06).
+        No further Track, RegistrationForm, or capacity mutations permitted.
+        Triggers `EventStarted` domain event (DE-07 / EventTransitionedToInProgress).
+        Required permission: `ecr.event.manage`
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      responses:
+        '200':
+          description: Event started; structural lock engaged
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /events/{eventId}/close:
+    patch:
+      tags: [Event Management]
+      operationId: closeEvent
+      summary: Close the event
+      description: |
+        Transitions event from IN_PROGRESS to CLOSED.
+        No further candidate registrations or check-ins accepted.
+        Triggers `EventClosed` domain event (DE-08).
+        Required permission: `ecr.event.manage`
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      responses:
+        '200':
+          description: Event closed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # CANDIDATE REGISTRATION — BC-02
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  /events/{eventId}/registrations/register:
+    post:
+      tags: [Candidate Registration]
+      operationId: registerCandidate
+      summary: Register a candidate for an event (online channel)
+      description: |
+        Accepts a candidate's online self-registration submission.
+        SBD is generated and assigned immediately at capture (BR-01).
+        Duplicate detection runs synchronously; DuplicateFlag raised if match found.
+        If track capacity full, candidate is placed on waitlist (FCFS).
+        Triggers `CandidateRegistered` domain event (DE-10).
+        Required: Event in REGISTRATION_OPEN state.
+        Required permission: public (no auth required for online registration)
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterCandidateRequest'
+      responses:
+        '201':
+          description: Registration captured; SBD assigned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegistrationReceipt'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Registration closed or event not in REGISTRATION_OPEN state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /events/{eventId}/registrations/kiosk-walk-in:
+    post:
+      tags: [Candidate Registration]
+      operationId: registerKioskWalkIn
+      summary: Register a walk-in candidate at kiosk (onsite)
+      description: |
+        Captures a walk-in candidate at an onsite kiosk in ONLINE mode.
+        SBD assigned from server sequence. Duplicate detection runs.
+        Triggers `CandidateRegistered` domain event (DE-11).
+        For OFFLINE mode, use kiosk-local operation followed by /kiosk/sync.
+        Required permission: `ecr.registration.kiosk`
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KioskWalkInRequest'
+      responses:
+        '201':
+          description: Walk-in registration captured; SBD assigned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegistrationReceipt'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /events/{eventId}/registrations/{registrationId}/generate-sbd:
+    post:
+      tags: [Candidate Registration]
+      operationId: generateSBD
+      summary: Generate and assign SBD to a registration (admin action)
+      description: |
+        Explicitly generates and assigns an SBD to an existing registration
+        that was created via import and does not yet have one.
+        Normally SBD is assigned automatically at registration capture.
+        This endpoint handles the import/backfill case.
+        Required permission: `ecr.registration.manage`
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - $ref: '#/components/parameters/RegistrationId'
+      responses:
+        '200':
+          description: SBD generated and assigned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SBDAssignmentResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: SBD already assigned to this registration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /events/{eventId}/registrations/duplicates:
+    get:
+      tags: [Candidate Registration]
+      operationId: listDuplicateFlags
+      summary: List unresolved duplicate flags for an event
+      description: |
+        Returns all DuplicateFlag records requiring TA Coordinator review.
+        Unresolved flags block bulk advancement operations (BR-03).
+        Required permission: `ecr.registration.manage`
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - name: resolution_state
+          in: query
+          schema:
+            type: string
+            enum: [UNRESOLVED, RESOLVED_KEEP_BOTH, RESOLVED_KEEP_PRIMARY, RESOLVED_KEEP_MATCHED]
+            default: UNRESOLVED
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: List of duplicate flags
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DuplicateFlagList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /events/{eventId}/registrations/duplicates/{flagId}/resolve:
+    post:
+      tags: [Candidate Registration]
+      operationId: resolveDuplicateFlag
+      summary: Resolve a duplicate flag (human decision)
+      description: |
+        TA Coordinator resolves a DuplicateFlag with one of three decisions:
+        KEEP_BOTH, KEEP_THIS, KEEP_MATCHED.
+        Auto-merge and auto-reject are prohibited (BR-02).
+        Triggers `DuplicateResolved` domain event (DE-15/16/17).
+        Creates an AuditEntry (CMD-12/13/14).
+        Required permission: `ecr.registration.manage`
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - name: flagId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResolveDuplicateRequest'
+      responses:
+        '200':
+          description: Duplicate flag resolved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DuplicateFlagResolution'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Flag already resolved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # SCHEDULE & CAPACITY — BC-04
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  /events/{eventId}/schedule/build:
+    post:
+      tags: [Schedule & Capacity]
+      operationId: buildScheduleMatrix
+      summary: Define the schedule matrix for an event
+      description: |
+        Saves the Day × Shift × Room × Track capacity matrix for the event.
+        Room double-booking is validated server-side.
+        Slot capacity must not exceed Room physical capacity (without override).
+        Triggers `ScheduleCreated` domain event (DE-24).
+        Blocked once event is IN_PROGRESS (BR-06 structural lock).
+        Required permission: `ecr.schedule.manage`
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuildScheduleRequest'
+      responses:
+        '201':
+          description: Schedule matrix defined
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduleSummary'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Room double-booking detected or structural lock engaged
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /events/{eventId}/schedule/allocate-candidates:
+    post:
+      tags: [Schedule & Capacity]
+      operationId: allocateCandidatesToSlots
+      summary: Run candidate-to-slot allocation
+      description: |
+        Executes the AllocationRun for confirmed candidates to schedule slots
+        using the configured strategy (ROUND_ROBIN or FILL_FIRST).
+        AllocationRun is idempotent — re-running with same inputs produces same result.
+        Concurrent runs for the same event are serialized (R-04 — exclusive lock).
+        Triggers `CandidatesAllocatedToSlots` domain event (DE-26).
+        Required permission: `ecr.schedule.manage`
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AllocateCandidatesRequest'
+      responses:
+        '202':
+          description: Allocation run initiated (async execution)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AllocationRunStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Another allocation run is already in progress for this event
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /events/{eventId}/schedule/slots/{slotId}/invite:
+    post:
+      tags: [Schedule & Capacity]
+      operationId: inviteCandidatesToSlot
+      summary: Send slot invitation notifications to allocated candidates
+      description: |
+        Triggers a bulk communication job to send slot assignment emails
+        to all candidates allocated to the specified slot.
+        Triggers `SlotInvitationDispatched` communication job.
+        Required permission: `ecr.schedule.manage`
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - name: slotId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '202':
+          description: Slot invitation dispatch initiated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DispatchJobReference'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /events/{eventId}/schedule/waitlist/{entryId}/confirm-slot:
+    post:
+      tags: [Schedule & Capacity]
+      operationId: confirmWaitlistSlot
+      summary: Confirm a waitlisted candidate into a freed slot
+      description: |
+        Manually promotes a specific waitlisted candidate to a confirmed slot.
+        Normally waitlist backfill is automated by WaitlistBackfillTriggered policy (POL-05).
+        This endpoint handles TA Coordinator override scenarios for edge cases.
+        Triggers `WaitlistActivated` domain event (DE-20).
+        Required permission: `ecr.registration.manage`
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - name: entryId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Waitlist candidate confirmed into slot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WaitlistActivationResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: No available slot capacity or entry already activated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # ONSITE OPERATIONS — BC-05
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  /events/{eventId}/checkin/scan:
+    post:
+      tags: [Onsite Operations]
+      operationId: scanCheckIn
+      summary: Check in a candidate via QR scan or SBD entry (online mode)
+      description: |
+        Performs a candidate check-in in online kiosk mode.
+        Methods: QR_SCAN (decode payload), SBD_LOOKUP (numeric lookup), MANUAL_ENTRY (always creates ManualReviewItem).
+        Duplicate check-in detection: returns 409 if candidate already checked in.
+        Triggers `CheckInCaptured` then `CheckInConfirmed` domain events (DE-27/29).
+        Check-in must complete in < 5s P95 (NFR-04).
+        Required permission: `ecr.checkin.operate`
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScanCheckInRequest'
+      responses:
+        '200':
+          description: Check-in successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckInResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: SBD or QR code not found in event registrations
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Candidate already checked in (duplicate check-in detected, DE-28)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /kiosk/sessions/start:
+    post:
+      tags: [Onsite Operations]
+      operationId: startKioskSession
+      summary: Initialize a kiosk session and receive SBD block allocation
+      description: |
+        Authenticates a kiosk device and initializes a KioskSession.
+        Server assigns a contiguous SBD block (e.g., 100 numbers) to the kiosk.
+        Kiosk uses this block to assign SBDs offline without server coordination (OQ-D3).
+        Triggers `KioskSessionStarted` domain event (DE in BC-05).
+        Required permission: `ecr.kiosk.session`
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartKioskSessionRequest'
+      responses:
+        '201':
+          description: Kiosk session started; SBD block allocated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KioskSessionStartResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /kiosk/sync:
+    post:
+      tags: [Onsite Operations]
+      operationId: syncKioskData
+      summary: Upload offline-captured check-in records to server
+      description: |
+        Kiosk uploads its OfflineSyncQueue records for server processing.
+        Records processed atomically in order; conflicts routed to ManualReviewQueue.
+        No silent data loss — failed records get a ManualReviewItem (BR-08).
+        If SBD block is near-exhausted (< 10 remaining), new block is assigned in response.
+        Triggers `KioskSessionSynced` domain event.
+        Required permission: `ecr.kiosk.session`
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KioskSyncRequest'
+      responses:
+        '200':
+          description: Sync completed; results and optional new SBD block in response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KioskSyncResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # INTERVIEW MANAGEMENT — BC-06
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  /events/{eventId}/sessions/{sessionId}/dispatch-digest:
+    post:
+      tags: [Interview Management]
+      operationId: dispatchSessionDigest
+      summary: Dispatch Session Digest with KitLinks to all HardAssigned interviewers
+      description: |
+        Generates and dispatches the SessionDigest to all HardAssigned interviewers.
+        Each interviewer receives a unique KitLink (expires event_date + 24h, BR-05).
+        Triggers `SessionDigestDispatched` domain event (DE-36).
+        Communication BC receives this event and sends kit emails.
+        Guard: session must have >= 1 HardAssigned interviewer.
+        Guard: event must be in REGISTRATION_OPEN or IN_PROGRESS state.
+        Required permission: `ecr.interview.dispatch_digest`
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '200':
+          description: Session digest dispatched; KitLinks generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DigestDispatchResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: No HardAssigned interviewers or event not in eligible state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /sessions/{sessionId}/kit/{kitToken}:
+    get:
+      tags: [Interview Management]
+      operationId: accessInterviewKit
+      summary: Access interview kit via KitLink token (Hiring Manager)
+      description: |
+        Validates the KitLink token server-side and returns the interview kit payload.
+        Token validated on every request — expiry enforced server-side (BR-05).
+        Expired tokens return HTTP 403 regardless of whether the page was open before expiry (R-03).
+        HM does NOT need xTalent login — token-based access only.
+        Triggers `InterviewKitAccessed` domain event (DE-37).
+        No auth header required; kitToken is the authentication mechanism.
+      security: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: kitToken
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Opaque secure token from the KitLink URL
+      responses:
+        '200':
+          description: Kit access granted; returns session and candidate queue data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InterviewKitPayload'
+        '403':
+          description: KitLink expired (BR-05) or token invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /events/{eventId}/sessions/{sessionId}/candidates/{candidateRef}/submit-score:
+    post:
+      tags: [Interview Management]
+      operationId: submitInterviewScore
+      summary: Submit interview score for a candidate (Hiring Manager)
+      description: |
+        Hiring Manager submits scoring form for a candidate in their session.
+        Score is immediately immutable upon submission (BR-04).
+        Future amendments require ScoreEditRequest with TA Coordinator approval.
+        Creates an AuditEntry (CMD-27).
+        Triggers `InterviewScoreSubmitted` domain event (DE-39).
+        Authentication via KitLink token (X-Kit-Token header) OR xTalent JWT.
+        Required permission: `ecr.interview.score` (or valid kit token)
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - $ref: '#/components/parameters/SessionId'
+        - name: candidateRef
+          in: path
+          required: true
+          schema:
+            type: string
+          description: SBD number of the candidate being scored
+      security:
+        - BearerAuth: []
+        - KitTokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitScoreRequest'
+      responses:
+        '201':
+          description: Score submitted and locked (immutable, BR-04)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScoreSubmissionResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Score already submitted for this (session, candidate, interviewer) triple
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /events/{eventId}/sessions/{sessionId}/candidates/{candidateRef}/skip:
+    post:
+      tags: [Interview Management]
+      operationId: skipCandidate
+      summary: Mark a candidate as skipped in a session
+      description: |
+        Records that a candidate was not interviewed in this session (no-show, withdrawal, etc.).
+        Removed from the session queue. Audit entry created.
+        Triggers `CandidateSkipped` domain event (DE-43).
+        Authentication via KitLink token OR xTalent JWT.
+        Required permission: `ecr.interview.score` (or valid kit token)
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - $ref: '#/components/parameters/SessionId'
+        - name: candidateRef
+          in: path
+          required: true
+          schema:
+            type: string
+      security:
+        - BearerAuth: []
+        - KitTokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SkipCandidateRequest'
+      responses:
+        '200':
+          description: Candidate marked as skipped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkipResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # COMMUNICATION — BC-07
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  /events/{eventId}/communications/send-bulk:
+    post:
+      tags: [Communication]
+      operationId: sendBulkCommunication
+      summary: Dispatch a bulk email to a candidate cohort
+      description: |
+        Creates a CommunicationJob for bulk email dispatch.
+        Rate-limited to 500 messages/minute (NFR-07) via token bucket.
+        CommunicationJob is idempotent — same idempotency_key produces no duplicate sends.
+        Triggers `CommunicationJobCreated` domain event (DE-46).
+        Required permission: `ecr.communication.send_bulk`
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendBulkCommunicationRequest'
+      responses:
+        '202':
+          description: Bulk communication job created and queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommunicationJobReference'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Duplicate job (same idempotency_key already exists)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /events/{eventId}/communications/{jobId}/status:
+    get:
+      tags: [Communication]
+      operationId: getCommunicationJobStatus
+      summary: Get status of a communication job
+      description: |
+        Returns the current status of a CommunicationJob including
+        per-recipient delivery record summaries.
+        Required permission: `ecr.communication.view`
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Communication job status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommunicationJobStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # ANALYTICS — BC-08
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  /events/{eventId}/dashboard:
+    get:
+      tags: [Analytics]
+      operationId: getEventDashboard
+      summary: Get real-time event dashboard metrics
+      description: |
+        Returns the current real-time EventMetricsSnapshot for the event.
+        Powered by Redis in-memory projections updated on every domain event.
+        Update latency < 5s P95 (NFR-03).
+        Covers: REGISTRATION, CHECK_IN, INTERVIEW, FUNNEL dimensions.
+        Required permission: `ecr.analytics.view`
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - name: dimensions
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [REGISTRATION, CHECK_IN, ASSESSMENT, INTERVIEW, FUNNEL]
+          style: form
+          explode: false
+      responses:
+        '200':
+          description: Real-time dashboard metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardMetrics'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /events/{eventId}/reports/generate:
+    get:
+      tags: [Analytics]
+      operationId: generateReport
+      summary: Generate a report using a saved ReportDefinition
+      description: |
+        Executes a saved ReportDefinition and returns ephemeral report output.
+        Report output is NOT persisted as a domain object — only the definition is stored.
+        Triggers `ReportGenerated` domain event (DE-53).
+        Required permission: `ecr.analytics.report`
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - name: reportDefinitionId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Generated report data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportOutput'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /events/{eventId}/audit-log:
+    get:
+      tags: [Analytics]
+      operationId: getAuditLog
+      summary: Query the append-only audit log for an event
+      description: |
+        Returns AuditEntry records for the specified event.
+        Audit log is append-only and tamper-evident (hash-chain, BR-08).
+        3-year minimum retention (NFR-10).
+        Supports filtering by audit_action, actor, date range.
+        Required permission: `ecr.audit.view`
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - name: audit_action
+          in: query
+          schema:
+            type: string
+            description: Filter by specific AuditAction enum value
+        - name: actor_user_id
+          in: query
+          schema:
+            type: string
+            description: Filter by actor user ID
+        - name: from_date
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to_date
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: Audit log entries
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditLogPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+# ─────────────────────────────────────────────────────────────────────────────
+# COMPONENTS
+# ─────────────────────────────────────────────────────────────────────────────
+
+components:
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: xTalent JWT issued by the RBAC Service
+    KitTokenAuth:
+      type: apiKey
+      in: header
+      name: X-Kit-Token
+      description: Opaque KitLink token for Hiring Manager access (no login required)
+
+  parameters:
+    EventId:
+      name: eventId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: UUID of the ECR Event
+
+    RegistrationId:
+      name: registrationId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: UUID of the CandidateEventRegistration
+
+    SessionId:
+      name: sessionId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: UUID of the InterviewSession
+
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 500
+        default: 50
+      description: Maximum number of results to return
+
+    Offset:
+      name: offset
+      in: query
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+      description: Number of results to skip before returning results
+
+  responses:
+    BadRequest:
+      description: Bad request — invalid input parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Missing or invalid authentication token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Authenticated but insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: State conflict — invalid lifecycle transition or constraint violation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    UnprocessableEntity:
+      description: Semantically invalid request (e.g., registration form validation failure)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationErrorResponse'
+
+  schemas:
+
+    ErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Machine-readable error code
+          example: EVENT_NOT_IN_PUBLISHABLE_STATE
+        message:
+          type: string
+          description: Human-readable error message
+        details:
+          type: object
+          additionalProperties: true
+
+    ValidationErrorResponse:
+      type: object
+      required: [code, message, validation_errors]
+      properties:
+        code:
+          type: string
+          example: VALIDATION_FAILED
+        message:
+          type: string
+        validation_errors:
+          type: array
+          items:
+            type: object
+            required: [field, message]
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+
+    EventSummary:
+      type: object
+      required: [id, title, lifecycle_state, start_date, end_date, structural_locked, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        lifecycle_state:
+          type: string
+          enum: [DRAFT, PUBLISHED, REGISTRATION_OPEN, IN_PROGRESS, CLOSED, ARCHIVED]
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        registration_deadline:
+          type: string
+          format: date-time
+        structural_locked:
+          type: boolean
+        source_event_id:
+          type: string
+          format: uuid
+          description: Populated if this event was cloned
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateRecruitmentEventRequest:
+      type: object
+      required: [title, start_date, end_date]
+      properties:
+        title:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        registration_deadline:
+          type: string
+          format: date-time
+
+    CloneEventRequest:
+      type: object
+      required: [new_title, new_start_date, new_end_date]
+      properties:
+        new_title:
+          type: string
+          maxLength: 255
+        new_start_date:
+          type: string
+          format: date
+        new_end_date:
+          type: string
+          format: date
+
+    RegisterCandidateRequest:
+      type: object
+      required: [track_id, full_name, phone_number, email_address]
+      properties:
+        track_id:
+          type: string
+          format: uuid
+        full_name:
+          type: string
+          maxLength: 500
+        phone_number:
+          type: string
+          maxLength: 50
+        email_address:
+          type: string
+          format: email
+          maxLength: 500
+        student_id:
+          type: string
+          maxLength: 100
+        date_of_birth:
+          type: string
+          format: date
+        additional_fields:
+          type: object
+          additionalProperties: true
+          description: Map of registration form field_id to value
+
+    KioskWalkInRequest:
+      type: object
+      required: [track_id, full_name, phone_number, email_address, kiosk_session_id]
+      properties:
+        track_id:
+          type: string
+          format: uuid
+        full_name:
+          type: string
+        phone_number:
+          type: string
+        email_address:
+          type: string
+          format: email
+        student_id:
+          type: string
+        kiosk_session_id:
+          type: string
+
+    RegistrationReceipt:
+      type: object
+      required: [registration_id, sbd_number, registration_status]
+      properties:
+        registration_id:
+          type: string
+          format: uuid
+        sbd_number:
+          type: string
+          description: Assigned Số Báo Danh
+        registration_status:
+          type: string
+          enum: [PENDING, CONFIRMED, WAITLISTED]
+        waitlist_position:
+          type: integer
+          description: Queue position if WAITLISTED
+        duplicate_flag_raised:
+          type: boolean
+          description: True if a DuplicateFlag was raised for this registration
+
+    SBDAssignmentResult:
+      type: object
+      required: [registration_id, sbd_number]
+      properties:
+        registration_id:
+          type: string
+          format: uuid
+        sbd_number:
+          type: string
+
+    DuplicateFlagList:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/DuplicateFlagItem'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    DuplicateFlagItem:
+      type: object
+      required: [flag_id, registration_id, matched_registration_id, match_dimensions, resolution_state]
+      properties:
+        flag_id:
+          type: string
+          format: uuid
+        registration_id:
+          type: string
+          format: uuid
+        matched_registration_id:
+          type: string
+          format: uuid
+        match_dimensions:
+          type: array
+          items:
+            type: string
+            enum: [PHONE, STUDENT_ID, BOTH]
+        resolution_state:
+          type: string
+          enum: [UNRESOLVED, RESOLVED_KEEP_BOTH, RESOLVED_KEEP_PRIMARY, RESOLVED_KEEP_MATCHED]
+        primary_candidate_summary:
+          $ref: '#/components/schemas/CandidateSummary'
+        matched_candidate_summary:
+          $ref: '#/components/schemas/CandidateSummary'
+
+    CandidateSummary:
+      type: object
+      properties:
+        registration_id:
+          type: string
+          format: uuid
+        sbd_number:
+          type: string
+        full_name:
+          type: string
+        phone_number:
+          type: string
+        email_address:
+          type: string
+        student_id:
+          type: string
+        registered_at:
+          type: string
+          format: date-time
+        registration_source:
+          type: string
+
+    ResolveDuplicateRequest:
+      type: object
+      required: [resolution_action]
+      properties:
+        resolution_action:
+          type: string
+          enum: [KEEP_BOTH, KEEP_THIS, KEEP_MATCHED]
+        notes:
+          type: string
+          description: Optional coordinator notes on the resolution decision
+
+    DuplicateFlagResolution:
+      type: object
+      required: [flag_id, resolution_state, resolution_action, resolved_at]
+      properties:
+        flag_id:
+          type: string
+          format: uuid
+        resolution_state:
+          type: string
+        resolution_action:
+          type: string
+        resolved_at:
+          type: string
+          format: date-time
+
+    BuildScheduleRequest:
+      type: object
+      required: [allocation_strategy, slots]
+      properties:
+        allocation_strategy:
+          type: string
+          enum: [ROUND_ROBIN, FILL_FIRST]
+        slots:
+          type: array
+          items:
+            type: object
+            required: [track_id, room_id, room_name, room_physical_capacity, shift_label, shift_start, shift_end, configured_capacity]
+            properties:
+              track_id:
+                type: string
+                format: uuid
+              room_id:
+                type: string
+              room_name:
+                type: string
+              room_physical_capacity:
+                type: integer
+              room_location_notes:
+                type: string
+              shift_label:
+                type: string
+              shift_start:
+                type: string
+                format: date-time
+              shift_end:
+                type: string
+                format: date-time
+              configured_capacity:
+                type: integer
+                minimum: 1
+
+    ScheduleSummary:
+      type: object
+      required: [schedule_id, event_id, schedule_state, slot_count]
+      properties:
+        schedule_id:
+          type: string
+          format: uuid
+        event_id:
+          type: string
+          format: uuid
+        schedule_state:
+          type: string
+          enum: [UNDEFINED, DRAFT, ACTIVE, LOCKED]
+        slot_count:
+          type: integer
+        total_capacity:
+          type: integer
+
+    AllocateCandidatesRequest:
+      type: object
+      properties:
+        strategy_override:
+          type: string
+          enum: [ROUND_ROBIN, FILL_FIRST]
+          description: Override the schedule's default allocation strategy for this run
+        track_id:
+          type: string
+          format: uuid
+          description: Limit allocation to a specific track. Null runs for all tracks.
+
+    AllocationRunStatus:
+      type: object
+      required: [run_id, run_status]
+      properties:
+        run_id:
+          type: string
+          format: uuid
+        run_status:
+          type: string
+          enum: [PENDING, RUNNING, COMPLETED, PARTIAL, FAILED]
+        candidates_processed:
+          type: integer
+        allocations_made:
+          type: integer
+
+    DispatchJobReference:
+      type: object
+      required: [job_id]
+      properties:
+        job_id:
+          type: string
+          format: uuid
+
+    WaitlistActivationResult:
+      type: object
+      required: [waitlist_id, registration_id, slot_id, activated_at]
+      properties:
+        waitlist_id:
+          type: string
+          format: uuid
+        registration_id:
+          type: string
+          format: uuid
+        slot_id:
+          type: string
+          format: uuid
+        activated_at:
+          type: string
+          format: date-time
+
+    ScanCheckInRequest:
+      type: object
+      required: [check_in_method, kiosk_session_id]
+      properties:
+        check_in_method:
+          type: string
+          enum: [QR_SCAN, SBD_LOOKUP, MANUAL_ENTRY]
+        qr_payload:
+          type: string
+          description: Required if check_in_method = QR_SCAN
+        sbd_number:
+          type: string
+          description: Required if check_in_method = SBD_LOOKUP
+        manual_candidate_info:
+          type: object
+          description: Required if check_in_method = MANUAL_ENTRY. Creates ManualReviewItem.
+          properties:
+            full_name:
+              type: string
+            phone_number:
+              type: string
+        kiosk_session_id:
+          type: string
+        operator_id:
+          type: string
+
+    CheckInResult:
+      type: object
+      required: [checkin_id, sbd_number, sync_status]
+      properties:
+        checkin_id:
+          type: string
+          format: uuid
+        sbd_number:
+          type: string
+        sync_status:
+          type: string
+          enum: [PROVISIONAL, SYNCED, CONFLICT, REVIEW_REQUIRED]
+        candidate_name:
+          type: string
+        track_name:
+          type: string
+        room_name:
+          type: string
+        manual_review_item_id:
+          type: string
+          format: uuid
+          description: Present if MANUAL_ENTRY created a ManualReviewItem
+
+    StartKioskSessionRequest:
+      type: object
+      required: [event_id, kiosk_device_id, kiosk_label]
+      properties:
+        event_id:
+          type: string
+          format: uuid
+        kiosk_device_id:
+          type: string
+        kiosk_label:
+          type: string
+
+    KioskSessionStartResult:
+      type: object
+      required: [session_id, sbd_block]
+      properties:
+        session_id:
+          type: string
+          format: uuid
+        sbd_block:
+          type: object
+          required: [block_id, start_sbd, end_sbd]
+          properties:
+            block_id:
+              type: string
+              format: uuid
+            start_sbd:
+              type: integer
+            end_sbd:
+              type: integer
+            next_available:
+              type: integer
+
+    KioskSyncRequest:
+      type: object
+      required: [session_id, records]
+      properties:
+        session_id:
+          type: string
+          format: uuid
+        records:
+          type: array
+          items:
+            type: object
+            required: [checkin_id, sbd_number, check_in_method, captured_at]
+            properties:
+              checkin_id:
+                type: string
+                format: uuid
+              sbd_number:
+                type: string
+              check_in_method:
+                type: string
+                enum: [QR_SCAN, SBD_LOOKUP, MANUAL_ENTRY]
+              registration_id:
+                type: string
+                format: uuid
+              captured_at:
+                type: string
+                format: date-time
+              operator_id:
+                type: string
+        sbd_block_remaining:
+          type: integer
+          description: Current remaining SBD numbers in the kiosk block (triggers new block if < 10)
+
+    KioskSyncResult:
+      type: object
+      required: [records_synced, conflicts_routed, synced_at]
+      properties:
+        records_synced:
+          type: integer
+        conflicts_routed:
+          type: integer
+        synced_at:
+          type: string
+          format: date-time
+        new_sbd_block:
+          description: Provided if kiosk block was near-exhausted (< 10 remaining)
+          type: object
+          properties:
+            block_id:
+              type: string
+              format: uuid
+            start_sbd:
+              type: integer
+            end_sbd:
+              type: integer
+
+    DigestDispatchResult:
+      type: object
+      required: [digest_id, interviewer_count, kit_links_generated]
+      properties:
+        digest_id:
+          type: string
+          format: uuid
+        interviewer_count:
+          type: integer
+        kit_links_generated:
+          type: integer
+        expiry_at:
+          type: string
+          format: date-time
+          description: KitLink expiry timestamp (event_date + 24h, BR-05)
+
+    InterviewKitPayload:
+      type: object
+      required: [session_id, session_status, candidate_queue]
+      properties:
+        session_id:
+          type: string
+          format: uuid
+        room_name:
+          type: string
+        session_start_time:
+          type: string
+          format: date-time
+        session_end_time:
+          type: string
+          format: date-time
+        session_status:
+          type: string
+          enum: [SCHEDULED, ACTIVE, COMPLETED, DEFERRED, SKIPPED]
+        kit_expiry_at:
+          type: string
+          format: date-time
+        candidate_queue:
+          type: array
+          items:
+            type: object
+            required: [sbd_number, registration_id, queue_status]
+            properties:
+              sbd_number:
+                type: string
+              registration_id:
+                type: string
+                format: uuid
+              full_name:
+                type: string
+              queue_status:
+                type: string
+                enum: [WAITING, PROVISIONAL, CALLED, SCORED, SKIPPED]
+              check_in_status:
+                type: string
+                enum: [PROVISIONAL, SYNCED]
+
+    SubmitScoreRequest:
+      type: object
+      required: [score_components, total_score, recommendation]
+      properties:
+        score_components:
+          type: array
+          items:
+            type: object
+            required: [criterion_name, criterion_weight, raw_score, weighted_score]
+            properties:
+              criterion_name:
+                type: string
+              criterion_weight:
+                type: number
+                format: float
+                minimum: 0
+                maximum: 1
+              raw_score:
+                type: number
+                format: float
+                minimum: 0
+              weighted_score:
+                type: number
+                format: float
+                minimum: 0
+              notes:
+                type: string
+        total_score:
+          type: number
+          format: float
+          minimum: 0
+        recommendation:
+          type: string
+          enum: [PASS, FAIL, HOLD]
+
+    ScoreSubmissionResult:
+      type: object
+      required: [score_id, score_status, submitted_at]
+      properties:
+        score_id:
+          type: string
+          format: uuid
+        score_status:
+          type: string
+          enum: [ACTIVE]
+          description: Always ACTIVE at submission time. Immutable (BR-04).
+        submitted_at:
+          type: string
+          format: date-time
+
+    SkipCandidateRequest:
+      type: object
+      required: [skip_reason]
+      properties:
+        skip_reason:
+          type: string
+          enum: [NO_SHOW, TECHNICAL_ISSUE, CANDIDATE_WITHDREW, OTHER]
+        notes:
+          type: string
+
+    SkipResult:
+      type: object
+      required: [session_id, candidate_registration_id, sbd_number, skip_reason]
+      properties:
+        session_id:
+          type: string
+          format: uuid
+        candidate_registration_id:
+          type: string
+          format: uuid
+        sbd_number:
+          type: string
+        skip_reason:
+          type: string
+
+    SendBulkCommunicationRequest:
+      type: object
+      required: [template_id, recipient_filter, job_type]
+      properties:
+        template_id:
+          type: string
+          format: uuid
+        job_type:
+          type: string
+          enum: [BULK_ANNOUNCEMENT, MANUAL]
+        recipient_filter:
+          type: object
+          description: Filter to select recipients from event registrations
+          properties:
+            registration_status:
+              type: array
+              items:
+                type: string
+                enum: [PENDING, CONFIRMED, WAITLISTED, CANCELLED]
+            track_ids:
+              type: array
+              items:
+                type: string
+                format: uuid
+        subject_override:
+          type: string
+          description: Optional subject line override for this specific send
+        idempotency_key:
+          type: string
+          description: Client-provided idempotency key. If omitted, server generates from trigger_event_id + job_type.
+
+    CommunicationJobReference:
+      type: object
+      required: [job_id, job_status, recipient_count]
+      properties:
+        job_id:
+          type: string
+          format: uuid
+        job_status:
+          type: string
+          enum: [CREATED, SENDING]
+        recipient_count:
+          type: integer
+
+    CommunicationJobStatus:
+      type: object
+      required: [job_id, job_status, recipient_count]
+      properties:
+        job_id:
+          type: string
+          format: uuid
+        job_status:
+          type: string
+          enum: [CREATED, SENDING, COMPLETED, PARTIAL_FAILURE, FAILED]
+        recipient_count:
+          type: integer
+        delivered_count:
+          type: integer
+        failed_count:
+          type: integer
+        bounced_count:
+          type: integer
+        pending_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+
+    DashboardMetrics:
+      type: object
+      required: [event_id, computed_at]
+      properties:
+        event_id:
+          type: string
+          format: uuid
+        computed_at:
+          type: string
+          format: date-time
+        registration:
+          type: object
+          properties:
+            total:
+              type: integer
+            confirmed:
+              type: integer
+            waitlisted:
+              type: integer
+            cancelled:
+              type: integer
+        check_in:
+          type: object
+          properties:
+            total_checked_in:
+              type: integer
+            provisional:
+              type: integer
+            synced:
+              type: integer
+            no_show_count:
+              type: integer
+        interview:
+          type: object
+          properties:
+            total_scored:
+              type: integer
+            pass_count:
+              type: integer
+            fail_count:
+              type: integer
+            hold_count:
+              type: integer
+            skip_count:
+              type: integer
+        funnel:
+          type: object
+          properties:
+            registered_to_confirmed_rate:
+              type: number
+              format: float
+            confirmed_to_checked_in_rate:
+              type: number
+              format: float
+            checked_in_to_interviewed_rate:
+              type: number
+              format: float
+
+    ReportOutput:
+      type: object
+      required: [report_definition_id, generated_at, data]
+      properties:
+        report_definition_id:
+          type: string
+          format: uuid
+        generated_at:
+          type: string
+          format: date-time
+        data:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+
+    AuditLogPage:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditEntryItem'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    AuditEntryItem:
+      type: object
+      required: [audit_entry_id, audit_action, source_bc, actor_user_id, recorded_at]
+      properties:
+        audit_entry_id:
+          type: string
+          format: uuid
+        source_event_type:
+          type: string
+        source_bc:
+          type: string
+        audit_action:
+          type: string
+        subject_type:
+          type: string
+        subject_id:
+          type: string
+        actor_user_id:
+          type: string
+        actor_role:
+          type: string
+        recorded_at:
+          type: string
+          format: date-time

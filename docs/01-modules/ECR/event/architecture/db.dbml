@@ -1,0 +1,811 @@
+// ECR Module — Database Schema (DBML)
+// xTalent HCM Solution | 2026-03-25
+//
+// Derived from LinkML domain models across all 8 Bounded Contexts.
+// Storage target: PostgreSQL 15+ (Operational Database)
+//                 PostgreSQL Append-Only (Audit Store — separate instance)
+//
+// BC-03 Assessment ACL: no internal DB tables — pure interface contract.
+//
+// BC-05 Kiosk-local tables (SQLite on device — NOT in central Operational DB):
+//   - checkin_records_local (local only; promoted to server on sync)
+//   - kiosk_sessions_local
+//   - sbd_blocks_local
+//   - offline_sync_queue
+//   These are documented below as comments only.
+//
+// Audit Store: AuditEntry lives in a SEPARATE append-only PostgreSQL instance.
+//   It is documented below as a comment. No DBML table is defined for it here
+//   because it must not coexist with operational tables (write-once semantics,
+//   separate instance, hash-chain sequential writes).
+//
+// ──────────────────────────────────────────────────────────────────────────────
+// ENUMS
+// ──────────────────────────────────────────────────────────────────────────────
+
+enum event_status {
+  draft
+  published
+  registration_open
+  in_progress
+  closed
+  archived
+}
+
+enum track_status {
+  active
+  cancelled
+}
+
+enum registration_status {
+  pending
+  confirmed
+  waitlisted
+  withdrawn
+  checked_in
+  no_show
+}
+
+enum duplicate_flag_status {
+  open
+  resolved_merge
+  resolved_dismiss
+}
+
+enum waitlist_entry_status {
+  waiting
+  promoted
+  expired
+  withdrawn
+}
+
+enum allocation_run_status {
+  pending
+  running
+  completed
+  failed
+}
+
+enum slot_status {
+  open
+  invited
+  confirmed
+  cancelled
+  completed
+}
+
+enum session_status {
+  scheduled
+  in_progress
+  completed
+  cancelled
+}
+
+enum score_status {
+  submitted
+  edit_requested
+  edit_approved
+  edit_rejected
+}
+
+enum comm_job_status {
+  pending
+  processing
+  completed
+  failed
+  cancelled
+}
+
+enum delivery_status {
+  pending
+  sent
+  delivered
+  bounced
+  failed
+  retrying
+}
+
+enum report_run_status {
+  queued
+  running
+  completed
+  failed
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// BC-01: EVENT MANAGEMENT
+// ──────────────────────────────────────────────────────────────────────────────
+
+Table events {
+  id                  uuid        [pk, default: `gen_random_uuid()`]
+  name                varchar(255) [not null]
+  description         text
+  status              event_status [not null, default: 'draft']
+  event_date          date        [not null]
+  event_end_date      date
+  venue               varchar(500)
+  location_city       varchar(100)
+  max_capacity        int         [not null, default: 0]
+  cloned_from_id      uuid        [ref: > events.id]
+  job_request_ref     varchar(100)  // xTalent Job Request API requisition ref (BC-01 → upstream)
+  registration_opens_at timestamptz
+  registration_closes_at timestamptz
+  created_by          uuid        [not null]  // xTalent user ID (RBAC conformist)
+  created_at          timestamptz [not null, default: `now()`]
+  updated_at          timestamptz [not null, default: `now()`]
+
+  indexes {
+    status [name: 'idx_events_status']
+    event_date [name: 'idx_events_event_date']
+    created_by [name: 'idx_events_created_by']
+    (status, event_date) [name: 'idx_events_status_date']
+  }
+}
+
+Table tracks {
+  id                  uuid        [pk, default: `gen_random_uuid()`]
+  event_id            uuid        [not null, ref: > events.id]
+  name                varchar(255) [not null]
+  description         text
+  status              track_status [not null, default: 'active']
+  target_headcount    int         [not null, default: 0]
+  job_request_ref     varchar(100)  // optional link to xTalent Job Request requisition
+  assessment_blueprint_id varchar(100) // BC-03 ACL: blueprint ID sent to Assessment Engine
+  created_at          timestamptz [not null, default: `now()`]
+  updated_at          timestamptz [not null, default: `now()`]
+
+  indexes {
+    event_id [name: 'idx_tracks_event_id']
+    (event_id, status) [name: 'idx_tracks_event_status']
+  }
+}
+
+Table registration_forms {
+  id                  uuid        [pk, default: `gen_random_uuid()`]
+  event_id            uuid        [not null, ref: > events.id]
+  track_id            uuid        [ref: > tracks.id]  // null = event-level form
+  schema_json         jsonb       [not null]  // field definitions (LinkML-derived)
+  is_active           boolean     [not null, default: true]
+  version             int         [not null, default: 1]
+  created_by          uuid        [not null]
+  created_at          timestamptz [not null, default: `now()`]
+  updated_at          timestamptz [not null, default: `now()`]
+
+  indexes {
+    event_id [name: 'idx_reg_forms_event_id']
+    (event_id, track_id) [name: 'idx_reg_forms_event_track']
+  }
+}
+
+Table event_phases {
+  id                  uuid        [pk, default: `gen_random_uuid()`]
+  event_id            uuid        [not null, ref: > events.id]
+  phase_name          varchar(100) [not null]  // e.g., "Written Test", "Panel Interview"
+  phase_order         int         [not null]
+  scheduled_at        timestamptz
+  created_at          timestamptz [not null, default: `now()`]
+  updated_at          timestamptz [not null, default: `now()`]
+
+  indexes {
+    event_id [name: 'idx_event_phases_event_id']
+    (event_id, phase_order) [name: 'idx_event_phases_order']
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// BC-02: CANDIDATE REGISTRATION
+// ──────────────────────────────────────────────────────────────────────────────
+
+Table candidate_event_registrations {
+  id                  uuid        [pk, default: `gen_random_uuid()`]
+  event_id            uuid        [not null, ref: > events.id]
+  track_id            uuid        [not null, ref: > tracks.id]
+  candidate_id        uuid        [not null]  // xTalent candidate entity ref
+  status              registration_status [not null, default: 'pending']
+  registration_channel varchar(50) [not null, default: 'online']  // 'online' | 'kiosk' | 'walk_in'
+  form_data_json      jsonb       // submitted registration form answers
+  registered_at       timestamptz [not null, default: `now()`]
+  confirmed_at        timestamptz
+  withdrawn_at        timestamptz
+  created_at          timestamptz [not null, default: `now()`]
+  updated_at          timestamptz [not null, default: `now()`]
+
+  indexes {
+    (event_id, candidate_id) [unique, name: 'uidx_reg_event_candidate']
+    (event_id, status) [name: 'idx_reg_event_status']
+    candidate_id [name: 'idx_reg_candidate_id']
+    track_id [name: 'idx_reg_track_id']
+  }
+}
+
+Table sbd_records {
+  id                  uuid        [pk, default: `gen_random_uuid()`]
+  registration_id     uuid        [not null, unique, ref: > candidate_event_registrations.id]
+  event_id            uuid        [not null, ref: > events.id]
+  sbd_number          varchar(20) [not null]  // e.g., "TT-0042"
+  sbd_block_id        uuid        [ref: > sbd_blocks.id]  // null if server-generated
+  generated_at        timestamptz [not null, default: `now()`]
+  generated_by        varchar(50) [not null, default: 'server']  // 'server' | 'kiosk'
+  created_at          timestamptz [not null, default: `now()`]
+  updated_at          timestamptz [not null, default: `now()`]
+
+  indexes {
+    (event_id, sbd_number) [unique, name: 'uidx_sbd_event_number']
+    registration_id [name: 'idx_sbd_registration_id']
+  }
+}
+
+Table sbd_blocks {
+  id                  uuid        [pk, default: `gen_random_uuid()`]
+  event_id            uuid        [not null, ref: > events.id]
+  kiosk_session_id    uuid        // null if server-generated block
+  start_number        int         [not null]
+  end_number          int         [not null]
+  next_available      int         [not null]
+  is_exhausted        boolean     [not null, default: false]
+  allocated_at        timestamptz [not null, default: `now()`]
+  created_at          timestamptz [not null, default: `now()`]
+  updated_at          timestamptz [not null, default: `now()`]
+
+  indexes {
+    event_id [name: 'idx_sbd_blocks_event_id']
+    kiosk_session_id [name: 'idx_sbd_blocks_kiosk_session']
+  }
+}
+
+Table duplicate_flags {
+  id                  uuid        [pk, default: `gen_random_uuid()`]
+  event_id            uuid        [not null, ref: > events.id]
+  primary_registration_id   uuid  [not null, ref: > candidate_event_registrations.id]
+  duplicate_registration_id uuid  [not null, ref: > candidate_event_registrations.id]
+  status              duplicate_flag_status [not null, default: 'open']
+  detection_method    varchar(50) [not null]  // 'name_dob', 'phone', 'email', 'id_number'
+  confidence_score    numeric(5,4)  // 0.0000 to 1.0000
+  resolved_by         uuid
+  resolved_at         timestamptz
+  resolution_note     text
+  created_at          timestamptz [not null, default: `now()`]
+  updated_at          timestamptz [not null, default: `now()`]
+
+  indexes {
+    (event_id, status) [name: 'idx_dup_flags_event_status']
+    primary_registration_id [name: 'idx_dup_flags_primary']
+    duplicate_registration_id [name: 'idx_dup_flags_duplicate']
+  }
+}
+
+Table waitlist_entries {
+  id                  uuid        [pk, default: `gen_random_uuid()`]
+  event_id            uuid        [not null, ref: > events.id]
+  track_id            uuid        [not null, ref: > tracks.id]
+  candidate_id        uuid        [not null]
+  registration_id     uuid        [ref: > candidate_event_registrations.id]
+  status              waitlist_entry_status [not null, default: 'waiting']
+  position            int         [not null]  // waitlist rank (1 = next in line)
+  promoted_at         timestamptz
+  expired_at          timestamptz
+  created_at          timestamptz [not null, default: `now()`]
+  updated_at          timestamptz [not null, default: `now()`]
+
+  indexes {
+    (event_id, track_id, status) [name: 'idx_waitlist_event_track_status']
+    (event_id, track_id, position) [name: 'idx_waitlist_position']
+    candidate_id [name: 'idx_waitlist_candidate']
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// BC-03: ASSESSMENT (ACL INTERFACE ONLY)
+// No database tables. BC-03 is a pure ACL adapter.
+// All assessment state lives in the external Assessment Engine.
+// ECR only stores the inbound AssessmentResult snapshot on the registration:
+//   candidate_event_registrations.assessment_result_json (denormalized, BC-02 stores it)
+// ──────────────────────────────────────────────────────────────────────────────
+
+// ──────────────────────────────────────────────────────────────────────────────
+// BC-04: SCHEDULE & CAPACITY
+// ──────────────────────────────────────────────────────────────────────────────
+
+Table event_schedules {
+  id                  uuid        [pk, default: `gen_random_uuid()`]
+  event_id            uuid        [not null, unique, ref: > events.id]
+  schedule_config_json jsonb      [not null]  // algorithm params, slot duration, buffer time
+  built_at            timestamptz
+  built_by            uuid
+  created_at          timestamptz [not null, default: `now()`]
+  updated_at          timestamptz [not null, default: `now()`]
+
+  indexes {
+    event_id [name: 'idx_event_schedules_event_id']
+  }
+}
+
+Table rooms {
+  id                  uuid        [pk, default: `gen_random_uuid()`]
+  event_id            uuid        [not null, ref: > events.id]
+  name                varchar(100) [not null]
+  capacity            int         [not null, default: 1]
+  floor               varchar(50)
+  notes               text
+  created_at          timestamptz [not null, default: `now()`]
+  updated_at          timestamptz [not null, default: `now()`]
+
+  indexes {
+    event_id [name: 'idx_rooms_event_id']
+  }
+}
+
+Table shifts {
+  id                  uuid        [pk, default: `gen_random_uuid()`]
+  event_id            uuid        [not null, ref: > events.id]
+  shift_name          varchar(100) [not null]
+  starts_at           timestamptz [not null]
+  ends_at             timestamptz [not null]
+  created_at          timestamptz [not null, default: `now()`]
+  updated_at          timestamptz [not null, default: `now()`]
+
+  indexes {
+    event_id [name: 'idx_shifts_event_id']
+    (event_id, starts_at) [name: 'idx_shifts_event_start']
+  }
+}
+
+Table schedule_slots {
+  id                  uuid        [pk, default: `gen_random_uuid()`]
+  event_id            uuid        [not null, ref: > events.id]
+  event_schedule_id   uuid        [not null, ref: > event_schedules.id]
+  room_id             uuid        [not null, ref: > rooms.id]
+  shift_id            uuid        [not null, ref: > shifts.id]
+  track_id            uuid        [not null, ref: > tracks.id]
+  slot_capacity       int         [not null, default: 1]
+  allocated_count     int         [not null, default: 0]
+  status              slot_status [not null, default: 'open']
+  starts_at           timestamptz [not null]
+  ends_at             timestamptz [not null]
+  created_at          timestamptz [not null, default: `now()`]
+  updated_at          timestamptz [not null, default: `now()`]
+
+  indexes {
+    event_id [name: 'idx_slots_event_id']
+    (event_id, status) [name: 'idx_slots_event_status']
+    (room_id, starts_at) [name: 'idx_slots_room_time']
+    track_id [name: 'idx_slots_track_id']
+  }
+}
+
+Table allocation_runs {
+  id                  uuid        [pk, default: `gen_random_uuid()`]
+  event_id            uuid        [not null, ref: > events.id]
+  event_schedule_id   uuid        [not null, ref: > event_schedules.id]
+  status              allocation_run_status [not null, default: 'pending']
+  algorithm_version   varchar(50)
+  allocated_count     int         [not null, default: 0]
+  skipped_count       int         [not null, default: 0]
+  error_message       text
+  started_at          timestamptz
+  completed_at        timestamptz
+  triggered_by        uuid        [not null]
+  created_at          timestamptz [not null, default: `now()`]
+  updated_at          timestamptz [not null, default: `now()`]
+
+  indexes {
+    event_id [name: 'idx_alloc_runs_event_id']
+    (event_id, status) [name: 'idx_alloc_runs_event_status']
+  }
+}
+
+Table slot_assignments {
+  id                  uuid        [pk, default: `gen_random_uuid()`]
+  slot_id             uuid        [not null, ref: > schedule_slots.id]
+  registration_id     uuid        [not null, ref: > candidate_event_registrations.id]
+  allocation_run_id   uuid        [ref: > allocation_runs.id]
+  invited_at          timestamptz
+  confirmed_at        timestamptz
+  cancelled_at        timestamptz
+  created_at          timestamptz [not null, default: `now()`]
+  updated_at          timestamptz [not null, default: `now()`]
+
+  indexes {
+    (slot_id, registration_id) [unique, name: 'uidx_slot_assignment']
+    registration_id [name: 'idx_slot_assignments_registration']
+    slot_id [name: 'idx_slot_assignments_slot']
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// BC-05: ONSITE OPERATIONS (Server-side records only)
+// Kiosk-local SQLite tables are documented below as comments.
+// CheckInRecord is promoted from kiosk to server_checkin_records on sync.
+// ──────────────────────────────────────────────────────────────────────────────
+
+// [KIOSK-LOCAL SQLite — NOT IN CENTRAL DB]
+// Table: checkin_records_local
+//   id TEXT PK, event_id TEXT, registration_id TEXT, sbd_number TEXT,
+//   checkin_method TEXT ('qr'|'sbd'|'manual'), checkin_status TEXT,
+//   synced INTEGER (0/1), sync_attempts INTEGER,
+//   captured_at TEXT, synced_at TEXT
+//
+// Table: kiosk_sessions_local
+//   id TEXT PK, event_id TEXT, kiosk_device_id TEXT,
+//   sbd_block_start INTEGER, sbd_block_end INTEGER, sbd_next_available INTEGER,
+//   is_online INTEGER, started_at TEXT, ended_at TEXT
+//
+// Table: offline_sync_queue
+//   id TEXT PK, record_type TEXT, record_id TEXT, payload_json TEXT,
+//   status TEXT ('pending'|'synced'|'conflict'|'failed'), attempts INTEGER,
+//   created_at TEXT, last_attempted_at TEXT
+
+Table server_checkin_records {
+  id                  uuid        [pk, default: `gen_random_uuid()`]
+  event_id            uuid        [not null, ref: > events.id]
+  registration_id     uuid        [not null, ref: > candidate_event_registrations.id]
+  sbd_number          varchar(20)
+  kiosk_session_id    uuid        [ref: > kiosk_sessions.id]
+  checkin_method      varchar(20) [not null]  // 'qr' | 'sbd' | 'manual'
+  checkin_status      varchar(20) [not null]  // 'confirmed' | 'flagged' | 'manual_review'
+  captured_at         timestamptz [not null]  // original capture time on device
+  synced_at           timestamptz             // when sync occurred (null if server-generated)
+  source              varchar(20) [not null, default: 'kiosk']  // 'kiosk' | 'server'
+  created_at          timestamptz [not null, default: `now()`]
+  updated_at          timestamptz [not null, default: `now()`]
+
+  indexes {
+    (event_id, registration_id) [name: 'idx_checkin_event_reg']
+    event_id [name: 'idx_checkin_event_id']
+    kiosk_session_id [name: 'idx_checkin_kiosk_session']
+    captured_at [name: 'idx_checkin_captured_at']
+  }
+}
+
+Table kiosk_sessions {
+  id                  uuid        [pk, default: `gen_random_uuid()`]
+  event_id            uuid        [not null, ref: > events.id]
+  kiosk_device_id     varchar(100) [not null]
+  operator_user_id    uuid        [not null]  // xTalent user (Onsite Staff)
+  sbd_block_id        uuid        [ref: > sbd_blocks.id]
+  started_at          timestamptz [not null]
+  ended_at            timestamptz
+  last_synced_at      timestamptz
+  created_at          timestamptz [not null, default: `now()`]
+  updated_at          timestamptz [not null, default: `now()`]
+
+  indexes {
+    event_id [name: 'idx_kiosk_sessions_event_id']
+    kiosk_device_id [name: 'idx_kiosk_sessions_device']
+    (event_id, kiosk_device_id) [name: 'idx_kiosk_sessions_event_device']
+  }
+}
+
+Table manual_review_items {
+  id                  uuid        [pk, default: `gen_random_uuid()`]
+  event_id            uuid        [not null, ref: > events.id]
+  source_record_id    varchar(100) [not null]  // kiosk-local record ID
+  kiosk_session_id    uuid        [ref: > kiosk_sessions.id]
+  conflict_type       varchar(50) [not null]   // 'duplicate_sbd' | 'sync_conflict' | 'unmatched'
+  raw_payload_json    jsonb       [not null]
+  reviewed_by         uuid
+  resolved_at         timestamptz
+  resolution          varchar(50)  // 'accepted' | 'rejected' | 'merged'
+  resolution_note     text
+  created_at          timestamptz [not null, default: `now()`]
+  updated_at          timestamptz [not null, default: `now()`]
+
+  indexes {
+    event_id [name: 'idx_manual_review_event_id']
+    kiosk_session_id [name: 'idx_manual_review_kiosk']
+    (event_id, resolved_at) [name: 'idx_manual_review_resolved']
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// BC-06: INTERVIEW MANAGEMENT
+// ──────────────────────────────────────────────────────────────────────────────
+
+Table interview_sessions {
+  id                  uuid        [pk, default: `gen_random_uuid()`]
+  event_id            uuid        [not null, ref: > events.id]
+  track_id            uuid        [not null, ref: > tracks.id]
+  registration_id     uuid        [not null, ref: > candidate_event_registrations.id]
+  schedule_slot_id    uuid        [ref: > schedule_slots.id]
+  status              session_status [not null, default: 'scheduled']
+  panel_config_json   jsonb       // interviewer panel config
+  session_notes       text
+  digest_dispatched_at timestamptz
+  scheduled_at        timestamptz
+  started_at          timestamptz
+  completed_at        timestamptz
+  created_at          timestamptz [not null, default: `now()`]
+  updated_at          timestamptz [not null, default: `now()`]
+
+  indexes {
+    event_id [name: 'idx_interview_sessions_event_id']
+    registration_id [name: 'idx_interview_sessions_reg']
+    (event_id, status) [name: 'idx_interview_sessions_status']
+    track_id [name: 'idx_interview_sessions_track']
+  }
+}
+
+Table interviewer_assignments {
+  id                  uuid        [pk, default: `gen_random_uuid()`]
+  session_id          uuid        [not null, ref: > interview_sessions.id]
+  interviewer_user_id uuid        [not null]  // xTalent user (HM / interviewer)
+  role                varchar(50) [not null, default: 'interviewer']  // 'lead' | 'interviewer' | 'observer'
+  assigned_at         timestamptz [not null, default: `now()`]
+  created_at          timestamptz [not null, default: `now()`]
+  updated_at          timestamptz [not null, default: `now()`]
+
+  indexes {
+    session_id [name: 'idx_interviewer_assign_session']
+    interviewer_user_id [name: 'idx_interviewer_assign_user']
+    (session_id, interviewer_user_id) [unique, name: 'uidx_session_interviewer']
+  }
+}
+
+Table interview_scores {
+  // InterviewScore is an IMMUTABLE Value Object once submitted.
+  // No UPDATE is permitted on status = 'submitted'.
+  // Score edits create a new score record via ScoreEditRequest approval.
+  id                  uuid        [pk, default: `gen_random_uuid()`]
+  session_id          uuid        [not null, ref: > interview_sessions.id]
+  interviewer_user_id uuid        [not null]
+  status              score_status [not null, default: 'submitted']
+  scores_json         jsonb       [not null]   // rubric scores: { criterion: score }
+  overall_recommendation varchar(20) [not null] // 'pass' | 'fail' | 'hold'
+  notes               text
+  submitted_at        timestamptz [not null, default: `now()`]
+  superseded_by_id    uuid        [ref: > interview_scores.id]  // null if current; set on edit approval
+  created_at          timestamptz [not null, default: `now()`]
+  updated_at          timestamptz [not null, default: `now()`]  // updated only to set superseded_by
+
+  indexes {
+    session_id [name: 'idx_scores_session_id']
+    interviewer_user_id [name: 'idx_scores_interviewer']
+    (session_id, superseded_by_id) [name: 'idx_scores_current']  // superseded_by IS NULL = current
+  }
+}
+
+Table score_edit_requests {
+  id                  uuid        [pk, default: `gen_random_uuid()`]
+  original_score_id   uuid        [not null, ref: > interview_scores.id]
+  session_id          uuid        [not null, ref: > interview_sessions.id]
+  requested_by        uuid        [not null]   // interviewer requesting edit
+  reason              text        [not null]
+  proposed_scores_json jsonb      [not null]   // proposed replacement scores
+  status              varchar(20) [not null, default: 'pending']  // 'pending' | 'approved' | 'rejected'
+  reviewed_by         uuid
+  reviewed_at         timestamptz
+  reviewer_note       text
+  new_score_id        uuid        [ref: > interview_scores.id]  // created on approval
+  created_at          timestamptz [not null, default: `now()`]
+  updated_at          timestamptz [not null, default: `now()`]
+
+  indexes {
+    original_score_id [name: 'idx_score_edits_original']
+    session_id [name: 'idx_score_edits_session']
+    (status) [name: 'idx_score_edits_status']
+  }
+}
+
+Table session_digests {
+  id                  uuid        [pk, default: `gen_random_uuid()`]
+  session_id          uuid        [not null, ref: > interview_sessions.id]
+  dispatched_to       uuid        [not null]   // interviewer_user_id
+  digest_payload_json jsonb       [not null]   // snapshot: candidate summary, slot, rubric
+  dispatched_at       timestamptz [not null, default: `now()`]
+  created_at          timestamptz [not null, default: `now()`]
+  updated_at          timestamptz [not null, default: `now()`]
+
+  indexes {
+    session_id [name: 'idx_digests_session_id']
+    dispatched_to [name: 'idx_digests_recipient']
+  }
+}
+
+Table kit_links {
+  // KitLink is a signed URL token granting HM access to interview kit.
+  // Tokens expire after 24 hours (BR-12).
+  id                  uuid        [pk, default: `gen_random_uuid()`]
+  session_id          uuid        [not null, ref: > interview_sessions.id]
+  interviewer_user_id uuid        [not null]
+  token               varchar(128) [not null, unique]  // HMAC-signed opaque token
+  expires_at          timestamptz [not null]           // created_at + 24h
+  revoked_at          timestamptz                      // null = active
+  last_accessed_at    timestamptz
+  created_at          timestamptz [not null, default: `now()`]
+  updated_at          timestamptz [not null, default: `now()`]
+
+  indexes {
+    token [unique, name: 'uidx_kit_links_token']
+    session_id [name: 'idx_kit_links_session']
+    expires_at [name: 'idx_kit_links_expires']
+    (token, expires_at, revoked_at) [name: 'idx_kit_links_valid']  // active token lookup
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// BC-07: COMMUNICATION
+// ──────────────────────────────────────────────────────────────────────────────
+
+Table email_templates {
+  id                  uuid        [pk, default: `gen_random_uuid()`]
+  name                varchar(100) [not null, unique]
+  description         text
+  category            varchar(50) [not null]  // 'registration_confirm' | 'slot_invite' | 'digest' | 'assessment' | 'bulk'
+  is_active           boolean     [not null, default: true]
+  created_by          uuid        [not null]
+  created_at          timestamptz [not null, default: `now()`]
+  updated_at          timestamptz [not null, default: `now()`]
+
+  indexes {
+    name [unique, name: 'uidx_email_templates_name']
+    category [name: 'idx_email_templates_category']
+  }
+}
+
+Table template_versions {
+  id                  uuid        [pk, default: `gen_random_uuid()`]
+  template_id         uuid        [not null, ref: > email_templates.id]
+  version             int         [not null]
+  subject             varchar(500) [not null]
+  body_html           text        [not null]
+  body_text           text
+  variables_schema_json jsonb     // expected template variable names + types
+  is_current          boolean     [not null, default: true]
+  created_by          uuid        [not null]
+  created_at          timestamptz [not null, default: `now()`]
+  updated_at          timestamptz [not null, default: `now()`]
+
+  indexes {
+    template_id [name: 'idx_tmpl_versions_template_id']
+    (template_id, version) [unique, name: 'uidx_tmpl_version']
+    (template_id, is_current) [name: 'idx_tmpl_current']
+  }
+}
+
+Table communication_jobs {
+  id                  uuid        [pk, default: `gen_random_uuid()`]
+  event_id            uuid        [not null, ref: > events.id]
+  template_id         uuid        [not null, ref: > email_templates.id]
+  template_version_id uuid        [not null, ref: > template_versions.id]
+  status              comm_job_status [not null, default: 'pending']
+  job_type            varchar(50) [not null]  // 'bulk' | 'slot_invite' | 'digest' | 'assessment'
+  recipient_filter_json jsonb     // filter criteria for bulk jobs
+  recipient_count     int         [not null, default: 0]
+  sent_count          int         [not null, default: 0]
+  delivered_count     int         [not null, default: 0]
+  failed_count        int         [not null, default: 0]
+  scheduled_for       timestamptz
+  started_at          timestamptz
+  completed_at        timestamptz
+  triggered_by        uuid        [not null]
+  created_at          timestamptz [not null, default: `now()`]
+  updated_at          timestamptz [not null, default: `now()`]
+
+  indexes {
+    event_id [name: 'idx_comm_jobs_event_id']
+    (event_id, status) [name: 'idx_comm_jobs_event_status']
+    status [name: 'idx_comm_jobs_status']
+  }
+}
+
+Table recipient_entries {
+  id                  uuid        [pk, default: `gen_random_uuid()`]
+  communication_job_id uuid       [not null, ref: > communication_jobs.id]
+  registration_id     uuid        [ref: > candidate_event_registrations.id]
+  recipient_email     varchar(320) [not null]  // stored at dispatch time for immutability
+  recipient_name      varchar(255)
+  template_vars_json  jsonb       // per-recipient template variable values
+  status              delivery_status [not null, default: 'pending']
+  external_message_id varchar(200)  // email provider message ID for tracking
+  created_at          timestamptz [not null, default: `now()`]
+  updated_at          timestamptz [not null, default: `now()`]
+
+  indexes {
+    communication_job_id [name: 'idx_recipients_job_id']
+    (communication_job_id, status) [name: 'idx_recipients_job_status']
+    registration_id [name: 'idx_recipients_registration']
+    external_message_id [name: 'idx_recipients_external_id']
+  }
+}
+
+Table delivery_records {
+  id                  uuid        [pk, default: `gen_random_uuid()`]
+  recipient_entry_id  uuid        [not null, ref: > recipient_entries.id]
+  communication_job_id uuid       [not null, ref: > communication_jobs.id]
+  event_type          varchar(50) [not null]  // 'sent' | 'delivered' | 'bounced' | 'opened' | 'clicked'
+  provider_event_id   varchar(200)
+  provider_timestamp  timestamptz
+  raw_payload_json    jsonb
+  created_at          timestamptz [not null, default: `now()`]
+
+  indexes {
+    recipient_entry_id [name: 'idx_delivery_records_recipient']
+    communication_job_id [name: 'idx_delivery_records_job']
+    (recipient_entry_id, event_type) [name: 'idx_delivery_event_type']
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// BC-08: ANALYTICS & AUDIT
+//
+// AuditEntry: SEPARATE APPEND-ONLY POSTGRESQL INSTANCE (not defined here).
+//   Schema reference only:
+//   audit_entries (
+//     id               uuid PK,
+//     ecr_event_id     uuid NOT NULL,       -- for per-event chain isolation (R-05)
+//     source_event_id  uuid NOT NULL,       -- domain_event_id from Pub/Sub message
+//     event_type       varchar(100) NOT NULL,
+//     aggregate_type   varchar(100) NOT NULL,
+//     aggregate_id     uuid NOT NULL,
+//     actor_user_id    uuid,
+//     payload_json     jsonb NOT NULL,
+//     content_hash     varchar(64) NOT NULL,  -- SHA256 of payload
+//     chain_hash       varchar(64) NOT NULL,  -- SHA256(prev_chain_hash + content_hash)
+//     previous_entry_id uuid,               -- null for chain genesis
+//     occurred_at      timestamptz NOT NULL,
+//     recorded_at      timestamptz NOT NULL DEFAULT now()
+//   )
+//   Constraints: NO UPDATE, NO DELETE (enforced by DB trigger)
+//   Retention: 3-year minimum (NFR-10); infrastructure archival to cold storage
+// ──────────────────────────────────────────────────────────────────────────────
+
+Table event_metrics_snapshots {
+  id                  uuid        [pk, default: `gen_random_uuid()`]
+  event_id            uuid        [not null, ref: > events.id]
+  snapshot_type       varchar(20) [not null]  // 'hourly' | 'daily' | 'final'
+  snapshot_at         timestamptz [not null]
+  total_registered    int         [not null, default: 0]
+  total_confirmed     int         [not null, default: 0]
+  total_checked_in    int         [not null, default: 0]
+  total_no_show       int         [not null, default: 0]
+  total_interviewed   int         [not null, default: 0]
+  total_passed        int         [not null, default: 0]
+  total_failed        int         [not null, default: 0]
+  metrics_json        jsonb       [not null]  // extended per-track breakdown
+  created_at          timestamptz [not null, default: `now()`]
+
+  indexes {
+    event_id [name: 'idx_metrics_snapshots_event_id']
+    (event_id, snapshot_type, snapshot_at) [name: 'idx_metrics_snapshots_lookup']
+  }
+}
+
+Table report_definitions {
+  id                  uuid        [pk, default: `gen_random_uuid()`]
+  name                varchar(255) [not null]
+  description         text
+  report_type         varchar(50) [not null]   // 'event_summary' | 'track_breakdown' | 'candidate_funnel' | 'custom'
+  query_config_json   jsonb       [not null]   // filter/aggregation config for report generation
+  created_by          uuid        [not null]
+  is_public           boolean     [not null, default: false]
+  created_at          timestamptz [not null, default: `now()`]
+  updated_at          timestamptz [not null, default: `now()`]
+
+  indexes {
+    created_by [name: 'idx_report_defs_created_by']
+    report_type [name: 'idx_report_defs_type']
+  }
+}
+
+Table report_runs {
+  id                  uuid        [pk, default: `gen_random_uuid()`]
+  report_definition_id uuid       [not null, ref: > report_definitions.id]
+  event_id            uuid        [ref: > events.id]  // null = cross-event report
+  status              report_run_status [not null, default: 'queued']
+  parameters_json     jsonb
+  output_url          varchar(500)  // presigned URL to generated report file (S3/GCS)
+  row_count           int
+  triggered_by        uuid        [not null]
+  started_at          timestamptz
+  completed_at        timestamptz
+  error_message       text
+  created_at          timestamptz [not null, default: `now()`]
+  updated_at          timestamptz [not null, default: `now()`]
+
+  indexes {
+    report_definition_id [name: 'idx_report_runs_def_id']
+    event_id [name: 'idx_report_runs_event_id']
+    (status) [name: 'idx_report_runs_status']
+    triggered_by [name: 'idx_report_runs_triggered_by']
+  }
+}

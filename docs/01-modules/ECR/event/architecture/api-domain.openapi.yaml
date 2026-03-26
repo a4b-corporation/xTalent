@@ -1,0 +1,2042 @@
+openapi: 3.0.3
+
+info:
+  title: ECR Domain API
+  description: |
+    Domain-driven CRUD API for the Event-Centric Recruitment (ECR) module.
+    xTalent HCM Solution — Vietnam Data Residency (NFR-09).
+
+    This API provides RESTful resource access to ECR aggregate roots and their
+    children. Paths use resource naming (nouns). This API is distinct from the
+    Use-Case API which uses business-intent naming (verbs).
+
+    **Coverage:**
+    - `/events` — BC-01 Event aggregate roots
+    - `/events/{id}/tracks` — BC-01 Track entities
+    - `/events/{id}/registrations` — BC-02 CandidateEventRegistration aggregates
+    - `/events/{id}/schedule` — BC-04 EventSchedule aggregate
+    - `/events/{id}/schedule/slots` — BC-04 ScheduleSlot entities
+    - `/events/{id}/sessions` — BC-06 InterviewSession aggregates
+    - `/events/{id}/sessions/{id}/scores` — BC-06 InterviewScore aggregates
+    - `/communication/jobs` — BC-07 CommunicationJob aggregates
+    - `/communication/templates` — BC-07 EmailTemplate aggregates
+    - `/audit/entries` — BC-08 AuditEntry (read-only)
+
+    **Authentication:** All endpoints require a valid xTalent JWT bearer token
+    validated against the xTalent RBAC Service.
+
+    **Data Residency:** All PII stored exclusively in Vietnam-region infrastructure (NFR-09).
+  version: "1.0.0"
+  contact:
+    name: xTalent Engineering Team
+    email: engineering@xtalent.vng.com.vn
+
+servers:
+  - url: https://api.xtalent.vng.com.vn/ecr/v1
+    description: Production (Vietnam Data Center — NFR-09 compliant)
+  - url: https://api-staging.xtalent.vng.com.vn/ecr/v1
+    description: Staging
+
+security:
+  - BearerAuth: []
+
+tags:
+  - name: events
+    description: Event aggregate roots (BC-01)
+  - name: tracks
+    description: Track entities within an event (BC-01)
+  - name: registrations
+    description: CandidateEventRegistration aggregates (BC-02)
+  - name: schedule
+    description: EventSchedule aggregate (BC-04)
+  - name: slots
+    description: ScheduleSlot entities within a schedule (BC-04)
+  - name: sessions
+    description: InterviewSession aggregates (BC-06)
+  - name: scores
+    description: InterviewScore aggregates within a session (BC-06)
+  - name: communication-jobs
+    description: CommunicationJob aggregates (BC-07)
+  - name: communication-templates
+    description: EmailTemplate aggregates (BC-07)
+  - name: audit
+    description: AuditEntry — read-only (BC-08)
+
+paths:
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # /events — BC-01 Event aggregate root
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  /events:
+    get:
+      tags: [events]
+      operationId: listEvents
+      summary: List all recruitment events
+      description: |
+        Returns a paginated list of events. Supports filtering by lifecycle state,
+        date range, and coordinator.
+        Required permission: `ecr.event.view`
+      parameters:
+        - name: lifecycle_state
+          in: query
+          schema:
+            type: string
+            enum: [DRAFT, PUBLISHED, REGISTRATION_OPEN, IN_PROGRESS, CLOSED, ARCHIVED]
+        - name: start_date_from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: start_date_to
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: created_by
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: Paginated event list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      tags: [events]
+      operationId: createEvent
+      summary: Create a new event
+      description: |
+        Creates an event in DRAFT state. Equivalent to the use-case
+        `createRecruitmentEvent` command. Included here for completeness in the
+        domain API surface. For orchestrated event creation workflows, prefer
+        the use-case API.
+        Required permission: `ecr.event.create`
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEventBody'
+      responses:
+        '201':
+          description: Event created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /events/{eventId}:
+    get:
+      tags: [events]
+      operationId: getEvent
+      summary: Get an event by ID
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      responses:
+        '200':
+          description: Event resource
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags: [events]
+      operationId: updateEvent
+      summary: Update mutable event fields
+      description: |
+        Updates mutable fields of an event (title, description, registration_deadline).
+        Structural fields (tracks, form schema) cannot be mutated via this endpoint
+        once structural_locked = true (BR-06).
+        Lifecycle state transitions use use-case API endpoints.
+        Required permission: `ecr.event.manage`
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateEventBody'
+      responses:
+        '200':
+          description: Event updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Structural mutation blocked (event is IN_PROGRESS or beyond, BR-06)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      tags: [events]
+      operationId: deleteEvent
+      summary: Delete (archive) a DRAFT event
+      description: |
+        Soft-deletes a DRAFT event by transitioning it to ARCHIVED state.
+        Only DRAFT events may be deleted — published or in-progress events
+        must go through the proper close/archive lifecycle.
+        Required permission: `ecr.event.manage`
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      responses:
+        '204':
+          description: Event archived
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Event is not in DRAFT state — cannot be deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # /events/{eventId}/tracks — BC-01 Track entities
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  /events/{eventId}/tracks:
+    get:
+      tags: [tracks]
+      operationId: listTracks
+      summary: List all tracks for an event
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      responses:
+        '200':
+          description: List of tracks
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrackList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      tags: [tracks]
+      operationId: createTrack
+      summary: Add a track to an event
+      description: |
+        Adds a new Track to an event. Blocked once event is IN_PROGRESS (BR-06).
+        Triggers `TrackAdded` domain event.
+        Required permission: `ecr.event.manage`
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTrackBody'
+      responses:
+        '201':
+          description: Track created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Track'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Structural lock engaged (BR-06)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /events/{eventId}/tracks/{trackId}:
+    get:
+      tags: [tracks]
+      operationId: getTrack
+      summary: Get a track by ID
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - $ref: '#/components/parameters/TrackId'
+      responses:
+        '200':
+          description: Track resource
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Track'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags: [tracks]
+      operationId: updateTrack
+      summary: Update a track
+      description: Blocked once event is IN_PROGRESS (BR-06). Required permission: `ecr.event.manage`
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - $ref: '#/components/parameters/TrackId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTrackBody'
+      responses:
+        '200':
+          description: Track updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Track'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Structural lock engaged (BR-06)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      tags: [tracks]
+      operationId: deleteTrack
+      summary: Remove a track from an event
+      description: Blocked once event is IN_PROGRESS (BR-06). Required permission: `ecr.event.manage`
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - $ref: '#/components/parameters/TrackId'
+      responses:
+        '204':
+          description: Track removed
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Structural lock engaged or track has registered candidates
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # /events/{eventId}/registrations — BC-02 CandidateEventRegistration
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  /events/{eventId}/registrations:
+    get:
+      tags: [registrations]
+      operationId: listRegistrations
+      summary: List candidate registrations for an event
+      description: Required permission: `ecr.registration.view`
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - name: registration_status
+          in: query
+          schema:
+            type: string
+            enum: [PENDING, CONFIRMED, WAITLISTED, CANCELLED]
+        - name: track_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: registration_source
+          in: query
+          schema:
+            type: string
+            enum: [ONLINE, KIOSK, OFFLINE, IMPORT]
+        - name: sbd_number
+          in: query
+          schema:
+            type: string
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Search by name, email, or phone (partial match)
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: Paginated list of registrations
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegistrationPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      tags: [registrations]
+      operationId: createRegistration
+      summary: Create a candidate registration (import/admin)
+      description: |
+        Creates a registration via import or admin action.
+        SBD assignment is triggered automatically.
+        For public online registration, use use-case API /events/{id}/registrations/register.
+        Required permission: `ecr.registration.manage`
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRegistrationBody'
+      responses:
+        '201':
+          description: Registration created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Registration'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /events/{eventId}/registrations/{registrationId}:
+    get:
+      tags: [registrations]
+      operationId: getRegistration
+      summary: Get a registration by ID
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - $ref: '#/components/parameters/RegistrationId'
+      responses:
+        '200':
+          description: Registration resource
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Registration'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags: [registrations]
+      operationId: updateRegistrationStatus
+      summary: Update registration status or pipeline stage
+      description: |
+        Updates registration_status (e.g., PENDING → CONFIRMED) or pipeline_stage.
+        SBD and personal_info are immutable after creation.
+        Status transitions are validated against the state machine.
+        Required permission: `ecr.registration.manage`
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - $ref: '#/components/parameters/RegistrationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRegistrationBody'
+      responses:
+        '200':
+          description: Registration updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Registration'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Invalid state transition
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # /events/{eventId}/schedule — BC-04 EventSchedule
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  /events/{eventId}/schedule:
+    get:
+      tags: [schedule]
+      operationId: getSchedule
+      summary: Get the schedule for an event
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      responses:
+        '200':
+          description: EventSchedule resource
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventSchedule'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags: [schedule]
+      operationId: replaceSchedule
+      summary: Replace (full update) the event schedule matrix
+      description: |
+        Replaces the entire schedule matrix. Blocked once event is IN_PROGRESS (BR-06).
+        Room double-booking is validated. Triggers `ScheduleCreated` event.
+        Required permission: `ecr.schedule.manage`
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReplaceScheduleBody'
+      responses:
+        '200':
+          description: Schedule replaced
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventSchedule'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Structural lock engaged or room double-booking detected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    patch:
+      tags: [schedule]
+      operationId: patchSchedule
+      summary: Patch schedule-level properties (strategy, state)
+      description: |
+        Updates allocation_strategy or schedule_state.
+        Cannot change slots via this endpoint — use slot-specific endpoints.
+        Required permission: `ecr.schedule.manage`
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchScheduleBody'
+      responses:
+        '200':
+          description: Schedule patched
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventSchedule'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # /events/{eventId}/schedule/slots — BC-04 ScheduleSlot entities
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  /events/{eventId}/schedule/slots:
+    get:
+      tags: [slots]
+      operationId: listScheduleSlots
+      summary: List all schedule slots for an event
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - name: track_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: slot_allocation_state
+          in: query
+          schema:
+            type: string
+            enum: [OPEN, PARTIAL, FULL, OVERRIDDEN]
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: List of schedule slots
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SlotPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /events/{eventId}/schedule/slots/{slotId}:
+    get:
+      tags: [slots]
+      operationId: getScheduleSlot
+      summary: Get a schedule slot by ID
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - name: slotId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: ScheduleSlot resource with capacity override history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduleSlot'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # /events/{eventId}/sessions — BC-06 InterviewSession
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  /events/{eventId}/sessions:
+    get:
+      tags: [sessions]
+      operationId: listInterviewSessions
+      summary: List interview sessions for an event
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - name: track_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: session_status
+          in: query
+          schema:
+            type: string
+            enum: [SCHEDULED, ACTIVE, COMPLETED, DEFERRED, SKIPPED]
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: Paginated list of interview sessions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /events/{eventId}/sessions/{sessionId}:
+    get:
+      tags: [sessions]
+      operationId: getInterviewSession
+      summary: Get an interview session by ID
+      description: Returns session details including assignments, digest status, and queue state.
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '200':
+          description: InterviewSession resource
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InterviewSession'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # /events/{eventId}/sessions/{sessionId}/scores — BC-06 InterviewScore
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  /events/{eventId}/sessions/{sessionId}/scores:
+    get:
+      tags: [scores]
+      operationId: listInterviewScores
+      summary: List interview scores for a session
+      description: |
+        Returns all InterviewScore records for the session.
+        Includes both ACTIVE and SUPERSEDED scores.
+        Required permission: `ecr.interview.view`
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - $ref: '#/components/parameters/SessionId'
+        - name: score_status
+          in: query
+          schema:
+            type: string
+            enum: [ACTIVE, SUPERSEDED]
+          description: Filter by score status. Omit to return all.
+        - name: interviewer_user_id
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: List of interview scores
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScorePage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      tags: [scores]
+      operationId: createInterviewScore
+      summary: Submit an interview score (domain-level)
+      description: |
+        Domain-level score submission. Prefer the use-case API endpoint
+        `/events/{id}/sessions/{id}/candidates/{ref}/submit-score` for the
+        full business-intent flow with HM kit authentication.
+        Score is immutable after creation (BR-04).
+        Required permission: `ecr.interview.score`
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - $ref: '#/components/parameters/SessionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateScoreBody'
+      responses:
+        '201':
+          description: Score submitted and locked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InterviewScore'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Score already exists for (session, candidate, interviewer) triple
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /events/{eventId}/sessions/{sessionId}/scores/{scoreId}:
+    get:
+      tags: [scores]
+      operationId: getInterviewScore
+      summary: Get an interview score by ID
+      description: Returns full score detail including components and edit history.
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - $ref: '#/components/parameters/SessionId'
+        - name: scoreId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: InterviewScore resource
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InterviewScore'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # /communication/jobs — BC-07 CommunicationJob
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  /communication/jobs:
+    get:
+      tags: [communication-jobs]
+      operationId: listCommunicationJobs
+      summary: List communication jobs
+      description: |
+        Returns paginated list of CommunicationJobs across all events
+        (or filtered by event_id).
+        Required permission: `ecr.communication.view`
+      parameters:
+        - name: event_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: job_status
+          in: query
+          schema:
+            type: string
+            enum: [CREATED, SENDING, COMPLETED, PARTIAL_FAILURE, FAILED]
+        - name: job_type
+          in: query
+          schema:
+            type: string
+            enum: [CANDIDATE_CONFIRMATION, WAITLIST_PROMOTION, REGISTRATION_CANCELLATION, SLOT_ASSIGNMENT, SESSION_DIGEST, BULK_ANNOUNCEMENT, MANUAL]
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: Paginated list of communication jobs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommunicationJobPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /communication/jobs/{jobId}:
+    get:
+      tags: [communication-jobs]
+      operationId: getCommunicationJob
+      summary: Get a communication job by ID
+      description: Returns full job detail including delivery record summaries.
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: CommunicationJob resource
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommunicationJob'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # /communication/templates — BC-07 EmailTemplate
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  /communication/templates:
+    get:
+      tags: [communication-templates]
+      operationId: listEmailTemplates
+      summary: List email templates
+      parameters:
+        - name: template_purpose
+          in: query
+          schema:
+            type: string
+            enum: [CANDIDATE_CONFIRMATION, WAITLIST_PROMOTION, SLOT_ASSIGNMENT, SESSION_DIGEST, REGISTRATION_CANCELLATION, BULK_ANNOUNCEMENT, GENERIC]
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: List of email templates
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailTemplatePage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      tags: [communication-templates]
+      operationId: createEmailTemplate
+      summary: Create a new email template
+      description: Required permission: `ecr.communication.template_manage`
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEmailTemplateBody'
+      responses:
+        '201':
+          description: Email template created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailTemplate'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /communication/templates/{templateId}:
+    get:
+      tags: [communication-templates]
+      operationId: getEmailTemplate
+      summary: Get an email template by ID (with all versions)
+      parameters:
+        - name: templateId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: EmailTemplate resource with version history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailTemplate'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags: [communication-templates]
+      operationId: updateEmailTemplate
+      summary: Update template name or purpose
+      description: |
+        Updates template metadata only (name, purpose).
+        To change template content, publish a new TemplateVersion.
+        Versions are immutable once published.
+        Required permission: `ecr.communication.template_manage`
+      parameters:
+        - name: templateId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                template_name:
+                  type: string
+                template_purpose:
+                  type: string
+                  enum: [CANDIDATE_CONFIRMATION, WAITLIST_PROMOTION, SLOT_ASSIGNMENT, SESSION_DIGEST, REGISTRATION_CANCELLATION, BULK_ANNOUNCEMENT, GENERIC]
+      responses:
+        '200':
+          description: Template updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailTemplate'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [communication-templates]
+      operationId: deleteEmailTemplate
+      summary: Delete a template (only DRAFT versions; cannot delete if ACTIVE version exists)
+      description: Required permission: `ecr.communication.template_manage`
+      parameters:
+        - name: templateId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Template deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Template has an ACTIVE published version — cannot be deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # /audit/entries — BC-08 AuditEntry (READ-ONLY)
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  /audit/entries:
+    get:
+      tags: [audit]
+      operationId: listAuditEntries
+      summary: List audit entries (read-only, append-only log)
+      description: |
+        Returns paginated AuditEntry records. The audit log is append-only and
+        tamper-evident. No write operations are exposed on this resource.
+        Supports filtering by ecr_event_id, audit_action, actor, and date range.
+        3-year minimum retention (NFR-10).
+        Required permission: `ecr.audit.view`
+      parameters:
+        - name: ecr_event_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: audit_action
+          in: query
+          schema:
+            type: string
+        - name: source_bc
+          in: query
+          schema:
+            type: string
+            enum: [EVENT_MANAGEMENT, CANDIDATE_REGISTRATION, ASSESSMENT, SCHEDULE_CAPACITY, ONSITE_OPERATIONS, INTERVIEW_MANAGEMENT, COMMUNICATION]
+        - name: actor_user_id
+          in: query
+          schema:
+            type: string
+        - name: from_date
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to_date
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: Paginated audit entries
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditEntryPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /audit/entries/{entryId}:
+    get:
+      tags: [audit]
+      operationId: getAuditEntry
+      summary: Get an audit entry by ID (with chain verification data)
+      parameters:
+        - name: entryId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: AuditEntry resource with hash chain data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditEntry'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+# ─────────────────────────────────────────────────────────────────────────────
+# COMPONENTS
+# ─────────────────────────────────────────────────────────────────────────────
+
+components:
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: xTalent JWT issued by the RBAC Service
+
+  parameters:
+    EventId:
+      name: eventId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    RegistrationId:
+      name: registrationId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    TrackId:
+      name: trackId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    SessionId:
+      name: sessionId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 500
+        default: 50
+
+    Offset:
+      name: offset
+      in: query
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Missing or invalid token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: State or constraint conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    UnprocessableEntity:
+      description: Semantic validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+
+    ErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+
+    PageMeta:
+      type: object
+      required: [total, limit, offset]
+      properties:
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    # ── BC-01 Schemas ───────────────────────────────────────────────────────
+
+    Event:
+      type: object
+      required: [id, title, lifecycle_state, start_date, end_date, structural_locked, created_by, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        lifecycle_state:
+          type: string
+          enum: [DRAFT, PUBLISHED, REGISTRATION_OPEN, IN_PROGRESS, CLOSED, ARCHIVED]
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        registration_deadline:
+          type: string
+          format: date-time
+        structural_locked:
+          type: boolean
+        created_by:
+          type: string
+        source_event_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    EventPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/Event'
+
+    CreateEventBody:
+      type: object
+      required: [title, start_date, end_date]
+      properties:
+        title:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        registration_deadline:
+          type: string
+          format: date-time
+
+    UpdateEventBody:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+        registration_deadline:
+          type: string
+          format: date-time
+
+    Track:
+      type: object
+      required: [id, event_id, name, capacity, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        event_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        capacity:
+          type: integer
+          minimum: 1
+        pipeline_stages:
+          type: array
+          items:
+            type: string
+        job_requisition_link:
+          type: string
+        allocation_strategy:
+          type: string
+          enum: [ROUND_ROBIN, FILL_FIRST]
+        created_at:
+          type: string
+          format: date-time
+
+    TrackList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Track'
+
+    CreateTrackBody:
+      type: object
+      required: [name, capacity]
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        capacity:
+          type: integer
+          minimum: 1
+        pipeline_stages:
+          type: array
+          items:
+            type: string
+        job_requisition_link:
+          type: string
+        allocation_strategy:
+          type: string
+          enum: [ROUND_ROBIN, FILL_FIRST]
+
+    UpdateTrackBody:
+      type: object
+      properties:
+        name:
+          type: string
+        capacity:
+          type: integer
+          minimum: 1
+        pipeline_stages:
+          type: array
+          items:
+            type: string
+        job_requisition_link:
+          type: string
+        allocation_strategy:
+          type: string
+          enum: [ROUND_ROBIN, FILL_FIRST]
+
+    # ── BC-02 Schemas ───────────────────────────────────────────────────────
+
+    Registration:
+      type: object
+      required: [id, event_id, track_id, sbd_number, registration_status, registration_source, registered_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        event_id:
+          type: string
+          format: uuid
+        track_id:
+          type: string
+          format: uuid
+        sbd_number:
+          type: string
+        full_name:
+          type: string
+        phone_number:
+          type: string
+        email_address:
+          type: string
+        student_id:
+          type: string
+        date_of_birth:
+          type: string
+          format: date
+        registration_status:
+          type: string
+          enum: [PENDING, CONFIRMED, WAITLISTED, CANCELLED]
+        registration_source:
+          type: string
+          enum: [ONLINE, KIOSK, OFFLINE, IMPORT]
+        pipeline_stage:
+          type: string
+        registered_at:
+          type: string
+          format: date-time
+        confirmed_at:
+          type: string
+          format: date-time
+        cancelled_at:
+          type: string
+          format: date-time
+        slot_reference:
+          type: object
+          properties:
+            slot_id:
+              type: string
+              format: uuid
+            room_name:
+              type: string
+            shift_start:
+              type: string
+              format: date-time
+            shift_end:
+              type: string
+              format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    RegistrationPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/Registration'
+
+    CreateRegistrationBody:
+      type: object
+      required: [track_id, full_name, phone_number, email_address, registration_source]
+      properties:
+        track_id:
+          type: string
+          format: uuid
+        full_name:
+          type: string
+        phone_number:
+          type: string
+        email_address:
+          type: string
+          format: email
+        student_id:
+          type: string
+        date_of_birth:
+          type: string
+          format: date
+        registration_source:
+          type: string
+          enum: [ONLINE, KIOSK, OFFLINE, IMPORT]
+        additional_fields:
+          type: object
+          additionalProperties: true
+
+    UpdateRegistrationBody:
+      type: object
+      properties:
+        registration_status:
+          type: string
+          enum: [PENDING, CONFIRMED, WAITLISTED, CANCELLED]
+        pipeline_stage:
+          type: string
+
+    # ── BC-04 Schemas ───────────────────────────────────────────────────────
+
+    EventSchedule:
+      type: object
+      required: [id, event_id, schedule_state, structural_locked, allocation_strategy]
+      properties:
+        id:
+          type: string
+          format: uuid
+        event_id:
+          type: string
+          format: uuid
+        schedule_state:
+          type: string
+          enum: [UNDEFINED, DRAFT, ACTIVE, LOCKED]
+        structural_locked:
+          type: boolean
+        allocation_strategy:
+          type: string
+          enum: [ROUND_ROBIN, FILL_FIRST]
+        slot_count:
+          type: integer
+        total_capacity:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ReplaceScheduleBody:
+      type: object
+      required: [allocation_strategy, slots]
+      properties:
+        allocation_strategy:
+          type: string
+          enum: [ROUND_ROBIN, FILL_FIRST]
+        slots:
+          type: array
+          items:
+            type: object
+            required: [track_id, room_id, room_name, room_physical_capacity, shift_label, shift_start, shift_end, configured_capacity]
+            properties:
+              track_id:
+                type: string
+                format: uuid
+              room_id:
+                type: string
+              room_name:
+                type: string
+              room_physical_capacity:
+                type: integer
+              shift_label:
+                type: string
+              shift_start:
+                type: string
+                format: date-time
+              shift_end:
+                type: string
+                format: date-time
+              configured_capacity:
+                type: integer
+                minimum: 1
+
+    PatchScheduleBody:
+      type: object
+      properties:
+        allocation_strategy:
+          type: string
+          enum: [ROUND_ROBIN, FILL_FIRST]
+
+    ScheduleSlot:
+      type: object
+      required: [id, schedule_id, event_id, track_id, configured_capacity, effective_capacity, allocated_count, slot_allocation_state]
+      properties:
+        id:
+          type: string
+          format: uuid
+        schedule_id:
+          type: string
+          format: uuid
+        event_id:
+          type: string
+          format: uuid
+        track_id:
+          type: string
+          format: uuid
+        room_id:
+          type: string
+        room_name:
+          type: string
+        room_physical_capacity:
+          type: integer
+        shift_label:
+          type: string
+        shift_start:
+          type: string
+          format: date-time
+        shift_end:
+          type: string
+          format: date-time
+        configured_capacity:
+          type: integer
+        effective_capacity:
+          type: integer
+        allocated_count:
+          type: integer
+        slot_allocation_state:
+          type: string
+          enum: [OPEN, PARTIAL, FULL, OVERRIDDEN]
+        capacity_overrides:
+          type: array
+          items:
+            type: object
+            properties:
+              override_id:
+                type: string
+                format: uuid
+              previous_capacity:
+                type: integer
+              new_capacity:
+                type: integer
+              reason:
+                type: string
+              authorized_by:
+                type: string
+              overridden_at:
+                type: string
+                format: date-time
+
+    SlotPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/ScheduleSlot'
+
+    # ── BC-06 Schemas ───────────────────────────────────────────────────────
+
+    InterviewSession:
+      type: object
+      required: [id, event_id, track_id, slot_id, session_status, queue_order_mode]
+      properties:
+        id:
+          type: string
+          format: uuid
+        event_id:
+          type: string
+          format: uuid
+        track_id:
+          type: string
+          format: uuid
+        slot_id:
+          type: string
+          format: uuid
+        room_name:
+          type: string
+        session_start_time:
+          type: string
+          format: date-time
+        session_end_time:
+          type: string
+          format: date-time
+        session_status:
+          type: string
+          enum: [SCHEDULED, ACTIVE, COMPLETED, DEFERRED, SKIPPED]
+        queue_order_mode:
+          type: string
+          enum: [SLOT_TIME, SBD_ORDER, CHECKIN_ARRIVAL]
+        assignments:
+          type: array
+          items:
+            type: object
+            properties:
+              assignment_id:
+                type: string
+                format: uuid
+              interviewer_user_id:
+                type: string
+              interviewer_display_name:
+                type: string
+              assignment_mode:
+                type: string
+                enum: [HARD, SOFT]
+              assigned_at:
+                type: string
+                format: date-time
+        latest_digest:
+          type: object
+          properties:
+            digest_id:
+              type: string
+              format: uuid
+            dispatched_at:
+              type: string
+              format: date-time
+            candidate_count_at_dispatch:
+              type: integer
+        created_at:
+          type: string
+          format: date-time
+
+    SessionPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/InterviewSession'
+
+    InterviewScore:
+      type: object
+      required: [id, session_id, candidate_registration_id, sbd_number, interviewer_user_id, total_score, submitted_at, score_status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        session_id:
+          type: string
+          format: uuid
+        event_id:
+          type: string
+          format: uuid
+        candidate_registration_id:
+          type: string
+          format: uuid
+        sbd_number:
+          type: string
+        interviewer_user_id:
+          type: string
+        score_components:
+          type: array
+          items:
+            type: object
+            properties:
+              criterion_name:
+                type: string
+              criterion_weight:
+                type: number
+              raw_score:
+                type: number
+              weighted_score:
+                type: number
+              notes:
+                type: string
+        total_score:
+          type: number
+          format: float
+        recommendation:
+          type: string
+          enum: [PASS, FAIL, HOLD]
+        submitted_at:
+          type: string
+          format: date-time
+        score_status:
+          type: string
+          enum: [ACTIVE, SUPERSEDED]
+        superseded_by_score_id:
+          type: string
+          format: uuid
+        supersedes_score_id:
+          type: string
+          format: uuid
+        edit_request_id:
+          type: string
+          format: uuid
+
+    ScorePage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/InterviewScore'
+
+    CreateScoreBody:
+      type: object
+      required: [candidate_registration_id, sbd_number, interviewer_user_id, score_components, total_score]
+      properties:
+        candidate_registration_id:
+          type: string
+          format: uuid
+        sbd_number:
+          type: string
+        interviewer_user_id:
+          type: string
+        score_components:
+          type: array
+          items:
+            type: object
+            required: [criterion_name, criterion_weight, raw_score, weighted_score]
+            properties:
+              criterion_name:
+                type: string
+              criterion_weight:
+                type: number
+              raw_score:
+                type: number
+              weighted_score:
+                type: number
+              notes:
+                type: string
+        total_score:
+          type: number
+        recommendation:
+          type: string
+          enum: [PASS, FAIL, HOLD]
+
+    # ── BC-07 Schemas ───────────────────────────────────────────────────────
+
+    CommunicationJob:
+      type: object
+      required: [id, event_id, job_type, job_status, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        idempotency_key:
+          type: string
+        event_id:
+          type: string
+          format: uuid
+        job_type:
+          type: string
+          enum: [CANDIDATE_CONFIRMATION, WAITLIST_PROMOTION, REGISTRATION_CANCELLATION, SLOT_ASSIGNMENT, SESSION_DIGEST, BULK_ANNOUNCEMENT, MANUAL]
+        trigger_event_type:
+          type: string
+        template_id:
+          type: string
+          format: uuid
+        template_version_number:
+          type: integer
+        job_status:
+          type: string
+          enum: [CREATED, SENDING, COMPLETED, PARTIAL_FAILURE, FAILED]
+        recipient_count:
+          type: integer
+        delivered_count:
+          type: integer
+        failed_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+
+    CommunicationJobPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/CommunicationJob'
+
+    EmailTemplate:
+      type: object
+      required: [id, template_name, template_purpose, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        template_name:
+          type: string
+        template_purpose:
+          type: string
+          enum: [CANDIDATE_CONFIRMATION, WAITLIST_PROMOTION, SLOT_ASSIGNMENT, SESSION_DIGEST, REGISTRATION_CANCELLATION, BULK_ANNOUNCEMENT, GENERIC]
+        active_version_number:
+          type: integer
+        versions:
+          type: array
+          items:
+            type: object
+            properties:
+              version_number:
+                type: integer
+              subject_line:
+                type: string
+              template_version_status:
+                type: string
+                enum: [DRAFT, ACTIVE, DEPRECATED]
+              declared_variables:
+                type: array
+                items:
+                  type: string
+              published_at:
+                type: string
+                format: date-time
+              published_by:
+                type: string
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    EmailTemplatePage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/EmailTemplate'
+
+    CreateEmailTemplateBody:
+      type: object
+      required: [template_name, template_purpose, subject_line, body_html]
+      properties:
+        template_name:
+          type: string
+          maxLength: 255
+        template_purpose:
+          type: string
+          enum: [CANDIDATE_CONFIRMATION, WAITLIST_PROMOTION, SLOT_ASSIGNMENT, SESSION_DIGEST, REGISTRATION_CANCELLATION, BULK_ANNOUNCEMENT, GENERIC]
+        subject_line:
+          type: string
+          maxLength: 500
+        body_html:
+          type: string
+        body_text:
+          type: string
+        declared_variables:
+          type: array
+          items:
+            type: string
+
+    # ── BC-08 Schemas ───────────────────────────────────────────────────────
+
+    AuditEntry:
+      type: object
+      required: [id, source_event_id, source_event_type, source_bc, audit_action, ecr_event_id, actor_user_id, actor_role, content_hash, chain_hash, recorded_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        source_event_id:
+          type: string
+        source_event_type:
+          type: string
+        source_bc:
+          type: string
+        audit_action:
+          type: string
+        ecr_event_id:
+          type: string
+          format: uuid
+        subject_type:
+          type: string
+        subject_id:
+          type: string
+        actor_user_id:
+          type: string
+        actor_role:
+          type: string
+        actor_ip_address:
+          type: string
+        content_hash:
+          type: string
+          description: SHA256 hash of audit_entry_id + source_event_id + payload_json
+        chain_hash:
+          type: string
+          description: SHA256(prev_chain_hash + content_hash) — tamper-evidence mechanism
+        previous_entry_id:
+          type: string
+          format: uuid
+        recorded_at:
+          type: string
+          format: date-time
+
+    AuditEntryPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/AuditEntry'

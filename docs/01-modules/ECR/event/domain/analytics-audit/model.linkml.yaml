@@ -1,0 +1,478 @@
+id: https://xtalent.vng.com.vn/ecr/analytics-audit
+name: ECRAnalyticsAudit
+description: >-
+  Domain model for the Analytics & Audit bounded context of the ECR module.
+  This context is a terminal event consumer — it subscribes to all consequential
+  domain events from all other ECR bounded contexts and produces:
+    1. AuditEntry: immutable, tamper-evident audit log (append-only, 3-year retention, NFR-10)
+    2. EventMetricsSnapshot: real-time and scheduled metrics projections
+    3. ReportDefinition: saved report configurations for dynamic querying
+  This context publishes no domain events of its own.
+  AuditEntry immutability and tamper-evidence (hash chaining) are core invariants.
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  ecr: https://xtalent.vng.com.vn/ecr/
+  ecr_aa: https://xtalent.vng.com.vn/ecr/analytics-audit/
+
+default_prefix: ecr_aa
+default_range: string
+
+imports:
+  - linkml:types
+
+classes:
+
+  # ── Aggregate Root: AuditEntry ────────────────────────────────────────────────
+
+  AuditEntry:
+    tree_root: true
+    description: >-
+      An immutable, tamper-evident record of one consequential action in any ECR
+      bounded context. Created from a subscribed domain event. Never modified or
+      deleted at the application layer.
+      Tamper-evidence: each entry stores a chain_hash = SHA256(prev_chain_hash + content_hash).
+      Minimum retention: 3 years (NFR-10).
+      The absence of update/delete operations is a domain invariant, not merely a
+      technical constraint.
+    slots:
+      - audit_entry_id
+      - source_event_id
+      - source_event_type
+      - source_bc
+      - audit_action
+      - actor_ref
+      - ecr_event_id
+      - subject_type
+      - subject_id
+      - payload_json
+      - content_hash
+      - chain_hash
+      - previous_entry_id
+      - recorded_at
+    slot_usage:
+      audit_entry_id:
+        required: true
+      source_event_id:
+        required: true
+      source_event_type:
+        required: true
+      source_bc:
+        required: true
+      audit_action:
+        required: true
+      actor_ref:
+        required: true
+      ecr_event_id:
+        required: true
+      payload_json:
+        required: true
+      content_hash:
+        required: true
+      chain_hash:
+        required: true
+      recorded_at:
+        required: true
+
+  # ── Value Object: ActorRef ────────────────────────────────────────────────────
+
+  ActorRef:
+    description: >-
+      Immutable capture of the actor who triggered the audited event.
+      Records userId, role at time of action, and ipAddress.
+      Captured at AuditEntry creation time — never updated even if the user's
+      role changes after the fact.
+    slots:
+      - actor_user_id
+      - actor_role
+      - actor_ip_address
+    slot_usage:
+      actor_user_id:
+        required: true
+      actor_role:
+        required: true
+
+  # ── Aggregate Root: EventMetricsSnapshot ──────────────────────────────────────
+
+  EventMetricsSnapshot:
+    description: >-
+      A point-in-time metrics aggregate for a specific ECR event.
+      Computed from domain event projections. Not the source of truth — AuditEntry is.
+      Can be recomputed from the AuditEntry log at any time.
+      Snapshot intervals: REAL_TIME (on every event), HOURLY (scheduled), DAILY (scheduled).
+    slots:
+      - snapshot_id
+      - ecr_event_id
+      - snapshot_interval
+      - metrics_dimension
+      - snapshot_data_json
+      - snapshot_status
+      - computed_at
+      - covers_from
+      - covers_to
+    slot_usage:
+      snapshot_id:
+        required: true
+      ecr_event_id:
+        required: true
+      snapshot_interval:
+        required: true
+      metrics_dimension:
+        required: true
+      snapshot_data_json:
+        required: true
+      snapshot_status:
+        required: true
+      computed_at:
+        required: true
+
+  # ── Aggregate Root: ReportDefinition ─────────────────────────────────────────
+
+  ReportDefinition:
+    description: >-
+      A saved configuration specifying dimensions, filters, groupings, and time
+      range for a dynamic report. Execution produces ephemeral output — the
+      generated report is not persisted as a domain object. Only the definition
+      is stored.
+    slots:
+      - report_definition_id
+      - report_name
+      - ecr_event_id
+      - dimensions
+      - filters_json
+      - groupings
+      - time_range_type
+      - custom_from
+      - custom_to
+      - report_status
+      - schedule_cron
+      - created_by
+      - created_at
+      - last_executed_at
+    slot_usage:
+      report_definition_id:
+        required: true
+      report_name:
+        required: true
+      ecr_event_id:
+        required: true
+      dimensions:
+        required: true
+      report_status:
+        required: true
+      time_range_type:
+        required: true
+      created_by:
+        required: true
+      created_at:
+        required: true
+
+# ── Slots ──────────────────────────────────────────────────────────────────────
+
+slots:
+
+  audit_entry_id:
+    range: string
+    description: UUID of the AuditEntry. Assigned at creation; immutable.
+
+  source_event_id:
+    range: string
+    description: The domain_event_id of the originating domain event from the source BC.
+
+  source_event_type:
+    range: string
+    description: >-
+      The type name of the originating domain event (e.g., "InterviewScoreSubmitted",
+      "ScoreEditApproved"). Used for filtering and forensic queries.
+
+  source_bc:
+    range: SourceBoundedContext
+    description: The bounded context that published the originating domain event.
+
+  audit_action:
+    range: AuditAction
+    description: Controlled vocabulary classification of the audited action.
+
+  actor_ref:
+    range: ActorRef
+    inlined: true
+    description: Immutable capture of the actor (user + role + IP) at event time.
+
+  ecr_event_id:
+    range: string
+    description: Reference to the ECR Event this audit entry is associated with.
+
+  subject_type:
+    range: string
+    description: >-
+      The entity type that was the subject of the audited action
+      (e.g., "InterviewScore", "CandidateEventRegistration", "ScheduleSlot").
+
+  subject_id:
+    range: string
+    description: The ID of the specific entity that was the subject of the audited action.
+
+  payload_json:
+    range: string
+    description: >-
+      Full JSON payload of the originating domain event, captured at ingest time.
+      Immutable. Provides complete forensic data for audit review.
+
+  content_hash:
+    range: string
+    description: >-
+      SHA256 hash of the audit_entry_id + source_event_id + payload_json.
+      Used as input to the chain_hash computation.
+
+  chain_hash:
+    range: string
+    description: >-
+      SHA256(previous_entry.chain_hash + this_entry.content_hash).
+      Tamper-evidence mechanism. A broken chain signals corruption or tampering.
+      The first entry in the chain uses a fixed sentinel value as its previous hash.
+
+  previous_entry_id:
+    range: string
+    description: >-
+      The audit_entry_id of the immediately preceding entry in the audit chain.
+      Null only for the genesis entry. Used to verify chain integrity.
+
+  recorded_at:
+    range: datetime
+    description: >-
+      Server timestamp when the AuditEntry was written to the audit store.
+      This is the store's write time, not the originating event's occurred_at.
+      Both are captured for forensic completeness.
+
+  actor_user_id:
+    range: string
+    description: xTalent User ID of the actor. "system" for automated actions.
+
+  actor_role:
+    range: string
+    description: The RBAC role held by the actor at the time of the action.
+
+  actor_ip_address:
+    range: string
+    description: IP address of the actor's session at the time of the action. May be null for system actions.
+
+  snapshot_id:
+    range: string
+    description: UUID of the EventMetricsSnapshot.
+
+  snapshot_interval:
+    range: SnapshotInterval
+    description: The computation interval for this snapshot.
+
+  metrics_dimension:
+    range: MetricsDimension
+    description: The measurement category this snapshot covers.
+
+  snapshot_data_json:
+    range: string
+    description: >-
+      JSON-encoded metrics data for this snapshot. Schema varies by MetricsDimension.
+      For REGISTRATION: {total, confirmed, waitlisted, cancelled}.
+      For CHECK_IN: {total, checked_in, no_show_rate}.
+      For FUNNEL: {registered_to_confirmed, confirmed_to_checked_in, ...}.
+
+  snapshot_status:
+    range: SnapshotStatus
+    description: Whether this snapshot is the current one or has been superseded.
+
+  computed_at:
+    range: datetime
+    description: Timestamp when this snapshot was computed.
+
+  covers_from:
+    range: datetime
+    description: Start of the time window this snapshot covers. Null for REAL_TIME.
+
+  covers_to:
+    range: datetime
+    description: End of the time window this snapshot covers. Null for REAL_TIME.
+
+  report_definition_id:
+    range: string
+    description: UUID of the ReportDefinition.
+
+  report_name:
+    range: string
+    description: Human-readable name for this report definition.
+
+  dimensions:
+    range: MetricsDimension
+    multivalued: true
+    description: One or more MetricsDimensions this report covers.
+
+  filters_json:
+    range: string
+    description: >-
+      JSON-encoded filter specification (e.g., track IDs, date ranges, candidate status).
+      Interpreted at report execution time.
+
+  groupings:
+    range: string
+    multivalued: true
+    description: Field names to group results by (e.g., "track_id", "interviewer_user_id").
+
+  time_range_type:
+    range: TimeRangeType
+    description: Whether the report covers a fixed date range or a relative window.
+
+  custom_from:
+    range: datetime
+    description: Start date for FIXED time_range_type. Null for RELATIVE.
+
+  custom_to:
+    range: datetime
+    description: End date for FIXED time_range_type. Null for RELATIVE.
+
+  report_status:
+    range: ReportStatus
+    description: Whether this report definition is draft, published, or deprecated.
+
+  schedule_cron:
+    range: string
+    description: >-
+      Optional cron expression for scheduled execution (e.g., "0 8 * * 1" = 8am Monday).
+      Null for on-demand reports.
+
+  created_by:
+    range: string
+    description: xTalent User ID of the report manager who created this definition.
+
+  created_at:
+    range: datetime
+    description: Timestamp when the ReportDefinition was created.
+
+  last_executed_at:
+    range: datetime
+    description: Timestamp of the most recent execution of this report definition. Null if never run.
+
+# ── Enumerations ───────────────────────────────────────────────────────────────
+
+enums:
+
+  AuditAction:
+    description: >-
+      Controlled vocabulary of all auditable actions in the ECR system.
+      Adding a new auditable operation requires explicitly adding it here.
+      This list is a governance artifact.
+    permissible_values:
+      SCORE_SUBMITTED:
+        description: An InterviewScore was submitted by an interviewer.
+      SCORE_EDIT_REQUESTED:
+        description: A ScoreEditRequest was submitted for a previously submitted score.
+      SCORE_EDIT_APPROVED:
+        description: A TA Coordinator approved a ScoreEditRequest; original score superseded.
+      SCORE_EDIT_REJECTED:
+        description: A TA Coordinator rejected a ScoreEditRequest; original score unchanged.
+      DUPLICATE_FLAGGED:
+        description: A DuplicateFlag was raised against a CandidateEventRegistration.
+      DUPLICATE_RESOLVED:
+        description: A TA Coordinator resolved a DuplicateFlag (merge/keep/discard).
+      CANDIDATE_REGISTERED:
+        description: A new CandidateEventRegistration was created.
+      CANDIDATE_CONFIRMED:
+        description: A CandidateEventRegistration status changed to Confirmed.
+      REGISTRATION_CANCELLED:
+        description: A CandidateEventRegistration was cancelled.
+      CAPACITY_OVERRIDDEN:
+        description: A ScheduleSlot capacity was manually overridden.
+      BULK_ALLOCATION_RUN:
+        description: A CandidatesAllocatedToSlots operation completed.
+      EVENT_STARTED:
+        description: An ECR Event transitioned to In Progress; structural lock engaged.
+      EVENT_CLOSED:
+        description: An ECR Event was closed.
+      EVENT_CLONED:
+        description: A new Event was created by cloning an existing one (copy by value).
+      CHECKIN_CONFIRMED:
+        description: A kiosk check-in record was confirmed server-side.
+      CHECKIN_CONFLICT:
+        description: A sync conflict was detected for a check-in record.
+      MANUAL_REVIEW_RESOLVED:
+        description: A TA Coordinator resolved a sync conflict via manual review.
+      KIT_LINK_EXPIRED:
+        description: A KitLink expiry was detected on a server-side access attempt.
+      ASSESSMENT_COMPLETED:
+        description: An assessment result was received from the Assessment engine.
+      DELIVERY_FAILED:
+        description: An email delivery failed after all retries (Communication BC).
+      BULK_EMAIL_INITIATED:
+        description: A bulk CommunicationJob was created.
+
+  SourceBoundedContext:
+    description: The ECR bounded context that published the audited domain event.
+    permissible_values:
+      EVENT_MANAGEMENT:
+        description: BC-01
+      CANDIDATE_REGISTRATION:
+        description: BC-02
+      ASSESSMENT:
+        description: BC-03
+      SCHEDULE_CAPACITY:
+        description: BC-04
+      ONSITE_OPERATIONS:
+        description: BC-05
+      INTERVIEW_MANAGEMENT:
+        description: BC-06
+      COMMUNICATION:
+        description: BC-07
+
+  MetricsDimension:
+    description: The measurement category of an EventMetricsSnapshot or ReportDefinition dimension.
+    permissible_values:
+      REGISTRATION:
+        description: Candidate counts by status (total, confirmed, waitlisted, cancelled).
+      CHECK_IN:
+        description: Onsite attendance metrics (checked-in count, no-show rate, by track).
+      ASSESSMENT:
+        description: Assessment completion and pass rates.
+      INTERVIEW:
+        description: Score distributions, recommendation breakdown, skip rates.
+      FUNNEL:
+        description: Cross-stage conversion rates (registered -> confirmed -> checked-in -> interviewed -> passed).
+
+  SnapshotInterval:
+    description: The frequency at which an EventMetricsSnapshot is computed.
+    permissible_values:
+      REAL_TIME:
+        description: Updated on every relevant domain event receipt (lightweight in-memory update).
+      HOURLY:
+        description: Computed and persisted every hour on schedule.
+      DAILY:
+        description: Computed and persisted once per day (end-of-day summary).
+
+  SnapshotStatus:
+    description: Whether a snapshot is the current one for its event + dimension + interval.
+    permissible_values:
+      COMPUTING:
+        description: Snapshot calculation is in progress (HOURLY/DAILY intervals only).
+      CURRENT:
+        description: The latest completed snapshot for this event + dimension + interval.
+      ARCHIVED:
+        description: Superseded by a newer snapshot of the same interval type.
+
+  TimeRangeType:
+    description: How the time window of a ReportDefinition is specified.
+    permissible_values:
+      FIXED:
+        description: Explicit custom_from and custom_to dates specified.
+      RELATIVE_LAST_7_DAYS:
+        description: Rolling 7-day window relative to execution time.
+      RELATIVE_LAST_30_DAYS:
+        description: Rolling 30-day window relative to execution time.
+      EVENT_DURATION:
+        description: Scoped to the full duration of the referenced ECR event.
+
+  ReportStatus:
+    description: Lifecycle status of a ReportDefinition.
+    permissible_values:
+      DRAFT:
+        description: Being configured; not yet available for execution.
+      PUBLISHED:
+        description: Active and available for on-demand or scheduled execution.
+      DEPRECATED:
+        description: No longer actively maintained; retained for historical reference.

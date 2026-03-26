@@ -1,0 +1,557 @@
+id: https://xtalent.vng.com.vn/ecr/communication
+name: ECRCommunication
+description: >-
+  Domain model for the Communication bounded context of the ECR module.
+  This context owns CommunicationJob lifecycle, EmailTemplate versioning,
+  per-recipient DeliveryRecord tracking, retry-with-backoff management,
+  failure escalation, and idempotency enforcement.
+  Bulk email is rate-limited to 500 messages/minute (NFR-07).
+  SMS is deferred — not modeled in this version.
+  No silent delivery failures are permitted.
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  ecr: https://xtalent.vng.com.vn/ecr/
+  ecr_comm: https://xtalent.vng.com.vn/ecr/communication/
+
+default_prefix: ecr_comm
+default_range: string
+
+imports:
+  - linkml:types
+
+classes:
+
+  # ── Aggregate Root: CommunicationJob ──────────────────────────────────────────
+
+  CommunicationJob:
+    tree_root: true
+    description: >-
+      A single dispatch task — bulk or targeted — representing one send action.
+      Groups all DeliveryRecords produced by that action. Idempotent: duplicate
+      triggering events with the same idempotency_key are ignored.
+      Rate-limited to 500 recipients/minute for bulk sends (NFR-07).
+    slots:
+      - job_id
+      - idempotency_key
+      - event_id
+      - job_type
+      - trigger_event_type
+      - trigger_event_id
+      - template_id
+      - template_version_number
+      - recipient_list
+      - delivery_records
+      - job_status
+      - retry_policy
+      - created_at
+      - created_by
+      - completed_at
+    slot_usage:
+      job_id:
+        required: true
+      idempotency_key:
+        required: true
+      event_id:
+        required: true
+      job_type:
+        required: true
+      trigger_event_type:
+        required: true
+      trigger_event_id:
+        required: true
+      template_id:
+        required: true
+      template_version_number:
+        required: true
+      recipient_list:
+        required: true
+      job_status:
+        required: true
+      retry_policy:
+        required: true
+      created_at:
+        required: true
+
+  # ── Value Object: RecipientEntry ──────────────────────────────────────────────
+
+  RecipientEntry:
+    description: >-
+      A single entry in the RecipientList. Captures the candidate reference and
+      the email address to be contacted. Built at job creation time; immutable.
+    slots:
+      - candidate_registration_id
+      - email_address
+      - template_variables
+    slot_usage:
+      email_address:
+        required: true
+
+  # ── Entity: DeliveryRecord ─────────────────────────────────────────────────────
+
+  DeliveryRecord:
+    description: >-
+      Per-recipient delivery tracking entity owned by a CommunicationJob.
+      Records delivery status, retry count, and timestamps.
+      Updated via webhook callbacks from the Email Delivery Service.
+      A FAILED or BOUNCED DeliveryRecord must trigger FailureEscalation —
+      it must never be silently discarded.
+    slots:
+      - delivery_record_id
+      - job_id
+      - candidate_registration_id
+      - email_address
+      - delivery_status
+      - retry_count
+      - last_attempted_at
+      - delivered_at
+      - failure_reason
+      - external_message_id
+      - escalated
+    slot_usage:
+      delivery_record_id:
+        required: true
+      job_id:
+        required: true
+      email_address:
+        required: true
+      delivery_status:
+        required: true
+      retry_count:
+        required: true
+      escalated:
+        required: true
+
+  # ── Value Object: RetryPolicy ─────────────────────────────────────────────────
+
+  RetryPolicy:
+    description: >-
+      Retry behavior for failed deliveries. Defines maximum attempts and
+      initial backoff interval (exponential). Applies at the CommunicationJob level.
+      Default: maxAttempts=3, backoffSeconds=60 (doubles each retry).
+    slots:
+      - max_attempts
+      - initial_backoff_seconds
+      - last_attempted_at
+    slot_usage:
+      max_attempts:
+        required: true
+        minimum_value: 1
+      initial_backoff_seconds:
+        required: true
+        minimum_value: 1
+
+  # ── Aggregate Root: EmailTemplate ─────────────────────────────────────────────
+
+  EmailTemplate:
+    description: >-
+      A versioned email template with named variable slots (e.g., {{candidate_name}}).
+      Manages which version is currently active. Versions are immutable once published.
+      Only one version may be ACTIVE per template at a time.
+    slots:
+      - template_id
+      - template_name
+      - template_purpose
+      - active_version_number
+      - versions
+      - created_by
+      - created_at
+    slot_usage:
+      template_id:
+        required: true
+      template_name:
+        required: true
+      template_purpose:
+        required: true
+      created_at:
+        required: true
+
+  # ── Entity: TemplateVersion ───────────────────────────────────────────────────
+
+  TemplateVersion:
+    description: >-
+      A specific, immutable rendition of an EmailTemplate. Identified by a
+      monotonically incrementing version number per template.
+      Subject line, body, and declared variable slots are frozen at publish time.
+      Once ACTIVE, only a new version can supersede it — the existing version
+      is DEPRECATED, not deleted.
+    slots:
+      - template_id
+      - version_number
+      - subject_line
+      - body_html
+      - body_text
+      - declared_variables
+      - template_version_status
+      - published_at
+      - published_by
+      - deprecated_at
+    slot_usage:
+      template_id:
+        required: true
+      version_number:
+        required: true
+        minimum_value: 1
+      subject_line:
+        required: true
+      body_html:
+        required: true
+      template_version_status:
+        required: true
+      published_at:
+        required: true
+      published_by:
+        required: true
+
+  # ── Domain Events ──────────────────────────────────────────────────────────────
+
+  CommDomainEvent:
+    description: Base class for domain events published by Communication BC.
+    slots:
+      - domain_event_id
+      - event_id
+      - occurred_at
+      - actor_id
+    slot_usage:
+      domain_event_id:
+        required: true
+      occurred_at:
+        required: true
+
+  CommunicationJobCreatedEvent:
+    is_a: CommDomainEvent
+    description: >-
+      Emitted when a CommunicationJob is created and queued.
+      Consumed by Analytics & Audit for bulk operation tracking.
+    slots:
+      - job_id
+      - job_type
+      - trigger_event_type
+      - recipient_count
+
+  EmailDispatchedEvent:
+    is_a: CommDomainEvent
+    description: >-
+      Emitted when an individual email is submitted to the Email Delivery Service.
+      One event per DeliveryRecord transition from QUEUED to SENT.
+    slots:
+      - job_id
+      - delivery_record_id
+      - email_address
+      - external_message_id
+
+  EmailDeliveredEvent:
+    is_a: CommDomainEvent
+    description: >-
+      Emitted when a delivery webhook confirms successful delivery.
+      DeliveryRecord transitions from SENT to DELIVERED.
+    slots:
+      - job_id
+      - delivery_record_id
+      - email_address
+      - delivered_at
+
+  EmailFailedEvent:
+    is_a: CommDomainEvent
+    description: >-
+      Emitted when a DeliveryRecord reaches a terminal failure state
+      (BOUNCED or FAILED after all retries exhausted).
+      Triggers FailureEscalation — TA Coordinator is notified.
+      Must never be silently dropped.
+    slots:
+      - job_id
+      - delivery_record_id
+      - email_address
+      - failure_reason
+      - delivery_status
+
+  TemplatePublishedEvent:
+    is_a: CommDomainEvent
+    description: Emitted when a new TemplateVersion is published and set to ACTIVE.
+    slots:
+      - template_id
+      - version_number
+      - template_purpose
+
+# ── Slots ──────────────────────────────────────────────────────────────────────
+
+slots:
+
+  job_id:
+    range: string
+    description: UUID of the CommunicationJob.
+
+  idempotency_key:
+    range: string
+    description: >-
+      Derived from trigger_event_id + job_type. Prevents duplicate jobs from
+      at-least-once message delivery. If a job with this key exists, the new
+      dispatch command is ignored.
+
+  event_id:
+    range: string
+    description: Reference to the ECR Event this communication is related to.
+
+  job_type:
+    range: CommunicationJobType
+    description: Classification of the communication job.
+
+  trigger_event_type:
+    range: string
+    description: The domain event type that triggered job creation (e.g., "CandidateConfirmed").
+
+  trigger_event_id:
+    range: string
+    description: The ID of the domain event that triggered this job. Used for idempotency key derivation.
+
+  template_id:
+    range: string
+    description: Reference to the EmailTemplate used for this job.
+
+  template_version_number:
+    range: integer
+    description: The specific version of the EmailTemplate used. Captured at job creation; immutable.
+    minimum_value: 1
+
+  recipient_list:
+    range: RecipientEntry
+    multivalued: true
+    inlined_as_list: true
+    description: The list of recipients for this job. Built at job creation time; immutable.
+
+  delivery_records:
+    range: DeliveryRecord
+    multivalued: true
+    inlined_as_list: true
+    description: Per-recipient delivery status records. Created one-per-recipient at job start.
+
+  job_status:
+    range: CommunicationJobStatus
+    description: Current lifecycle state of the CommunicationJob.
+
+  retry_policy:
+    range: RetryPolicy
+    inlined: true
+    description: Retry configuration for failed deliveries in this job.
+
+  created_at:
+    range: datetime
+    description: Timestamp when the CommunicationJob was created.
+
+  created_by:
+    range: string
+    description: xTalent User ID or "system" that created the job.
+
+  completed_at:
+    range: datetime
+    description: Timestamp when the CommunicationJob reached a terminal state (COMPLETED, PARTIAL_FAILURE, or FAILED).
+
+  candidate_registration_id:
+    range: string
+    description: Reference to the CandidateEventRegistration in Candidate Registration BC. May be null for non-candidate recipients (e.g., interviewers).
+
+  email_address:
+    range: string
+    description: Email address of the recipient.
+
+  template_variables:
+    range: string
+    multivalued: true
+    description: Key-value map of template variable values for this specific recipient. Encoded as "key=value" pairs.
+
+  delivery_record_id:
+    range: string
+    description: UUID of the DeliveryRecord.
+
+  delivery_status:
+    range: DeliveryStatus
+    description: Current delivery state of this DeliveryRecord.
+
+  retry_count:
+    range: integer
+    description: Number of send attempts made so far for this DeliveryRecord.
+    minimum_value: 0
+
+  last_attempted_at:
+    range: datetime
+    description: Timestamp of the most recent send attempt.
+
+  delivered_at:
+    range: datetime
+    description: Timestamp of confirmed delivery (from webhook). Null if not yet delivered.
+
+  failure_reason:
+    range: string
+    description: Human-readable or code reason for delivery failure. Populated on BOUNCED or FAILED status.
+
+  external_message_id:
+    range: string
+    description: The message ID assigned by the Email Delivery Service. Used for webhook correlation.
+
+  escalated:
+    range: boolean
+    description: Whether a FailureEscalation alert has been raised for this DeliveryRecord.
+
+  max_attempts:
+    range: integer
+    description: Maximum number of send attempts before declaring FAILED.
+    minimum_value: 1
+
+  initial_backoff_seconds:
+    range: integer
+    description: Initial backoff interval in seconds. Doubles on each retry (exponential backoff).
+    minimum_value: 1
+
+  template_name:
+    range: string
+    description: Human-readable name of the EmailTemplate (e.g., "Candidate Confirmation Email").
+
+  template_purpose:
+    range: TemplatePurpose
+    description: The intended use of this template, used to auto-select templates for triggered jobs.
+
+  active_version_number:
+    range: integer
+    description: Version number of the currently ACTIVE TemplateVersion for this template.
+    minimum_value: 1
+
+  versions:
+    range: TemplateVersion
+    multivalued: true
+    inlined_as_list: true
+    description: All versions of this template (ACTIVE + DEPRECATED).
+
+  version_number:
+    range: integer
+    description: Monotonically incrementing version identifier per template.
+    minimum_value: 1
+
+  subject_line:
+    range: string
+    description: Email subject line for this template version. May contain template variable placeholders.
+
+  body_html:
+    range: string
+    description: HTML body of the email for this template version.
+
+  body_text:
+    range: string
+    description: Plain-text fallback body for this template version.
+
+  declared_variables:
+    range: string
+    multivalued: true
+    description: List of variable names declared in this template version (e.g., "candidate_name", "kit_link_url").
+
+  template_version_status:
+    range: TemplateVersionStatus
+    description: Current status of this template version.
+
+  published_at:
+    range: datetime
+    description: Timestamp when this template version was published.
+
+  published_by:
+    range: string
+    description: xTalent User ID of the template manager who published this version.
+
+  deprecated_at:
+    range: datetime
+    description: Timestamp when this template version was deprecated. Null if still ACTIVE.
+
+  domain_event_id:
+    range: string
+    description: UUID of the domain event message.
+
+  occurred_at:
+    range: datetime
+    description: Timestamp when the domain event occurred.
+
+  actor_id:
+    range: string
+    description: xTalent User ID or "system" that triggered the event.
+
+  recipient_count:
+    range: integer
+    description: Total number of recipients in the CommunicationJob.
+    minimum_value: 1
+
+# ── Enumerations ───────────────────────────────────────────────────────────────
+
+enums:
+
+  CommunicationJobType:
+    description: Classification of the communication job purpose.
+    permissible_values:
+      CANDIDATE_CONFIRMATION:
+        description: Confirmation email to a newly confirmed candidate.
+      WAITLIST_PROMOTION:
+        description: Notification to a waitlisted candidate promoted to Confirmed.
+      REGISTRATION_CANCELLATION:
+        description: Cancellation notification to a candidate or admin.
+      SLOT_ASSIGNMENT:
+        description: Email notifying a candidate of their assigned interview slot.
+      SESSION_DIGEST:
+        description: Interviewer kit email with KitLink, dispatched by Interview Management.
+      BULK_ANNOUNCEMENT:
+        description: Configurable announcement to a candidate cohort (e.g., event published).
+      MANUAL:
+        description: Ad-hoc email initiated directly by a TA Coordinator.
+
+  CommunicationJobStatus:
+    description: Lifecycle state of a CommunicationJob.
+    permissible_values:
+      CREATED:
+        description: Job initialized; no emails dispatched yet.
+      SENDING:
+        description: At least one email dispatched; job in flight.
+      COMPLETED:
+        description: All DeliveryRecords reached terminal status (DELIVERED or BOUNCED with escalation).
+      PARTIAL_FAILURE:
+        description: At least one DeliveryRecord is FAILED or BOUNCED; escalation triggered.
+      FAILED:
+        description: All DeliveryRecords are FAILED or BOUNCED.
+
+  DeliveryStatus:
+    description: Per-recipient delivery state.
+    permissible_values:
+      QUEUED:
+        description: Awaiting dispatch (rate limiting in effect or job just started).
+      SENT:
+        description: Submitted to Email Delivery Service; awaiting delivery webhook.
+      DELIVERED:
+        description: Delivery webhook confirmed successful receipt by recipient server.
+      BOUNCED:
+        description: Permanent delivery failure (invalid address, rejected by recipient server).
+      RETRYING:
+        description: Previous attempt failed; waiting for next retry per RetryPolicy.
+      FAILED:
+        description: All retry attempts exhausted without confirmed delivery. Escalation triggered.
+
+  TemplatePurpose:
+    description: The intended communication purpose of an EmailTemplate. Used for auto-selection.
+    permissible_values:
+      CANDIDATE_CONFIRMATION:
+        description: Sent to candidates on status Confirmed.
+      WAITLIST_PROMOTION:
+        description: Sent to waitlisted candidates on promotion.
+      SLOT_ASSIGNMENT:
+        description: Sent to candidates when assigned to an interview slot.
+      SESSION_DIGEST:
+        description: Sent to interviewers with KitLink.
+      REGISTRATION_CANCELLATION:
+        description: Sent on registration cancellation.
+      BULK_ANNOUNCEMENT:
+        description: Sent for event announcements.
+      GENERIC:
+        description: Manual or ad-hoc communications.
+
+  TemplateVersionStatus:
+    description: Status of a specific TemplateVersion.
+    permissible_values:
+      DRAFT:
+        description: Being configured; not yet published.
+      ACTIVE:
+        description: Current active version. Only one ACTIVE version per template at a time.
+      DEPRECATED:
+        description: Superseded by a newer version. Retained for historical reference.

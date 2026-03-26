@@ -1,0 +1,2326 @@
+# ECR Module — Domain Event Repository
+# xTalent HCM Solution | 2026-03-25
+#
+# Aggregates all domain events from:
+#   - Event Storming (event-storming.md, DE-01 to DE-54)
+#   - Bounded Context definitions (bounded-contexts.md)
+#   - LinkML domain models (model.linkml.yaml per BC)
+#   - Use case flows (flows/*.flow.md per BC)
+#
+# Events are organized by Bounded Context.
+# Each event references its Event Storming ID (ES-ID) where applicable.
+# Consumers are BCs or external systems that subscribe to each event.
+
+version: "1.0"
+module: ecr
+generated: "2026-03-25"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# EVENT SUMMARY
+# ─────────────────────────────────────────────────────────────────────────────
+# Total events cataloged: 54
+# BC-01 (Event Management):    9 events  (EVT-001 to EVT-009)
+# BC-02 (Candidate Reg):      12 events  (EVT-010 to EVT-021)
+# BC-03 (Assessment):          5 events  (EVT-022 to EVT-026)
+# BC-04 (Schedule & Capacity): 6 events  (EVT-027 to EVT-032)
+# BC-05 (Onsite Operations):   7 events  (EVT-033 to EVT-039)
+# BC-06 (Interview Mgmt):      9 events  (EVT-040 to EVT-048)
+# BC-07 (Communication):       5 events  (EVT-049 to EVT-053)
+# BC-08 (Analytics & Audit):   1 event   (EVT-054)
+# ─────────────────────────────────────────────────────────────────────────────
+
+events:
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # BC-01: EVENT MANAGEMENT
+  # Aggregate: Event
+  # ES events: DE-01, DE-02, DE-03, DE-04, DE-05, DE-06, DE-07, DE-08, DE-09
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  - id: EVT-001
+    name: EventDraftCreated
+    es_ref: DE-01
+    bounded_context: BC-01
+    aggregate: Event
+    description: >
+      A new recruitment event has been created in Draft lifecycle state
+      via the event creation wizard. The event is not yet visible to candidates.
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: title
+        type: string
+        required: true
+      - field: start_date
+        type: date
+        required: true
+      - field: end_date
+        type: date
+        required: true
+      - field: created_by
+        type: string
+        required: true
+      - field: occurred_at
+        type: datetime
+        required: true
+    triggers:
+      - policy: none (initial state, no downstream policy)
+    consumers:
+      - BC-08 (Analytics & Audit — log creation action)
+    commands:
+      - CMD-01 (CreateEvent)
+    version: "1.0"
+    stability: stable
+
+  - id: EVT-002
+    name: EventPublished
+    es_ref: DE-02
+    bounded_context: BC-01
+    aggregate: Event
+    description: >
+      Event transitioned from Draft to Published state. Now visible in the event
+      registry. Candidates cannot yet register; registration_deadline may trigger
+      announcement emails.
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: published_at
+        type: datetime
+        required: true
+      - field: actor_id
+        type: string
+        required: true
+    triggers:
+      - policy: optional announcement email dispatch (configurable per event)
+    consumers:
+      - BC-07 (Communication — may trigger bulk announcement if configured)
+      - BC-08 (Analytics & Audit — log publish action)
+    commands:
+      - CMD-02 (PublishEvent)
+    version: "1.0"
+    stability: stable
+
+  - id: EVT-003
+    name: RegistrationOpened
+    es_ref: DE-03
+    bounded_context: BC-01
+    aggregate: Event
+    description: >
+      Registration window activated. Candidates can now submit registrations.
+      BC-02 (Candidate Registration) gates registration acceptance on this event.
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: registration_deadline
+        type: datetime
+        required: false
+      - field: actor_id
+        type: string
+        required: true
+      - field: occurred_at
+        type: datetime
+        required: true
+    triggers:
+      - policy: none (BC-02 subscribes to gate registration acceptance)
+    consumers:
+      - BC-02 (Candidate Registration — enables registration acceptance)
+      - BC-08 (Analytics & Audit)
+    commands:
+      - CMD-03 (OpenRegistration)
+    version: "1.0"
+    stability: stable
+
+  - id: EVT-004
+    name: EventCloned
+    es_ref: DE-04
+    bounded_context: BC-01
+    aggregate: Event
+    description: >
+      A new event was created by cloning an existing event. All structural data
+      (tracks, capacities, form schema) copied by value — no runtime reference to
+      source (OQ-D5 resolution). Operational data excluded from clone.
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+        description: ID of the newly created clone
+      - field: source_event_id
+        type: uuid
+        required: true
+        description: ID of the source event (traceability only — no runtime dependency)
+      - field: new_event_id
+        type: uuid
+        required: true
+      - field: cloned_at
+        type: datetime
+        required: true
+      - field: actor_id
+        type: string
+        required: true
+    triggers:
+      - policy: none (clone is independent; no automatic downstream reactions)
+    consumers:
+      - BC-08 (Analytics & Audit — log clone action with source reference)
+    commands:
+      - CMD-04 (CloneEvent)
+    version: "1.0"
+    stability: stable
+
+  - id: EVT-005
+    name: TrackAdded
+    es_ref: DE-05
+    bounded_context: BC-01
+    aggregate: Event
+    description: >
+      A new candidate Track was appended to an Event before it transitions
+      to In Progress. Blocked after structural lock (BR-06).
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: track_id
+        type: uuid
+        required: true
+      - field: track_name
+        type: string
+        required: true
+      - field: track_capacity
+        type: integer
+        required: true
+      - field: actor_id
+        type: string
+        required: true
+      - field: occurred_at
+        type: datetime
+        required: true
+    triggers:
+      - policy: none
+    consumers:
+      - BC-04 (Schedule & Capacity — may need to update schedule matrix reference)
+      - BC-08 (Analytics & Audit)
+    commands:
+      - CMD-05 (AddTrack)
+    version: "1.0"
+    stability: stable
+
+  - id: EVT-006
+    name: FormFieldAdded
+    es_ref: DE-06
+    bounded_context: BC-01
+    aggregate: RegistrationForm
+    description: >
+      A custom field was added to the RegistrationForm for an event.
+      Blocked after structural lock (BR-06).
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: form_id
+        type: uuid
+        required: true
+      - field: field_id
+        type: string
+        required: true
+      - field: field_type
+        type: string
+        required: true
+      - field: label
+        type: string
+        required: true
+      - field: is_required
+        type: boolean
+        required: true
+      - field: actor_id
+        type: string
+        required: true
+      - field: occurred_at
+        type: datetime
+        required: true
+    triggers:
+      - policy: none
+    consumers:
+      - BC-08 (Analytics & Audit)
+    commands:
+      - CMD-06 (AddFormField)
+    version: "1.0"
+    stability: stable
+
+  - id: EVT-007
+    name: EventStarted
+    es_ref: DE-07
+    bounded_context: BC-01
+    aggregate: Event
+    description: >
+      Event transitioned to In Progress. Structural lock (BR-06) is engaged.
+      All subsequent structural mutation commands are rejected by the domain.
+      This is the primary trigger for all operational contexts to activate.
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: started_at
+        type: datetime
+        required: true
+      - field: actor_id
+        type: string
+        required: true
+    triggers:
+      - policy: POL-10 (StructuralChangeLock — system sets structural_locked flag)
+    consumers:
+      - BC-02 (Candidate Registration — blocks new registrations)
+      - BC-04 (Schedule & Capacity — locks schedule matrix)
+      - BC-05 (Onsite Operations — activates kiosk check-in mode)
+      - BC-06 (Interview Management — activates interview mode)
+      - BC-08 (Analytics & Audit — log structural lock event)
+    commands:
+      - CMD-07 (StartEvent)
+    version: "1.0"
+    stability: stable
+
+  - id: EVT-008
+    name: EventClosed
+    es_ref: DE-08
+    bounded_context: BC-01
+    aggregate: Event
+    description: >
+      Event transitioned from In Progress to Closed. No further operational
+      changes. Session Digest links will expire 24h after close (POL-11, BR-05).
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: actor_id
+        type: string
+        required: true
+      - field: occurred_at
+        type: datetime
+        required: true
+    triggers:
+      - policy: POL-11 (SessionDigestLinkExpiry — expire all KitLinks 24h after event day)
+    consumers:
+      - BC-06 (Interview Management — schedules KitLink expiry job)
+      - BC-08 (Analytics & Audit — log close action)
+    commands:
+      - CMD-08 (CloseEvent)
+    version: "1.0"
+    stability: stable
+
+  - id: EVT-009
+    name: EventArchived
+    es_ref: DE-09
+    bounded_context: BC-01
+    aggregate: Event
+    description: >
+      Event moved to Archived state for long-term retention. Administrative action
+      after event is Closed. Audit log preserved for minimum 3 years (NFR-10).
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: actor_id
+        type: string
+        required: true
+      - field: occurred_at
+        type: datetime
+        required: true
+    triggers:
+      - policy: none (archive is terminal; no downstream reactions required)
+    consumers:
+      - BC-08 (Analytics & Audit — log archive action)
+    commands:
+      - System scheduled or CMD-archive (TA Coordinator action)
+    version: "1.0"
+    stability: stable
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # BC-02: CANDIDATE REGISTRATION
+  # Aggregates: CandidateEventRegistration, WaitlistEntry, DuplicateFlag
+  # ES events: DE-10 to DE-23
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  - id: EVT-010
+    name: CandidateRegisteredOnline
+    es_ref: DE-10
+    bounded_context: BC-02
+    aggregate: CandidateEventRegistration
+    description: >
+      A candidate submitted the online registration form and was assigned an SBD.
+      Duplicate detection runs immediately (POL-03). Maps to CandidateRegistered
+      domain event in LinkML model.
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: registration_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: track_id
+        type: uuid
+        required: true
+      - field: sbd_number
+        type: string
+        required: true
+      - field: registration_source
+        type: string
+        required: true
+        description: Always ONLINE for this event
+      - field: occurred_at
+        type: datetime
+        required: true
+    triggers:
+      - policy: POL-01 (AutoSBDAssignment — SBD already assigned at capture, BR-01)
+      - policy: POL-03 (DuplicateDetectionCheck — multi-factor matching)
+    consumers:
+      - BC-04 (Schedule & Capacity — candidate available for slot allocation on confirmation)
+      - BC-07 (Communication — triggers confirmation email on CandidateConfirmed)
+      - BC-08 (Analytics & Audit — log registration)
+    commands:
+      - CMD-09 (RegisterCandidateOnline)
+    version: "1.0"
+    stability: stable
+
+  - id: EVT-011
+    name: CandidateRegisteredAtKiosk
+    es_ref: DE-11
+    bounded_context: BC-02
+    aggregate: CandidateEventRegistration
+    description: >
+      A walk-in candidate was captured at an onsite kiosk in online mode and
+      assigned an SBD from the server sequence. Maps to CandidateRegistered
+      with source=KIOSK.
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: registration_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: track_id
+        type: uuid
+        required: true
+      - field: sbd_number
+        type: string
+        required: true
+      - field: registration_source
+        type: string
+        required: true
+        description: KIOSK
+      - field: kiosk_session_id
+        type: string
+        required: true
+      - field: occurred_at
+        type: datetime
+        required: true
+    triggers:
+      - policy: POL-02 (AutoSBDAssignment — kiosk online path)
+      - policy: POL-03 (DuplicateDetectionCheck)
+    consumers:
+      - BC-04 (Schedule & Capacity)
+      - BC-08 (Analytics & Audit)
+    commands:
+      - CMD-10 (RegisterCandidateAtKiosk)
+    version: "1.0"
+    stability: stable
+
+  - id: EVT-012
+    name: CandidateRegisteredOffline
+    es_ref: DE-12
+    bounded_context: BC-02
+    aggregate: CandidateEventRegistration
+    description: >
+      A walk-in candidate was captured at a kiosk in offline mode. Record is
+      Provisional until server sync confirms. SBD assigned from pre-allocated
+      SBDBlock (OQ-D3 resolution). Maps to CandidateRegistered with source=OFFLINE.
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: registration_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: track_id
+        type: uuid
+        required: true
+      - field: sbd_number
+        type: string
+        required: true
+        description: Assigned from kiosk SBDBlock
+      - field: registration_source
+        type: string
+        required: true
+        description: OFFLINE
+      - field: kiosk_session_id
+        type: string
+        required: true
+      - field: block_id
+        type: uuid
+        required: true
+        description: SBDBlock the SBD was drawn from
+      - field: occurred_at
+        type: datetime
+        required: true
+    triggers:
+      - policy: Queued for sync (OfflineSyncQueue); duplicate detection deferred to sync
+    consumers:
+      - BC-05 (Onsite Operations — queued in OfflineSyncQueue for server sync)
+      - BC-08 (Analytics & Audit — on sync confirmation)
+    commands:
+      - CMD-11 (CaptureOfflineRegistration — kiosk system)
+    version: "1.0"
+    stability: stable
+
+  - id: EVT-013
+    name: SBDAssigned
+    es_ref: DE-13
+    bounded_context: BC-02
+    aggregate: CandidateEventRegistration
+    description: >
+      A unique Số Báo Danh was generated and assigned to a candidate for this event.
+      Emitted as part of every registration capture (online, kiosk, offline).
+      SBD is immutable after assignment (BR-01).
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: registration_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: sbd_number
+        type: string
+        required: true
+      - field: assigned_at
+        type: datetime
+        required: true
+      - field: assigned_by_kiosk_id
+        type: string
+        required: false
+    triggers:
+      - policy: none (SBD assigned inline at registration capture; this event confirms it)
+    consumers:
+      - BC-08 (Analytics & Audit — SBD assignment audit trail)
+    version: "1.0"
+    stability: stable
+
+  - id: EVT-014
+    name: DuplicateFlagRaised
+    es_ref: DE-14
+    bounded_context: BC-02
+    aggregate: DuplicateFlag
+    description: >
+      Multi-factor duplicate detection found a potential match for a new registration.
+      Human review required (BR-02). Unresolved flags block bulk advancement (BR-03).
+      TA Coordinator is notified (POL-04).
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: registration_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: flag_id
+        type: uuid
+        required: true
+      - field: matched_registration_id
+        type: uuid
+        required: true
+      - field: match_dimensions
+        type: array
+        required: true
+        description: Which dedup dimensions matched (PHONE, STUDENT_ID, BOTH)
+      - field: occurred_at
+        type: datetime
+        required: true
+    triggers:
+      - policy: POL-04 (DuplicateNotificationToCoordinator — notify TA Coordinator)
+    consumers:
+      - BC-07 (Communication — sends duplicate flag notification to TA Coordinator)
+      - BC-08 (Analytics & Audit — log duplicate flag)
+    commands:
+      - System (triggered by duplicate detection on registration capture)
+    version: "1.0"
+    stability: stable
+
+  - id: EVT-015
+    name: DuplicateMerged
+    es_ref: DE-15
+    bounded_context: BC-02
+    aggregate: DuplicateFlag
+    description: >
+      TA Coordinator resolved a DuplicateFlag with the KEEP_BOTH decision —
+      both registrations confirmed as separate individuals. Audit entry created.
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: registration_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: flag_id
+        type: uuid
+        required: true
+      - field: resolution_action
+        type: string
+        required: true
+        description: KEEP_BOTH
+      - field: resolved_by
+        type: string
+        required: true
+      - field: occurred_at
+        type: datetime
+        required: true
+    triggers:
+      - policy: POL-14-variant (AuditEntryCreated for duplicate resolution)
+    consumers:
+      - BC-08 (Analytics & Audit — log resolution, AuditAction=DUPLICATE_RESOLVED)
+    commands:
+      - CMD-13 (ResolveDuplicateKeepBoth)
+    version: "1.0"
+    stability: stable
+
+  - id: EVT-016
+    name: DuplicateKeptPrimary
+    es_ref: DE-16
+    bounded_context: BC-02
+    aggregate: DuplicateFlag
+    description: >
+      TA Coordinator resolved a DuplicateFlag keeping this registration and
+      cancelling the matched registration (KEEP_THIS resolution action).
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: registration_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: flag_id
+        type: uuid
+        required: true
+      - field: matched_registration_id
+        type: uuid
+        required: true
+      - field: resolution_action
+        type: string
+        required: true
+        description: KEEP_THIS
+      - field: resolved_by
+        type: string
+        required: true
+      - field: occurred_at
+        type: datetime
+        required: true
+    triggers:
+      - policy: Cancel matched registration (side effect)
+    consumers:
+      - BC-07 (Communication — cancellation notification to matched registration)
+      - BC-08 (Analytics & Audit — log resolution)
+    commands:
+      - CMD-14 (ResolveDuplicateReject — keeping primary, cancelling matched)
+    version: "1.0"
+    stability: stable
+
+  - id: EVT-017
+    name: DuplicateRejected
+    es_ref: DE-17
+    bounded_context: BC-02
+    aggregate: DuplicateFlag
+    description: >
+      TA Coordinator resolved a DuplicateFlag keeping the matched registration and
+      cancelling this registration (KEEP_MATCHED resolution action).
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: registration_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: flag_id
+        type: uuid
+        required: true
+      - field: matched_registration_id
+        type: uuid
+        required: true
+      - field: resolution_action
+        type: string
+        required: true
+        description: KEEP_MATCHED
+      - field: resolved_by
+        type: string
+        required: true
+      - field: occurred_at
+        type: datetime
+        required: true
+    triggers:
+      - policy: Cancel this registration (side effect)
+    consumers:
+      - BC-07 (Communication — cancellation notification to this registration)
+      - BC-08 (Analytics & Audit — log resolution)
+    commands:
+      - CMD-12 (ResolveDuplicateMerge — rejecting primary)
+    version: "1.0"
+    stability: stable
+
+  - id: EVT-018
+    name: CandidateConfirmed
+    es_ref: DE-18
+    bounded_context: BC-02
+    aggregate: CandidateEventRegistration
+    description: >
+      Registration status transitioned to Confirmed. Candidate is eligible for
+      slot allocation and assessment dispatch (BR-07). Triggers slot allocation
+      in Schedule & Capacity BC and confirmation email in Communication BC.
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: registration_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: track_id
+        type: uuid
+        required: true
+      - field: confirmed_at
+        type: datetime
+        required: true
+      - field: actor_id
+        type: string
+        required: true
+    triggers:
+      - policy: none (triggers downstream BC subscriptions)
+    consumers:
+      - BC-03 (Assessment — eligibility signal for assessment dispatch, BR-07)
+      - BC-04 (Schedule & Capacity — triggers slot allocation)
+      - BC-05 (Onsite Operations — populates local candidate lookup cache)
+      - BC-07 (Communication — sends confirmation email)
+      - BC-08 (Analytics & Audit — log confirmation, AuditAction=CANDIDATE_CONFIRMED)
+    commands:
+      - CMD-17 (RunCandidateAllocation — system outcome), or manual TA Coordinator confirmation
+    version: "1.0"
+    stability: stable
+
+  - id: EVT-019
+    name: CandidateWaitlisted
+    es_ref: DE-19
+    bounded_context: BC-02
+    aggregate: WaitlistEntry
+    description: >
+      Track capacity was full when the candidate registered; candidate placed on
+      waitlist with FCFS position. FCFS ordering by registeredAt timestamp (BR-10).
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: registration_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: track_id
+        type: uuid
+        required: true
+      - field: waitlist_id
+        type: uuid
+        required: true
+      - field: waitlist_position
+        type: integer
+        required: true
+      - field: waitlisted_at
+        type: datetime
+        required: true
+    triggers:
+      - policy: none (waitlist backfill triggered by cancellation, not by waitlisting)
+    consumers:
+      - BC-07 (Communication — sends waitlist notification email)
+      - BC-08 (Analytics & Audit)
+    commands:
+      - System (triggered when track capacity exceeded at registration)
+    version: "1.0"
+    stability: stable
+
+  - id: EVT-020
+    name: WaitlistBackfilled
+    es_ref: DE-20
+    bounded_context: BC-02
+    aggregate: WaitlistEntry
+    description: >
+      A waitlisted candidate was promoted to Confirmed when a slot vacancy opened
+      (POL-05). FCFS ordering: first waitlist position by registeredAt timestamp.
+      Maps to WaitlistActivated in LinkML model.
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: registration_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: track_id
+        type: uuid
+        required: true
+      - field: waitlist_id
+        type: uuid
+        required: true
+      - field: activated_at
+        type: datetime
+        required: true
+    triggers:
+      - policy: POL-05 (WaitlistBackfillTrigger — automatically on slot vacancy)
+    consumers:
+      - BC-04 (Schedule & Capacity — triggers slot assignment for activated candidate)
+      - BC-07 (Communication — sends waitlist promotion email)
+      - BC-08 (Analytics & Audit)
+    commands:
+      - System (WaitlistBackfillTrigger policy) or CMD-waitlist-confirm (manual)
+    version: "1.0"
+    stability: stable
+
+  - id: EVT-021
+    name: RegistrationCancelled
+    es_ref: DE-21
+    bounded_context: BC-02
+    aggregate: CandidateEventRegistration
+    description: >
+      A candidate registration was cancelled — either candidate-initiated or
+      admin-cancelled. If the registration was Confirmed, it vacates a slot and
+      triggers waitlist backfill (POL-05). Records are never deleted; only cancelled.
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: registration_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: track_id
+        type: uuid
+        required: true
+      - field: previous_status
+        type: string
+        required: true
+        description: Registration status before cancellation
+      - field: cancelled_at
+        type: datetime
+        required: true
+      - field: actor_id
+        type: string
+        required: true
+    triggers:
+      - policy: POL-05 (WaitlistBackfillTrigger — if cancelled registration was Confirmed)
+    consumers:
+      - BC-04 (Schedule & Capacity — vacates slot, triggers waitlist backfill)
+      - BC-07 (Communication — sends cancellation notification)
+      - BC-08 (Analytics & Audit — log cancellation, AuditAction=REGISTRATION_CANCELLED)
+    commands:
+      - CMD-cancel (Candidate self-service or TA Coordinator admin cancel)
+    version: "1.0"
+    stability: stable
+
+  # EVT-022 through EVT-023 cover offline sync events under BC-05 (see below)
+  # ES events DE-22 and DE-23 are mapped there as they are produced by BC-05.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # BC-03: ASSESSMENT (ACL Interface)
+  # Aggregate: None (ACL contract only; internal model deferred)
+  # ES events: DE-30, DE-31, DE-32, DE-33, DE-34
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  - id: EVT-022
+    name: AssessmentBlueprintDefined
+    es_ref: DE-30
+    bounded_context: BC-03
+    aggregate: AssessmentBlueprint (ACL contract; internal model deferred)
+    description: >
+      An assessment blueprint defining question structure, rules, and passing
+      criteria was saved for an event track. Internal implementation deferred
+      pending build/integrate decision (R-02).
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: blueprint_id
+        type: string
+        required: true
+      - field: track_id
+        type: uuid
+        required: false
+      - field: actor_id
+        type: string
+        required: true
+      - field: occurred_at
+        type: datetime
+        required: true
+    triggers:
+      - policy: none
+    consumers:
+      - BC-08 (Analytics & Audit)
+    commands:
+      - CMD-21 (DefineAssessmentBlueprint)
+    version: "1.0"
+    stability: experimental
+    note: "Internal model deferred (R-02). This event is published by BC-03 ACL Adapter."
+
+  - id: EVT-023
+    name: AssessmentDispatched
+    es_ref: DE-31
+    bounded_context: BC-03
+    aggregate: CandidateAssessment (ACL contract)
+    description: >
+      Assessment link dispatched to an eligible candidate (Confirmed or CheckedIn).
+      Eligibility enforced by BC-03 ACL (BR-07).
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: registration_id
+        type: uuid
+        required: true
+      - field: sbd_number
+        type: string
+        required: true
+      - field: blueprint_id
+        type: string
+        required: true
+      - field: occurred_at
+        type: datetime
+        required: true
+    triggers:
+      - policy: POL-07 (AssessmentEligibilityGrant — guard in ACL, BR-07)
+    consumers:
+      - BC-07 (Communication — sends assessment link email)
+      - BC-08 (Analytics & Audit)
+    commands:
+      - CMD-22 (DispatchAssessment)
+    version: "1.0"
+    stability: experimental
+
+  - id: EVT-024
+    name: AssessmentCompleted
+    es_ref: DE-32
+    bounded_context: BC-03
+    aggregate: CandidateAssessment (ACL contract)
+    description: >
+      A candidate submitted their assessment responses. ACL translates external
+      engine result into ECR domain event.
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: registration_id
+        type: uuid
+        required: true
+      - field: blueprint_id
+        type: string
+        required: true
+      - field: completed_at
+        type: datetime
+        required: true
+      - field: score
+        type: decimal
+        required: true
+      - field: passed
+        type: boolean
+        required: true
+    triggers:
+      - policy: POL-08 (AutoGradingTrigger — MCQ auto-grade; essays to manual review)
+    consumers:
+      - BC-06 (Interview Management — assessment result context for interviewers)
+      - BC-08 (Analytics & Audit — log completion, AuditAction=ASSESSMENT_COMPLETED)
+    commands:
+      - CMD-23 (SubmitAssessment — candidate action, via assessment engine)
+    version: "1.0"
+    stability: experimental
+
+  - id: EVT-025
+    name: AssessmentAutoGraded
+    es_ref: DE-33
+    bounded_context: BC-03
+    aggregate: CandidateAssessment (ACL contract)
+    description: >
+      MCQ responses were automatically scored; composite score is now available.
+      Triggered by POL-08.
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: registration_id
+        type: uuid
+        required: true
+      - field: blueprint_id
+        type: string
+        required: true
+      - field: auto_score
+        type: decimal
+        required: true
+      - field: graded_at
+        type: datetime
+        required: true
+    triggers:
+      - policy: POL-08 (AutoGradingTrigger)
+    consumers:
+      - BC-08 (Analytics & Audit)
+    version: "1.0"
+    stability: experimental
+
+  - id: EVT-026
+    name: ProctoringFlagRaised
+    es_ref: DE-34
+    bounded_context: BC-03
+    aggregate: ProctoringLog (ACL contract)
+    description: >
+      A suspicious behavior event was logged during a candidate's assessment by the
+      proctoring system. Does not auto-disqualify; surfaces for human review.
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: registration_id
+        type: uuid
+        required: true
+      - field: flag_type
+        type: string
+        required: true
+        description: Type of proctoring flag (e.g., tab_switch, face_absence)
+      - field: occurred_at
+        type: datetime
+        required: true
+    triggers:
+      - policy: none (surfaces in manual review queue)
+    consumers:
+      - BC-08 (Analytics & Audit)
+    version: "1.0"
+    stability: experimental
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # BC-04: SCHEDULE & CAPACITY
+  # Aggregate: EventSchedule, ScheduleSlot, AllocationRun
+  # ES events: DE-24, DE-25, DE-26, DE-48
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  - id: EVT-027
+    name: ScheduleMatrixDefined
+    es_ref: DE-24
+    bounded_context: BC-04
+    aggregate: EventSchedule
+    description: >
+      The Day × Shift × Room × Track capacity matrix was saved for an event.
+      Room double-booking prevention validated at creation. Maps to ScheduleCreated
+      in LinkML model.
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: schedule_id
+        type: uuid
+        required: true
+      - field: slot_count
+        type: integer
+        required: true
+      - field: total_capacity
+        type: integer
+        required: true
+      - field: actor_id
+        type: string
+        required: true
+      - field: occurred_at
+        type: datetime
+        required: true
+    triggers:
+      - policy: none
+    consumers:
+      - BC-08 (Analytics & Audit)
+    commands:
+      - CMD-15 (DefineScheduleMatrix)
+    version: "1.0"
+    stability: stable
+
+  - id: EVT-028
+    name: CapacityOverridden
+    es_ref: DE-25
+    bounded_context: BC-04
+    aggregate: ScheduleSlot
+    description: >
+      A ScheduleSlot's capacity was changed by a TA Coordinator with a mandatory
+      logged reason. Immutable audit record created. Tamper-evident via BC-08.
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: slot_id
+        type: uuid
+        required: true
+      - field: previous_capacity
+        type: integer
+        required: true
+      - field: new_capacity
+        type: integer
+        required: true
+      - field: reason
+        type: string
+        required: true
+      - field: authorized_by
+        type: string
+        required: true
+      - field: occurred_at
+        type: datetime
+        required: true
+    triggers:
+      - policy: POL-14 (AuditEntryCreated — capacity override audit)
+    consumers:
+      - BC-08 (Analytics & Audit — log override, AuditAction=CAPACITY_OVERRIDDEN)
+    commands:
+      - CMD-16 (OverrideCapacity)
+    version: "1.0"
+    stability: stable
+
+  - id: EVT-029
+    name: SlotAllocated
+    es_ref: DE-26 (per-candidate detail within bulk allocation)
+    bounded_context: BC-04
+    aggregate: ScheduleSlot
+    description: >
+      A single candidate was assigned to a ScheduleSlot. Emitted per candidate
+      by the AllocationRun algorithm. Consumed by BC-02 to update SlotReference
+      and by BC-06 to link candidate to interview room/time.
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: slot_id
+        type: uuid
+        required: true
+      - field: registration_id
+        type: uuid
+        required: true
+      - field: sbd_number
+        type: string
+        required: true
+      - field: track_id
+        type: uuid
+        required: true
+      - field: room_name
+        type: string
+        required: true
+      - field: shift_start
+        type: datetime
+        required: true
+      - field: shift_end
+        type: datetime
+        required: true
+      - field: occurred_at
+        type: datetime
+        required: true
+    triggers:
+      - policy: none
+    consumers:
+      - BC-02 (Candidate Registration — updates SlotReference on registration record)
+      - BC-05 (Onsite Operations — caches slot reference for check-in validation)
+      - BC-06 (Interview Management — links candidate to interview room/session)
+      - BC-07 (Communication — triggers slot assignment email)
+      - BC-08 (Analytics & Audit)
+    commands:
+      - CMD-17 (RunCandidateAllocation — system produced per candidate)
+    version: "1.0"
+    stability: stable
+
+  - id: EVT-030
+    name: CandidatesAllocatedToSlots
+    es_ref: DE-26
+    bounded_context: BC-04
+    aggregate: AllocationRun
+    description: >
+      Full AllocationRun completed successfully. Summary event with counts.
+      Individual SlotAllocated events carry per-candidate detail.
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: run_id
+        type: uuid
+        required: true
+      - field: track_id
+        type: uuid
+        required: true
+      - field: total_allocated
+        type: integer
+        required: true
+      - field: strategy_used
+        type: string
+        required: true
+      - field: occurred_at
+        type: datetime
+        required: true
+    triggers:
+      - policy: POL-14 (AuditEntryCreated — bulk allocation audit)
+    consumers:
+      - BC-08 (Analytics & Audit — log bulk allocation, AuditAction=BULK_ALLOCATION_RUN)
+    commands:
+      - CMD-17 (RunCandidateAllocation)
+    version: "1.0"
+    stability: stable
+
+  - id: EVT-031
+    name: WaitlistBackfillTriggered
+    es_ref: DE-20 (BC-04 side of backfill)
+    bounded_context: BC-04
+    aggregate: ScheduleSlot
+    description: >
+      A slot vacancy (from RegistrationCancelled) caused a waitlisted candidate
+      to be promoted. BC-04 emits this event; BC-02 processes WaitlistActivation.
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: slot_id
+        type: uuid
+        required: true
+      - field: promoted_registration_id
+        type: uuid
+        required: true
+      - field: promoted_sbd_number
+        type: string
+        required: true
+      - field: occurred_at
+        type: datetime
+        required: true
+    triggers:
+      - policy: POL-05 (WaitlistBackfillTrigger)
+    consumers:
+      - BC-02 (Candidate Registration — activates WaitlistEntry, confirms candidate)
+      - BC-08 (Analytics & Audit)
+    commands:
+      - System (automatic response to RegistrationCancelled)
+    version: "1.0"
+    stability: stable
+
+  - id: EVT-032
+    name: RescheduleNotificationSent
+    es_ref: DE-48
+    bounded_context: BC-04
+    aggregate: ScheduleSlot
+    description: >
+      A candidate was notified of a change to their scheduled slot
+      (room change, shift change). Emitted when slot reference on a confirmed
+      registration is updated.
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: registration_id
+        type: uuid
+        required: true
+      - field: new_slot_id
+        type: uuid
+        required: true
+      - field: old_slot_id
+        type: uuid
+        required: false
+      - field: occurred_at
+        type: datetime
+        required: true
+    triggers:
+      - policy: none (triggers communication job for reschedule email)
+    consumers:
+      - BC-07 (Communication — sends reschedule notification email)
+      - BC-08 (Analytics & Audit)
+    commands:
+      - System (triggered by schedule mutation affecting allocated candidates)
+    version: "1.0"
+    stability: stable
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # BC-05: ONSITE OPERATIONS
+  # Aggregates: CheckInRecord, KioskSession, OfflineSyncQueue, ManualReviewItem
+  # ES events: DE-22, DE-23, DE-27, DE-28, DE-29
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  - id: EVT-033
+    name: CandidateCheckedIn
+    es_ref: DE-27
+    bounded_context: BC-05
+    aggregate: CheckInRecord
+    description: >
+      Candidate checked in at the event venue via QR scan, SBD entry, or manual
+      entry in online kiosk mode. Record created as PROVISIONAL; promoted to
+      SYNCED immediately in online mode. Maps to CheckInCaptured + CheckInConfirmed
+      (both emitted in online mode).
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: checkin_id
+        type: uuid
+        required: true
+      - field: sbd_number
+        type: string
+        required: true
+      - field: check_in_method
+        type: string
+        required: true
+      - field: kiosk_session_id
+        type: string
+        required: true
+      - field: captured_at
+        type: datetime
+        required: true
+      - field: synced_at
+        type: datetime
+        required: true
+    triggers:
+      - policy: POL-06 (QueueDisplayUpdate — <5s queue update for HM, NFR-03)
+      - policy: POL-07 (AssessmentEligibilityGrant — CheckedIn status grants assessment eligibility)
+    consumers:
+      - BC-06 (Interview Management — adds candidate to active interviewer queue)
+      - BC-03 (Assessment — eligibility signal, BR-07)
+      - BC-08 (Analytics & Audit — log check-in confirmation, AuditAction=CHECKIN_CONFIRMED)
+    commands:
+      - CMD-18 (CheckInCandidate)
+    version: "1.0"
+    stability: stable
+
+  - id: EVT-034
+    name: CheckInDuplicated
+    es_ref: DE-28
+    bounded_context: BC-05
+    aggregate: CheckInRecord
+    description: >
+      An attempt to check in an already-checked-in candidate was detected and
+      blocked. Duplicate check-in prevention at kiosk. No CheckInRecord created.
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: sbd_number
+        type: string
+        required: true
+      - field: existing_checkin_id
+        type: uuid
+        required: true
+      - field: occurred_at
+        type: datetime
+        required: true
+    triggers:
+      - policy: none (event is a rejection; no further reactions)
+    consumers:
+      - BC-08 (Analytics & Audit — log duplicate check-in attempt)
+    commands:
+      - CMD-18 (CheckInCandidate — rejected)
+    version: "1.0"
+    stability: stable
+
+  - id: EVT-035
+    name: CheckInCapturedOffline
+    es_ref: DE-29
+    bounded_context: BC-05
+    aggregate: CheckInRecord
+    description: >
+      Candidate checked in at kiosk while in offline mode. Record is PROVISIONAL.
+      Queued in OfflineSyncQueue for server sync. Interview Management receives
+      CheckInCaptured event immediately for provisional queue display (OQ-D2).
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: checkin_id
+        type: uuid
+        required: true
+      - field: sbd_number
+        type: string
+        required: true
+      - field: check_in_method
+        type: string
+        required: true
+      - field: kiosk_session_id
+        type: string
+        required: true
+      - field: captured_at
+        type: datetime
+        required: true
+        description: Device clock timestamp
+    triggers:
+      - policy: none (queued in OfflineSyncQueue; sync triggers downstream events)
+    consumers:
+      - BC-06 (Interview Management — provisional queue update immediately, OQ-D2)
+      - BC-05 (OfflineSyncQueue — internal; queued for server sync)
+    commands:
+      - CMD-19 (CheckInCandidateOffline — kiosk system)
+    version: "1.0"
+    stability: stable
+
+  - id: EVT-036
+    name: OfflineDataSynced
+    es_ref: DE-22
+    bounded_context: BC-05
+    aggregate: KioskSession
+    description: >
+      Offline-captured records were successfully synced to the server on reconnect.
+      Provisional records promoted to SYNCED. Triggers CheckInConfirmed events
+      for each successfully synced record.
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: session_id
+        type: uuid
+        required: true
+      - field: records_synced
+        type: integer
+        required: true
+      - field: conflicts_routed
+        type: integer
+        required: true
+      - field: synced_at
+        type: datetime
+        required: true
+    triggers:
+      - policy: POL-12 (ProvisionalStatusClear — synced records transition to SYNCED)
+    consumers:
+      - BC-06 (Interview Management — confirms provisional queue entries)
+      - BC-08 (Analytics & Audit — log sync completion)
+    commands:
+      - CMD-20 (SyncOfflineData — kiosk system on reconnect)
+    version: "1.0"
+    stability: stable
+
+  - id: EVT-037
+    name: SyncFailedToManualReview
+    es_ref: DE-23
+    bounded_context: BC-05
+    aggregate: ManualReviewItem
+    description: >
+      Offline records that failed server-side sync validation were routed to the
+      ManualReviewQueue. TA Coordinator notified (POL-13). No data is silently
+      discarded (BR-08).
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: session_id
+        type: uuid
+        required: true
+      - field: review_item_id
+        type: uuid
+        required: true
+      - field: checkin_id
+        type: uuid
+        required: true
+      - field: conflict_type
+        type: string
+        required: true
+      - field: occurred_at
+        type: datetime
+        required: true
+    triggers:
+      - policy: POL-13 (ManualReviewNotification — notify TA Coordinator)
+    consumers:
+      - BC-07 (Communication — sends manual review alert to TA Coordinator)
+      - BC-08 (Analytics & Audit — log conflict, AuditAction=CHECKIN_CONFLICT)
+    commands:
+      - System (sync failure handler — CMD-20 failure path)
+    version: "1.0"
+    stability: stable
+
+  - id: EVT-038
+    name: KioskSessionStarted
+    es_ref: null (new in domain model, not separate ES event)
+    bounded_context: BC-05
+    aggregate: KioskSession
+    description: >
+      A kiosk device authenticated and came online with an assigned SBDBlock.
+      Server assigns contiguous SBD range to this kiosk session (OQ-D3 resolution).
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: session_id
+        type: uuid
+        required: true
+      - field: kiosk_device_id
+        type: string
+        required: true
+      - field: block_id
+        type: uuid
+        required: true
+      - field: start_sbd
+        type: integer
+        required: true
+      - field: end_sbd
+        type: integer
+        required: true
+      - field: occurred_at
+        type: datetime
+        required: true
+    triggers:
+      - policy: none
+    consumers:
+      - BC-08 (Analytics & Audit)
+    version: "1.0"
+    stability: stable
+
+  - id: EVT-039
+    name: ManualReviewResolved
+    es_ref: null (from LinkML ManualReviewResolvedEvent)
+    bounded_context: BC-05
+    aggregate: ManualReviewItem
+    description: >
+      TA Coordinator resolved a ManualReviewItem (approve, reject, or merge).
+      CheckInRecord outcome is finalized.
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: review_item_id
+        type: uuid
+        required: true
+      - field: checkin_id
+        type: uuid
+        required: true
+      - field: resolution_action
+        type: string
+        required: true
+        description: APPROVE, REJECT, or MERGE
+      - field: reviewed_by
+        type: string
+        required: true
+      - field: occurred_at
+        type: datetime
+        required: true
+    triggers:
+      - policy: POL-12-variant (ProvisionalStatusClear after manual approval)
+    consumers:
+      - BC-06 (Interview Management — confirms or removes provisional queue entry)
+      - BC-08 (Analytics & Audit — log resolution, AuditAction=MANUAL_REVIEW_RESOLVED)
+    commands:
+      - CMD-manual-review-resolve (TA Coordinator action)
+    version: "1.0"
+    stability: stable
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # BC-06: INTERVIEW MANAGEMENT
+  # Aggregates: InterviewSession, InterviewScore, ScoreEditRequest
+  # ES events: DE-35, DE-36, DE-37, DE-38, DE-39, DE-40, DE-41, DE-42, DE-43,
+  #            DE-44, DE-45, DE-47, DE-49, DE-50, DE-51
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  - id: EVT-040
+    name: InterviewerAssigned
+    es_ref: DE-35
+    bounded_context: BC-06
+    aggregate: InterviewSession
+    description: >
+      A Hiring Manager was assigned to an interview session (HARD or SOFT mode).
+      Only HARD assignments receive the SessionDigest and count toward the Panel.
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: session_id
+        type: uuid
+        required: true
+      - field: assignment_id
+        type: uuid
+        required: true
+      - field: interviewer_user_id
+        type: string
+        required: true
+      - field: assignment_mode
+        type: string
+        required: true
+        description: HARD or SOFT
+      - field: occurred_at
+        type: datetime
+        required: true
+    triggers:
+      - policy: none (digest dispatch is a separate explicit command)
+    consumers:
+      - BC-08 (Analytics & Audit)
+    commands:
+      - CMD-24 (AssignInterviewer)
+    version: "1.0"
+    stability: stable
+
+  - id: EVT-041
+    name: SessionDigestDispatched
+    es_ref: DE-36
+    bounded_context: BC-06
+    aggregate: SessionDigest
+    description: >
+      TA Coordinator dispatched the SessionDigest to all HardAssigned interviewers.
+      KitLinks generated (expire event_date + 24h, BR-05). Communication BC
+      sends kit email on receipt.
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: session_id
+        type: uuid
+        required: true
+      - field: digest_id
+        type: uuid
+        required: true
+      - field: interviewer_count
+        type: integer
+        required: true
+      - field: dispatched_at
+        type: datetime
+        required: true
+      - field: kit_link_expiry_at
+        type: datetime
+        required: true
+    triggers:
+      - policy: none
+    consumers:
+      - BC-07 (Communication — triggers SESSION_DIGEST job to send kit emails to interviewers)
+      - BC-08 (Analytics & Audit)
+    commands:
+      - CMD-25 (SendSessionDigests)
+    version: "1.0"
+    stability: stable
+
+  - id: EVT-042
+    name: InterviewKitAccessed
+    es_ref: DE-37
+    bounded_context: BC-06
+    aggregate: KitLink
+    description: >
+      A Hiring Manager opened their digital interview kit via the secure KitLink.
+      KitLink validated server-side on every access (BR-05).
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: session_id
+        type: uuid
+        required: true
+      - field: kit_link_id
+        type: uuid
+        required: true
+      - field: interviewer_user_id
+        type: string
+        required: true
+      - field: accessed_at
+        type: datetime
+        required: true
+    triggers:
+      - policy: none
+    consumers:
+      - BC-08 (Analytics & Audit)
+    commands:
+      - CMD-26 (AccessInterviewKit — HM action via KitLink URL)
+    version: "1.0"
+    stability: stable
+
+  - id: EVT-043
+    name: InterviewScoreSubmitted
+    es_ref: DE-39
+    bounded_context: BC-06
+    aggregate: InterviewScore
+    description: >
+      Hiring Manager submitted scoring form for a candidate. Score is immediately
+      immutable (BR-04). No direct edits permitted post-submission. Audit entry
+      required (POL-09).
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: score_id
+        type: uuid
+        required: true
+      - field: session_id
+        type: uuid
+        required: true
+      - field: candidate_registration_id
+        type: uuid
+        required: true
+      - field: sbd_number
+        type: string
+        required: true
+      - field: interviewer_user_id
+        type: string
+        required: true
+      - field: total_score
+        type: decimal
+        required: true
+      - field: recommendation
+        type: string
+        required: true
+      - field: submitted_at
+        type: datetime
+        required: true
+    triggers:
+      - policy: POL-09 (ScoreLock — score marked immutable)
+      - policy: POL-15 (AuditEntryCreated — score submission audit, BR-04)
+    consumers:
+      - BC-08 (Analytics & Audit — log score, AuditAction=SCORE_SUBMITTED)
+    commands:
+      - CMD-27 (SubmitInterviewScore)
+    version: "1.0"
+    stability: stable
+
+  - id: EVT-044
+    name: ScoreEditRequested
+    es_ref: DE-40
+    bounded_context: BC-06
+    aggregate: ScoreEditRequest
+    description: >
+      An interviewer submitted a ScoreEditRequest for a previously submitted
+      immutable score. Requires TA Coordinator approval (BR-04).
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: edit_request_id
+        type: uuid
+        required: true
+      - field: original_score_id
+        type: uuid
+        required: true
+      - field: session_id
+        type: uuid
+        required: true
+      - field: interviewer_user_id
+        type: string
+        required: true
+      - field: requested_by
+        type: string
+        required: true
+      - field: requested_at
+        type: datetime
+        required: true
+    triggers:
+      - policy: POL-15-variant (AuditEntryCreated — score edit requested)
+    consumers:
+      - BC-07 (Communication — notifies TA Coordinator of pending edit request)
+      - BC-08 (Analytics & Audit — log request, AuditAction=SCORE_EDIT_REQUESTED)
+    commands:
+      - CMD-28 (RequestScoreEdit)
+    version: "1.0"
+    stability: stable
+
+  - id: EVT-045
+    name: ScoreEditApproved
+    es_ref: DE-41
+    bounded_context: BC-06
+    aggregate: ScoreEditRequest
+    description: >
+      TA Coordinator approved a ScoreEditRequest. A new InterviewScore was created
+      with amended values; original score status set to SUPERSEDED. Both scores
+      retained for audit. Audit entry required (POL-15, BR-04).
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: edit_request_id
+        type: uuid
+        required: true
+      - field: original_score_id
+        type: uuid
+        required: true
+      - field: new_score_id
+        type: uuid
+        required: true
+      - field: session_id
+        type: uuid
+        required: true
+      - field: reviewed_by
+        type: string
+        required: true
+      - field: reviewed_at
+        type: datetime
+        required: true
+    triggers:
+      - policy: POL-15 (AuditEntryCreated — score edit approved, BR-04)
+    consumers:
+      - BC-08 (Analytics & Audit — log approval with both score IDs, AuditAction=SCORE_EDIT_APPROVED)
+    commands:
+      - CMD-29 (ApproveScoreEdit)
+    version: "1.0"
+    stability: stable
+
+  - id: EVT-046
+    name: ScoreEditRejected
+    es_ref: DE-42
+    bounded_context: BC-06
+    aggregate: ScoreEditRequest
+    description: >
+      TA Coordinator rejected a ScoreEditRequest. Original score remains
+      authoritative. Audit entry required.
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: edit_request_id
+        type: uuid
+        required: true
+      - field: original_score_id
+        type: uuid
+        required: true
+      - field: session_id
+        type: uuid
+        required: true
+      - field: reviewed_by
+        type: string
+        required: true
+      - field: reviewed_at
+        type: datetime
+        required: true
+      - field: review_notes
+        type: string
+        required: false
+    triggers:
+      - policy: POL-15 (AuditEntryCreated — score edit rejected)
+    consumers:
+      - BC-08 (Analytics & Audit — log rejection, AuditAction=SCORE_EDIT_REJECTED)
+    commands:
+      - CMD-30 (RejectScoreEdit)
+    version: "1.0"
+    stability: stable
+
+  - id: EVT-047
+    name: CandidateSkipped
+    es_ref: DE-43
+    bounded_context: BC-06
+    aggregate: InterviewSession
+    description: >
+      An interviewer marked a candidate as not interviewed (no-show, withdrawal,
+      or technical issue). Candidate removed from active queue. Audit entry created.
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: session_id
+        type: uuid
+        required: true
+      - field: candidate_registration_id
+        type: uuid
+        required: true
+      - field: sbd_number
+        type: string
+        required: true
+      - field: skip_reason
+        type: string
+        required: true
+      - field: skipped_by
+        type: string
+        required: true
+      - field: occurred_at
+        type: datetime
+        required: true
+    triggers:
+      - policy: POL-15 (AuditEntryCreated — skip recorded)
+    consumers:
+      - BC-08 (Analytics & Audit)
+    commands:
+      - CMD-31 (SkipCandidate)
+    version: "1.0"
+    stability: stable
+
+  - id: EVT-048
+    name: KitLinkExpired
+    es_ref: DE-51
+    bounded_context: BC-06
+    aggregate: KitLink
+    description: >
+      Server-side validation detected that a KitLink has passed its expiry_at
+      timestamp. Triggered on first rejected request after expiry. All KitLinks
+      for an event expire 24h after event day end (BR-05, POL-11).
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: kit_link_id
+        type: uuid
+        required: true
+      - field: session_id
+        type: uuid
+        required: true
+      - field: interviewer_user_id
+        type: string
+        required: true
+      - field: expired_at
+        type: datetime
+        required: true
+    triggers:
+      - policy: none
+    consumers:
+      - BC-08 (Analytics & Audit — log expiry, AuditAction=KIT_LINK_EXPIRED)
+    commands:
+      - System (triggered by first post-expiry kit access attempt, CMD-26)
+    version: "1.0"
+    stability: stable
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # BC-07: COMMUNICATION
+  # Aggregates: CommunicationJob, EmailTemplate, DeliveryRecord
+  # ES events: DE-36 (via SessionDigestDispatched subscription), DE-46, DE-48
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  - id: EVT-049
+    name: CommunicationJobCreated
+    es_ref: DE-46 (bulk variant) / various (triggered by domain events)
+    bounded_context: BC-07
+    aggregate: CommunicationJob
+    description: >
+      A CommunicationJob was created and queued. Bulk or targeted dispatch.
+      Idempotent: duplicate triggering events with same idempotency_key are ignored.
+      Rate-limited to 500 recipients/minute (NFR-07).
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: job_id
+        type: uuid
+        required: true
+      - field: job_type
+        type: string
+        required: true
+      - field: trigger_event_type
+        type: string
+        required: true
+      - field: recipient_count
+        type: integer
+        required: true
+      - field: occurred_at
+        type: datetime
+        required: true
+    triggers:
+      - policy: none
+    consumers:
+      - BC-08 (Analytics & Audit — log bulk email initiation, AuditAction=BULK_EMAIL_INITIATED)
+    commands:
+      - CMD-34 (DispatchBulkInvitations), CMD-25 (SendSessionDigests — via event subscription)
+    version: "1.0"
+    stability: stable
+
+  - id: EVT-050
+    name: EmailDispatched
+    es_ref: null (internal BC-07 event)
+    bounded_context: BC-07
+    aggregate: DeliveryRecord
+    description: >
+      An individual email was submitted to the Email Delivery Service.
+      One event per DeliveryRecord transition from QUEUED to SENT.
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: job_id
+        type: uuid
+        required: true
+      - field: delivery_record_id
+        type: uuid
+        required: true
+      - field: email_address
+        type: string
+        required: true
+      - field: external_message_id
+        type: string
+        required: false
+      - field: occurred_at
+        type: datetime
+        required: true
+    triggers:
+      - policy: none
+    consumers:
+      - BC-08 (Analytics & Audit)
+    version: "1.0"
+    stability: stable
+
+  - id: EVT-051
+    name: EmailDelivered
+    es_ref: null (BC-07 internal — from delivery webhook)
+    bounded_context: BC-07
+    aggregate: DeliveryRecord
+    description: >
+      Delivery webhook confirmed successful receipt by the recipient mail server.
+      DeliveryRecord transitions from SENT to DELIVERED.
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: job_id
+        type: uuid
+        required: true
+      - field: delivery_record_id
+        type: uuid
+        required: true
+      - field: email_address
+        type: string
+        required: true
+      - field: delivered_at
+        type: datetime
+        required: true
+    triggers:
+      - policy: none
+    consumers:
+      - BC-08 (Analytics & Audit)
+    version: "1.0"
+    stability: stable
+
+  - id: EVT-052
+    name: EmailFailed
+    es_ref: null (BC-07 internal — terminal delivery failure)
+    bounded_context: BC-07
+    aggregate: DeliveryRecord
+    description: >
+      A DeliveryRecord reached terminal failure state (BOUNCED or FAILED after
+      all retries). FailureEscalation triggered — TA Coordinator notified.
+      Must never be silently dropped per BC-07 invariant.
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: true
+      - field: job_id
+        type: uuid
+        required: true
+      - field: delivery_record_id
+        type: uuid
+        required: true
+      - field: email_address
+        type: string
+        required: true
+      - field: failure_reason
+        type: string
+        required: true
+      - field: delivery_status
+        type: string
+        required: true
+        description: BOUNCED or FAILED
+      - field: occurred_at
+        type: datetime
+        required: true
+    triggers:
+      - policy: FailureEscalation (alert TA Coordinator; never silent)
+    consumers:
+      - BC-07 (internal — triggers TA Coordinator alert)
+      - BC-08 (Analytics & Audit — log delivery failure, AuditAction=DELIVERY_FAILED)
+    version: "1.0"
+    stability: stable
+
+  - id: EVT-053
+    name: TemplatePublished
+    es_ref: null (BC-07 template management)
+    bounded_context: BC-07
+    aggregate: EmailTemplate
+    description: >
+      A new TemplateVersion was published and set to ACTIVE. Previous version
+      deprecated. Immutable once published.
+    payload:
+      - field: domain_event_id
+        type: uuid
+        required: true
+      - field: event_id
+        type: uuid
+        required: false
+        description: Null for global templates not scoped to an event
+      - field: template_id
+        type: uuid
+        required: true
+      - field: version_number
+        type: integer
+        required: true
+      - field: template_purpose
+        type: string
+        required: true
+      - field: published_by
+        type: string
+        required: true
+      - field: occurred_at
+        type: datetime
+        required: true
+    triggers:
+      - policy: none
+    consumers:
+      - BC-08 (Analytics & Audit)
+    commands:
+      - CMD-publish-template (TA Coordinator / template manager)
+    version: "1.0"
+    stability: stable
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # BC-08: ANALYTICS & AUDIT (Terminal Consumer — publishes no domain events)
+  # Internally generated events for observability only
+  # ES events: DE-52, DE-53, DE-54
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  - id: EVT-054
+    name: AuditEntryCreated
+    es_ref: DE-52
+    bounded_context: BC-08
+    aggregate: AuditEntry
+    description: >
+      An immutable, tamper-evident AuditEntry was written to the audit store.
+      Triggered for every consequential action in any BC. Append-only;
+      hash-chain integrity maintained. Retention minimum 3 years (NFR-10).
+      BC-08 is a terminal consumer — this event is NOT published to Pub/Sub.
+      It is an internal BC-08 artifact.
+    payload:
+      - field: audit_entry_id
+        type: uuid
+        required: true
+      - field: source_event_id
+        type: string
+        required: true
+      - field: source_event_type
+        type: string
+        required: true
+      - field: source_bc
+        type: string
+        required: true
+      - field: audit_action
+        type: string
+        required: true
+      - field: ecr_event_id
+        type: uuid
+        required: true
+      - field: actor_user_id
+        type: string
+        required: true
+      - field: actor_role
+        type: string
+        required: true
+      - field: content_hash
+        type: string
+        required: true
+      - field: chain_hash
+        type: string
+        required: true
+      - field: recorded_at
+        type: datetime
+        required: true
+    triggers:
+      - policy: none (BC-08 is terminal)
+    consumers:
+      - none (BC-08 is terminal consumer; no downstream)
+    note: "This event is internal to BC-08 and not published on the Pub/Sub backbone. Included for completeness matching ES event DE-52."
+    version: "1.0"
+    stability: stable
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ADDITIONAL ES EVENTS MAPPING
+# Events DE-38, DE-44, DE-45, DE-47, DE-49, DE-50 mapped to supporting events
+# in existing BC-06 and BC-07 categories above.
+# ─────────────────────────────────────────────────────────────────────────────
+# DE-38 (CandidateInterviewed):  Operational transition in BC-06, represented
+#                                by queue state change. Not a separate published
+#                                domain event — surfaced via InterviewKitAccessed
+#                                and InterviewScoreSubmitted lifecycle.
+# DE-44 (CandidateDeferred):    Operational queue reordering in BC-06.
+#                                Captured as an internal session queue event;
+#                                not a published domain event in LinkML model.
+# DE-45 (BulkAdvancementRun):   BC-02 bulk operation; state change on multiple
+#                                CandidateEventRegistrations. Represented by
+#                                multiple RegistrationCancelled / CandidateConfirmed
+#                                events with a bulk run context payload.
+# DE-47 (BulkOutcomeRecorded):  BC-06 bulk scoring outcome. Represented by
+#                                multiple InterviewScoreSubmitted events with a
+#                                bulk run context payload. Audit entry created.
+# DE-49 (CandidatePassedEvent): Outcome field update on CandidateEventRegistration
+#                                in BC-02. Represented by UpdateRegistrationStatus
+#                                with pipeline_stage advancement.
+# DE-50 (CandidateFailedEvent): Same as DE-49 for fail outcome.
+# DE-53 (ReportGenerated):      Ephemeral analytics event in BC-08. Not published
+#                                to Pub/Sub; internal to BC-08.
+# DE-54 (DashboardRefreshed):   Real-time projection update in BC-08 metrics
+#                                store. Not a domain event; internal projection
+#                                update triggered by all relevant subscribed events.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ─────────────────────────────────────────────────────────────────────────────
+# EVENT TOPOLOGY SUMMARY
+# ─────────────────────────────────────────────────────────────────────────────
+event_topology:
+  pub_sub_topics:
+    - topic: ecr.event-management
+      publishers: [BC-01]
+      events: [EVT-001, EVT-002, EVT-003, EVT-004, EVT-005, EVT-006, EVT-007, EVT-008, EVT-009]
+      subscribers: [BC-02, BC-04, BC-05, BC-06, BC-07, BC-08]
+
+    - topic: ecr.candidate-registration
+      publishers: [BC-02]
+      events: [EVT-010, EVT-011, EVT-012, EVT-013, EVT-014, EVT-015, EVT-016, EVT-017, EVT-018, EVT-019, EVT-020, EVT-021]
+      subscribers: [BC-03, BC-04, BC-05, BC-06, BC-07, BC-08]
+
+    - topic: ecr.assessment
+      publishers: [BC-03 ACL Adapter]
+      events: [EVT-022, EVT-023, EVT-024, EVT-025, EVT-026]
+      subscribers: [BC-06, BC-08]
+
+    - topic: ecr.schedule-capacity
+      publishers: [BC-04]
+      events: [EVT-027, EVT-028, EVT-029, EVT-030, EVT-031, EVT-032]
+      subscribers: [BC-02, BC-05, BC-06, BC-07, BC-08]
+
+    - topic: ecr.onsite-operations
+      publishers: [BC-05]
+      events: [EVT-033, EVT-034, EVT-035, EVT-036, EVT-037, EVT-038, EVT-039]
+      subscribers: [BC-03, BC-06, BC-07, BC-08]
+
+    - topic: ecr.interview-management
+      publishers: [BC-06]
+      events: [EVT-040, EVT-041, EVT-042, EVT-043, EVT-044, EVT-045, EVT-046, EVT-047, EVT-048]
+      subscribers: [BC-07, BC-08]
+
+    - topic: ecr.communication
+      publishers: [BC-07]
+      events: [EVT-049, EVT-050, EVT-051, EVT-052, EVT-053]
+      subscribers: [BC-08]
+
+  terminal_consumers:
+    - BC-08 (Analytics & Audit) subscribes to ALL topics
+
+  internal_only_events:
+    - EVT-054 (AuditEntryCreated) — BC-08 internal; not on Pub/Sub backbone
