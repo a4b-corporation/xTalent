@@ -34,3 +34,14 @@ _bk/
 _tmp/
 .scripts/
 _backup/
+
+
+# context of AI
+.odsa/
+.antigravity/
+.gemini/
+.claude/
+.cursor/
+.agent/
+.codex/
+.copilot/
