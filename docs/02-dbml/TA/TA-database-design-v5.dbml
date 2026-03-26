@@ -985,7 +985,7 @@ Table absence.leave_type {
   support_scope     varchar(50)                 // 'VN:LE,SG:BU'
   
   // [v5.1] ELIGIBILITY - changed 12dec2025
-  default_eligibility_profile_id uuid [null, ref: > core.eligibility_profile.id]
+  default_eligibility_profile_id uuid [null, ref: > eligibility.eligibility_profile.id]  // changed 26Mar2026: F1 - corrected schema name from core → eligibility
   
   metadata          jsonb
   is_active         boolean [default:true]
@@ -1018,7 +1018,7 @@ Table absence.leave_class {
   posting_map       jsonb
   
   // [v5.1] ELIGIBILITY - changed 12dec2025
-  default_eligibility_profile_id uuid [null, ref: > core.eligibility_profile.id]
+  default_eligibility_profile_id uuid [null, ref: > eligibility.eligibility_profile.id]  // changed 26Mar2026: F1 - corrected schema name from core → eligibility
   
   // DEPRECATED - changed 12dec2025: Use default_eligibility_profile_id instead
   eligibility_json  jsonb  [null]
@@ -1053,7 +1053,7 @@ Table absence.leave_policy {
   name              varchar(100)
   
   // [v5.1] ELIGIBILITY - changed 12dec2025
-  default_eligibility_profile_id uuid [null, ref: > core.eligibility_profile.id]
+  default_eligibility_profile_id uuid [null, ref: > eligibility.eligibility_profile.id]  // changed 26Mar2026: F1 - corrected schema name from core → eligibility
   
   // Rule JSONs (keep for flexibility - complex business logic)
   accrual_rule_json jsonb  [null]

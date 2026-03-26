@@ -1,5 +1,7 @@
 # xTalent Database Design – Changelog
 
+
+
 ## [26Mar2026] – Cross-Module Structural Review
 
 > Review: [review-01-dbml-cross-module-analysis.md](./review-01-dbml-cross-module-analysis.md)
@@ -66,3 +68,68 @@
 ### Skipped
 
 - **G9** – `3.Absence.v4.dbml` sync with TA v5.1: Skipped per decision — v4 kept as legacy reference
+
+## [26Mar2026-b] – Eligibility Review & Fixes
+
+> Review: [eligibility-guide.md](./eligibility-guide.md)
+> Findings appended to: [review-01-dbml-cross-module-analysis.md](./review-01-dbml-cross-module-analysis.md)
+
+### TA-database-design-v5.dbml
+
+**F1 – Schema name mismatch**
+- Fixed 3 FKs: `core.eligibility_profile.id` → `eligibility.eligibility_profile.id`
+- Affected: `leave_type`, `leave_class`, `leave_policy`
+
+### 5.Payroll.V3.dbml
+
+**F2 – Added explicit `ref:` syntax**
+- `pay_element.eligibility_profile_id`: Added `ref: > eligibility.eligibility_profile.id`
+
+### 4.TotalReward.V5.dbml
+
+**F2 – Added explicit `ref:` syntax**
+- `comp_plan.eligibility_profile_id`: Added `ref: > eligibility.eligibility_profile.id`
+- `bonus_plan.eligibility_profile_id`: Added `ref: > eligibility.eligibility_profile.id`
+- `benefit_plan.eligibility_profile_id`: Added `ref: > eligibility.eligibility_profile.id`
+
+**F3 – Migration timeline for deprecated tables**
+- `benefit.eligibility_profile`: Remove in v6.0 (target Q3 2026)
+- `benefit.plan_eligibility`: Remove in v6.0 (target Q3 2026)
+
+### 1.Core.V4.dbml
+
+**F4 – Extended domain enum**
+- `eligibility_profile.domain`: Added `PAYROLL` (was: ABSENCE | BENEFITS | COMPENSATION | CORE)
+
+---
+
+## [26Mar2026-c] – Multi-Country/LE Configuration Scoping
+
+> Review: [review-02-tr-country-le-scoping.md](./review-02-tr-country-le-scoping.md)
+> Guide: [config-scoping-guide.md](./config-scoping-guide.md)
+
+### 4.TotalReward.V5.dbml
+
+**NEW tables: `comp_core.config_scope` + `config_scope_member` (Option 2)**
+- Config Scope Group: named scope abstraction (COUNTRY, LE, BU, HYBRID)
+- Supports hierarchy (parent_scope_id) + inheritance (inherit_flag)
+- Member bridge table for HYBRID scopes spanning multiple countries/LEs
+
+**Multi-country scoping added to 4 definition tables:**
+
+| Table | `country_code` | `legal_entity_id` | `config_scope_id` |
+|-------|:-:|:-:|:-:|
+| `salary_basis` | ✅ | ✅ | ✅ |
+| `pay_component_def` | ✅ | — | ✅ |
+| `comp_plan` | ✅ | ✅ | ✅ |
+| `bonus_plan` | ✅ | ✅ | ✅ |
+
+### 5.Payroll.V3.dbml
+
+**Multi-country scoping added:**
+
+| Table | `country_code` | `config_scope_id` |
+|-------|:-:|:-:|
+| `pay_element` | ✅ | ✅ |
+
+---

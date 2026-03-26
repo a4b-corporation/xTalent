@@ -1556,7 +1556,7 @@ Table eligibility.eligibility_profile {
   id                uuid        [pk, default: `gen_random_uuid()`]
   code              varchar(50) [unique, not null]                    // ELIG_SENIOR_STAFF, ELIG_VN_FULLTIME
   name              varchar(255) [not null]                           // Display name
-  domain            varchar(50) [not null]                            // ABSENCE | BENEFITS | COMPENSATION | CORE
+  domain            varchar(50) [not null]                            // ABSENCE | BENEFITS | COMPENSATION | PAYROLL | CORE  // changed 26Mar2026: F4 - added PAYROLL domain
   description       text        [null]                                // Business rationale
   
   rule_json         jsonb       [not null]                            // Dynamic criteria (organizational scope)

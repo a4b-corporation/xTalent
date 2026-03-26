@@ -7,6 +7,98 @@
 
 
 //***************************************************
+// * 0.  Configuration Scope – Multi-Country/LE Scoping
+// *     ADDED 26Mar2026: Option 2 (Config Scope Group)
+// ***************************************************/
+
+// changed 26Mar2026: NEW - Config Scope Group abstraction for multi-country/LE deployment
+// PURPOSE: Phase 2 scoping mechanism. Allows grouping country + LE + BU into named scopes.
+// USAGE: Definition tables reference config_scope_id as ALTERNATIVE to inline country_code/legal_entity_id.
+// PHASE 1 (Light Touch): Use inline country_code + legal_entity_id directly on definition tables.
+// PHASE 2 (Full Scope): Use config_scope_id for complex scope hierarchies (multiple countries/LEs).
+// After both phases: client có thể choose inline fields (simple) hoặc scope group (advanced).
+
+Table comp_core.config_scope {
+  id              uuid [pk]
+  scope_code      varchar(50) [unique, not null]     // VN_DEFAULT, SG_DEFAULT, GLOBAL, VN_TECH_BU
+  scope_name      varchar(200) [not null]            // Display name
+  scope_type      varchar(20) [not null]             // COUNTRY | LEGAL_ENTITY | BUSINESS_UNIT | HYBRID
+  
+  country_code    char(2) [null]                     // ISO 3166-1 alpha-2 (VN, SG, US...). NULL = multi-country scope
+  legal_entity_id uuid [null]                        // specific LE. NULL = all LEs within country
+  business_unit_id uuid [null]                       // specific BU. NULL = all BUs within LE
+  
+  priority        int [default: 0]                   // higher = more specific. Resolution: max priority wins
+  // Priority convention: GLOBAL=0, COUNTRY=10, LE=20, BU=30
+  
+  parent_scope_id uuid [ref: > comp_core.config_scope.id, null]  // inheritance: BU scope → LE scope → Country scope → Global
+  inherit_flag    boolean [default: true]             // true = inherit unset configs from parent scope
+  
+  description     text [null]
+  is_active       boolean [default: true]
+  metadata        jsonb [null]
+  
+  created_at      timestamp [default:`now()`]
+  updated_at      timestamp [null]
+  
+  Indexes {
+    (scope_code)
+    (scope_type, country_code)
+    (country_code, legal_entity_id)
+    (parent_scope_id)
+    (is_active) [where: "is_active = true"]
+  }
+  
+  Note: '''
+    changed 26Mar2026: NEW - Configuration Scope Group (Option 2).
+    
+    Phased Approach:
+    - Phase 1 (Light Touch): Definition tables use inline country_code + legal_entity_id.
+      Simple, backward compatible, works for 1-3 countries.
+    - Phase 2 (Config Scope Group): Definition tables reference config_scope_id.
+      Advanced, supports scope hierarchy + inheritance, works for 5+ countries.
+    - Both phases co-exist: config_scope_id takes precedence if populated.
+    
+    Resolution Order (most specific wins):
+      1. config_scope_id (if populated) → resolved scope
+      2. Inline country_code + legal_entity_id (if populated)
+      3. NULL = global (applies everywhere)
+    
+    Example Hierarchy:
+      GLOBAL (priority=0)
+       └─ VN_DEFAULT (priority=10, country_code=VN)
+           └─ VN_ENTITY_A (priority=20, legal_entity_id=xxx)
+               └─ VN_TECH_BU (priority=30, business_unit_id=yyy)
+  '''
+}
+
+// changed 26Mar2026: NEW - Bridge table for scopes that span multiple countries/LEs
+Table comp_core.config_scope_member {
+  id              uuid [pk]
+  scope_id        uuid [ref: > comp_core.config_scope.id, not null]
+  
+  member_type     varchar(20) [not null]             // COUNTRY | LEGAL_ENTITY | BUSINESS_UNIT
+  country_code    char(2) [null]                     // populated when member_type = COUNTRY
+  legal_entity_id uuid [null]                        // populated when member_type = LEGAL_ENTITY
+  business_unit_id uuid [null]                       // populated when member_type = BUSINESS_UNIT
+  
+  created_at      timestamp [default:`now()`]
+  
+  Indexes {
+    (scope_id, member_type, country_code, legal_entity_id) [unique]
+    (country_code)
+    (legal_entity_id)
+  }
+  
+  Note: '''
+    changed 26Mar2026: NEW - For HYBRID scope types that span multiple countries/LEs.
+    Example: APAC scope with members VN, SG, TH, MY.
+    For simple single-country scopes, use config_scope.country_code directly.
+  '''
+}
+
+
+//***************************************************
 // * 1.  Core Compensation – Fixed Pay
 // ***************************************************/
 
@@ -18,6 +110,15 @@ Table comp_core.salary_basis {
   frequency       varchar(20)         // HOURLY | MONTHLY | ANNUAL
   currency        char(3)
   allow_components boolean [default:true]
+  
+  // changed 26Mar2026: Multi-country/LE scoping (Option 1 + 2)
+  // PHASE 1 (Light Touch): Use these inline fields directly. NULL = global.
+  country_code    char(2) [null]                     // changed 26Mar2026: ISO country code. NULL = global (all countries)
+  legal_entity_id uuid [null]                        // changed 26Mar2026: specific LE. NULL = all LEs
+  // PHASE 2 (Config Scope): Use config_scope_id for advanced scope hierarchy.
+  // If config_scope_id is populated, it takes precedence over inline fields.
+  config_scope_id uuid [ref: > comp_core.config_scope.id, null]  // changed 26Mar2026: Option 2 - scope group reference
+  
   metadata        jsonb
   effective_start date
   effective_end   date [null]
@@ -28,6 +129,9 @@ Table comp_core.salary_basis {
   
   Indexes {
     (code),
+    (code, country_code),                        // changed 26Mar2026: country-scoped lookup
+    (country_code, legal_entity_id),             // changed 26Mar2026: scope filter
+    (config_scope_id),                           // changed 26Mar2026: scope group lookup
     (frequency),
     (effective_start, effective_end)
   }
@@ -44,6 +148,14 @@ Table comp_core.pay_component_def {
   prorated        boolean [default:true]  // ADDED 21Nov2025: critical for proration logic
   default_currency char(3)
   formula_json    jsonb   [null]          // KEPT 25Nov2025: still used for simple component-specific formulas
+  
+  // changed 26Mar2026: Multi-country scoping (Option 1 + 2)
+  // PHASE 1: country_code filters components per country (e.g., VN-specific allowances vs SG)
+  country_code    char(2) [null]                     // changed 26Mar2026: ISO country. NULL = global component
+  // PHASE 2: config_scope_id for advanced scope hierarchy
+  config_scope_id uuid [ref: > comp_core.config_scope.id, null]  // changed 26Mar2026: Option 2 - scope group
+  // Note: legal_entity_id omitted here — components are country-level, LE-specificity via salary_basis
+  
   metadata        jsonb   [null]
   effective_start date
   effective_end   date [null]
@@ -66,6 +178,9 @@ Table comp_core.pay_component_def {
     (component_type),
     (is_active) [where: "is_active = true"],
     (code),
+    (code, country_code),                        // changed 26Mar2026: country-scoped lookup
+    (country_code),                              // changed 26Mar2026: country filter
+    (config_scope_id),                           // changed 26Mar2026: scope group lookup
     (effective_start, effective_end),
     (taxable),
     (is_subject_to_si)  // ADDED 25Nov2025
@@ -233,8 +348,14 @@ Table comp_core.comp_plan {
   description     text [null]           // ADDED 21Nov2025: detailed description
   plan_type       varchar(30)          // MERIT | PROMOTION | MARKET_ADJUSTMENT | NEW_HIRE | EQUITY_CORRECTION | AD_HOC
   eligibility_rule jsonb [null]                 // changed 26Mar2026: G6 - DEPRECATED. Use eligibility_profile_id instead
-  eligibility_profile_id uuid [null]            // changed 26Mar2026: G6 - FK to centralized eligibility.eligibility_profile
+  eligibility_profile_id uuid [null, ref: > eligibility.eligibility_profile.id]  // changed 26Mar2026: G6+F2 - FK to centralized eligibility.eligibility_profile
   guideline_json  jsonb [null]         // ADDED 21Nov2025: merit matrices, guidelines, approval thresholds
+  
+  // changed 26Mar2026: Multi-country/LE scoping (Option 1 + 2)
+  country_code    char(2) [null]                     // changed 26Mar2026: plan cho country nào. NULL = global
+  legal_entity_id uuid [null]                        // changed 26Mar2026: plan cho LE nào. NULL = all LEs
+  config_scope_id uuid [ref: > comp_core.config_scope.id, null]  // changed 26Mar2026: Option 2 - scope group
+  
   metadata        jsonb [null]
   effective_start date
   effective_end   date [null]
@@ -246,6 +367,9 @@ Table comp_core.comp_plan {
   
   Indexes {
     (code),
+    (code, country_code),                        // changed 26Mar2026: country-scoped lookup
+    (country_code, legal_entity_id),             // changed 26Mar2026: scope filter
+    (config_scope_id),                           // changed 26Mar2026: scope group lookup
     (plan_type),
     (is_active) [where: "is_active = true"]
   }
@@ -390,7 +514,13 @@ Table comp_incentive.bonus_plan {
   equity_flag     boolean [default:false]
   formula_json    jsonb [null]
   eligibility_rule jsonb [null]                 // changed 26Mar2026: G6 - DEPRECATED. Use eligibility_profile_id instead
-  eligibility_profile_id uuid [null]            // changed 26Mar2026: G6 - FK to centralized eligibility.eligibility_profile
+  eligibility_profile_id uuid [null, ref: > eligibility.eligibility_profile.id]  // changed 26Mar2026: G6+F2 - FK to centralized eligibility.eligibility_profile
+  
+  // changed 26Mar2026: Multi-country/LE scoping (Option 1 + 2)
+  country_code    char(2) [null]                     // changed 26Mar2026: bonus plan cho country nào. NULL = global
+  legal_entity_id uuid [null]                        // changed 26Mar2026: bonus plan cho LE nào. NULL = all LEs
+  config_scope_id uuid [ref: > comp_core.config_scope.id, null]  // changed 26Mar2026: Option 2 - scope group
+  
   metadata        jsonb [null]
   effective_start date
   effective_end   date [null]
@@ -402,6 +532,9 @@ Table comp_incentive.bonus_plan {
   
   Indexes {
     (code),
+    (code, country_code),                        // changed 26Mar2026: country-scoped lookup
+    (country_code, legal_entity_id),             // changed 26Mar2026: scope filter
+    (config_scope_id),                           // changed 26Mar2026: scope group lookup
     (bonus_type),
     (is_active) [where: "is_active = true"]
   }
@@ -574,7 +707,7 @@ Table benefit.benefit_plan {
   provider_name   varchar(255) [null]
   sponsor_legal_entity_id uuid [ref: > org_legal.legal_entity.id, null]
   eligibility_rule_json jsonb [null]            // changed 26Mar2026: G5 - DEPRECATED. Use eligibility_profile_id instead
-  eligibility_profile_id uuid [null]            // changed 26Mar2026: G5 - FK to centralized eligibility.eligibility_profile
+  eligibility_profile_id uuid [null, ref: > eligibility.eligibility_profile.id]  // changed 26Mar2026: G5+F2 - FK to centralized eligibility.eligibility_profile
   coverage_options_json jsonb [null]
   // REM 21Nov2025: currency_id     uuid [ref: > common.currency.id, null]
   currency        char(3) [null]        // CHANGED 21Nov2025: standardized to char(3) like other tables
@@ -626,6 +759,7 @@ Table benefit.benefit_option {
 
 // changed 26Mar2026: G5 - DEPRECATED. Migrate to centralized eligibility.eligibility_profile (domain='BENEFITS')
 // Keep for backward compatibility during migration. New implementations should use centralized eligibility.
+// changed 26Mar2026: F3 - Migration timeline: Remove in v6.0 (target Q3 2026). Drop benefit.eligibility_profile + benefit.plan_eligibility after full migration.
 Table benefit.eligibility_profile {
   id              uuid [pk]
   code            varchar(50) [unique]
@@ -646,6 +780,7 @@ Table benefit.eligibility_profile {
 
 
 // changed 26Mar2026: G5 - DEPRECATED. Use benefit_plan.eligibility_profile_id → centralized eligibility instead
+// changed 26Mar2026: F3 - Migration timeline: Remove in v6.0 (target Q3 2026)
 Table benefit.plan_eligibility {
   plan_id         uuid [ref: > benefit.benefit_plan.id]
   eligibility_id  uuid [ref: > benefit.eligibility_profile.id]

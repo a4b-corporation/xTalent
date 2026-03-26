@@ -14,3 +14,30 @@ Hãy giúp tôi chỉnh sửa, enhance trên các issue ở /Users/nguyenhuyvu/L
 4. G4, G5, G6, G7, G8: thực hiện như bạn đề nghị
 5. G9: bỏ qua
 
+##
+
+hãy xem các file ở thư mục /Users/nguyenhuyvu/Library/CloudStorage/OneDrive-VNGCorporation/Apps/mygit/a4b-doc-xtalent/product/xTalent/docs/02-dbml
+1. CO: core module
+2. PR: payroll
+3. TA: time & absence
+4. TR: total rewards
+Liên quan đến eligibility hãy rà soát lại các định nghĩa ở đó xem đã phù hợp chưa, và kiểm soát việc integration với các module khác ra sao, có ổn hết không nhé. 
+Sau đó viết 1 guide giới thiệu về eligibility và giải pháp chúng ta đang mô hình hoá, tài liệu đặt ở /Users/nguyenhuyvu/Library/CloudStorage/OneDrive-VNGCorporation/Apps/mygit/a4b-doc-xtalent/product/xTalent/docs/02-dbml
+
+##
+
+hãy xem các file ở thư mục /Users/nguyenhuyvu/Library/CloudStorage/OneDrive-VNGCorporation/Apps/mygit/a4b-doc-xtalent/product/xTalent/docs/02-dbml
+1. CO: core module
+2. PR: payroll
+3. TA: time & absence
+4. TR: total rewards
+
+Tôi cần bạn xem xét việc config các component total rewards theo country, legal entity một cách độc lập được hay không? và cách config country đã ổn thoả chưa?
+
+So sánh với các giải pháp HR hàng đầu thì phương pháp config của chúng ta có gì khác biệt, ưu nhược điểm ra sao? và có thể cải tiến gì không?
+
+##
+
+Tôi đồng ý phương án Option 1 (Light Touch)** — thêm `country_code` + `legal_entity_id` optional vào 5 definition tables.
+Nhưng đồng thời implement cả Option 2: Config Scope Group (Alternative) -> note rõ trên các field thêm vào để hiểu rõ
+Sau đó viết thành 1 guide để giải thích chính xác phương án áp dụng ở 2 phương án, team có thể flexible áp dụng tuỳ theo giai đoạn và sau khi áp dụng full cả 2 thì sẽ có thể config tuỳ theo client? bạn thấy ý tưởng này đúng không?

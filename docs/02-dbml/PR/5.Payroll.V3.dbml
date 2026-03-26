@@ -64,12 +64,27 @@ Table pay_master.pay_element {
   taxable_flag    boolean [default:true]
   pre_tax_flag    boolean [default:true]
   statutory_rule_id uuid [ref: > pay_master.statutory_rule.id, null] // CHANGED JUL 2025
-  eligibility_profile_id uuid [null]                                // changed 26Mar2026: G7 - FK to centralized eligibility.eligibility_profile
+  eligibility_profile_id uuid [null, ref: > eligibility.eligibility_profile.id]  // changed 26Mar2026: G7+F2 - FK to centralized eligibility.eligibility_profile
+  
+  // changed 26Mar2026: Multi-country scoping (Option 1 + 2)
+  // PHASE 1: country_code filters elements per country. NULL = global element.
+  country_code    char(2) [null]                     // changed 26Mar2026: ISO country. NULL = global (all countries)
+  // PHASE 2: config_scope_id for advanced scope hierarchy
+  config_scope_id uuid [null]                        // changed 26Mar2026: FK to comp_core.config_scope (cross-module ref)
+  // Note: legal_entity_id omitted — elements are country-level, LE-specifics via pay_group
+  
   gl_account_code varchar(50) [null] // CHANGED JUL 2025
   metadata        jsonb
   effective_start_date date    // SCD2 // CHANGED JUL 2025
   effective_end_date date [null] // SCD2 // CHANGED JUL 2025
   is_current_flag boolean [default: true] // SCD2 // CHANGED JUL 2025
+  
+  Indexes {
+    (code)
+    (code, country_code)                           // changed 26Mar2026: country-scoped lookup
+    (country_code)                                 // changed 26Mar2026: country filter
+    (config_scope_id)                              // changed 26Mar2026: scope group lookup
+  }
 }
 
 Table pay_master.balance_def {

@@ -200,4 +200,40 @@ TA Output → pay_run.input_value (nhiều dòng per employee per period)
 
 ---
 
+## Eligibility Findings – Review #02 (26Mar2026)
+
+> Phạm vi: Rà soát eligibility definitions và cross-module integration  
+> Guide: [eligibility-guide.md](./eligibility-guide.md)
+
+### Findings
+
+| # | Finding | Module | Severity | DBML Fix |
+|---|---------|--------|----------|----------|
+| F1 | TA file tham chiếu `core.eligibility_profile.id` — sai schema name (đúng: `eligibility.eligibility_profile`) | TA | ⚠️ Notation | ✅ Fixed: 3 FKs corrected (`leave_type`, `leave_class`, `leave_policy`) |
+| F2 | `eligibility_profile_id` thiếu `ref:` syntax trong DBML (PR: `pay_element`; TR: `comp_plan`, `bonus_plan`, `benefit_plan`) | PR, TR | ⚠️ Notation | ✅ Fixed: 4 fields updated with explicit `ref: > eligibility.eligibility_profile.id` |
+| F3 | `benefit.eligibility_profile` + `plan_eligibility` deprecated nhưng chưa có migration timeline | TR | 💡 Process | ✅ Fixed: Added timeline "Remove in v6.0, target Q3 2026" |
+| F4 | `eligibility_profile.domain` thiếu giá trị `PAYROLL` (chỉ có ABSENCE, BENEFITS, COMPENSATION, CORE) | Core | 💡 Schema | ✅ Fixed: Extended domain enum thêm `PAYROLL` |
+
+---
+
+## Multi-Country/LE Config Scoping – Review #03 (26Mar2026)
+
+> Phạm vi: TR definition tables country/LE independence  
+> Review: [review-02-tr-country-le-scoping.md](./review-02-tr-country-le-scoping.md)  
+> Guide: [config-scoping-guide.md](./config-scoping-guide.md)
+
+### Gap identified
+
+5 definition tables (`salary_basis`, `pay_component_def`, `comp_plan`, `bonus_plan`, `pay_element`) were **global singletons** — không phân biệt country/LE. Operational layer (pay_range, budget, bonus_pool) và Reference layer (country_config, calc_rule_def) đã tốt.
+
+### Solution implemented
+
+| Change | Module | Tables |
+|--------|--------|--------|
+| **Option 1**: Added inline `country_code` + `legal_entity_id` (nullable) | TR, PR | 5 tables |
+| **Option 2**: Created `config_scope` + `config_scope_member` | TR | 2 new tables |
+| Both options co-exist: `config_scope_id` takes precedence if populated | — | — |
+
+---
+
 *File này sẽ được update thêm khi có câu hỏi mới. Sau khi consolidate xong tất cả review, sẽ tổng hợp thành plan fix cho DBML.*
