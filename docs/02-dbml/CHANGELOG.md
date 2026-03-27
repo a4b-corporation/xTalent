@@ -1,6 +1,52 @@
 # xTalent Database Design – Changelog
 
 
+## [27Mar2026] – Payroll Engine Separation (V3 → V4)
+
+> Review: [review-03-payroll-engine-separation.md](./review-03-payroll-engine-separation.md)
+> File: `5.Payroll.V4.dbml` (replaces `5.Payroll.V3.dbml`)
+
+### Architecture Change
+
+**Tách `pay_run` schema thành 2 schema độc lập:**
+- `pay_mgmt` — Payroll Management (orchestration, batch lifecycle, approval)
+- `pay_engine` — Payroll Calculation Engine (execution, results, balances)
+
+### Migrated Tables (9 tables)
+
+| V3 (`pay_run.*`) | V4 | Schema | Changes |
+|---|---|---|---|
+| `batch` | `pay_mgmt.batch` | pay_mgmt | +`period_id`, +`pay_group_id` (restored), +`engine_request_id`, expanded `status_code`, +`submitted_at`, +`calc_completed_at` |
+| `manual_adjust` | `pay_mgmt.manual_adjust` | pay_mgmt | FK updated: `pay_run.batch` → `pay_mgmt.batch` |
+| `employee` | `pay_engine.run_employee` | pay_engine | +`request_id`, +`assignment_id`, +`pay_group_id`, +variance fields, +`error_message` |
+| `input_value` | `pay_engine.input_value` | pay_engine | FK updated only |
+| `result` | `pay_engine.result` | pay_engine | FK updated only |
+| `balance` | `pay_engine.balance` | pay_engine | FK updated only |
+| `retro_delta` | `pay_engine.retro_delta` | pay_engine | FK updated only |
+| `calc_log` | `pay_engine.calc_log` | pay_engine | FK updated only |
+| `costing` | `pay_engine.costing` | pay_engine | FK updated only |
+
+### New Tables (8 tables)
+
+| Table | Schema | Purpose |
+|---|---|---|
+| `pay_period` | pay_mgmt | Explicit period records (replaces implicit `calendar_json`) |
+| `batch_approval` | pay_mgmt | Multi-level approval workflow for batches |
+| `run_request` | pay_engine | **Engine interface contract** — request/response between mgmt ↔ engine |
+| `calculation_step` | pay_engine | Step configuration (INPUT_COLLECTION, EARNINGS, TAX…) |
+| `run_step` | pay_engine | Per-run step execution tracking |
+| `cumulative_balance` | pay_engine | YTD/QTD/LTD persistent balance tracking |
+| `element_dependency` | pay_engine | DAG dependency graph between elements |
+| `input_source_config` | pay_engine | Automated input collection config from TA/Absence/Comp modules |
+
+### FK Updates (existing tables)
+
+| Table | Old FK | New FK |
+|---|---|---|
+| `pay_bank.payment_batch.run_batch_id` | `pay_run.batch.id` | `pay_mgmt.batch.id` |
+| `generated_file.payroll_run_id` | `pay_run.batch.id` | `pay_mgmt.batch.id` |
+
+---
 
 ## [26Mar2026] – Cross-Module Structural Review
 
