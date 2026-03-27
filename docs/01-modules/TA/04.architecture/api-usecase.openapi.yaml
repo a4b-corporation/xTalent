@@ -1,0 +1,1582 @@
+openapi: 3.0.3
+info:
+  title: xTalent Time & Absence — Use-Case API
+  description: |
+    Business-intent API derived from the 6 use-case flows (Step 3 domain architecture).
+    Each endpoint reflects a named business operation, not a CRUD resource.
+
+    **Bounded Contexts Served:**
+    - ta.absence: Leave lifecycle, balance, cancellation
+    - ta.attendance: Punch/clock, OT, timesheets
+    - ta.shared: Period close, holidays
+
+    **Key Business Rules Enforced at API Layer:**
+    - H-P0-001: Cancellation deadline check on POST /leaves/requests/{id}/cancel
+    - H-P0-003: OT skip-level routing on POST /attendance/overtime/requests
+    - H-P0-004: Termination balance check on POST /periods/{id}/close
+    - H8: Offline punch batch sync via POST /attendance/punches/sync
+    - VLC 2019 Art. 107: OT cap validation on overtime submission
+
+    **Authentication:** Bearer JWT (tenant_id claim required on all requests)
+    **Versioning:** URL path versioning (/api/v1)
+    **Multi-tenancy:** tenant_id extracted from JWT; all responses scoped to tenant
+  version: "1.0.0"
+  contact:
+    name: xTalent Platform Team
+    email: platform@xtalent.io
+
+servers:
+  - url: https://api.xtalent.io/api/v1
+    description: Production
+  - url: https://api-staging.xtalent.io/api/v1
+    description: Staging
+
+tags:
+  - name: Leave Requests
+    description: Leave request lifecycle (submit, approve, reject, cancel)
+  - name: Leave Balances
+    description: Employee leave balance queries and team calendar
+  - name: Attendance
+    description: Clock in/out and offline sync
+  - name: Overtime
+    description: Overtime request and approval workflow
+  - name: Timesheets
+    description: Timesheet submission and approval
+  - name: Periods
+    description: Payroll period management and close
+  - name: Holidays
+    description: Holiday calendar queries
+
+paths:
+
+  # ─── LEAVE REQUESTS ──────────────────────────────────────────────────────────
+
+  /leaves/requests:
+    post:
+      operationId: submitLeaveRequest
+      tags: [Leave Requests]
+      summary: Submit a leave request
+      description: |
+        Employee submits a new leave request. Flow: submit-leave-request.flow.md.
+
+        Business rules applied:
+        - BR-ABS-005: Validates available balance (after reservation)
+        - H-P0-001: Computes cancellation_deadline_at from leave_type.cancellation_deadline_days
+        - FEFO reservation created on successful submission
+        - Approval chain routed dynamically from org chart
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitLeaveRequestBody'
+      responses:
+        '201':
+          description: Leave request submitted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveRequestResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          description: Business rule violation (insufficient balance, leave type inactive, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessRuleError'
+
+    get:
+      operationId: listMyLeaveRequests
+      tags: [Leave Requests]
+      summary: List my leave requests
+      description: Returns the authenticated employee's leave requests with optional filters.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/LeaveRequestStatus'
+        - name: leave_type_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: start_date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+      responses:
+        '200':
+          description: Paginated list of leave requests
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveRequestListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /leaves/requests/{id}:
+    get:
+      operationId: getLeaveRequest
+      tags: [Leave Requests]
+      summary: Get leave request details
+      description: Returns full details of a specific leave request. Accessible by the employee, their manager, and HR Admin.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: Leave request details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveRequestResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /leaves/requests/{id}/approve:
+    post:
+      operationId: approveLeaveRequest
+      tags: [Leave Requests]
+      summary: Approve a leave request
+      description: |
+        Manager approves a leave request. Flow: approve-leave-request.flow.md.
+
+        If this is the final approval level, the reservation converts to a
+        confirmed deduction on the leave start date.
+        Triggers LeaveRequestApproved event and employee notification.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                comments:
+                  type: string
+                  description: Optional approval comments
+      responses:
+        '200':
+          description: Leave request approved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveRequestResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: Cannot approve (wrong status, not the assigned approver)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessRuleError'
+
+  /leaves/requests/{id}/reject:
+    post:
+      operationId: rejectLeaveRequest
+      tags: [Leave Requests]
+      summary: Reject a leave request
+      description: |
+        Manager rejects a leave request. Reservation is released and balance restored.
+        Triggers LeaveRequestRejected event and employee notification.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [rejection_reason]
+              properties:
+                rejection_reason:
+                  type: string
+                  minLength: 10
+                  description: Required reason for rejection
+      responses:
+        '200':
+          description: Leave request rejected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveRequestResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /leaves/requests/{id}/cancel:
+    post:
+      operationId: cancelLeaveRequest
+      tags: [Leave Requests]
+      summary: Cancel a leave request
+      description: |
+        Employee cancels a leave request. Flow: cancel-leave-request.flow.md.
+
+        **H-P0-001 Decision Point:**
+        - If current date < cancellation_deadline_at: self-cancel allowed; balance fully restored
+        - If current date >= cancellation_deadline_at: post-deadline route triggered;
+          request moves to CANCELLATION_PENDING; manager approval required via
+          POST /leaves/requests/{id}/cancel-approve
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                cancellation_reason:
+                  type: string
+      responses:
+        '200':
+          description: |
+            Cancellation result. Check response status field:
+            - CANCELLED: pre-deadline; balance restored immediately
+            - CANCELLATION_PENDING: post-deadline; awaiting manager approval (H-P0-001)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveRequestResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: Cannot cancel (wrong status, already started)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessRuleError'
+
+  /leaves/requests/{id}/cancel-approve:
+    post:
+      operationId: approveCancellationRequest
+      tags: [Leave Requests]
+      summary: Approve a post-deadline cancellation
+      description: |
+        Manager approves a post-deadline cancellation request (H-P0-001).
+        Moves request from CANCELLATION_PENDING to CANCELLED.
+        Full balance restoration including any deductions already applied.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                comments:
+                  type: string
+      responses:
+        '200':
+          description: Post-deadline cancellation approved; balance restored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveRequestResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: Request not in CANCELLATION_PENDING status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessRuleError'
+
+  /leaves/requests/{id}/cancel-reject:
+    post:
+      operationId: rejectCancellationRequest
+      tags: [Leave Requests]
+      summary: Reject a post-deadline cancellation
+      description: |
+        Manager rejects a post-deadline cancellation request (H-P0-001).
+        Request returns to APPROVED status; leave proceeds as planned.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [rejection_reason]
+              properties:
+                rejection_reason:
+                  type: string
+      responses:
+        '200':
+          description: Post-deadline cancellation rejected; request returned to APPROVED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveRequestResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ─── LEAVE BALANCES ──────────────────────────────────────────────────────────
+
+  /leaves/balances:
+    get:
+      operationId: getMyLeaveBalances
+      tags: [Leave Balances]
+      summary: Get my current leave balances
+      description: |
+        Returns the authenticated employee's current leave balance snapshot
+        (LeaveInstant) for all active leave types. Served from Redis cache;
+        computed from immutable LeaveMovement ledger (ADR-TA-001).
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: leave_type_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Filter to a specific leave type
+      responses:
+        '200':
+          description: Employee leave balances
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  employee_id:
+                    type: string
+                    format: uuid
+                  computed_at:
+                    type: string
+                    format: date-time
+                  balances:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LeaveBalanceSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /leaves/calendar:
+    get:
+      operationId: getTeamLeaveCalendar
+      tags: [Leave Balances]
+      summary: Get team leave calendar
+      description: |
+        Returns approved and pending leave requests for the requesting employee's
+        team within the given date range. Used for calendar-first UX (H5).
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: start_date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: employee_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Filter to specific employee (managers only)
+      responses:
+        '200':
+          description: Team leave calendar entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  start_date:
+                    type: string
+                    format: date
+                  end_date:
+                    type: string
+                    format: date
+                  entries:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CalendarEntry'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ─── ATTENDANCE ───────────────────────────────────────────────────────────────
+
+  /attendance/punches:
+    post:
+      operationId: recordPunch
+      tags: [Attendance]
+      summary: Record a clock in or clock out punch
+      description: |
+        Employee clocks in or out. Flow: clock-in-out.flow.md.
+
+        **Online mode:** Punch recorded immediately; geofence validated if configured.
+        **H8 Note:** For offline mode, use POST /attendance/punches/sync with a batch.
+
+        ADR-TA-004: biometric_ref is a token only; never raw biometric data.
+        ADR-TA-001: Punch records are append-only; corrections use corrects_punch_id.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecordPunchBody'
+      responses:
+        '201':
+          description: Punch recorded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PunchResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          description: Business rule violation (duplicate active clock-in, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessRuleError'
+
+    get:
+      operationId: listMyPunches
+      tags: [Attendance]
+      summary: List my punch records
+      description: Returns the authenticated employee's punch records with date filter.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: date_from
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: date_to
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: sync_status
+          in: query
+          schema:
+            type: string
+            enum: [PENDING, SYNCED, CONFLICT]
+      responses:
+        '200':
+          description: Punch records
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  punches:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PunchResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /attendance/punches/sync:
+    post:
+      operationId: syncOfflinePunches
+      tags: [Attendance]
+      summary: Batch sync offline punch records
+      description: |
+        H8: Submits a batch of punches captured offline by the mobile app.
+        Each punch must include an idempotency_key (employee_id + punched_at + device_id hash).
+
+        **Conflict resolution:** Server uses timestamp ordering + idempotency key.
+        Duplicate punches (same idempotency_key) are silently deduplicated.
+        Overlapping or out-of-order punches are flagged with sync_status = CONFLICT
+        and require HR resolution via PATCH /attendance/punches/{id}/resolve-conflict.
+
+        Returns per-punch processing result.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [punches]
+              properties:
+                punches:
+                  type: array
+                  minItems: 1
+                  maxItems: 500
+                  items:
+                    $ref: '#/components/schemas/OfflinePunchItem'
+      responses:
+        '207':
+          description: Multi-status: each punch processed individually
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PunchSyncResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /attendance/punches/{id}/resolve-conflict:
+    post:
+      operationId: resolveConflictPunch
+      tags: [Attendance]
+      summary: HR resolves a conflicted punch
+      description: |
+        HR Administrator resolves a punch with sync_status = CONFLICT.
+        Resolution sets the punch to SYNCED or EXCLUDED with documented reason.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [resolution, resolution_notes]
+              properties:
+                resolution:
+                  type: string
+                  enum: [ACCEPT, EXCLUDE]
+                resolution_notes:
+                  type: string
+                  minLength: 10
+      responses:
+        '200':
+          description: Conflict resolved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PunchResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ─── OVERTIME ─────────────────────────────────────────────────────────────────
+
+  /attendance/overtime/requests:
+    post:
+      operationId: submitOvertimeRequest
+      tags: [Overtime]
+      summary: Submit an overtime request
+      description: |
+        Employee submits an OT request. Flow: request-overtime.flow.md.
+
+        **H-P0-003 Decision Point:**
+        - If submitter is a manager submitting their own OT, routing_mode determines:
+          - SKIP_LEVEL (default): routes to submitter's manager
+          - CUSTOM: routes to configured workflow approver
+
+        **VLC Art. 107 Cap Enforcement (H-P0-004 compliance check):**
+        - Daily cap: 4 hours; Monthly cap: 40 hours; Annual cap: 300 hours
+        - 422 returned if any cap would be exceeded
+
+        Triggers OvertimeRequested event and approver notification.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitOvertimeRequestBody'
+      responses:
+        '201':
+          description: OT request submitted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OvertimeRequestResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          description: OT cap exceeded (VLC Art. 107) or business rule violation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessRuleError'
+
+    get:
+      operationId: listOvertimeRequests
+      tags: [Overtime]
+      summary: List overtime requests
+      description: Returns OT requests. Employees see their own; managers see their team's pending requests.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [DRAFT, SUBMITTED, APPROVED, REJECTED, CANCELLED]
+        - name: date_from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: date_to
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: OT requests list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  requests:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/OvertimeRequestResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /attendance/overtime/requests/{id}/approve:
+    post:
+      operationId: approveOvertimeRequest
+      tags: [Overtime]
+      summary: Approve an overtime request
+      description: |
+        Manager or Senior Manager approves an OT request.
+        H-P0-003: Skip-level or custom routing enforced — self-approval blocked.
+        On approval, if comp_time_elected = true, CompTimeBalance is incremented.
+        Triggers OvertimeApproved event and employee notification.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                comments:
+                  type: string
+      responses:
+        '200':
+          description: OT request approved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OvertimeRequestResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Forbidden — self-approval blocked (H-P0-003)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessRuleError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /attendance/overtime/requests/{id}/reject:
+    post:
+      operationId: rejectOvertimeRequest
+      tags: [Overtime]
+      summary: Reject an overtime request
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [rejection_reason]
+              properties:
+                rejection_reason:
+                  type: string
+                  minLength: 10
+      responses:
+        '200':
+          description: OT request rejected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OvertimeRequestResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ─── TIMESHEETS ───────────────────────────────────────────────────────────────
+
+  /attendance/timesheets/{periodId}:
+    get:
+      operationId: getMyTimesheet
+      tags: [Timesheets]
+      summary: Get my timesheet for a period
+      description: Returns the authenticated employee's timesheet for the given period, including daily line breakdown.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: periodId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Timesheet for the period
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimesheetResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /attendance/timesheets/{periodId}/submit:
+    post:
+      operationId: submitTimesheet
+      tags: [Timesheets]
+      summary: Submit timesheet for approval
+      description: |
+        Employee submits their timesheet for the period.
+        All attendance exceptions (late arrivals, missing punches) must be
+        resolved before submission is accepted.
+        Triggers TimesheetSubmitted event and manager notification.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: periodId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Timesheet submitted for approval
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimesheetResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: Unresolved exceptions or timesheet already submitted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessRuleError'
+
+  /attendance/timesheets/{id}/approve:
+    post:
+      operationId: approveTimesheet
+      tags: [Timesheets]
+      summary: Approve a timesheet
+      description: |
+        Manager approves a submitted timesheet. Timesheet transitions to APPROVED.
+        Required before period can be closed (H-P0-004 precondition).
+        Triggers TimesheetApproved event.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                comments:
+                  type: string
+      responses:
+        '200':
+          description: Timesheet approved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimesheetResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /attendance/timesheets/{id}/reject:
+    post:
+      operationId: rejectTimesheet
+      tags: [Timesheets]
+      summary: Reject a timesheet
+      description: Manager rejects a timesheet; returns it to OPEN status for corrections.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [rejection_reason]
+              properties:
+                rejection_reason:
+                  type: string
+      responses:
+        '200':
+          description: Timesheet rejected; returned to OPEN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimesheetResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ─── PERIODS ──────────────────────────────────────────────────────────────────
+
+  /periods/{id}/lock:
+    post:
+      operationId: lockPeriod
+      tags: [Periods]
+      summary: Lock a payroll period
+      description: |
+        Payroll Officer transitions period from OPEN to LOCKED.
+        All timesheets are frozen. No new records may be added.
+        Triggers PeriodLocked event.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: Period locked successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PeriodResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: Period not in OPEN status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessRuleError'
+
+  /periods/{id}/close:
+    post:
+      operationId: closePeriod
+      tags: [Periods]
+      summary: Close a payroll period and trigger export
+      description: |
+        Payroll Officer closes the period and triggers payroll export generation.
+        Flow: period-close-payroll-export.flow.md.
+
+        **H-P0-004 Preconditions (all must pass):**
+        1. All Timesheets in the period have status = APPROVED
+        2. No pending LeaveRequests within the period
+        3. Termination balance records processed (or flagged for HR_REVIEW)
+
+        On success:
+        - PeriodClosed event published
+        - PayrollExportPackage generated (idempotent)
+        - PayrollExportCreated integration event dispatched to Payroll System
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                termination_balance_action:
+                  type: string
+                  enum: [AUTO_DEDUCT, HR_REVIEW, WRITE_OFF, RULE_BASED]
+                  description: Override termination balance action for this close (H-P0-004)
+      responses:
+        '200':
+          description: Period closed; PayrollExportPackage generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PeriodCloseResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: Preconditions not met (unapproved timesheets, pending leave requests)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PeriodCloseBlockedError'
+
+  # ─── HOLIDAYS ─────────────────────────────────────────────────────────────────
+
+  /holidays/{year}/{countryCode}:
+    get:
+      operationId: getHolidayCalendar
+      tags: [Holidays]
+      summary: Get holiday calendar for a year and country
+      description: Returns the published holiday calendar. Used for leave duration calculation and OT rate determination.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: year
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 2020
+            maximum: 2099
+        - name: countryCode
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Z]{2}$'
+            example: VN
+      responses:
+        '200':
+          description: Holiday calendar
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HolidayCalendarResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+# ─────────────────────────────────────────────────────────────────────────────
+# COMPONENTS
+# ─────────────────────────────────────────────────────────────────────────────
+
+components:
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    ResourceId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    BadRequest:
+      description: Bad request — invalid input format
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Missing or invalid JWT
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Insufficient permissions for this operation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+
+    # ── Enums ──────────────────────────────────────────────────────────────────
+
+    LeaveRequestStatus:
+      type: string
+      enum: [SUBMITTED, UNDER_REVIEW, APPROVED, REJECTED, CANCELLATION_PENDING, CANCELLED]
+
+    LeaveUnit:
+      type: string
+      enum: [DAY, HOUR]
+
+    # ── Request Bodies ─────────────────────────────────────────────────────────
+
+    SubmitLeaveRequestBody:
+      type: object
+      required: [leave_type_id, start_date, end_date]
+      properties:
+        leave_type_id:
+          type: string
+          format: uuid
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        unit:
+          $ref: '#/components/schemas/LeaveUnit'
+        reason:
+          type: string
+        attachment_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Evidence document IDs (required when leave_type.evidence_required = true)
+
+    RecordPunchBody:
+      type: object
+      required: [punch_type, punched_at]
+      properties:
+        punch_type:
+          type: string
+          enum: [IN, OUT]
+        punched_at:
+          type: string
+          format: date-time
+          description: UTC timestamp of the punch event
+        latitude:
+          type: number
+          format: double
+        longitude:
+          type: number
+          format: double
+        device_id:
+          type: string
+        biometric_ref:
+          type: string
+          description: ADR-TA-004 - token only; no raw biometric data
+        corrects_punch_id:
+          type: string
+          format: uuid
+          description: Set when this punch corrects a previous punch record
+
+    OfflinePunchItem:
+      type: object
+      required: [punch_type, punched_at, idempotency_key]
+      properties:
+        punch_type:
+          type: string
+          enum: [IN, OUT]
+        punched_at:
+          type: string
+          format: date-time
+        device_id:
+          type: string
+        biometric_ref:
+          type: string
+        latitude:
+          type: number
+          format: double
+        longitude:
+          type: number
+          format: double
+        idempotency_key:
+          type: string
+          description: H8 - hash of employee_id + punched_at + device_id for dedup
+
+    SubmitOvertimeRequestBody:
+      type: object
+      required: [work_date, requested_ot_hours, ot_type, reason]
+      properties:
+        work_date:
+          type: string
+          format: date
+        requested_ot_hours:
+          type: number
+          format: float
+          minimum: 0.25
+          maximum: 4
+          description: VLC Art. 107 - daily cap 4 hours enforced
+        ot_type:
+          type: string
+          enum: [WEEKDAY, WEEKEND, PUBLIC_HOLIDAY]
+        reason:
+          type: string
+          minLength: 10
+        comp_time_elected:
+          type: boolean
+          default: false
+          description: Elect comp time instead of OT payment
+        approval_routing_mode:
+          type: string
+          enum: [SKIP_LEVEL, CUSTOM]
+          description: H-P0-003 - for manager self-submissions
+
+    # ── Response Schemas ───────────────────────────────────────────────────────
+
+    LeaveRequestResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        employee_id:
+          type: string
+          format: uuid
+        leave_type_id:
+          type: string
+          format: uuid
+        leave_type_name:
+          type: string
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        requested_days:
+          type: number
+        unit:
+          $ref: '#/components/schemas/LeaveUnit'
+        status:
+          $ref: '#/components/schemas/LeaveRequestStatus'
+        cancellation_deadline_at:
+          type: string
+          format: date-time
+          description: H-P0-001 - computed deadline for self-cancellation
+        submitted_at:
+          type: string
+          format: date-time
+        approved_at:
+          type: string
+          format: date-time
+        rejected_at:
+          type: string
+          format: date-time
+        cancelled_at:
+          type: string
+          format: date-time
+        approval_chain_id:
+          type: string
+          format: uuid
+        reason:
+          type: string
+
+    LeaveRequestListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/LeaveRequestResponse'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+
+    LeaveBalanceSummary:
+      type: object
+      properties:
+        leave_type_id:
+          type: string
+          format: uuid
+        leave_type_code:
+          type: string
+        leave_type_name:
+          type: string
+        unit:
+          $ref: '#/components/schemas/LeaveUnit'
+        earned:
+          type: number
+        used:
+          type: number
+        reserved:
+          type: number
+        available:
+          type: number
+        expiring_soon:
+          type: number
+          description: Balance expiring within 30 days
+
+    CalendarEntry:
+      type: object
+      properties:
+        employee_id:
+          type: string
+          format: uuid
+        employee_name:
+          type: string
+        leave_type_code:
+          type: string
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        status:
+          $ref: '#/components/schemas/LeaveRequestStatus'
+
+    PunchResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        employee_id:
+          type: string
+          format: uuid
+        punch_type:
+          type: string
+          enum: [IN, OUT]
+        punched_at:
+          type: string
+          format: date-time
+        geofence_validated:
+          type: boolean
+        sync_status:
+          type: string
+          enum: [PENDING, SYNCED, CONFLICT]
+        conflict_reason:
+          type: string
+        synced_at:
+          type: string
+          format: date-time
+        is_correction:
+          type: boolean
+
+    PunchSyncResult:
+      type: object
+      properties:
+        idempotency_key:
+          type: string
+        punch_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [SYNCED, CONFLICT, DUPLICATE]
+        conflict_reason:
+          type: string
+
+    OvertimeRequestResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        employee_id:
+          type: string
+          format: uuid
+        work_date:
+          type: string
+          format: date
+        requested_ot_hours:
+          type: number
+        ot_type:
+          type: string
+          enum: [WEEKDAY, WEEKEND, PUBLIC_HOLIDAY]
+        ot_rate:
+          type: number
+          description: Applicable rate (1.5, 2.0, 3.0 per VLC Art. 98)
+        status:
+          type: string
+          enum: [DRAFT, SUBMITTED, APPROVED, REJECTED, CANCELLED]
+        approval_routing_mode:
+          type: string
+          enum: [SKIP_LEVEL, CUSTOM]
+        comp_time_elected:
+          type: boolean
+        submitted_at:
+          type: string
+          format: date-time
+        approved_at:
+          type: string
+          format: date-time
+
+    TimesheetResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        employee_id:
+          type: string
+          format: uuid
+        period_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [OPEN, SUBMITTED, APPROVED, LOCKED]
+        total_scheduled_hours:
+          type: number
+        total_worked_hours:
+          type: number
+        total_ot_hours:
+          type: number
+        total_absent_hours:
+          type: number
+        submitted_at:
+          type: string
+          format: date-time
+        approved_at:
+          type: string
+          format: date-time
+        locked_at:
+          type: string
+          format: date-time
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/TimesheetLineResponse'
+
+    TimesheetLineResponse:
+      type: object
+      properties:
+        work_date:
+          type: string
+          format: date
+        regular_hours:
+          type: number
+        ot_hours_150:
+          type: number
+          description: OT at 150% rate (weekday - VLC Art. 98)
+        ot_hours_200:
+          type: number
+          description: OT at 200% rate (weekend - VLC Art. 98)
+        ot_hours_300:
+          type: number
+          description: OT at 300% rate (public holiday - VLC Art. 98)
+        holiday_hours:
+          type: number
+        absent_hours:
+          type: number
+
+    PeriodResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        period_name:
+          type: string
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        status:
+          type: string
+          enum: [OPEN, LOCKED, CLOSED]
+        working_days:
+          type: integer
+        locked_at:
+          type: string
+          format: date-time
+        closed_at:
+          type: string
+          format: date-time
+
+    PeriodCloseResponse:
+      type: object
+      properties:
+        period:
+          $ref: '#/components/schemas/PeriodResponse'
+        export_package_id:
+          type: string
+          format: uuid
+        export_checksum:
+          type: string
+        dispatch_status:
+          type: string
+          enum: [PENDING, DISPATCHED, ACKNOWLEDGED, FAILED]
+        employee_count:
+          type: integer
+        total_regular_hours:
+          type: number
+        total_ot_hours:
+          type: number
+        total_leave_days:
+          type: number
+
+    PeriodCloseBlockedError:
+      type: object
+      properties:
+        error_code:
+          type: string
+          example: PERIOD_CLOSE_BLOCKED
+        message:
+          type: string
+        unapproved_timesheets:
+          type: array
+          items:
+            type: object
+            properties:
+              employee_id:
+                type: string
+                format: uuid
+              timesheet_id:
+                type: string
+                format: uuid
+        pending_leave_requests:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    HolidayCalendarResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        calendar_name:
+          type: string
+        country_code:
+          type: string
+        year:
+          type: integer
+        holidays:
+          type: array
+          items:
+            type: object
+            properties:
+              holiday_date:
+                type: string
+                format: date
+              name_vn:
+                type: string
+              name_en:
+                type: string
+              is_compensated:
+                type: boolean
+              compensated_date:
+                type: string
+                format: date
+
+    ErrorResponse:
+      type: object
+      properties:
+        error_code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
+
+    BusinessRuleError:
+      type: object
+      properties:
+        error_code:
+          type: string
+        message:
+          type: string
+        rule_id:
+          type: string
+          description: Reference to the violated business rule (e.g., H-P0-001, BR-ABS-005)
+        details:
+          type: object
+          additionalProperties: true

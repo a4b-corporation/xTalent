@@ -1,0 +1,2529 @@
+openapi: 3.0.3
+info:
+  title: xTalent Time & Absence — Domain (CRUD) API
+  description: |
+    Standard CRUD API for all aggregate roots across the three bounded contexts.
+    Naming convention: /api/v1/{resource} (plural, kebab-case).
+
+    This API is distinct from api-usecase.openapi.yaml:
+    - Domain API: resource-centric CRUD for configuration and data access
+    - Use-Case API: business-intent endpoints derived from flows
+
+    **Aggregate Roots Covered:**
+    - ta.absence: leave-types, leave-policies, leave-classes, accrual-plans, carryover-rules,
+                  leave-instants (read-only), leave-movements (append-only), accrual-batch-runs
+    - ta.attendance: shifts, shift-assignments, worked-periods, comp-time-balances
+    - ta.shared: periods, holiday-calendars, approval-chains, tenant-configs, payroll-exports
+
+    **Authentication:** Bearer JWT
+    **Multi-tenancy:** tenant_id injected from JWT claim on all writes; filtered on all reads
+  version: "1.0.0"
+  contact:
+    name: xTalent Platform Team
+
+servers:
+  - url: https://api.xtalent.io/api/v1
+    description: Production
+
+tags:
+  - name: Leave Types
+    description: Leave type configuration (ta.absence)
+  - name: Leave Policies
+    description: Leave policy management (ta.absence)
+  - name: Leave Classes
+    description: Leave class groupings for deduction priority (ta.absence)
+  - name: Accrual Plans
+    description: Accrual plan configuration (ta.absence)
+  - name: Carryover Rules
+    description: Year-end carryover configuration (ta.absence)
+  - name: Leave Instants
+    description: Read-only balance snapshots (ta.absence)
+  - name: Leave Movements
+    description: Append-only balance ledger (ta.absence)
+  - name: Accrual Batch Runs
+    description: Accrual batch execution records (ta.absence)
+  - name: Shifts
+    description: Shift template management (ta.attendance)
+  - name: Shift Assignments
+    description: Employee shift assignments (ta.attendance)
+  - name: Worked Periods
+    description: Computed worked time records (ta.attendance)
+  - name: Comp Time Balances
+    description: Compensatory time balance management (ta.attendance)
+  - name: Periods
+    description: Payroll period management (ta.shared)
+  - name: Holiday Calendars
+    description: Holiday calendar CRUD (ta.shared)
+  - name: Approval Chains
+    description: Approval workflow configuration (ta.shared)
+  - name: Tenant Config
+    description: Tenant-level policy configuration (ta.shared)
+  - name: Payroll Exports
+    description: Payroll export package retrieval (ta.shared)
+
+paths:
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # ta.absence — Leave Types
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  /leave-types:
+    get:
+      operationId: listLeaveTypes
+      tags: [Leave Types]
+      summary: List all leave types for the tenant
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ActiveFilter'
+        - $ref: '#/components/parameters/CountryCodeFilter'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+      responses:
+        '200':
+          description: Paginated list of leave types
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveTypeListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      operationId: createLeaveType
+      tags: [Leave Types]
+      summary: Create a new leave type
+      description: |
+        HR Admin creates a new leave type. VLC Art. 113: Annual leave entitlement
+        cannot be set below 14 days. code must be unique per tenant.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeaveTypeWrite'
+      responses:
+        '201':
+          description: Leave type created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveType'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Conflict — code already exists for this tenant
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /leave-types/{id}:
+    get:
+      operationId: getLeaveType
+      tags: [Leave Types]
+      summary: Get leave type by ID
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: Leave type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveType'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      operationId: updateLeaveType
+      tags: [Leave Types]
+      summary: Update a leave type
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeaveTypeWrite'
+      responses:
+        '200':
+          description: Leave type updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveType'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      operationId: deactivateLeaveType
+      tags: [Leave Types]
+      summary: Deactivate a leave type (soft delete)
+      description: Sets active = false. Warns if employees have active balances.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: Leave type deactivated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveType'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # ta.absence — Leave Policies
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  /leave-policies:
+    get:
+      operationId: listLeavePolicies
+      tags: [Leave Policies]
+      summary: List leave policies
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: leave_type_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/ActiveFilter'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+      responses:
+        '200':
+          description: List of leave policies
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeavePolicyListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      operationId: createLeavePolicy
+      tags: [Leave Policies]
+      summary: Create a leave policy
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeavePolicyWrite'
+      responses:
+        '201':
+          description: Leave policy created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeavePolicy'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /leave-policies/{id}:
+    get:
+      operationId: getLeavePolicy
+      tags: [Leave Policies]
+      summary: Get leave policy by ID
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: Leave policy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeavePolicy'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      operationId: updateLeavePolicy
+      tags: [Leave Policies]
+      summary: Update a leave policy
+      description: Policy changes are not retroactive — affects new requests only.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeavePolicyWrite'
+      responses:
+        '200':
+          description: Leave policy updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeavePolicy'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # ta.absence — Leave Classes
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  /leave-classes:
+    get:
+      operationId: listLeaveClasses
+      tags: [Leave Classes]
+      summary: List leave classes
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Leave classes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LeaveClass'
+
+    post:
+      operationId: createLeaveClass
+      tags: [Leave Classes]
+      summary: Create a leave class
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeaveClassWrite'
+      responses:
+        '201':
+          description: Leave class created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveClass'
+
+  /leave-classes/{id}:
+    get:
+      operationId: getLeaveClass
+      tags: [Leave Classes]
+      summary: Get leave class by ID
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: Leave class
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveClass'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      operationId: updateLeaveClass
+      tags: [Leave Classes]
+      summary: Update a leave class
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeaveClassWrite'
+      responses:
+        '200':
+          description: Leave class updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveClass'
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # ta.absence — Accrual Plans
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  /accrual-plans:
+    get:
+      operationId: listAccrualPlans
+      tags: [Accrual Plans]
+      summary: List accrual plans
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Accrual plans
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AccrualPlan'
+
+    post:
+      operationId: createAccrualPlan
+      tags: [Accrual Plans]
+      summary: Create an accrual plan
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccrualPlanWrite'
+      responses:
+        '201':
+          description: Accrual plan created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccrualPlan'
+
+  /accrual-plans/{id}:
+    get:
+      operationId: getAccrualPlan
+      tags: [Accrual Plans]
+      summary: Get accrual plan by ID
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: Accrual plan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccrualPlan'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      operationId: updateAccrualPlan
+      tags: [Accrual Plans]
+      summary: Update an accrual plan
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccrualPlanWrite'
+      responses:
+        '200':
+          description: Accrual plan updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccrualPlan'
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # ta.absence — Carryover Rules
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  /carryover-rules:
+    get:
+      operationId: listCarryoverRules
+      tags: [Carryover Rules]
+      summary: List carryover rules
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Carryover rules
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CarryoverRule'
+
+    post:
+      operationId: createCarryoverRule
+      tags: [Carryover Rules]
+      summary: Create a carryover rule
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CarryoverRuleWrite'
+      responses:
+        '201':
+          description: Carryover rule created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CarryoverRule'
+
+  /carryover-rules/{id}:
+    get:
+      operationId: getCarryoverRule
+      tags: [Carryover Rules]
+      summary: Get carryover rule by ID
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: Carryover rule
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CarryoverRule'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      operationId: updateCarryoverRule
+      tags: [Carryover Rules]
+      summary: Update a carryover rule
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CarryoverRuleWrite'
+      responses:
+        '200':
+          description: Carryover rule updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CarryoverRule'
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # ta.absence — Leave Instants (read-only)
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  /leave-instants:
+    get:
+      operationId: listLeaveInstants
+      tags: [Leave Instants]
+      summary: List leave balance snapshots (read-only)
+      description: |
+        Returns computed LeaveInstant records (balance snapshots).
+        Read-only — balances are computed from the LeaveMovement ledger.
+        HR Admin can query by employee_id. Employees see own balances only.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: employee_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: leave_type_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Leave balance snapshots
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LeaveInstant'
+
+  /leave-instants/{id}:
+    get:
+      operationId: getLeaveInstant
+      tags: [Leave Instants]
+      summary: Get a specific leave balance snapshot
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: Leave instant
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveInstant'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # ta.absence — Leave Movements (append-only)
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  /leave-movements:
+    get:
+      operationId: listLeaveMovements
+      tags: [Leave Movements]
+      summary: List leave movement ledger entries
+      description: |
+        Returns the immutable leave movement ledger (ADR-TA-001).
+        Append-only: GET and POST only; no PUT or DELETE.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: employee_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: leave_type_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: movement_type
+          in: query
+          schema:
+            type: string
+            enum: [EARN, USE, RESERVE, RELEASE, EXPIRE, ADJUST, CASHOUT]
+        - name: effective_date_from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: effective_date_to
+          in: query
+          schema:
+            type: string
+            format: date
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+      responses:
+        '200':
+          description: Leave movements (ledger view)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveMovementListResponse'
+
+    post:
+      operationId: createLeaveMovement
+      tags: [Leave Movements]
+      summary: Create a manual leave movement (HR ADJUST only)
+      description: |
+        HR Admin creates a manual ADJUST movement. Only ADJUST movement_type is
+        permitted via this endpoint. All other movement types are system-generated.
+        ADR-TA-001: Append-only; no UPDATE or DELETE.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeaveMovementWrite'
+      responses:
+        '201':
+          description: Manual adjustment movement created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveMovement'
+        '422':
+          description: Only ADJUST movements permitted via this endpoint
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /leave-movements/{id}:
+    get:
+      operationId: getLeaveMovement
+      tags: [Leave Movements]
+      summary: Get a specific leave movement
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: Leave movement
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveMovement'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # ta.absence — Accrual Batch Runs
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  /accrual-batch-runs:
+    get:
+      operationId: listAccrualBatchRuns
+      tags: [Accrual Batch Runs]
+      summary: List accrual batch run records
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: accrual_plan_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [RUNNING, COMPLETED, FAILED, SKIPPED]
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+      responses:
+        '200':
+          description: Accrual batch runs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AccrualBatchRun'
+
+    post:
+      operationId: triggerAccrualBatch
+      tags: [Accrual Batch Runs]
+      summary: Trigger an accrual batch run
+      description: |
+        HR Admin triggers manual accrual batch. Idempotent: if a COMPLETED run
+        already exists for the same plan + period, returns existing run.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [accrual_plan_id, accrual_period_start, accrual_period_end]
+              properties:
+                accrual_plan_id:
+                  type: string
+                  format: uuid
+                accrual_period_start:
+                  type: string
+                  format: date
+                accrual_period_end:
+                  type: string
+                  format: date
+      responses:
+        '201':
+          description: Accrual batch triggered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccrualBatchRun'
+
+  /accrual-batch-runs/{id}:
+    get:
+      operationId: getAccrualBatchRun
+      tags: [Accrual Batch Runs]
+      summary: Get accrual batch run status
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: Accrual batch run
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccrualBatchRun'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # ta.attendance — Shifts
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  /shifts:
+    get:
+      operationId: listShifts
+      tags: [Shifts]
+      summary: List all shifts
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ActiveFilter'
+      responses:
+        '200':
+          description: Shifts list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Shift'
+
+    post:
+      operationId: createShift
+      tags: [Shifts]
+      summary: Create a shift template
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShiftWrite'
+      responses:
+        '201':
+          description: Shift created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Shift'
+
+  /shifts/{id}:
+    get:
+      operationId: getShift
+      tags: [Shifts]
+      summary: Get shift by ID
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: Shift
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Shift'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      operationId: updateShift
+      tags: [Shifts]
+      summary: Update a shift template
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShiftWrite'
+      responses:
+        '200':
+          description: Shift updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Shift'
+
+    delete:
+      operationId: deactivateShift
+      tags: [Shifts]
+      summary: Deactivate a shift (soft delete)
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: Shift deactivated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Shift'
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # ta.attendance — Shift Assignments
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  /shift-assignments:
+    get:
+      operationId: listShiftAssignments
+      tags: [Shift Assignments]
+      summary: List shift assignments
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: employee_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: shift_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: effective_date
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Returns assignments active on this date
+      responses:
+        '200':
+          description: Shift assignments
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ShiftAssignment'
+
+    post:
+      operationId: createShiftAssignment
+      tags: [Shift Assignments]
+      summary: Assign a shift to an employee
+      description: |
+        Creates a new shift assignment. Validates:
+        - No overlapping active assignment for the same employee
+        - VLC Art. 109: minimum 8h rest period between shifts enforced
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShiftAssignmentWrite'
+      responses:
+        '201':
+          description: Shift assignment created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShiftAssignment'
+        '422':
+          description: Overlap detected or rest period violation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /shift-assignments/{id}:
+    get:
+      operationId: getShiftAssignment
+      tags: [Shift Assignments]
+      summary: Get shift assignment by ID
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: Shift assignment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShiftAssignment'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      operationId: deleteShiftAssignment
+      tags: [Shift Assignments]
+      summary: Remove a shift assignment
+      description: Sets effective_to to today. Cannot remove past assignments.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: Shift assignment ended
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShiftAssignment'
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # ta.attendance — Worked Periods
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  /worked-periods:
+    get:
+      operationId: listWorkedPeriods
+      tags: [Worked Periods]
+      summary: List worked period records
+      description: Returns computed worked period records for an employee or team.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: employee_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: date_from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: date_to
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [PROVISIONAL, CONFIRMED, CORRECTED, EXCLUDED]
+      responses:
+        '200':
+          description: Worked periods
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WorkedPeriod'
+
+  /worked-periods/{id}:
+    get:
+      operationId: getWorkedPeriod
+      tags: [Worked Periods]
+      summary: Get a specific worked period record
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: Worked period
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkedPeriod'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # ta.attendance — Comp Time Balances
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  /comp-time-balances:
+    get:
+      operationId: listCompTimeBalances
+      tags: [Comp Time Balances]
+      summary: List comp time balances
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: employee_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Comp time balances
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CompTimeBalance'
+
+  /comp-time-balances/{id}:
+    get:
+      operationId: getCompTimeBalance
+      tags: [Comp Time Balances]
+      summary: Get comp time balance by ID
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: Comp time balance
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompTimeBalance'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # ta.shared — Periods
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  /periods:
+    get:
+      operationId: listPeriods
+      tags: [Periods]
+      summary: List payroll periods
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [OPEN, LOCKED, CLOSED]
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+      responses:
+        '200':
+          description: Periods list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Period'
+
+    post:
+      operationId: createPeriod
+      tags: [Periods]
+      summary: Create a new payroll period
+      description: Only one OPEN period allowed per tenant at a time.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PeriodWrite'
+      responses:
+        '201':
+          description: Period created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Period'
+        '422':
+          description: An OPEN period already exists for this tenant
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /periods/{id}:
+    get:
+      operationId: getPeriod
+      tags: [Periods]
+      summary: Get period by ID
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: Period
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Period'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # ta.shared — Holiday Calendars
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  /holiday-calendars:
+    get:
+      operationId: listHolidayCalendars
+      tags: [Holiday Calendars]
+      summary: List holiday calendars
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CountryCodeFilter'
+        - name: year
+          in: query
+          schema:
+            type: integer
+        - $ref: '#/components/parameters/ActiveFilter'
+      responses:
+        '200':
+          description: Holiday calendars
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/HolidayCalendar'
+
+    post:
+      operationId: createHolidayCalendar
+      tags: [Holiday Calendars]
+      summary: Create a holiday calendar
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HolidayCalendarWrite'
+      responses:
+        '201':
+          description: Holiday calendar created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HolidayCalendar'
+
+  /holiday-calendars/{id}:
+    get:
+      operationId: getHolidayCalendar
+      tags: [Holiday Calendars]
+      summary: Get holiday calendar by ID
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: Holiday calendar with holidays
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HolidayCalendar'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      operationId: updateHolidayCalendar
+      tags: [Holiday Calendars]
+      summary: Update a holiday calendar
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HolidayCalendarWrite'
+      responses:
+        '200':
+          description: Holiday calendar updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HolidayCalendar'
+
+    delete:
+      operationId: deactivateHolidayCalendar
+      tags: [Holiday Calendars]
+      summary: Deactivate a holiday calendar
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: Holiday calendar deactivated
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # ta.shared — Approval Chains
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  /approval-chains:
+    get:
+      operationId: listApprovalChains
+      tags: [Approval Chains]
+      summary: List approval chains
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: entity_type
+          in: query
+          schema:
+            type: string
+            enum: [LEAVE_REQUEST, OT_REQUEST, TIMESHEET]
+      responses:
+        '200':
+          description: Approval chains
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ApprovalChain'
+
+    post:
+      operationId: createApprovalChain
+      tags: [Approval Chains]
+      summary: Create an approval chain
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApprovalChainWrite'
+      responses:
+        '201':
+          description: Approval chain created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalChain'
+
+  /approval-chains/{id}:
+    get:
+      operationId: getApprovalChain
+      tags: [Approval Chains]
+      summary: Get approval chain by ID
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: Approval chain
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalChain'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      operationId: updateApprovalChain
+      tags: [Approval Chains]
+      summary: Update an approval chain
+      description: Changes take effect for new requests only; existing chains are not affected.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApprovalChainWrite'
+      responses:
+        '200':
+          description: Approval chain updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalChain'
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # ta.shared — Tenant Config
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  /tenant-configs/current:
+    get:
+      operationId: getTenantConfig
+      tags: [Tenant Config]
+      summary: Get current tenant configuration
+      description: Returns the single TenantConfig for the authenticated tenant.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Tenant configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantConfig'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    put:
+      operationId: updateTenantConfig
+      tags: [Tenant Config]
+      summary: Update tenant configuration
+      description: |
+        System Admin updates tenant-level policy settings.
+        Changes apply to new requests only; existing approved requests unaffected.
+        TenantPolicyUpdated event emitted with before/after audit trail.
+        Note: data_region is immutable after tenant onboarding.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TenantConfigWrite'
+      responses:
+        '200':
+          description: Tenant config updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantConfig'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # ta.shared — Payroll Exports
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  /payroll-exports:
+    get:
+      operationId: listPayrollExports
+      tags: [Payroll Exports]
+      summary: List payroll export packages
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: period_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: dispatch_status
+          in: query
+          schema:
+            type: string
+            enum: [PENDING, DISPATCHED, ACKNOWLEDGED, FAILED]
+      responses:
+        '200':
+          description: Payroll export packages
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PayrollExportPackage'
+
+  /payroll-exports/{id}:
+    get:
+      operationId: getPayrollExport
+      tags: [Payroll Exports]
+      summary: Get payroll export package by ID
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: Payroll export package
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayrollExportPackage'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+# ─────────────────────────────────────────────────────────────────────────────
+# COMPONENTS
+# ─────────────────────────────────────────────────────────────────────────────
+
+components:
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    ResourceId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ActiveFilter:
+      name: active
+      in: query
+      schema:
+        type: boolean
+    CountryCodeFilter:
+      name: country_code
+      in: query
+      schema:
+        type: string
+        pattern: '^[A-Z]{2}$'
+    PageParam:
+      name: page
+      in: query
+      schema:
+        type: integer
+        default: 1
+        minimum: 1
+    PageSizeParam:
+      name: page_size
+      in: query
+      schema:
+        type: integer
+        default: 20
+        maximum: 100
+
+  responses:
+    BadRequest:
+      description: Bad request — invalid input
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Missing or invalid JWT
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    UnprocessableEntity:
+      description: Business rule violation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+
+    ErrorResponse:
+      type: object
+      properties:
+        error_code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
+
+    # ── ta.absence schemas ─────────────────────────────────────────────────────
+
+    LeaveType:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        code:
+          type: string
+        name_vn:
+          type: string
+        name_en:
+          type: string
+        leave_category:
+          type: string
+          enum: [ANNUAL, SICK, MATERNITY, PATERNITY, UNPAID, COMP_TIME, CUSTOM]
+        entitlement_basis:
+          type: string
+          enum: [FIXED, ACCRUAL, UNLIMITED]
+        unit:
+          type: string
+          enum: [DAY, HOUR]
+        allow_half_day:
+          type: boolean
+        allow_advance_leave:
+          type: boolean
+        carryover_eligible:
+          type: boolean
+        encashment_eligible:
+          type: boolean
+        evidence_required:
+          type: boolean
+        evidence_grace_period_days:
+          type: integer
+        country_code:
+          type: string
+        active:
+          type: boolean
+        cancellation_deadline_days:
+          type: integer
+          description: H-P0-001
+        expiry_action:
+          type: string
+          enum: [EXTENSION, CASHOUT, FORFEITURE]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    LeaveTypeWrite:
+      type: object
+      required: [code, name_en, leave_category, entitlement_basis, unit, country_code, cancellation_deadline_days]
+      properties:
+        code:
+          type: string
+          maxLength: 64
+        name_vn:
+          type: string
+        name_en:
+          type: string
+        leave_category:
+          type: string
+          enum: [ANNUAL, SICK, MATERNITY, PATERNITY, UNPAID, COMP_TIME, CUSTOM]
+        entitlement_basis:
+          type: string
+          enum: [FIXED, ACCRUAL, UNLIMITED]
+        unit:
+          type: string
+          enum: [DAY, HOUR]
+        allow_half_day:
+          type: boolean
+          default: false
+        allow_advance_leave:
+          type: boolean
+          default: false
+        carryover_eligible:
+          type: boolean
+          default: false
+        encashment_eligible:
+          type: boolean
+          default: false
+        evidence_required:
+          type: boolean
+          default: false
+        evidence_grace_period_days:
+          type: integer
+        country_code:
+          type: string
+          default: "VN"
+        cancellation_deadline_days:
+          type: integer
+          default: 1
+        expiry_action:
+          type: string
+          enum: [EXTENSION, CASHOUT, FORFEITURE]
+
+    LeaveTypeListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/LeaveType'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+
+    LeavePolicy:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        policy_name:
+          type: string
+        leave_type_id:
+          type: string
+          format: uuid
+        leave_class_id:
+          type: string
+          format: uuid
+        eligibility_scope:
+          type: string
+          enum: [ALL, JOB_GRADE, DEPARTMENT, EMPLOYMENT_TYPE]
+        probation_eligible:
+          type: boolean
+        probation_period_days:
+          type: integer
+        accrual_plan_id:
+          type: string
+          format: uuid
+        carryover_rule_id:
+          type: string
+          format: uuid
+        effective_date:
+          type: string
+          format: date
+        expiry_date:
+          type: string
+          format: date
+        seniority_rules:
+          type: array
+          items:
+            type: object
+            properties:
+              min_years_of_service:
+                type: integer
+              max_years_of_service:
+                type: integer
+              entitlement_days:
+                type: number
+        active:
+          type: boolean
+
+    LeavePolicyWrite:
+      type: object
+      required: [policy_name, leave_type_id, eligibility_scope, effective_date]
+      properties:
+        policy_name:
+          type: string
+        leave_type_id:
+          type: string
+          format: uuid
+        leave_class_id:
+          type: string
+          format: uuid
+        eligibility_scope:
+          type: string
+          enum: [ALL, JOB_GRADE, DEPARTMENT, EMPLOYMENT_TYPE]
+        probation_eligible:
+          type: boolean
+        probation_period_days:
+          type: integer
+        accrual_plan_id:
+          type: string
+          format: uuid
+        carryover_rule_id:
+          type: string
+          format: uuid
+        effective_date:
+          type: string
+          format: date
+        expiry_date:
+          type: string
+          format: date
+        seniority_rules:
+          type: array
+          items:
+            type: object
+
+    LeavePolicyListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/LeavePolicy'
+        total:
+          type: integer
+
+    LeaveClass:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        members:
+          type: array
+          items:
+            type: object
+            properties:
+              leave_type_id:
+                type: string
+                format: uuid
+              rank_order:
+                type: integer
+
+    LeaveClassWrite:
+      type: object
+      required: [name, members]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        members:
+          type: array
+          items:
+            type: object
+            required: [leave_type_id, rank_order]
+            properties:
+              leave_type_id:
+                type: string
+                format: uuid
+              rank_order:
+                type: integer
+
+    AccrualPlan:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        plan_name:
+          type: string
+        accrual_method:
+          type: string
+          enum: [MONTHLY_PRO_RATA, ANNUAL_FRONT_LOAD, TENURE_BASED]
+        amount_per_period:
+          type: number
+        accrual_frequency:
+          type: string
+          enum: [MONTHLY, QUARTERLY, ANNUALLY]
+        max_balance:
+          type: number
+        active:
+          type: boolean
+
+    AccrualPlanWrite:
+      type: object
+      required: [plan_name, accrual_method, amount_per_period, accrual_frequency]
+      properties:
+        plan_name:
+          type: string
+        accrual_method:
+          type: string
+          enum: [MONTHLY_PRO_RATA, ANNUAL_FRONT_LOAD, TENURE_BASED]
+        amount_per_period:
+          type: number
+        accrual_frequency:
+          type: string
+          enum: [MONTHLY, QUARTERLY, ANNUALLY]
+        max_balance:
+          type: number
+
+    CarryoverRule:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        rule_name:
+          type: string
+        max_carryover_days:
+          type: number
+        expiry_months_after_year_end:
+          type: integer
+        expiry_action:
+          type: string
+          enum: [EXTENSION, CASHOUT, FORFEITURE]
+
+    CarryoverRuleWrite:
+      type: object
+      required: [rule_name, max_carryover_days, expiry_months_after_year_end, expiry_action]
+      properties:
+        rule_name:
+          type: string
+        max_carryover_days:
+          type: number
+        expiry_months_after_year_end:
+          type: integer
+        expiry_action:
+          type: string
+          enum: [EXTENSION, CASHOUT, FORFEITURE]
+
+    LeaveInstant:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        employee_id:
+          type: string
+          format: uuid
+        leave_type_id:
+          type: string
+          format: uuid
+        leave_policy_id:
+          type: string
+          format: uuid
+        earned:
+          type: number
+        used:
+          type: number
+        reserved:
+          type: number
+        available:
+          type: number
+          description: "Computed: earned - used - reserved"
+        expiring_soon:
+          type: number
+        computed_at:
+          type: string
+          format: date-time
+
+    LeaveMovement:
+      type: object
+      description: Immutable ledger record — ADR-TA-001
+      properties:
+        id:
+          type: string
+          format: uuid
+        employee_id:
+          type: string
+          format: uuid
+        leave_type_id:
+          type: string
+          format: uuid
+        movement_type:
+          type: string
+          enum: [EARN, USE, RESERVE, RELEASE, EXPIRE, ADJUST, CASHOUT]
+        amount:
+          type: number
+          description: Positive = credit; negative = debit
+        effective_date:
+          type: string
+          format: date
+        expiry_date:
+          type: string
+          format: date
+        reference_id:
+          type: string
+          format: uuid
+        reference_type:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        created_by:
+          type: string
+
+    LeaveMovementWrite:
+      type: object
+      required: [employee_id, leave_type_id, amount, effective_date, reason]
+      description: Only ADJUST movements permitted via API
+      properties:
+        employee_id:
+          type: string
+          format: uuid
+        leave_type_id:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          description: "Positive = credit adjustment; negative = debit adjustment. Must not be 0."
+          not:
+            enum: [0]
+        effective_date:
+          type: string
+          format: date
+        reason:
+          type: string
+          minLength: 10
+          description: Required for ADJUST movements
+
+    LeaveMovementListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/LeaveMovement'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+
+    AccrualBatchRun:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        accrual_plan_id:
+          type: string
+          format: uuid
+        accrual_period_start:
+          type: string
+          format: date
+        accrual_period_end:
+          type: string
+          format: date
+        status:
+          type: string
+          enum: [RUNNING, COMPLETED, FAILED, SKIPPED]
+        employee_count:
+          type: integer
+        movements_created:
+          type: integer
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        failed_at:
+          type: string
+          format: date-time
+        failure_reason:
+          type: string
+
+    # ── ta.attendance schemas ──────────────────────────────────────────────────
+
+    Shift:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        shift_code:
+          type: string
+        shift_name:
+          type: string
+        start_time:
+          type: string
+          example: "08:00"
+        end_time:
+          type: string
+          example: "17:00"
+        break_duration_minutes:
+          type: integer
+        is_overnight:
+          type: boolean
+        grace_period_minutes:
+          type: integer
+        active:
+          type: boolean
+
+    ShiftWrite:
+      type: object
+      required: [shift_code, shift_name, start_time, end_time]
+      properties:
+        shift_code:
+          type: string
+        shift_name:
+          type: string
+        start_time:
+          type: string
+          pattern: '^([01]\d|2[0-3]):[0-5]\d$'
+        end_time:
+          type: string
+          pattern: '^([01]\d|2[0-3]):[0-5]\d$'
+        break_duration_minutes:
+          type: integer
+          default: 60
+        is_overnight:
+          type: boolean
+          default: false
+        grace_period_minutes:
+          type: integer
+          default: 15
+
+    ShiftAssignment:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        employee_id:
+          type: string
+          format: uuid
+        shift_id:
+          type: string
+          format: uuid
+        effective_from:
+          type: string
+          format: date
+        effective_to:
+          type: string
+          format: date
+        assigned_by:
+          type: string
+          format: uuid
+        assigned_at:
+          type: string
+          format: date-time
+        notes:
+          type: string
+
+    ShiftAssignmentWrite:
+      type: object
+      required: [employee_id, shift_id, effective_from]
+      properties:
+        employee_id:
+          type: string
+          format: uuid
+        shift_id:
+          type: string
+          format: uuid
+        effective_from:
+          type: string
+          format: date
+        effective_to:
+          type: string
+          format: date
+        notes:
+          type: string
+
+    WorkedPeriod:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        employee_id:
+          type: string
+          format: uuid
+        work_date:
+          type: string
+          format: date
+        gross_hours:
+          type: number
+        break_hours:
+          type: number
+        net_hours_worked:
+          type: number
+        ot_hours:
+          type: number
+        status:
+          type: string
+          enum: [PROVISIONAL, CONFIRMED, CORRECTED, EXCLUDED]
+        punch_in_id:
+          type: string
+          format: uuid
+        punch_out_id:
+          type: string
+          format: uuid
+
+    CompTimeBalance:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        employee_id:
+          type: string
+          format: uuid
+        earned_hours:
+          type: number
+        used_hours:
+          type: number
+        available_hours:
+          type: number
+        expiry_date:
+          type: string
+          format: date
+        expiry_action:
+          type: string
+          enum: [EXTENSION, CASHOUT, FORFEITURE]
+        expiry_warning_sent:
+          type: boolean
+        last_updated_at:
+          type: string
+          format: date-time
+
+    # ── ta.shared schemas ──────────────────────────────────────────────────────
+
+    Period:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        period_name:
+          type: string
+        period_type:
+          type: string
+          enum: [MONTHLY, CUSTOM]
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        status:
+          type: string
+          enum: [OPEN, LOCKED, CLOSED]
+        holiday_calendar_id:
+          type: string
+          format: uuid
+        working_days:
+          type: integer
+        locked_at:
+          type: string
+          format: date-time
+        closed_at:
+          type: string
+          format: date-time
+
+    PeriodWrite:
+      type: object
+      required: [period_name, start_date, end_date, holiday_calendar_id]
+      properties:
+        period_name:
+          type: string
+        period_type:
+          type: string
+          enum: [MONTHLY, CUSTOM]
+          default: MONTHLY
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        holiday_calendar_id:
+          type: string
+          format: uuid
+
+    HolidayCalendar:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        calendar_name:
+          type: string
+        country_code:
+          type: string
+        year:
+          type: integer
+        active:
+          type: boolean
+        holidays:
+          type: array
+          items:
+            $ref: '#/components/schemas/Holiday'
+
+    HolidayCalendarWrite:
+      type: object
+      required: [calendar_name, country_code, year, holidays]
+      properties:
+        calendar_name:
+          type: string
+        country_code:
+          type: string
+          default: "VN"
+        year:
+          type: integer
+        holidays:
+          type: array
+          items:
+            $ref: '#/components/schemas/HolidayWrite'
+
+    Holiday:
+      type: object
+      properties:
+        holiday_date:
+          type: string
+          format: date
+        name_vn:
+          type: string
+        name_en:
+          type: string
+        is_compensated:
+          type: boolean
+        compensated_date:
+          type: string
+          format: date
+
+    HolidayWrite:
+      type: object
+      required: [holiday_date, name_en]
+      properties:
+        holiday_date:
+          type: string
+          format: date
+        name_vn:
+          type: string
+        name_en:
+          type: string
+        is_compensated:
+          type: boolean
+          default: false
+        compensated_date:
+          type: string
+          format: date
+
+    ApprovalChain:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        chain_name:
+          type: string
+        entity_type:
+          type: string
+          enum: [LEAVE_REQUEST, OT_REQUEST, TIMESHEET]
+        routing_mode:
+          type: string
+          enum: [SKIP_LEVEL, CUSTOM]
+        escalation_timeout_hours:
+          type: integer
+        escalation_target_role:
+          type: string
+        active:
+          type: boolean
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApprovalStep'
+
+    ApprovalChainWrite:
+      type: object
+      required: [chain_name, entity_type, routing_mode, escalation_timeout_hours, steps]
+      properties:
+        chain_name:
+          type: string
+        entity_type:
+          type: string
+          enum: [LEAVE_REQUEST, OT_REQUEST, TIMESHEET]
+        routing_mode:
+          type: string
+          enum: [SKIP_LEVEL, CUSTOM]
+        escalation_timeout_hours:
+          type: integer
+          default: 48
+        escalation_target_role:
+          type: string
+        steps:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/ApprovalStepWrite'
+
+    ApprovalStep:
+      type: object
+      properties:
+        step_order:
+          type: integer
+        step_name:
+          type: string
+        approver_role:
+          type: string
+          enum: [DIRECT_MANAGER, SKIP_LEVEL_MANAGER, HR_ADMIN, CUSTOM]
+        approver_employee_id:
+          type: string
+          format: uuid
+        is_optional:
+          type: boolean
+
+    ApprovalStepWrite:
+      type: object
+      required: [step_order, approver_role]
+      properties:
+        step_order:
+          type: integer
+        step_name:
+          type: string
+        approver_role:
+          type: string
+          enum: [DIRECT_MANAGER, SKIP_LEVEL_MANAGER, HR_ADMIN, CUSTOM]
+        approver_employee_id:
+          type: string
+          format: uuid
+          description: Required when approver_role = CUSTOM
+        is_optional:
+          type: boolean
+          default: false
+
+    TenantConfig:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        default_holiday_calendar_id:
+          type: string
+          format: uuid
+        default_ot_approval_routing_mode:
+          type: string
+          enum: [SKIP_LEVEL, CUSTOM]
+        cancellation_deadline_days:
+          type: integer
+          description: H-P0-001
+        comp_time_expiry_warning_days:
+          type: integer
+          description: H-P0-002
+        default_comp_time_action:
+          type: string
+          enum: [EXTENSION, CASHOUT, FORFEITURE]
+          description: H-P0-002
+        termination_balance_default_action:
+          type: string
+          enum: [AUTO_DEDUCT, HR_REVIEW, WRITE_OFF, RULE_BASED]
+          description: H-P0-004
+        termination_writeoff_threshold_days:
+          type: number
+        payroll_export_format:
+          type: string
+          enum: [JSON, CSV, XML]
+        data_region:
+          type: string
+          description: H10 - immutable after tenant onboarding
+        updated_at:
+          type: string
+          format: date-time
+
+    TenantConfigWrite:
+      type: object
+      properties:
+        default_holiday_calendar_id:
+          type: string
+          format: uuid
+        default_ot_approval_routing_mode:
+          type: string
+          enum: [SKIP_LEVEL, CUSTOM]
+        cancellation_deadline_days:
+          type: integer
+          minimum: 0
+        comp_time_expiry_warning_days:
+          type: integer
+          minimum: 1
+        default_comp_time_action:
+          type: string
+          enum: [EXTENSION, CASHOUT, FORFEITURE]
+        termination_balance_default_action:
+          type: string
+          enum: [AUTO_DEDUCT, HR_REVIEW, WRITE_OFF, RULE_BASED]
+        termination_writeoff_threshold_days:
+          type: number
+        payroll_export_format:
+          type: string
+          enum: [JSON, CSV, XML]
+
+    PayrollExportPackage:
+      type: object
+      description: Immutable export artifact — ADR-TA-001
+      properties:
+        id:
+          type: string
+          format: uuid
+        period_id:
+          type: string
+          format: uuid
+        generated_at:
+          type: string
+          format: date-time
+        generated_by:
+          type: string
+        employee_count:
+          type: integer
+        total_regular_hours:
+          type: number
+        total_ot_hours:
+          type: number
+        total_leave_days:
+          type: number
+        total_comp_time_hours:
+          type: number
+        termination_records_count:
+          type: integer
+        termination_balance_action:
+          type: string
+          enum: [AUTO_DEDUCT, HR_REVIEW, WRITE_OFF, RULE_BASED]
+        export_format:
+          type: string
+        checksum:
+          type: string
+          description: SHA-256 of export payload
+        dispatched_at:
+          type: string
+          format: date-time
+        dispatch_status:
+          type: string
+          enum: [PENDING, DISPATCHED, ACKNOWLEDGED, FAILED]
+        payroll_system_ref:
+          type: string

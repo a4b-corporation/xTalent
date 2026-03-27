@@ -1,0 +1,880 @@
+id: https://xtalent.io/ta/attendance/model
+name: xtalent-ta-attendance
+description: >
+  Domain model for Time & Absence — Time & Attendance (ta.attendance).
+  xTalent HCM | ODSA Step 3 | 2026-03-24.
+  Implements: ADR-TA-001 (immutable punch records), ADR-TA-004 (no raw biometric),
+  H-P0-002 (comp time expiry), H-P0-003 (manager OT skip-level routing),
+  H8 (offline sync: Punch.sync_status), Vietnam OT caps (40h/month, 300h/year).
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  xta: https://xtalent.io/ta/
+  xtatt: https://xtalent.io/ta/attendance/
+
+default_range: string
+default_prefix: xtatt
+
+imports:
+  - linkml:types
+
+subsets:
+  high_stability:
+    description: Entities that change rarely; define precisely before implementation
+  medium_stability:
+    description: Core attributes defined; some attributes may evolve
+
+#
+# ─── CLASSES ─────────────────────────────────────────────────────────────────
+#
+
+classes:
+
+  # ── Root / Shared ──────────────────────────────────────────────────────────
+
+  TenantScoped:
+    description: >
+      Abstract mixin providing tenant isolation. All root aggregates in ta.attendance
+      must include this mixin. Row-level multi-tenancy (H9).
+    abstract: true
+    slots:
+      - tenant_id
+
+  # ── Shift ──────────────────────────────────────────────────────────────────
+
+  Shift:
+    description: >
+      A named, reusable work schedule template defining when employees are expected
+      to be present. Shifts are configuration objects referenced by ShiftAssignments.
+      Break duration is excluded from worked hours calculation.
+      A shift with is_overnight = true spans midnight (e.g., 22:00 to 06:00).
+    is_a: TenantScoped
+    in_subset:
+      - high_stability
+    slots:
+      - shift_id
+      - shift_code
+      - shift_name
+      - start_time
+      - end_time
+      - break_duration_minutes
+      - is_overnight
+      - grace_period_minutes
+      - active
+    slot_usage:
+      shift_id:
+        required: true
+        identifier: true
+      shift_code:
+        required: true
+      shift_name:
+        required: true
+      start_time:
+        required: true
+      end_time:
+        required: true
+      active:
+        required: true
+      tenant_id:
+        required: true
+
+  # ── ShiftAssignment ─────────────────────────────────────────────────────────
+
+  ShiftAssignment:
+    description: >
+      Assignment of a specific Shift to a specific employee for a date range.
+      An employee may have multiple non-overlapping ShiftAssignments (e.g., for
+      rotating shift patterns). The assignment must not overlap with any existing
+      active assignment for the same employee.
+    is_a: TenantScoped
+    in_subset:
+      - medium_stability
+    slots:
+      - shift_assignment_id
+      - employee_id
+      - shift_id
+      - effective_from
+      - effective_to
+      - assigned_by
+      - assigned_at
+      - notes
+    slot_usage:
+      shift_assignment_id:
+        required: true
+        identifier: true
+      employee_id:
+        required: true
+      shift_id:
+        required: true
+      effective_from:
+        required: true
+      assigned_by:
+        required: true
+      tenant_id:
+        required: true
+
+  # ── Punch ──────────────────────────────────────────────────────────────────
+
+  Punch:
+    description: >
+      An immutable record of a single clock-in or clock-out event by an employee.
+      ADR-TA-004: biometric_ref stores only a token reference — never raw biometric data.
+      ADR-TA-001: Punch records are append-only; corrections require a new CORRECTED punch.
+      H8: sync_status supports offline-first mobile punch queuing.
+      geofence_validated = false is permitted but logged with a flag for HR review.
+      is_immutable: once sync_status = SYNCED and is_correction = false,
+      the record must not be altered. Corrections create a new Punch with
+      corrects_punch_id referencing the original.
+    is_a: TenantScoped
+    in_subset:
+      - high_stability
+    annotations:
+      is_mutable: "false"
+    slots:
+      - punch_id
+      - employee_id
+      - shift_assignment_id
+      - punch_type
+      - punched_at
+      - device_id
+      - biometric_ref
+      - latitude
+      - longitude
+      - geofence_validated
+      - sync_status
+      - synced_at
+      - conflict_reason
+      - is_correction
+      - corrects_punch_id
+      - created_at
+    slot_usage:
+      punch_id:
+        required: true
+        identifier: true
+      employee_id:
+        required: true
+      punch_type:
+        required: true
+      punched_at:
+        required: true
+      geofence_validated:
+        required: true
+      sync_status:
+        required: true
+      created_at:
+        required: true
+      tenant_id:
+        required: true
+
+  # ── WorkedPeriod ────────────────────────────────────────────────────────────
+
+  WorkedPeriod:
+    description: >
+      A computed record representing the time actually worked between a matched
+      Punch IN and Punch OUT pair. WorkedPeriod is the atomic unit aggregated into
+      Timesheet lines. If an OUT punch is missing at shift end, the system may
+      create a provisional WorkedPeriod pending employee correction (status = PROVISIONAL).
+      Break duration from the Shift is deducted from gross_hours to yield net_hours_worked.
+    is_a: TenantScoped
+    in_subset:
+      - medium_stability
+    slots:
+      - worked_period_id
+      - employee_id
+      - shift_assignment_id
+      - punch_in_id
+      - punch_out_id
+      - work_date
+      - gross_hours
+      - break_hours
+      - net_hours_worked
+      - ot_hours
+      - status
+      - timesheet_id
+    slot_usage:
+      worked_period_id:
+        required: true
+        identifier: true
+      employee_id:
+        required: true
+      work_date:
+        required: true
+      gross_hours:
+        required: true
+      net_hours_worked:
+        required: true
+      status:
+        required: true
+      tenant_id:
+        required: true
+
+  # ── OvertimeRequest ─────────────────────────────────────────────────────────
+
+  OvertimeRequest:
+    description: >
+      An employee-initiated (or manager-initiated) request to work beyond scheduled
+      shift hours. OT hours are validated against Vietnam caps at submission:
+      daily_ot_cap_hours = 4, monthly_ot_cap_hours = 40, annual_ot_cap_hours = 300
+      (VLC 2019 Art. 107). System blocks submission if any cap would be breached.
+      H-P0-003: When the submitter is a manager submitting their own OT,
+      approval_routing_mode determines escalation: SKIP_LEVEL routes to the manager's
+      own manager; CUSTOM routes to a configured workflow approver (per role/level).
+      Approved OT is logged to the employee's OT bank (CompTimeBalance if comp time elected).
+    is_a: TenantScoped
+    in_subset:
+      - medium_stability
+    slots:
+      - ot_request_id
+      - employee_id
+      - work_date
+      - shift_assignment_id
+      - requested_ot_hours
+      - ot_type
+      - ot_rate
+      - reason
+      - status
+      - approval_routing_mode
+      - approval_chain_id
+      - submitted_at
+      - approved_at
+      - rejected_at
+      - approved_by
+      - rejected_by
+      - rejection_reason
+      - comp_time_elected
+      - daily_ot_cap_hours
+      - monthly_ot_cap_hours
+      - annual_ot_cap_hours
+    slot_usage:
+      ot_request_id:
+        required: true
+        identifier: true
+      employee_id:
+        required: true
+      work_date:
+        required: true
+      requested_ot_hours:
+        required: true
+      ot_type:
+        required: true
+      status:
+        required: true
+      approval_routing_mode:
+        required: true
+      submitted_at:
+        required: true
+      tenant_id:
+        required: true
+
+  # ── CompTimeBalance ─────────────────────────────────────────────────────────
+
+  CompTimeBalance:
+    description: >
+      The running compensatory time-off balance for an employee. Comp time is
+      earned when an approved OvertimeRequest has comp_time_elected = true.
+      H-P0-002: expiry_action determines what happens when comp time expires —
+      EXTENSION (manager-approved extension), CASHOUT (auto cash-out to payroll),
+      FORFEITURE (balance zeroed, event logged).
+      Balance is updated each time an OvertimeRequest is approved or comp time is used.
+    is_a: TenantScoped
+    slots:
+      - comp_time_balance_id
+      - employee_id
+      - earned_hours
+      - used_hours
+      - available_hours
+      - expiry_date
+      - expiry_action
+      - expiry_warning_sent
+      - last_updated_at
+    slot_usage:
+      comp_time_balance_id:
+        required: true
+        identifier: true
+      employee_id:
+        required: true
+      earned_hours:
+        required: true
+      used_hours:
+        required: true
+      available_hours:
+        required: true
+      expiry_action:
+        required: true
+      tenant_id:
+        required: true
+
+  # ── Timesheet ───────────────────────────────────────────────────────────────
+
+  Timesheet:
+    description: >
+      Aggregated attendance record for one employee for one payroll Period.
+      There is exactly one Timesheet per employee per Period. The Timesheet
+      is auto-generated at period start and locked when the Period transitions
+      to LOCKED state. Once locked, no new WorkedPeriod records may be added.
+      Timesheet approval is required before payroll export.
+    is_a: TenantScoped
+    in_subset:
+      - medium_stability
+    slots:
+      - timesheet_id
+      - employee_id
+      - period_id
+      - status
+      - total_scheduled_hours
+      - total_worked_hours
+      - total_ot_hours
+      - total_absent_hours
+      - timesheet_lines
+      - submitted_at
+      - submitted_by
+      - approved_at
+      - approved_by
+      - locked_at
+    slot_usage:
+      timesheet_id:
+        required: true
+        identifier: true
+      employee_id:
+        required: true
+      period_id:
+        required: true
+      status:
+        required: true
+      total_worked_hours:
+        required: true
+      tenant_id:
+        required: true
+
+  # ── TimesheetLine ───────────────────────────────────────────────────────────
+
+  TimesheetLine:
+    description: >
+      A single day's attendance summary within a Timesheet. Each line aggregates
+      all WorkedPeriod records for the employee on that date and breaks down
+      hours by type (regular, OT at 150%/200%/300%, holiday, absence).
+      Inlined within Timesheet for co-location of data.
+    slots:
+      - work_date
+      - shift_id
+      - regular_hours
+      - ot_hours_150
+      - ot_hours_200
+      - ot_hours_300
+      - holiday_hours
+      - absent_hours
+      - worked_period_ids
+    slot_usage:
+      work_date:
+        required: true
+      regular_hours:
+        required: true
+
+#
+# ─── SLOTS ───────────────────────────────────────────────────────────────────
+#
+
+slots:
+
+  # ── Identity ───────────────────────────────────────────────────────────────
+  tenant_id:
+    description: Tenant identifier for row-level multi-tenancy isolation (H9)
+    range: string
+    required: true
+
+  shift_id:
+    description: Unique identifier for a Shift
+    range: string
+
+  shift_assignment_id:
+    description: Unique identifier for a ShiftAssignment
+    range: string
+
+  punch_id:
+    description: Unique identifier for a Punch record
+    range: string
+
+  worked_period_id:
+    description: Unique identifier for a WorkedPeriod record
+    range: string
+
+  ot_request_id:
+    description: Unique identifier for an OvertimeRequest
+    range: string
+
+  comp_time_balance_id:
+    description: Unique identifier for a CompTimeBalance record
+    range: string
+
+  timesheet_id:
+    description: Unique identifier for a Timesheet
+    range: string
+
+  employee_id:
+    description: Reference to employee in Employee Central (external system)
+    range: string
+
+  approval_chain_id:
+    description: Reference to the ApprovalChain used for this request (ta.shared)
+    range: string
+
+  period_id:
+    description: Reference to the payroll Period (ta.shared)
+    range: string
+
+  punch_in_id:
+    description: Reference to the matched Punch with punch_type = IN
+    range: string
+
+  punch_out_id:
+    description: Reference to the matched Punch with punch_type = OUT (null if missing)
+    range: string
+
+  corrects_punch_id:
+    description: >
+      Reference to the original Punch being corrected (null if this is not a correction).
+      When set, the original Punch is superseded by this correction record.
+    range: string
+
+  device_id:
+    description: Identifier of the biometric or kiosk device that recorded the punch
+    range: string
+
+  # ── Shift attributes ───────────────────────────────────────────────────────
+  shift_code:
+    description: Unique short code for the shift within the tenant (e.g., "MORNING", "NIGHT")
+    range: string
+
+  shift_name:
+    description: Human-readable shift name
+    range: string
+
+  start_time:
+    description: Scheduled start time in HH:MM (24-hour) format
+    range: string
+
+  end_time:
+    description: Scheduled end time in HH:MM (24-hour) format
+    range: string
+
+  break_duration_minutes:
+    description: Total scheduled break duration in minutes (excluded from worked hours)
+    range: integer
+
+  is_overnight:
+    description: Whether the shift spans midnight (end_time < start_time)
+    range: boolean
+
+  grace_period_minutes:
+    description: >
+      Minutes of tolerance before late arrival or early departure is flagged
+      as an exception. Default: 15 minutes.
+    range: integer
+
+  active:
+    description: Whether this entity is currently active (soft delete)
+    range: boolean
+
+  # ── ShiftAssignment attributes ─────────────────────────────────────────────
+  effective_from:
+    description: First date this shift assignment is in effect (inclusive)
+    range: date
+
+  effective_to:
+    description: Last date this shift assignment is in effect (inclusive; null = open-ended)
+    range: date
+
+  assigned_by:
+    description: Employee ID of the manager or HR who created the assignment
+    range: string
+
+  assigned_at:
+    description: Timestamp when the assignment was created
+    range: datetime
+
+  notes:
+    description: Optional notes for the assignment or record
+    range: string
+
+  # ── Punch attributes ───────────────────────────────────────────────────────
+  punch_type:
+    description: >
+      Whether this punch is a clock-in or clock-out event.
+      Punches must appear in IN/OUT pairs within the shift window for a
+      WorkedPeriod to be calculated.
+    range: PunchType
+
+  punched_at:
+    description: >
+      Exact UTC timestamp of the punch event as recorded by the device.
+      For offline punches (sync_status = PENDING), this is the local device
+      timestamp and may differ from synced_at.
+    range: datetime
+
+  biometric_ref:
+    description: >
+      ADR-TA-004: Opaque reference token to the biometric match result.
+      Must NOT contain raw biometric data, templates, or fingerprint images.
+      Token is issued by the biometric device and used only for audit tracing.
+    range: string
+
+  latitude:
+    description: GPS latitude at time of punch (null if GPS unavailable)
+    range: float
+
+  longitude:
+    description: GPS longitude at time of punch (null if GPS unavailable)
+    range: float
+
+  geofence_validated:
+    description: >
+      Whether the punch location was within the defined geofence for the employee's
+      work location. false = outside geofence; punch is recorded with a flag.
+      Geofence violations do not block recording but trigger an HR exception.
+    range: boolean
+
+  sync_status:
+    description: >
+      H8 offline-first support. PENDING = punch captured offline, not yet synced
+      to server. SYNCED = successfully persisted to server. CONFLICT = sync
+      attempted but server detected a conflict (duplicate time, overlapping punch);
+      requires HR resolution.
+    range: PunchSyncStatus
+
+  synced_at:
+    description: Timestamp when the punch was received and persisted by the server (null if PENDING)
+    range: datetime
+
+  conflict_reason:
+    description: Description of the sync conflict detected (null unless sync_status = CONFLICT)
+    range: string
+
+  is_correction:
+    description: Whether this Punch was created as a correction of a previous punch
+    range: boolean
+
+  # ── WorkedPeriod attributes ────────────────────────────────────────────────
+  work_date:
+    description: Calendar date of the work session (YYYY-MM-DD)
+    range: date
+
+  gross_hours:
+    description: Total hours between punch_in and punch_out (wall clock time)
+    range: float
+
+  break_hours:
+    description: Hours deducted for scheduled breaks (from Shift.break_duration_minutes)
+    range: float
+
+  net_hours_worked:
+    description: >
+      Billable worked hours. Derived: net_hours_worked = gross_hours - break_hours.
+      This is the value aggregated into Timesheet lines.
+    range: float
+
+  ot_hours:
+    description: Overtime hours in this worked period (hours beyond scheduled shift)
+    range: float
+
+  # ── OvertimeRequest attributes ─────────────────────────────────────────────
+  requested_ot_hours:
+    description: Number of overtime hours requested
+    range: float
+
+  ot_type:
+    description: >
+      Context of the overtime — regular weekday, weekend, or public holiday.
+      Determines the applicable VLC rate (150%, 200%, 300%).
+    range: OvertimeType
+
+  ot_rate:
+    description: Applicable rate multiplier (1.5, 2.0, or 3.0 per VLC 2019 Art. 98)
+    range: float
+
+  reason:
+    description: Business reason for the overtime request
+    range: string
+
+  status:
+    description: Current processing status of this entity
+    range: string
+
+  approval_routing_mode:
+    description: >
+      H-P0-003: Determines how OT approval is routed when the submitter is a manager
+      requesting their own overtime (self-submission scenario).
+      SKIP_LEVEL: automatically route to the submitting manager's own manager.
+      CUSTOM: route to a configured workflow approver based on role/level (Mode 2).
+      For non-manager employees, this field is ignored (routes to direct manager).
+    range: OTApprovalRoutingMode
+
+  submitted_at:
+    description: Timestamp when the request was submitted
+    range: datetime
+
+  approved_at:
+    description: Timestamp when the request was approved
+    range: datetime
+
+  rejected_at:
+    description: Timestamp when the request was rejected
+    range: datetime
+
+  approved_by:
+    description: Employee ID of the approver
+    range: string
+
+  rejected_by:
+    description: Employee ID of the approver who rejected
+    range: string
+
+  rejection_reason:
+    description: Required textual reason for rejection
+    range: string
+
+  comp_time_elected:
+    description: >
+      Whether the employee elected compensatory time-off in lieu of OT payment.
+      When true and request is approved, earned_hours on CompTimeBalance is incremented.
+    range: boolean
+
+  daily_ot_cap_hours:
+    description: >
+      Vietnam Labor Code 2019 Art. 107 daily OT cap. Default: 4 hours.
+      System blocks OvertimeRequest submission if this cap would be exceeded.
+    range: float
+
+  monthly_ot_cap_hours:
+    description: >
+      Vietnam Labor Code 2019 Art. 107 monthly OT cap. Default: 40 hours.
+      System blocks OvertimeRequest submission if cumulative monthly OT would exceed this.
+    range: float
+
+  annual_ot_cap_hours:
+    description: >
+      Vietnam Labor Code 2019 Art. 107 annual OT cap.
+      Default: 300 hours (200 hours for normal conditions; up to 300 with written consent).
+      System blocks OvertimeRequest submission if cumulative annual OT would exceed this.
+    range: float
+
+  # ── CompTimeBalance attributes ─────────────────────────────────────────────
+  earned_hours:
+    description: Total comp time hours earned from approved OvertimeRequests
+    range: float
+
+  used_hours:
+    description: Total comp time hours consumed via leave requests
+    range: float
+
+  available_hours:
+    description: >
+      Currently available comp time hours. Derived: available_hours = earned_hours - used_hours.
+    range: float
+
+  expiry_date:
+    description: Date after which unused comp time balance expires
+    range: date
+
+  expiry_action:
+    description: >
+      H-P0-002: Action taken when comp time balance reaches expiry_date.
+      EXTENSION: manager-approved extension; CASHOUT: auto cash-out to payroll;
+      FORFEITURE: balance zeroed, event logged.
+    range: CompTimeExpiryAction
+
+  expiry_warning_sent:
+    description: Whether the expiry warning notification has been sent to the employee
+    range: boolean
+
+  last_updated_at:
+    description: Timestamp of the most recent balance update
+    range: datetime
+
+  # ── Timesheet attributes ───────────────────────────────────────────────────
+  total_scheduled_hours:
+    description: Total hours scheduled for the period based on ShiftAssignments
+    range: float
+
+  total_worked_hours:
+    description: Total net hours worked in the period (sum of WorkedPeriod.net_hours_worked)
+    range: float
+
+  total_ot_hours:
+    description: Total overtime hours in the period
+    range: float
+
+  total_absent_hours:
+    description: Total hours absent (scheduled but not worked and not on approved leave)
+    range: float
+
+  timesheet_lines:
+    description: Daily breakdown of attendance within the timesheet
+    range: TimesheetLine
+    multivalued: true
+    inlined: true
+    inlined_as_list: true
+
+  submitted_by:
+    description: Employee ID of the person who submitted the timesheet for approval
+    range: string
+
+  locked_at:
+    description: Timestamp when the timesheet was locked on period close
+    range: datetime
+
+  created_at:
+    description: Immutable timestamp of record creation
+    range: datetime
+
+  # ── TimesheetLine attributes ───────────────────────────────────────────────
+  regular_hours:
+    description: Hours worked at the regular rate (within scheduled shift)
+    range: float
+
+  ot_hours_150:
+    description: Overtime hours at 150% rate (regular weekday OT per VLC Art. 98)
+    range: float
+
+  ot_hours_200:
+    description: Overtime hours at 200% rate (weekend OT per VLC Art. 98)
+    range: float
+
+  ot_hours_300:
+    description: Overtime hours at 300% rate (public holiday OT per VLC Art. 98)
+    range: float
+
+  holiday_hours:
+    description: Hours worked on a public holiday (feeds into 300% OT calculation)
+    range: float
+
+  absent_hours:
+    description: Unexplained absent hours on this date
+    range: float
+
+  worked_period_ids:
+    description: References to WorkedPeriod records aggregated into this line
+    range: string
+    multivalued: true
+
+#
+# ─── ENUMS ───────────────────────────────────────────────────────────────────
+#
+
+enums:
+
+  PunchType:
+    description: Direction of a clock event
+    permissible_values:
+      IN:
+        description: Clock-in event — marks start of a work session
+      OUT:
+        description: Clock-out event — marks end of a work session
+
+  PunchSyncStatus:
+    description: >
+      H8 offline-first: synchronization state of a Punch record between
+      the mobile client and the server.
+    permissible_values:
+      PENDING:
+        description: Punch captured offline; queued for sync; not yet on server
+      SYNCED:
+        description: Successfully synchronized to server; record is authoritative
+      CONFLICT:
+        description: >
+          Sync failed due to detected conflict (duplicate, out-of-order, or
+          overlapping punch). Requires HR manual resolution before the punch
+          is accepted into WorkedPeriod calculation.
+
+  WorkedPeriodStatus:
+    description: Processing state of a WorkedPeriod record
+    permissible_values:
+      PROVISIONAL:
+        description: Punch OUT missing; period is estimated; pending employee correction
+      CONFIRMED:
+        description: Both punch IN and OUT matched; hours calculated
+      CORRECTED:
+        description: Originally PROVISIONAL or CONFIRMED; hours updated via correction punch
+      EXCLUDED:
+        description: Excluded from timesheet (e.g., duplicate, cancelled shift)
+
+  OvertimeType:
+    description: Context of the overtime work — determines applicable VLC rate
+    permissible_values:
+      WEEKDAY:
+        description: Overtime on a regular working weekday — rate 150% (VLC Art. 98)
+      WEEKEND:
+        description: Overtime on a rest day (Saturday or Sunday) — rate 200% (VLC Art. 98)
+      PUBLIC_HOLIDAY:
+        description: Overtime on a public holiday — rate 300% (VLC Art. 98)
+
+  OTApprovalRoutingMode:
+    description: >
+      H-P0-003: Routing mode for OvertimeRequest when the submitter is a manager
+      submitting their own OT (to prevent self-approval).
+    permissible_values:
+      SKIP_LEVEL:
+        description: >
+          Default (Mode 1). Automatically route to the submitting manager's
+          own manager (one level up in the org hierarchy).
+      CUSTOM:
+        description: >
+          Mode 2. Route to a configured workflow approver defined by
+          the tenant's role/level-based approval matrix.
+
+  OTRequestStatus:
+    description: State machine for an OvertimeRequest
+    permissible_values:
+      DRAFT:
+        description: Not yet submitted; saved by employee
+      SUBMITTED:
+        description: Submitted for approval; pending manager action
+      APPROVED:
+        description: Approved; OT hours logged to timesheet and OT bank
+      REJECTED:
+        description: Rejected by approver; reason required
+      CANCELLED:
+        description: Withdrawn by employee before approval
+
+  TimesheetStatus:
+    description: State machine for a Timesheet
+    permissible_values:
+      OPEN:
+        description: Period is active; worked periods are being added
+      SUBMITTED:
+        description: Employee submitted timesheet for manager approval
+      APPROVED:
+        description: Manager approved; ready for payroll export
+      LOCKED:
+        description: Period closed; timesheet is frozen; no further changes
+
+  CompTimeExpiryAction:
+    description: >
+      H-P0-002: Action taken when compensatory time balance reaches its expiry date.
+    permissible_values:
+      EXTENSION:
+        description: Manager-approved extension of the expiry date
+      CASHOUT:
+        description: Automatic cash-out; balance amount transferred to PayrollExportPackage
+      FORFEITURE:
+        description: Balance set to zero; CompTimeExpired event logged; no payment
+
+#
+# ─── TYPES ───────────────────────────────────────────────────────────────────
+#
+
+types:
+  HoursAmount:
+    description: >
+      Decimal amount for time tracking. Supports quarter-hour precision (0.25).
+    uri: linkml:Float
+    base: float
+
+  ISODate:
+    description: Calendar date in ISO 8601 format (YYYY-MM-DD)
+    uri: linkml:Date
+    base: str
+
+  UTCDateTime:
+    description: Timestamp in UTC, ISO 8601 format
+    uri: linkml:Datetime
+    base: str

@@ -1,0 +1,1192 @@
+id: https://xtalent.io/ta/absence/model
+name: xtalent-ta-absence
+description: >
+  Domain model for Time & Absence — Absence Management (ta.absence).
+  xTalent HCM | ODSA Step 3 | 2026-03-24.
+  Implements event-driven immutable ledger (ADR-TA-001), hybrid accrual (ADR-TA-002),
+  Vietnam-first compliance (ADR-TA-003), and P0 decisions H-P0-001, H-P0-002, H-P0-004.
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  xta: https://xtalent.io/ta/
+  xtabs: https://xtalent.io/ta/absence/
+
+default_range: string
+default_prefix: xtabs
+
+imports:
+  - linkml:types
+
+subsets:
+  high_stability:
+    description: Entities that change rarely; define precisely before implementation
+  medium_stability:
+    description: Core attributes defined; some attributes may evolve
+
+#
+# ─── CLASSES ─────────────────────────────────────────────────────────────────
+#
+
+classes:
+
+  # ── Root / Shared ──────────────────────────────────────────────────────────
+
+  TenantScoped:
+    description: >
+      Abstract mixin providing tenant isolation. All root aggregates in ta.absence
+      must include this mixin. Row-level multi-tenancy (H9).
+    abstract: true
+    slots:
+      - tenant_id
+
+  # ── LeaveType ──────────────────────────────────────────────────────────────
+
+  LeaveType:
+    description: >
+      Configuration root for a leave category. Defines entitlement basis, evidence
+      requirements, carryover eligibility, and tenant-configurable policy rules.
+      Code must be unique per tenant. Annual leave floor >= 14 days (VLC Art. 113).
+      H-P0-001: cancellation_deadline_days. H-P0-002: expiry_action.
+    is_a: TenantScoped
+    in_subset:
+      - high_stability
+    slots:
+      - leave_type_id
+      - code
+      - name_vn
+      - name_en
+      - leave_category
+      - entitlement_basis
+      - unit
+      - allow_half_day
+      - allow_advance_leave
+      - carryover_eligible
+      - encashment_eligible
+      - evidence_required
+      - evidence_grace_period_days
+      - country_code
+      - active
+      - cancellation_deadline_days
+      - expiry_action
+    slot_usage:
+      leave_type_id:
+        required: true
+        identifier: true
+      code:
+        required: true
+      name_en:
+        required: true
+      leave_category:
+        required: true
+      entitlement_basis:
+        required: true
+      unit:
+        required: true
+      country_code:
+        required: true
+      active:
+        required: true
+      tenant_id:
+        required: true
+
+  # ── LeaveClass ─────────────────────────────────────────────────────────────
+
+  LeaveClass:
+    description: >
+      Groups multiple LeaveTypes for shared deduction priority rules. When an
+      employee's primary LeaveType balance is exhausted, the system draws from
+      the next LeaveType in the class according to the deduction priority order.
+    is_a: TenantScoped
+    in_subset:
+      - medium_stability
+    slots:
+      - leave_class_id
+      - name
+      - description
+      - members
+    slot_usage:
+      leave_class_id:
+        required: true
+        identifier: true
+      name:
+        required: true
+      members:
+        required: true
+        multivalued: true
+
+  LeaveClassMember:
+    description: >
+      A ranked member within a LeaveClass, defining which LeaveType is drawn from
+      at which priority level. Lower rank_order = consumed first.
+    slots:
+      - leave_type_id
+      - rank_order
+    slot_usage:
+      leave_type_id:
+        required: true
+      rank_order:
+        required: true
+
+  # ── LeavePolicy ────────────────────────────────────────────────────────────
+
+  LeavePolicy:
+    description: >
+      Binds employee groups to a LeaveType with accrual rules, seniority multipliers,
+      eligibility constraints, and carryover configuration. Policy entitlement cannot
+      be set below VLC Article 113 minimums. Policy changes are not retroactive.
+    is_a: TenantScoped
+    in_subset:
+      - medium_stability
+    slots:
+      - leave_policy_id
+      - policy_name
+      - leave_type_id
+      - leave_class_id
+      - eligibility_scope
+      - probation_eligible
+      - probation_period_days
+      - accrual_plan_id
+      - carryover_rule_id
+      - effective_date
+      - expiry_date
+      - seniority_rules
+      - active
+    slot_usage:
+      leave_policy_id:
+        required: true
+        identifier: true
+      policy_name:
+        required: true
+      leave_type_id:
+        required: true
+      effective_date:
+        required: true
+      tenant_id:
+        required: true
+
+  SeniorityRule:
+    description: >
+      A single seniority bracket within a LeavePolicy, mapping years-of-service range
+      to a leave entitlement in days. Entitlement must meet VLC minimums.
+    slots:
+      - min_years_of_service
+      - max_years_of_service
+      - entitlement_days
+    slot_usage:
+      min_years_of_service:
+        required: true
+      entitlement_days:
+        required: true
+
+  # ── AccrualPlan ────────────────────────────────────────────────────────────
+
+  AccrualPlan:
+    description: >
+      Configuration of how leave is earned over time — accrual method, frequency,
+      amount per accrual period, and balance cap. Governs the monthly accrual
+      batch job (ADR-TA-002 hybrid accrual). Batch is idempotent.
+    is_a: TenantScoped
+    in_subset:
+      - medium_stability
+    slots:
+      - accrual_plan_id
+      - plan_name
+      - accrual_method
+      - amount_per_period
+      - accrual_frequency
+      - max_balance
+      - active
+    slot_usage:
+      accrual_plan_id:
+        required: true
+        identifier: true
+      plan_name:
+        required: true
+      accrual_method:
+        required: true
+      amount_per_period:
+        required: true
+      tenant_id:
+        required: true
+
+  # ── CarryoverRule ──────────────────────────────────────────────────────────
+
+  CarryoverRule:
+    description: >
+      Configuration of year-end balance treatment. Defines the maximum days that
+      can roll over and the expiry date for the carried-over balance.
+    is_a: TenantScoped
+    slots:
+      - carryover_rule_id
+      - rule_name
+      - max_carryover_days
+      - expiry_months_after_year_end
+      - expiry_action
+    slot_usage:
+      carryover_rule_id:
+        required: true
+        identifier: true
+      rule_name:
+        required: true
+      max_carryover_days:
+        required: true
+      expiry_action:
+        required: true
+      tenant_id:
+        required: true
+
+  # ── LeaveInstant ───────────────────────────────────────────────────────────
+
+  LeaveInstant:
+    description: >
+      The computed, point-in-time leave balance for one employee for one LeaveType.
+      This is a read model derived from the complete LeaveMovement ledger for this
+      employee and leave type combination. ADR-TA-001 compliance:
+      available = earned - used - reserved.
+    is_a: TenantScoped
+    in_subset:
+      - high_stability
+    slots:
+      - leave_instant_id
+      - employee_id
+      - leave_type_id
+      - leave_policy_id
+      - earned
+      - used
+      - reserved
+      - available
+      - expiring_soon
+      - computed_at
+    slot_usage:
+      leave_instant_id:
+        required: true
+        identifier: true
+      employee_id:
+        required: true
+      leave_type_id:
+        required: true
+      earned:
+        required: true
+      used:
+        required: true
+      reserved:
+        required: true
+      available:
+        required: true
+      tenant_id:
+        required: true
+
+  # ── LeaveMovement ──────────────────────────────────────────────────────────
+
+  LeaveMovement:
+    description: >
+      An immutable ledger record of a single balance change event. Append-only —
+      no UPDATE or DELETE operations are permitted (ADR-TA-001). Every credit or
+      debit to a leave balance is one LeaveMovement. Balance is computed by
+      summing all LeaveMovement records for the employee and leave type.
+      movement_type covers: EARN, USE, RESERVE, RELEASE, EXPIRE, ADJUST, CASHOUT.
+    is_a: TenantScoped
+    in_subset:
+      - high_stability
+    annotations:
+      is_mutable: "false"
+    slots:
+      - movement_id
+      - employee_id
+      - leave_type_id
+      - movement_type
+      - amount
+      - effective_date
+      - expiry_date
+      - reference_id
+      - reference_type
+      - batch_run_id
+      - created_at
+      - created_by
+    slot_usage:
+      movement_id:
+        required: true
+        identifier: true
+      employee_id:
+        required: true
+      leave_type_id:
+        required: true
+      movement_type:
+        required: true
+      amount:
+        required: true
+      effective_date:
+        required: true
+      created_at:
+        required: true
+      tenant_id:
+        required: true
+
+  # ── LeaveRequest ───────────────────────────────────────────────────────────
+
+  LeaveRequest:
+    description: >
+      An employee-initiated request for time off. Follows the state machine:
+      SUBMITTED -> UNDER_REVIEW -> APPROVED | REJECTED;
+      or APPROVED -> CANCELLATION_PENDING -> CANCELLED (H-P0-001).
+      Balance reservation created at SUBMITTED; released on REJECTED/CANCELLED;
+      converted to deduction on leave start date when APPROVED.
+    is_a: TenantScoped
+    in_subset:
+      - medium_stability
+    slots:
+      - leave_request_id
+      - employee_id
+      - leave_type_id
+      - leave_policy_id
+      - start_date
+      - end_date
+      - requested_days
+      - unit
+      - reason
+      - status
+      - submitted_at
+      - approved_at
+      - rejected_at
+      - cancelled_at
+      - approved_by
+      - rejected_by
+      - cancelled_by
+      - cancellation_approved_by
+      - rejection_reason
+      - cancellation_reason
+      - leave_reservation_id
+      - approval_chain_id
+    slot_usage:
+      leave_request_id:
+        required: true
+        identifier: true
+      employee_id:
+        required: true
+      leave_type_id:
+        required: true
+      start_date:
+        required: true
+      end_date:
+        required: true
+      requested_days:
+        required: true
+      status:
+        required: true
+      submitted_at:
+        required: true
+      tenant_id:
+        required: true
+
+  # ── LeaveReservation ───────────────────────────────────────────────────────
+
+  LeaveReservation:
+    description: >
+      A provisional hold on leave balance placed when a LeaveRequest is submitted.
+      Prevents overbooking of the same entitlement by concurrent requests.
+      FEFO (First-Expired-First-Out) ordering applied at reservation creation.
+      Released on rejection or pre-deadline cancellation; converted to USE movement
+      on leave start date.
+    is_a: TenantScoped
+    in_subset:
+      - medium_stability
+    slots:
+      - reservation_id
+      - leave_request_id
+      - employee_id
+      - leave_type_id
+      - reserved_days
+      - status
+      - reserved_at
+      - released_at
+      - reservation_lines
+    slot_usage:
+      reservation_id:
+        required: true
+        identifier: true
+      leave_request_id:
+        required: true
+      employee_id:
+        required: true
+      leave_type_id:
+        required: true
+      reserved_days:
+        required: true
+      status:
+        required: true
+      reserved_at:
+        required: true
+      tenant_id:
+        required: true
+
+  LeaveReservationLine:
+    description: >
+      A single FEFO-ordered line within a LeaveReservation, linking a specific
+      source LeaveMovement (with its expiry date) to the amount reserved from it.
+    slots:
+      - source_movement_id
+      - reserved_amount
+      - expiry_date
+    slot_usage:
+      source_movement_id:
+        required: true
+      reserved_amount:
+        required: true
+
+  # ── AccrualBatchRun ────────────────────────────────────────────────────────
+
+  AccrualBatchRun:
+    description: >
+      Tracks execution of the monthly accrual batch job. Idempotent: only one
+      COMPLETED run per period per AccrualPlan. Partial commits are rolled back on
+      failure. ADR-TA-002 compliance.
+    is_a: TenantScoped
+    slots:
+      - batch_run_id
+      - accrual_plan_id
+      - accrual_period_start
+      - accrual_period_end
+      - status
+      - employee_count
+      - movements_created
+      - started_at
+      - completed_at
+      - failed_at
+      - failure_reason
+    slot_usage:
+      batch_run_id:
+        required: true
+        identifier: true
+      accrual_plan_id:
+        required: true
+      accrual_period_start:
+        required: true
+      accrual_period_end:
+        required: true
+      status:
+        required: true
+      tenant_id:
+        required: true
+
+  # ── TerminationBalanceRecord ───────────────────────────────────────────────
+
+  TerminationBalanceRecord:
+    description: >
+      An immutable snapshot of all leave balances for an employee at the time of
+      termination. Created exactly once per termination event. Policy action
+      (AUTO_DEDUCT, HR_REVIEW, WRITE_OFF, RULE_BASED) is executed asynchronously
+      after snapshot creation. H-P0-004 compliance. VLC Article 21 consent tracking.
+    is_a: TenantScoped
+    annotations:
+      is_mutable: "false"
+    slots:
+      - termination_record_id
+      - employee_id
+      - termination_date
+      - balance_snapshots
+      - balance_action
+      - hr_reviewer_id
+      - hr_review_notes
+      - employee_consent_obtained
+      - payroll_deduction_amount
+      - processed_at
+      - created_at
+    slot_usage:
+      termination_record_id:
+        required: true
+        identifier: true
+      employee_id:
+        required: true
+      termination_date:
+        required: true
+      balance_action:
+        required: true
+      created_at:
+        required: true
+      tenant_id:
+        required: true
+
+  TerminationBalanceSnapshot:
+    description: >
+      A point-in-time balance snapshot for a single LeaveType, embedded within a
+      TerminationBalanceRecord.
+    slots:
+      - leave_type_id
+      - leave_type_code
+      - earned
+      - used
+      - reserved
+      - available
+    slot_usage:
+      leave_type_id:
+        required: true
+      available:
+        required: true
+
+#
+# ─── SLOTS ───────────────────────────────────────────────────────────────────
+#
+
+slots:
+
+  # ── Identity ───────────────────────────────────────────────────────────────
+  tenant_id:
+    description: Tenant identifier for row-level multi-tenancy isolation (H9)
+    range: string
+    required: true
+
+  leave_type_id:
+    description: Unique identifier for a LeaveType
+    range: string
+
+  leave_class_id:
+    description: Unique identifier for a LeaveClass
+    range: string
+
+  leave_policy_id:
+    description: Unique identifier for a LeavePolicy
+    range: string
+
+  accrual_plan_id:
+    description: Unique identifier for an AccrualPlan
+    range: string
+
+  carryover_rule_id:
+    description: Unique identifier for a CarryoverRule
+    range: string
+
+  leave_instant_id:
+    description: Unique identifier for a LeaveInstant record
+    range: string
+
+  movement_id:
+    description: Unique identifier for a LeaveMovement record
+    range: string
+
+  leave_request_id:
+    description: Unique identifier for a LeaveRequest
+    range: string
+
+  reservation_id:
+    description: Unique identifier for a LeaveReservation
+    range: string
+
+  batch_run_id:
+    description: Unique identifier for an AccrualBatchRun
+    range: string
+
+  termination_record_id:
+    description: Unique identifier for a TerminationBalanceRecord
+    range: string
+
+  source_movement_id:
+    description: Reference to a source LeaveMovement (for FEFO reservation tracking)
+    range: string
+
+  leave_reservation_id:
+    description: Reference to the LeaveReservation associated with a LeaveRequest
+    range: string
+
+  approval_chain_id:
+    description: Reference to the ApprovalChain used for this request (ta.shared)
+    range: string
+
+  employee_id:
+    description: Reference to employee in Employee Central (external system)
+    range: string
+
+  # ── LeaveType attributes ───────────────────────────────────────────────────
+  code:
+    description: >
+      Unique system identifier for the leave type within the tenant.
+      Pre-configured values for VN: ANNUAL, SICK, MATERNITY, UNPAID.
+    range: string
+
+  name_vn:
+    description: Display name in Vietnamese
+    range: string
+
+  name_en:
+    description: Display name in English
+    range: string
+
+  leave_category:
+    description: >
+      High-level category of the leave type per Vietnam Labor Code 2019.
+    range: LeaveCategory
+
+  entitlement_basis:
+    description: How leave entitlement is earned by the employee
+    range: EntitlementBasis
+
+  unit:
+    description: Unit in which leave balance is tracked (DAY or HOUR)
+    range: LeaveUnit
+
+  allow_half_day:
+    description: Whether 0.5-day requests are valid for this leave type
+    range: boolean
+
+  allow_advance_leave:
+    description: Whether leave may be taken before it is accrued (negative balance)
+    range: boolean
+
+  carryover_eligible:
+    description: Whether unused balance can roll over to the next year
+    range: boolean
+
+  encashment_eligible:
+    description: Whether unused balance can be paid out
+    range: boolean
+
+  evidence_required:
+    description: Whether supporting documentation is required (e.g., sick certificate)
+    range: boolean
+
+  evidence_grace_period_days:
+    description: >
+      Days after leave start date within which evidence must be submitted.
+      Applies when evidence_required = true. Per VLC Article 114 for sick leave.
+    range: integer
+
+  country_code:
+    description: ISO country code for compliance jurisdiction (default: VN)
+    range: string
+
+  active:
+    description: Whether the leave type is currently active (soft delete)
+    range: boolean
+
+  cancellation_deadline_days:
+    description: >
+      H-P0-001: Number of business days before leave start date after which
+      self-cancellation requires manager approval. Configurable per tenant/BU.
+      Default: 1 business day.
+    range: integer
+
+  expiry_action:
+    description: >
+      H-P0-002: Action to take when leave balance reaches its expiry date.
+      Applies to both annual leave carryover and comp time.
+      Values: EXTENSION (manager-approved extension), CASHOUT (auto cash-out to payroll),
+      FORFEITURE (balance set to zero, event logged).
+    range: ExpiryAction
+
+  # ── LeaveClass attributes ──────────────────────────────────────────────────
+  name:
+    description: Human-readable name
+    range: string
+
+  description:
+    description: Human-readable description
+    range: string
+
+  members:
+    description: Ordered list of LeaveClassMembers defining deduction priority
+    range: LeaveClassMember
+    multivalued: true
+    inlined: true
+
+  rank_order:
+    description: Priority rank within a LeaveClass (lower = consumed first)
+    range: integer
+
+  # ── LeavePolicy attributes ─────────────────────────────────────────────────
+  policy_name:
+    description: Human-readable policy name
+    range: string
+
+  eligibility_scope:
+    description: >
+      Scope of employee eligibility: ALL, JOB_GRADE, DEPARTMENT, EMPLOYMENT_TYPE
+    range: EligibilityScope
+
+  probation_eligible:
+    description: Whether leave rights apply during probation period
+    range: boolean
+
+  probation_period_days:
+    description: Days from hire date before leave rights activate (when probation_eligible = false)
+    range: integer
+
+  effective_date:
+    description: Date from which this policy is in effect
+    range: date
+
+  expiry_date:
+    description: Optional date after which this policy is superseded
+    range: date
+
+  seniority_rules:
+    description: >
+      Ordered list of seniority brackets mapping years-of-service to entitlement days.
+      Must meet VLC Article 113 floors.
+    range: SeniorityRule
+    multivalued: true
+    inlined: true
+
+  # ── AccrualPlan attributes ─────────────────────────────────────────────────
+  plan_name:
+    description: Human-readable accrual plan name
+    range: string
+
+  accrual_method:
+    description: How accrual is calculated (monthly pro-rata, annual front-load, etc.)
+    range: AccrualMethod
+
+  amount_per_period:
+    description: Leave days (or hours) credited per accrual period
+    range: float
+
+  accrual_frequency:
+    description: How often accrual runs (MONTHLY, QUARTERLY, ANNUALLY)
+    range: AccrualFrequency
+
+  max_balance:
+    description: Maximum leave balance cap in the configured unit; null = unlimited
+    range: float
+
+  # ── CarryoverRule attributes ───────────────────────────────────────────────
+  rule_name:
+    description: Human-readable carryover rule name
+    range: string
+
+  max_carryover_days:
+    description: Maximum days that may roll over to the next year
+    range: float
+
+  expiry_months_after_year_end:
+    description: >
+      Number of months after year-end before carried-over balance expires.
+      Example: 3 = carried-over balance expires on March 31 of the new year.
+    range: integer
+
+  # ── LeaveInstant attributes ────────────────────────────────────────────────
+  earned:
+    description: Total leave credited via accrual and policy assignment (sum of positive movements)
+    range: float
+
+  used:
+    description: Total leave taken (sum of USE-type negative movements)
+    range: float
+
+  reserved:
+    description: Total balance held by pending reservations (not yet converted to USE)
+    range: float
+
+  available:
+    description: >
+      Currently usable balance. Derived: available = earned - used - reserved.
+      Must be >= 0 unless allow_advance_leave = true on the LeaveType.
+    range: float
+
+  expiring_soon:
+    description: Balance amount expiring within the next 30 days
+    range: float
+
+  computed_at:
+    description: Timestamp at which this snapshot was computed
+    range: datetime
+
+  # ── LeaveMovement attributes ───────────────────────────────────────────────
+  movement_type:
+    description: >
+      The type of balance change event. Immutable after creation.
+      EARN: accrual or entitlement credit; USE: actual leave taken;
+      RESERVE: provisional hold; RELEASE: reservation released;
+      EXPIRE: balance expired; ADJUST: manual HR correction;
+      CASHOUT: encashment or comp time cash-out.
+    range: MovementType
+
+  amount:
+    description: >
+      Balance change amount (positive = credit, negative = debit).
+      Must not be zero.
+    range: float
+
+  expiry_date:
+    description: Date after which this movement's balance may no longer be used
+    range: date
+
+  reference_id:
+    description: ID of the originating business object (LeaveRequest, AccrualBatch, etc.)
+    range: string
+
+  reference_type:
+    description: Type of the originating business object for reference_id
+    range: string
+
+  created_at:
+    description: Immutable timestamp of record creation
+    range: datetime
+
+  created_by:
+    description: User or system actor that created this record
+    range: string
+
+  # ── LeaveRequest attributes ────────────────────────────────────────────────
+  start_date:
+    description: First day of the requested leave period
+    range: date
+
+  end_date:
+    description: Last day of the requested leave period
+    range: date
+
+  requested_days:
+    description: Number of working days (or hours) requested
+    range: float
+
+  reason:
+    description: Optional employee-provided reason for the leave request
+    range: string
+
+  status:
+    description: Current state of the LeaveRequest
+    range: LeaveRequestStatus
+
+  submitted_at:
+    description: Timestamp when the employee submitted the request
+    range: datetime
+
+  approved_at:
+    description: Timestamp when the final approval level was completed
+    range: datetime
+
+  rejected_at:
+    description: Timestamp when the request was rejected
+    range: datetime
+
+  cancelled_at:
+    description: Timestamp when the request was cancelled
+    range: datetime
+
+  approved_by:
+    description: Employee ID of the final approver
+    range: string
+
+  rejected_by:
+    description: Employee ID of the approver who rejected the request
+    range: string
+
+  cancelled_by:
+    description: Employee ID of the person who initiated the cancellation
+    range: string
+
+  cancellation_approved_by:
+    description: >
+      H-P0-001: Employee ID of the manager who approved a post-deadline cancellation.
+      Null for pre-deadline self-cancellations.
+    range: string
+
+  rejection_reason:
+    description: Required textual reason when a request is rejected
+    range: string
+
+  cancellation_reason:
+    description: Optional reason provided for cancellation
+    range: string
+
+  # ── LeaveReservation attributes ────────────────────────────────────────────
+  reserved_days:
+    description: Total days reserved (sum of all reservation lines)
+    range: float
+
+  reserved_at:
+    description: Timestamp when the reservation was created
+    range: datetime
+
+  released_at:
+    description: Timestamp when the reservation was released (on rejection or cancellation)
+    range: datetime
+
+  reservation_lines:
+    description: FEFO-ordered lines tracking which source movements are reserved
+    range: LeaveReservationLine
+    multivalued: true
+    inlined: true
+
+  reserved_amount:
+    description: Amount reserved from a specific source movement
+    range: float
+
+  # ── AccrualBatchRun attributes ─────────────────────────────────────────────
+  accrual_period_start:
+    description: Start date of the accrual period processed in this batch run
+    range: date
+
+  accrual_period_end:
+    description: End date of the accrual period processed in this batch run
+    range: date
+
+  employee_count:
+    description: Number of employees processed in this batch run
+    range: integer
+
+  movements_created:
+    description: Number of LeaveMovement records created in this batch run
+    range: integer
+
+  started_at:
+    description: Timestamp when the batch run started
+    range: datetime
+
+  completed_at:
+    description: Timestamp when the batch run completed successfully
+    range: datetime
+
+  failed_at:
+    description: Timestamp when the batch run failed (null if successful)
+    range: datetime
+
+  failure_reason:
+    description: Error message if the batch run failed
+    range: string
+
+  # ── TerminationBalanceRecord attributes ───────────────────────────────────
+  termination_date:
+    description: Date the employee's employment ended
+    range: date
+
+  balance_snapshots:
+    description: Snapshot of all leave balances at termination time
+    range: TerminationBalanceSnapshot
+    multivalued: true
+    inlined: true
+
+  balance_action:
+    description: >
+      H-P0-004: Action to take on negative leave balances at termination.
+      AUTO_DEDUCT: automatic payroll deduction (requires VLC Art. 21 written consent).
+      HR_REVIEW: flag for HR manual approval (default).
+      WRITE_OFF: forgive negative balance.
+      RULE_BASED: threshold-based rule (configured in TenantConfig).
+    range: TerminationBalanceAction
+
+  hr_reviewer_id:
+    description: Employee ID of the HR reviewer who processed the termination balance
+    range: string
+
+  hr_review_notes:
+    description: Notes from the HR review of termination balance
+    range: string
+
+  employee_consent_obtained:
+    description: >
+      Whether written employee consent was obtained for payroll deduction.
+      Required by Vietnam Labor Code 2019, Article 21 before any deduction.
+    range: boolean
+
+  payroll_deduction_amount:
+    description: Amount to deduct from final payroll (null if no deduction)
+    range: float
+
+  processed_at:
+    description: Timestamp when the termination balance action was executed
+    range: datetime
+
+  # ── TerminationBalanceSnapshot attributes ─────────────────────────────────
+  leave_type_code:
+    description: Human-readable leave type code for the snapshot
+    range: string
+
+  # ── SeniorityRule attributes ───────────────────────────────────────────────
+  min_years_of_service:
+    description: Minimum years of service for this seniority bracket (inclusive)
+    range: integer
+
+  max_years_of_service:
+    description: Maximum years of service for this seniority bracket (exclusive; null = no upper bound)
+    range: integer
+
+  entitlement_days:
+    description: >
+      Leave entitlement in days for employees in this seniority bracket.
+      Must be >= 14 for Annual Leave type (VLC Article 113 minimum).
+    range: float
+
+#
+# ─── ENUMS ───────────────────────────────────────────────────────────────────
+#
+
+enums:
+
+  LeaveCategory:
+    description: High-level leave category per Vietnam Labor Code 2019
+    permissible_values:
+      ANNUAL:
+        description: Annual paid leave — VLC 2019 Article 113
+      SICK:
+        description: Sick/medical leave — VLC 2019 Article 114
+      MATERNITY:
+        description: Maternity leave (6 months) — VLC 2019 Article 139
+      PATERNITY:
+        description: Paternity leave — Law on Social Insurance 2014 Article 34
+      UNPAID:
+        description: Unpaid leave by employee-employer agreement — VLC 2019 Article 115
+      COMP_TIME:
+        description: Compensatory time off in lieu of overtime payment
+      CUSTOM:
+        description: Tenant-defined custom leave type
+
+  EntitlementBasis:
+    description: How leave entitlement is earned
+    permissible_values:
+      FIXED:
+        description: Full entitlement granted at the start of the period
+      ACCRUAL:
+        description: Entitlement earned incrementally per the AccrualPlan
+      UNLIMITED:
+        description: No balance limit; tracking only
+
+  LeaveUnit:
+    description: Unit in which leave balance is measured
+    permissible_values:
+      DAY:
+        description: Balance tracked in working days
+      HOUR:
+        description: Balance tracked in hours
+
+  MovementType:
+    description: >
+      Type of a LeaveMovement record. Immutable once set.
+      EARN and USE are the primary types; others support lifecycle operations.
+    permissible_values:
+      EARN:
+        description: Balance credit — from accrual batch, policy assignment, or manual grant
+      USE:
+        description: Balance debit — leave taken (confirmed deduction on leave start date)
+      RESERVE:
+        description: Provisional hold — balance reserved at leave request submission
+      RELEASE:
+        description: Reservation released — on rejection, pre-deadline cancellation
+      EXPIRE:
+        description: Balance expired — carryover or comp time expiry action applied
+      ADJUST:
+        description: Manual HR adjustment — with documented reason; requires senior approval
+      CASHOUT:
+        description: Encashment — leave converted to payment via payroll export
+
+  LeaveRequestStatus:
+    description: State machine values for a LeaveRequest
+    permissible_values:
+      SUBMITTED:
+        description: Employee submitted; balance reservation placed; routing pending
+      UNDER_REVIEW:
+        description: At least one approval level pending; reservation maintained
+      APPROVED:
+        description: All approval levels completed; reservation converts to deduction on leave start
+      REJECTED:
+        description: Any approver rejected; reservation released; balance restored
+      CANCELLATION_PENDING:
+        description: >
+          H-P0-001: Post-deadline cancellation; awaiting manager approval.
+          Reservation maintained until manager acts.
+      CANCELLED:
+        description: Cancellation completed; deduction reversed; balance fully restored
+
+  ReservationStatus:
+    description: State of a LeaveReservation
+    permissible_values:
+      ACTIVE:
+        description: Reservation is in effect; balance is held
+      RELEASED:
+        description: Reservation released; balance restored (on rejection or pre-deadline cancellation)
+      CONVERTED:
+        description: Reservation converted to USE movement on leave start date
+
+  AccrualMethod:
+    description: How leave accrual is calculated per period
+    permissible_values:
+      MONTHLY_PRO_RATA:
+        description: Monthly accrual proportional to days worked in the period
+      ANNUAL_FRONT_LOAD:
+        description: Full year entitlement granted at start of year
+      TENURE_BASED:
+        description: Entitlement calculated from hire date anniversary
+
+  AccrualFrequency:
+    description: How often the accrual batch runs for this plan
+    permissible_values:
+      MONTHLY:
+        description: Batch runs at end of each calendar month
+      QUARTERLY:
+        description: Batch runs at end of each quarter
+      ANNUALLY:
+        description: Batch runs once at start of policy year
+
+  ExpiryAction:
+    description: >
+      H-P0-002: Action taken when leave balance (carryover or comp time) reaches expiry date.
+    permissible_values:
+      EXTENSION:
+        description: Manager-approved extension of the expiry date
+      CASHOUT:
+        description: Automatic cash-out; balance transferred to PayrollExportPackage
+      FORFEITURE:
+        description: Balance set to zero; EXPIRE LeaveMovement created; event logged
+
+  TerminationBalanceAction:
+    description: >
+      H-P0-004: Configured action for handling negative leave balances at termination.
+    permissible_values:
+      AUTO_DEDUCT:
+        description: >
+          Automatic payroll deduction from final pay. Requires prior written employee
+          consent per Vietnam Labor Code 2019, Article 21.
+      HR_REVIEW:
+        description: >
+          Default. Negative balance flagged for HR manual review and approval
+          before any action. HR must obtain consent if deduction is chosen.
+      WRITE_OFF:
+        description: Negative balance forgiven. No deduction. Event logged.
+      RULE_BASED:
+        description: >
+          Threshold-based rule applied (configured in TenantConfig).
+          Example: <= 3 days WRITE_OFF; > 3 days HR_REVIEW.
+
+  EligibilityScope:
+    description: Scope of employee groups a LeavePolicy applies to
+    permissible_values:
+      ALL:
+        description: All employees in the tenant
+      JOB_GRADE:
+        description: Specific job grade(s)
+      DEPARTMENT:
+        description: Specific department(s)
+      EMPLOYMENT_TYPE:
+        description: Specific employment type (full-time, part-time, etc.)
+
+  BatchRunStatus:
+    description: Status of an AccrualBatchRun
+    permissible_values:
+      RUNNING:
+        description: Batch is currently executing
+      COMPLETED:
+        description: Batch completed successfully; movements committed
+      FAILED:
+        description: Batch failed; all partial movements rolled back
+      SKIPPED:
+        description: Batch skipped due to idempotency check (already run for this period)
+
+#
+# ─── TYPES ───────────────────────────────────────────────────────────────────
+#
+
+types:
+  BalanceAmount:
+    description: >
+      Decimal amount for leave balance tracking. Supports half-day (0.5) and
+      hourly precision (1/8 = 0.125 for hourly).
+    uri: linkml:Float
+    base: float
+
+  ISODate:
+    description: Calendar date in ISO 8601 format (YYYY-MM-DD)
+    uri: linkml:Date
+    base: str
+
+  UTCDateTime:
+    description: Timestamp in UTC, ISO 8601 format
+    uri: linkml:Datetime
+    base: str

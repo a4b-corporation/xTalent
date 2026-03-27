@@ -1,0 +1,352 @@
+//===============================================================
+//  SCHEMA: absence – PTO balance • movement-ledger • events
+//  Revision: 6Oct2025
+//===============================================================
+
+
+//-- 1. Leave Type (giữ bảng cũ, bổ sung field) ----------------//
+Table absence.leave_type {
+  code              varchar(50) [pk]            // ANL, SL, MAT, UNPAID
+  name              varchar(100)
+  is_paid           boolean [default:true]
+  is_quota_based    boolean [default:true]      // false = unlimited (no account) — vẫn giữ để tương thích
+  requires_approval boolean [default:true]
+  metadata          jsonb                       // doctor_note_req, encashable…
+  is_active         boolean [default:true]
+  effective_start   date
+  effective_end     date [null]
+
+  // 6Oct2025 NEW — bổ sung theo mô hình mới:
+  unit_code         varchar(10)  // 'HOUR' | 'DAY'
+  core_min_unit     decimal(6,2) // ví dụ 1.00, 0.50 (đơn vị tối thiểu cho đặt nghỉ)
+  holiday_handling  varchar(30)  // 'EXCLUDE_HOLIDAYS'|'INCLUDE_HOLIDAYS'|'STOP_AT_HOLIDAY'
+  overlap_policy    varchar(30)  // 'ALLOW'|'DENY'|... quy tắc trùng
+  support_scope     varchar(50)  // liệt kê scope tham chiếu BU/LE theo quốc gia/khu vực (ví dụ: 'VN:LE,SG:BU')
+
+  // 6Oct2025 NOTE: BU/LE là dimension context, owner vẫn là EMP tại LeaveInstant/Movement.
+}
+
+
+//-- 2. Leave Policy (GIỮ, mở rộng để tái dùng cho Events) -----//
+Table absence.leave_policy {
+  id                uuid [pk]
+  type_code         varchar(50) [ref: > absence.leave_type.code]
+  code              varchar(50) [unique]        // ANL_VN_FT, ANL_VN_PT
+  name              varchar(100)
+
+  accrual_rule_json jsonb  [null]               // {"freq":"MONTH","hours":1.75}
+  carry_rule_json   jsonb  [null]               // {"maxCarry":120,"expireMonths":3}
+  overdraft_allowed boolean [default:false]
+  overdraft_limit_hours decimal(6,2) [null]
+  metadata          jsonb
+
+  // giữ trường cũ:
+  check_limit_line  boolean [default:true]
+
+  effective_start   date
+  effective_end     date [null]
+
+  // 6Oct2025 NEW — để phủ mode LIMIT/validation/rounding:
+  limit_rule_json   jsonb  [null]               // {"yearly":96,"monthlyCap":8,"perCase":8,"rollingDays":0}
+  validation_json   jsonb  [null]               // {"requireEvidence":true,"blackout":[...]}
+  rounding_json     jsonb  [null]               // {"increment":0.5,"mode":"NEAREST"}
+  proration_json    jsonb  [null]               // {"basis":"WORK_SCHEDULE","hoursPerDay":8}
+}
+
+
+//-- 3. Policy Assignment (GIỮ) --------------------------------//
+Table absence.policy_assignment {
+  id                uuid [pk]
+  policy_id         uuid [ref: > absence.leave_policy.id]
+  assignment_type   varchar(20)                 // EMPLOYEE, BU, LE, GRADE
+  assignment_id     uuid                        // id thực thể
+  effective_start   date
+  effective_end     date [null]
+}
+
+
+//-- 4. Leave Class (NEW) --------------------------------------//
+// Class là lớp vận hành trừu tượng để sinh LeaveInstant.
+// Không dùng layering; nhân bản class theo biến thể (quốc gia/BU/grade) nếu cần.
+Table absence.leave_class { // 6Oct2025 NEW
+  id                uuid [pk]
+  type_code         varchar(50) [ref: > absence.leave_type.code]
+  code              varchar(50) [unique]        // ví dụ: ANL_VN_ACC_G12
+  name              varchar(100)
+  status_code       varchar(20) [default: 'ACTIVE'] // ACTIVE/INACTIVE
+
+  scope_owner       varchar(10)                 // 'EMP' — owner chủ đạo; (giữ thống nhất quyết định LIMIT vẫn theo EMP)
+  mode_code         varchar(10)                 // 'ACCOUNT'|'LIMIT'|'UNPAID'|'CUSTOM'
+  unit_code         varchar(10)                 // 'HOUR'|'DAY' (override nếu cần)
+
+  period_profile    jsonb                       // {"type":"CALENDAR_YEAR","closeBehaviors":["CARRY_FORWARD","EXPIRE"]}
+  posting_map       jsonb                       // [{"event":"ACCRUAL","qtyFormula":"+fixedRate", "target":"INSTANT"}]
+  eligibility_json  jsonb  [null]               // điều kiện mở instant tự động
+  rules_json        jsonb  [null]               // gói rule/policy tham chiếu/tối giản (có thể đặt code của leave_policy để dùng lại)
+
+  emit_expire_turnover boolean [default:false]  // 6Oct2025 NEW: flag cho phép tạo turnover EXPIRE
+
+  bu_id             uuid [null]                 // 6Oct2025 NEW: dimension context mặc định (có thể null)
+  le_id             uuid [null]                 // 6Oct2025 NEW
+  country_code      varchar(10) [null]          // 6Oct2025 NEW
+
+  effective_start   date
+  effective_end     date [null]
+  metadata          jsonb
+}
+
+
+//-- 5. Leave Instant (NEW – thay cho leave_account) -----------//
+// Instant là "tài khoản"/"line hạn mức" theo EMP; multi-period.
+Table absence.leave_instant { // 6Oct2025 NEW
+  id                uuid [pk]
+  employee_id       uuid [ref: > employment.employee.id]
+  class_id          uuid [ref: > absence.leave_class.id]
+  state_code        varchar(20) [default: 'ACTIVE'] // ACTIVE/SUSPENDED/CLOSED/EXPIRED
+
+  // balances tổng hợp (đơn vị theo unit của class/type)
+  current_qty       decimal(10,2) [default: 0.00]    // tổng movement đã post (không gồm hold)
+  hold_qty          decimal(10,2) [default: 0.00]     // đang block (reservation)
+  available_qty     decimal(10,2) [default: 0.00]     // computed = current - hold (có thể materialize)
+
+  // limit counters (cho mode LIMIT; cho phép override từ class)
+  limit_yearly      decimal(10,2) [null]
+  limit_monthly     decimal(10,2) [null]
+  limit_per_case    decimal(10,2) [null]
+  limit_rolling_days int [null]
+  used_ytd          decimal(10,2) [default: 0.00]
+  used_mtd          decimal(10,2) [default: 0.00]
+
+  // context dimension để báo cáo theo tổ chức
+  bu_id             uuid [null]
+  le_id             uuid [null]
+  country_code      varchar(10) [null]
+
+  effective_start   date
+  effective_end     date [null]
+  metadata          jsonb
+
+  Indexes {
+    (employee_id, class_id)
+    (state_code)
+  }
+}
+
+
+//-- 6. Leave Instant Details (NEW – grant/lot hiệu lực) -------//
+Table absence.leave_instant_detail { // 6Oct2025 NEW
+  id                uuid [pk]
+  instant_id        uuid [ref: > absence.leave_instant.id]
+  lot_kind          varchar(20)       // GRANT|CARRY|BONUS|TRANSFER|OTHER
+  eff_date          date
+  expire_date       date [null]
+  lot_qty           decimal(10,2)     // tổng số được cấp cho lot
+  used_qty          decimal(10,2) [default: 0.00]
+  priority          smallint [default: 100] // FEFO/độ ưu tiên trừ
+  tag               varchar(50) [null]
+  metadata          jsonb
+
+  // 6Oct2025 NOTE: theo quyết định hiện tại, không tự sinh movement EXPIRE;
+  // FEFO engine tự loại lot hết hạn khỏi available.
+  Indexes { (instant_id, eff_date), (instant_id, expire_date) }
+}
+
+
+//-- 7. Leave Event Definition (NEW) ----------------------------//
+// Định nghĩa các loại event, trigger và policy liên quan (tái dùng).
+Table absence.leave_event_def { // 6Oct2025 NEW
+  id                uuid [pk]
+  code              varchar(50) [unique]  // ACCRUAL|BOOK_HOLD|START_POST|ADJUST|EXPIRE|CARRY|RESET_LIMIT ...
+  name              varchar(100)
+  trigger_kind      varchar(20)           // SCHEDULED|REQUEST_BASED|MANUAL|API
+  schedule_expr     varchar(100) [null]   // nếu SCHEDULED (cron/iso)
+  policy_refs       jsonb  [null]         // danh sách policy code/ID cần áp dụng/kiểm tra
+  metadata          jsonb
+  is_active         boolean [default:true]
+}
+
+
+//-- 8. Leave Class ⇄ Event map (NEW) ---------------------------//
+Table absence.leave_class_event { // 6Oct2025 NEW
+  class_id          uuid [ref: > absence.leave_class.id]
+  event_def_id      uuid [ref: > absence.leave_event_def.id]
+  qty_formula       text                 // biểu thức ±qty (single-entry)
+  target_override   varchar(20) [default: 'INSTANT'] // luôn post vào LeaveInstant (phù hợp yêu cầu)
+  idempotent        boolean [default:true]
+
+  pk ((class_id, event_def_id))
+}
+
+
+//-- 9. Leave Movement (NEW – thay leave_txn; immutable) --------//
+Table absence.leave_movement { // 6Oct2025 NEW
+  id                uuid [pk]
+  instant_id        uuid [ref: > absence.leave_instant.id]
+  class_id          uuid [ref: > absence.leave_class.id]
+  event_code        varchar(50)          // tham chiếu leave_event_def.code (không bắt buộc FK cứng)
+  qty               decimal(10,2)        // + / - (single-entry)
+  unit_code         varchar(10)          // 'HOUR'|'DAY' (lưu tại thời điểm post)
+
+  period_id         uuid  [null]         // link LeavePeriod
+  effective_date    date                 // ngày hiệu lực post
+  expire_date       date [null]          // nếu movement có “hạn dùng” (hiếm)
+  posted_at         timestamp [default: `now()`]
+
+  request_id        uuid [null]          // link absence.leave_request
+  lot_id            uuid [null, ref: > absence.leave_instant_detail.id]
+  run_id            uuid [null]          // batch run
+  idempotency_key   varchar(120) [null]  // chống trùng khi rerun
+  metadata          jsonb
+
+  // context snapshot tại thời điểm post
+  bu_id             uuid [null]
+  le_id             uuid [null]
+  country_code      varchar(10) [null]
+
+  // 6Oct2025 NOTE: immutable; sửa sai dùng movement reversal (post thêm dòng đối ứng)
+  Indexes {
+    (instant_id, effective_date)
+    (class_id, event_code, effective_date)
+    (request_id)
+    (run_id)
+    (idempotency_key)
+  }
+}
+
+
+//-- 10. Leave Request (SỬA ĐỔI) --------------------------------//
+Table absence.leave_request {
+  id            uuid [pk]
+  employee_id   uuid [ref: > employment.employee.id]
+
+  // 6Oct2025 CHANGED: policy_id -> class_id (để bám theo LeaveClass)
+  // policy_id   uuid [ref: > absence.leave_policy.id] // 6Oct2025 REMOVED field (thay bằng class_id)
+  class_id      uuid [ref: > absence.leave_class.id]   // 6Oct2025 NEW
+
+  start_dt      timestamp
+  end_dt        timestamp
+  qty_hours_req decimal(6,2) [null]       // giữ field cũ theo giờ; engine sẽ quy đổi nếu unit=DAY
+  status_code   varchar(20)               // DRAFT, SUBMITTED, APPROVED, REJECTED
+  workflow_state jsonb  [null]
+  reason        text [null]
+  metadata      jsonb                     // attachment url
+
+  escalation_level smallint [default:0]   // giữ
+
+  created_at    timestamp [default:`now()`]
+
+  // 6Oct2025 NEW:
+  instant_id    uuid [null, ref: > absence.leave_instant.id] // instant đích để hold/post
+}
+
+
+//-- 11. Reservation (SỬA ĐỔI: trỏ tới LeaveInstant) ------------//
+Table absence.leave_reservation {
+  request_id     uuid [pk, ref: > absence.leave_request.id]
+
+  // account_emp_id, account_policy_id — 6Oct2025 REMOVED (thay bằng instant_id)
+  // account_emp_id uuid
+  // account_policy_id uuid
+  // foreign key (account_emp_id, account_policy_id) references absence.leave_account(employee_id, policy_id)
+
+  instant_id     uuid [ref: > absence.leave_instant.id]   // 6Oct2025 NEW
+  reserved_qty   decimal(10,2)
+  expires_at     timestamp [null]
+
+  // 6Oct2025 NOTE: reservation là "hold"; khi START_POST sẽ trừ hold và ghi movement dùng.
+}
+
+
+//-- 12. Leave Period (NEW – hierarchy năm/tháng) ---------------//
+Table absence.leave_period { // 6Oct2025 NEW
+  id              uuid [pk]
+  code            varchar(50) [unique]  // ví dụ: FY2025, FY2025M04
+  parent_id       uuid [null, ref: > absence.leave_period.id] // link năm↔tháng
+  level_code      varchar(10)           // 'YEAR'|'QUARTER'|'MONTH'|'CUSTOM'
+  start_date      date
+  end_date        date
+  status_code     varchar(20) [default:'OPEN'] // OPEN|CLOSED|LOCKED
+  calendar_code   varchar(50) [null]    // nếu dùng nhiều profile
+
+  metadata        jsonb
+  Indexes { (level_code, start_date) }
+}
+
+
+//-- 13. Leave Event Run (NEW – theo dõi batch/idempotency) -----//
+Table absence.leave_event_run { // 6Oct2025 NEW
+  id              uuid [pk]
+  event_def_id    uuid [ref: > absence.leave_event_def.id]
+  class_id        uuid [null, ref: > absence.leave_class.id]
+  period_id       uuid [null, ref: > absence.leave_period.id]
+  schedule_key    varchar(120) [null]   // kết hợp class/period để định danh đợt
+  idempotency_key varchar(120) [null]   // chống double-run
+  started_at      timestamp
+  finished_at     timestamp [null]
+  run_status      varchar(20) [default:'RUNNING'] // RUNNING|DONE|ERROR|CANCELED
+  stats_json      jsonb  [null]         // {"processed":123,"posted":120,"skipped":3}
+  metadata        jsonb
+  Indexes { (event_def_id, class_id, period_id), (idempotency_key) }
+}
+
+
+//-- 14. Leave Balance History (NEW – thay leave_balance_snap) --//
+Table absence.leave_balance_history { // 6Oct2025 NEW
+  instant_id     uuid [ref: > absence.leave_instant.id]
+  as_of_date     date
+  opening_qty    decimal(10,2)
+  turnover_dr    decimal(10,2) [default: 0.00] // tổng giảm trong ngày
+  turnover_cr    decimal(10,2) [default: 0.00] // tổng tăng trong ngày
+  closing_qty    decimal(10,2)
+
+  pk ((instant_id, as_of_date))
+  Indexes { (as_of_date) }
+}
+
+
+//-- 15. Team Leave Limit / Staffing Rule (GIỮ) ----------------//
+Table absence.team_leave_limit {
+  id            uuid [pk]
+  org_unit_id   uuid                   // BU/Team/CostCenter
+  leave_type_code varchar(50) [ref: > absence.leave_type.code]
+  limit_pct     decimal(5,2)           // 0-100 (% người được phép nghỉ)
+  limit_abs_cnt smallint [null]        // hoặc số người cố định
+  escalation_level smallint [default:1]
+  active        boolean [default:true]
+  effective_start date
+  effective_end   date [null]
+}
+
+
+//-- 16. Public Holiday Calendar (GIỮ) -------------------------//
+Table absence.holiday_calendar {
+  id            uuid [pk]
+  code          varchar(50) [unique]
+  name          varchar(100)
+  region_code   varchar(10)            // VN-N, VN-S, US, …
+  deduct_flag   boolean [default:false] // true = trừ quota khi xin phép
+  metadata      jsonb
+}
+
+Table absence.holiday_date {
+  calendar_id   uuid [ref: > absence.holiday_calendar.id]
+  holiday_date  date
+  name          varchar(100)
+  is_half_day   boolean [default:false]
+
+  pk ((calendar_id, holiday_date))
+}
+
+
+//-- 17. Leave Wallet (GIỮ tạm như view vật hoá) ----------------//
+Table absence.leave_wallet {
+  employee_id       uuid
+  leave_type_code   varchar(50)      // gộp nhiều class/policy cùng loại
+  available_hours   decimal(8,2)     // giữ field cũ (giờ); engine quy đổi khi unit=DAY
+  balance_hours     decimal(8,2)
+  overdraft_limit   decimal(6,2)
+  last_calc_at      timestamp
+  note              text [null]
+
+  pk ((employee_id, leave_type_code))
+}

@@ -1,0 +1,820 @@
+id: https://xtalent.io/ta/shared/model
+name: xtalent-ta-shared
+description: >
+  Domain model for Time & Absence — Shared Services (ta.shared).
+  xTalent HCM | ODSA Step 3 | 2026-03-24.
+  Covers cross-cutting concerns: periods, holiday calendars, approval workflows,
+  notifications, payroll export, and tenant configuration.
+  H-P0-003 (skip-level OT routing), H-P0-004 (termination balance export),
+  Period state machine (OPEN -> LOCKED -> CLOSED, no reversal).
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  xta: https://xtalent.io/ta/
+  xtshd: https://xtalent.io/ta/shared/
+
+default_range: string
+default_prefix: xtshd
+
+imports:
+  - linkml:types
+
+subsets:
+  high_stability:
+    description: Entities that change rarely; define precisely before implementation
+  medium_stability:
+    description: Core attributes defined; some attributes may evolve
+
+#
+# ─── CLASSES ─────────────────────────────────────────────────────────────────
+#
+
+classes:
+
+  # ── Root / Shared ──────────────────────────────────────────────────────────
+
+  TenantScoped:
+    description: >
+      Abstract mixin providing tenant isolation. All root aggregates in ta.shared
+      must include this mixin. Row-level multi-tenancy (H9).
+    abstract: true
+    slots:
+      - tenant_id
+
+  # ── Period ─────────────────────────────────────────────────────────────────
+
+  Period:
+    description: >
+      A defined payroll processing period (typically calendar month). All leave,
+      attendance, and OT records are scoped to a Period.
+      State machine: OPEN -> LOCKED -> CLOSED. No reversal permitted.
+        OPEN: active; records may be created and modified.
+        LOCKED: read-only; all timesheets frozen; payroll export in progress.
+        CLOSED: fully closed; PayrollExportPackage has been generated and dispatched.
+      Only one OPEN period may exist per tenant at a time.
+      HolidayCalendar is referenced to calculate working days within the period.
+    is_a: TenantScoped
+    in_subset:
+      - high_stability
+    slots:
+      - period_id
+      - period_name
+      - period_type
+      - start_date
+      - end_date
+      - status
+      - holiday_calendar_id
+      - working_days
+      - locked_at
+      - locked_by
+      - closed_at
+      - closed_by
+    slot_usage:
+      period_id:
+        required: true
+        identifier: true
+      period_name:
+        required: true
+      start_date:
+        required: true
+      end_date:
+        required: true
+      status:
+        required: true
+      holiday_calendar_id:
+        required: true
+      tenant_id:
+        required: true
+
+  # ── HolidayCalendar ─────────────────────────────────────────────────────────
+
+  HolidayCalendar:
+    description: >
+      A named, country-scoped list of public holidays used to calculate working
+      days and determine OT rate (300% on public holidays per VLC Art. 98).
+      At least one Holiday must be present for a calendar to be considered active.
+      country_code is required; default VN for Vietnam Labor Code compliance.
+      Calendars are published annually and referenced by Period and LeaveRequest
+      working-day calculations.
+    is_a: TenantScoped
+    in_subset:
+      - high_stability
+    slots:
+      - calendar_id
+      - calendar_name
+      - country_code
+      - year
+      - holidays
+      - active
+    slot_usage:
+      calendar_id:
+        required: true
+        identifier: true
+      calendar_name:
+        required: true
+      country_code:
+        required: true
+      year:
+        required: true
+      tenant_id:
+        required: true
+
+  # ── Holiday ─────────────────────────────────────────────────────────────────
+
+  Holiday:
+    description: >
+      A single public holiday entry within a HolidayCalendar. is_compensated
+      indicates whether a substitute working day is granted when the holiday falls
+      on a weekend (per Vietnam Labor Code provisions). Inlined within HolidayCalendar.
+    slots:
+      - holiday_date
+      - holiday_name_vn
+      - holiday_name_en
+      - is_compensated
+      - compensated_date
+    slot_usage:
+      holiday_date:
+        required: true
+      holiday_name_en:
+        required: true
+
+  # ── ApprovalChain ───────────────────────────────────────────────────────────
+
+  ApprovalChain:
+    description: >
+      Dynamic, reusable approval workflow template. Chains are referenced by
+      LeaveRequest, OvertimeRequest, and Timesheet approvals.
+      H-P0-003: routing_mode = SKIP_LEVEL or CUSTOM governs OT self-submission
+      by managers. escalation_timeout_hours defines how long an approver has
+      before the request auto-escalates to the next step or the HR administrator.
+      An ApprovalChain is composed of one or more ordered ApprovalSteps.
+    is_a: TenantScoped
+    in_subset:
+      - medium_stability
+    slots:
+      - approval_chain_id
+      - chain_name
+      - entity_type
+      - routing_mode
+      - escalation_timeout_hours
+      - escalation_target_role
+      - steps
+      - active
+    slot_usage:
+      approval_chain_id:
+        required: true
+        identifier: true
+      chain_name:
+        required: true
+      entity_type:
+        required: true
+      routing_mode:
+        required: true
+      escalation_timeout_hours:
+        required: true
+      tenant_id:
+        required: true
+
+  # ── ApprovalStep ────────────────────────────────────────────────────────────
+
+  ApprovalStep:
+    description: >
+      A single stage in an ApprovalChain. Each step specifies who must approve
+      (by role or named approver) and the order within the chain.
+      approver_role examples: DIRECT_MANAGER, SKIP_LEVEL_MANAGER, HR_ADMIN, CUSTOM.
+      For CUSTOM, approver_employee_id must be set.
+    slots:
+      - step_order
+      - step_name
+      - approver_role
+      - approver_employee_id
+      - is_optional
+    slot_usage:
+      step_order:
+        required: true
+      approver_role:
+        required: true
+
+  # ── Notification ────────────────────────────────────────────────────────────
+
+  Notification:
+    description: >
+      An event-triggered notification dispatched to one or more recipients.
+      Delivery channels (EMAIL, PUSH, IN_APP, SMS) are configured per tenant.
+      Notifications are created by domain events and may be retried on delivery
+      failure. Idempotency key = event_id + recipient_id.
+      Template references are resolved at dispatch time to support localization.
+    is_a: TenantScoped
+    slots:
+      - notification_id
+      - event_id
+      - event_type
+      - recipient_id
+      - channel
+      - template_key
+      - subject
+      - body_preview
+      - status
+      - scheduled_at
+      - sent_at
+      - failed_at
+      - retry_count
+    slot_usage:
+      notification_id:
+        required: true
+        identifier: true
+      event_id:
+        required: true
+      event_type:
+        required: true
+      recipient_id:
+        required: true
+      channel:
+        required: true
+      template_key:
+        required: true
+      status:
+        required: true
+      tenant_id:
+        required: true
+
+  # ── PayrollExportPackage ─────────────────────────────────────────────────────
+
+  PayrollExportPackage:
+    description: >
+      An immutable export artifact generated at Period close, containing all
+      attendance, leave, OT, and comp time data required by the Payroll module.
+      Exactly one package is created per Period per tenant.
+      H-P0-004: termination_balance_action specifies how negative leave balances
+      at termination are handled. AUTO_DEDUCT requires VLC Art. 21 written consent.
+      Export is idempotent — re-running period close will not create a second package.
+      Dispatched as a PayrollExportCreated integration event to the Payroll module.
+    is_a: TenantScoped
+    in_subset:
+      - medium_stability
+    annotations:
+      is_mutable: "false"
+    slots:
+      - export_package_id
+      - period_id
+      - generated_at
+      - generated_by
+      - employee_count
+      - total_regular_hours
+      - total_ot_hours
+      - total_leave_days
+      - total_comp_time_hours
+      - termination_records_count
+      - termination_balance_action
+      - export_format
+      - checksum
+      - dispatched_at
+      - dispatch_status
+      - payroll_system_ref
+    slot_usage:
+      export_package_id:
+        required: true
+        identifier: true
+      period_id:
+        required: true
+      generated_at:
+        required: true
+      generated_by:
+        required: true
+      termination_balance_action:
+        required: true
+      tenant_id:
+        required: true
+
+  # ── TenantConfig ─────────────────────────────────────────────────────────────
+
+  TenantConfig:
+    description: >
+      Central configuration store for all tenant-level policy settings in the
+      Time & Absence module. There is exactly one TenantConfig per tenant.
+      Changes to TenantConfig are effective for new transactions only;
+      existing approved requests are not retroactively affected.
+      Includes configurable defaults for H-P0-001, H-P0-002, H-P0-003, and H-P0-004.
+    is_a: TenantScoped
+    slots:
+      - config_id
+      - default_holiday_calendar_id
+      - default_ot_approval_routing_mode
+      - cancellation_deadline_days
+      - comp_time_expiry_warning_days
+      - default_comp_time_action
+      - termination_balance_default_action
+      - termination_writeoff_threshold_days
+      - payroll_export_format
+      - data_region
+      - updated_at
+      - updated_by
+    slot_usage:
+      config_id:
+        required: true
+        identifier: true
+      default_holiday_calendar_id:
+        required: true
+      cancellation_deadline_days:
+        required: true
+      comp_time_expiry_warning_days:
+        required: true
+      default_comp_time_action:
+        required: true
+      termination_balance_default_action:
+        required: true
+      tenant_id:
+        required: true
+
+#
+# ─── SLOTS ───────────────────────────────────────────────────────────────────
+#
+
+slots:
+
+  # ── Identity ───────────────────────────────────────────────────────────────
+  tenant_id:
+    description: Tenant identifier for row-level multi-tenancy isolation (H9)
+    range: string
+    required: true
+
+  period_id:
+    description: Unique identifier for a Period
+    range: string
+
+  calendar_id:
+    description: Unique identifier for a HolidayCalendar
+    range: string
+
+  approval_chain_id:
+    description: Unique identifier for an ApprovalChain
+    range: string
+
+  notification_id:
+    description: Unique identifier for a Notification record
+    range: string
+
+  export_package_id:
+    description: Unique identifier for a PayrollExportPackage
+    range: string
+
+  config_id:
+    description: Unique identifier for a TenantConfig (one per tenant)
+    range: string
+
+  # ── Period attributes ──────────────────────────────────────────────────────
+  period_name:
+    description: Human-readable period name (e.g., "March 2026")
+    range: string
+
+  period_type:
+    description: Granularity of the period (MONTHLY or CUSTOM)
+    range: PeriodType
+
+  start_date:
+    description: First calendar date of the period (inclusive)
+    range: date
+
+  end_date:
+    description: Last calendar date of the period (inclusive)
+    range: date
+
+  status:
+    description: Current processing status of this entity
+    range: string
+
+  holiday_calendar_id:
+    description: Reference to the HolidayCalendar used for working-day calculations in this period
+    range: string
+
+  working_days:
+    description: Number of working days in the period (excluding weekends and holidays)
+    range: integer
+
+  locked_at:
+    description: Timestamp when the period was transitioned to LOCKED state
+    range: datetime
+
+  locked_by:
+    description: Employee ID of the user who locked the period
+    range: string
+
+  closed_at:
+    description: Timestamp when the period was transitioned to CLOSED state
+    range: datetime
+
+  closed_by:
+    description: Employee ID of the user who closed the period
+    range: string
+
+  # ── HolidayCalendar attributes ─────────────────────────────────────────────
+  calendar_name:
+    description: Human-readable calendar name (e.g., "Vietnam Public Holidays 2026")
+    range: string
+
+  country_code:
+    description: ISO 3166-1 alpha-2 country code for compliance jurisdiction (default: VN)
+    range: string
+
+  year:
+    description: Calendar year this holiday list applies to
+    range: integer
+
+  holidays:
+    description: List of public holiday entries in this calendar
+    range: Holiday
+    multivalued: true
+    inlined: true
+    inlined_as_list: true
+
+  active:
+    description: Whether this entity is currently active (soft delete)
+    range: boolean
+
+  # ── Holiday attributes ─────────────────────────────────────────────────────
+  holiday_date:
+    description: Date of the public holiday (YYYY-MM-DD)
+    range: date
+
+  holiday_name_vn:
+    description: Public holiday name in Vietnamese
+    range: string
+
+  holiday_name_en:
+    description: Public holiday name in English
+    range: string
+
+  is_compensated:
+    description: >
+      Whether a substitute working day is granted when the holiday falls on a weekend.
+      Applies per Vietnam government decree for each holiday.
+    range: boolean
+
+  compensated_date:
+    description: The substitute day off granted (null if is_compensated = false)
+    range: date
+
+  # ── ApprovalChain attributes ───────────────────────────────────────────────
+  chain_name:
+    description: Human-readable name for this approval chain
+    range: string
+
+  entity_type:
+    description: The type of entity this chain is used for (LEAVE_REQUEST, OT_REQUEST, TIMESHEET)
+    range: string
+
+  routing_mode:
+    description: >
+      H-P0-003: Routing mode for self-submission scenarios (e.g., manager submitting
+      own OT). SKIP_LEVEL routes to the submitter's manager; CUSTOM uses a
+      configured workflow approver matrix.
+    range: ApprovalRoutingMode
+
+  escalation_timeout_hours:
+    description: >
+      Hours after which an unanswered approval step is escalated to escalation_target_role.
+      0 = no automatic escalation.
+    range: integer
+
+  escalation_target_role:
+    description: Role to escalate to when an approval step times out (e.g., HR_ADMIN)
+    range: string
+
+  steps:
+    description: Ordered list of approval steps in this chain
+    range: ApprovalStep
+    multivalued: true
+    inlined: true
+    inlined_as_list: true
+
+  # ── ApprovalStep attributes ────────────────────────────────────────────────
+  step_order:
+    description: Numeric order of this step within the chain (lower = earlier)
+    range: integer
+
+  step_name:
+    description: Human-readable label for this approval step
+    range: string
+
+  approver_role:
+    description: >
+      Role-based approver designation. Common values: DIRECT_MANAGER,
+      SKIP_LEVEL_MANAGER, HR_ADMIN, CUSTOM. When CUSTOM, approver_employee_id
+      must be populated.
+    range: string
+
+  approver_employee_id:
+    description: Specific employee ID for CUSTOM approver role (null for role-based steps)
+    range: string
+
+  is_optional:
+    description: Whether this approval step can be bypassed if the approver is unavailable
+    range: boolean
+
+  # ── Notification attributes ────────────────────────────────────────────────
+  event_id:
+    description: Reference to the domain event that triggered this notification
+    range: string
+
+  event_type:
+    description: Type of the triggering domain event (e.g., LeaveRequestApproved)
+    range: string
+
+  recipient_id:
+    description: Employee ID of the notification recipient
+    range: string
+
+  channel:
+    description: Delivery channel for this notification
+    range: NotificationChannel
+
+  template_key:
+    description: Key referencing the notification template (resolved at dispatch time)
+    range: string
+
+  subject:
+    description: Notification subject line (for EMAIL channel)
+    range: string
+
+  body_preview:
+    description: Short preview of notification body (for logging and debugging only)
+    range: string
+
+  scheduled_at:
+    description: Timestamp when the notification is scheduled for delivery
+    range: datetime
+
+  sent_at:
+    description: Timestamp when the notification was successfully delivered
+    range: datetime
+
+  failed_at:
+    description: Timestamp of the last delivery failure (null if not failed)
+    range: datetime
+
+  retry_count:
+    description: Number of delivery attempts made so far
+    range: integer
+
+  # ── PayrollExportPackage attributes ───────────────────────────────────────
+  generated_at:
+    description: Timestamp when the export package was generated
+    range: datetime
+
+  generated_by:
+    description: Employee ID or system actor that triggered period close
+    range: string
+
+  employee_count:
+    description: Number of employees included in this export
+    range: integer
+
+  total_regular_hours:
+    description: Total regular (non-OT) worked hours across all employees in the period
+    range: float
+
+  total_ot_hours:
+    description: Total overtime hours across all employees in the period
+    range: float
+
+  total_leave_days:
+    description: Total leave days taken across all employees in the period
+    range: float
+
+  total_comp_time_hours:
+    description: Total comp time hours earned or cashed out in the period
+    range: float
+
+  termination_records_count:
+    description: Number of termination balance records processed in this export
+    range: integer
+
+  termination_balance_action:
+    description: >
+      H-P0-004: Policy applied to negative leave balances for terminated employees
+      at period close. AUTO_DEDUCT requires prior written employee consent
+      (Vietnam Labor Code 2019, Article 21).
+      AUTO_DEDUCT: automatic payroll deduction.
+      HR_REVIEW: flag for HR manual approval (default).
+      WRITE_OFF: forgive negative balance.
+      RULE_BASED: threshold-based rule from TenantConfig.
+    range: TerminationBalanceAction
+
+  export_format:
+    description: Format of the export payload (e.g., JSON, CSV, XML per payroll system)
+    range: string
+
+  checksum:
+    description: SHA-256 checksum of the export payload for integrity verification
+    range: string
+
+  dispatched_at:
+    description: Timestamp when the PayrollExportCreated event was dispatched
+    range: datetime
+
+  dispatch_status:
+    description: Whether the export was successfully dispatched to the Payroll module
+    range: PayrollDispatchStatus
+
+  payroll_system_ref:
+    description: Reference ID assigned by the downstream Payroll module on receipt
+    range: string
+
+  # ── TenantConfig attributes ────────────────────────────────────────────────
+  config_id:
+    description: Unique identifier for this tenant configuration record
+    range: string
+
+  default_holiday_calendar_id:
+    description: Reference to the default HolidayCalendar used for new Periods
+    range: string
+
+  default_ot_approval_routing_mode:
+    description: >
+      H-P0-003: Default OT approval routing mode for manager self-submissions.
+      Can be overridden per ApprovalChain. Default: SKIP_LEVEL.
+    range: ApprovalRoutingMode
+
+  cancellation_deadline_days:
+    description: >
+      H-P0-001: Number of business days before leave start date after which
+      self-cancellation requires manager approval. Configurable per tenant.
+      Default: 1 business day.
+    range: integer
+
+  comp_time_expiry_warning_days:
+    description: >
+      H-P0-002: Number of days before comp time expiry_date when the system
+      sends an expiry warning notification to the employee. Default: 30 days.
+    range: integer
+
+  default_comp_time_action:
+    description: >
+      H-P0-002: Default action applied to all comp time expiries for this tenant.
+      Can be overridden per LeaveType. Default: FORFEITURE.
+    range: CompTimeExpiryAction
+
+  termination_balance_default_action:
+    description: >
+      H-P0-004: Default policy for handling negative leave balances at employee
+      termination. Applied at period close for terminated employees. Default: HR_REVIEW.
+    range: TerminationBalanceAction
+
+  termination_writeoff_threshold_days:
+    description: >
+      H-P0-004 (RULE_BASED only): Negative balance threshold in days.
+      Balances <= threshold: WRITE_OFF; balances > threshold: HR_REVIEW.
+      Ignored unless termination_balance_default_action = RULE_BASED.
+    range: float
+
+  payroll_export_format:
+    description: Format of the payroll export payload sent to the Payroll module
+    range: string
+
+  data_region:
+    description: >
+      H10: Cloud region where tenant data is physically stored.
+      Relevant for data residency compliance. Example: ap-southeast-1 (Singapore),
+      ap-southeast-2 (Vietnam). Set at tenant onboarding; not changeable post-setup.
+    range: string
+
+  updated_at:
+    description: Timestamp of the most recent configuration update
+    range: datetime
+
+  updated_by:
+    description: Employee ID of the admin who last updated the configuration
+    range: string
+
+  # ── Shared ─────────────────────────────────────────────────────────────────
+  created_at:
+    description: Immutable timestamp of record creation
+    range: datetime
+
+#
+# ─── ENUMS ───────────────────────────────────────────────────────────────────
+#
+
+enums:
+
+  PeriodStatus:
+    description: >
+      State machine for a payroll Period.
+      Transitions: OPEN -> LOCKED -> CLOSED. Reversal is not permitted.
+    permissible_values:
+      OPEN:
+        description: >
+          Period is active. Leave requests, OT requests, and attendance records
+          may be created and modified.
+      LOCKED:
+        description: >
+          Period is frozen for payroll processing. All timesheets are locked.
+          No new records may be added. Payroll export is in progress.
+      CLOSED:
+        description: >
+          Period is fully closed. PayrollExportPackage has been generated and
+          dispatched to the Payroll module. No changes permitted.
+
+  PeriodType:
+    description: Granularity of the payroll period
+    permissible_values:
+      MONTHLY:
+        description: Standard monthly payroll period (most common)
+      CUSTOM:
+        description: Non-standard date range (e.g., bi-weekly or project-specific)
+
+  ApprovalRoutingMode:
+    description: >
+      H-P0-003: How approval is routed when a manager submits their own OT request
+      or when skip-level escalation is configured.
+    permissible_values:
+      SKIP_LEVEL:
+        description: >
+          Route to the submitter's own manager (one level up in org hierarchy).
+          Default for self-submission scenarios.
+      CUSTOM:
+        description: >
+          Route to a configured approver based on tenant-defined role/level matrix.
+          Approver is specified in ApprovalStep.approver_employee_id or by role.
+
+  NotificationChannel:
+    description: Delivery channel for a Notification
+    permissible_values:
+      EMAIL:
+        description: Email delivery via SMTP or email service provider
+      PUSH:
+        description: Mobile push notification via FCM or APNs
+      IN_APP:
+        description: In-application notification shown in the xTalent UI
+      SMS:
+        description: SMS delivery via configured SMS gateway
+
+  NotificationStatus:
+    description: Delivery state of a Notification
+    permissible_values:
+      PENDING:
+        description: Notification created; not yet dispatched
+      SENT:
+        description: Successfully delivered to the channel
+      FAILED:
+        description: Delivery failed after all retries exhausted
+      CANCELLED:
+        description: Notification cancelled (e.g., action no longer relevant)
+
+  PayrollDispatchStatus:
+    description: Status of the PayrollExportPackage dispatch to the Payroll module
+    permissible_values:
+      PENDING:
+        description: Export generated; dispatch not yet attempted
+      DISPATCHED:
+        description: PayrollExportCreated event sent; awaiting acknowledgement
+      ACKNOWLEDGED:
+        description: Payroll module confirmed receipt (payroll_system_ref populated)
+      FAILED:
+        description: Dispatch failed; retry required
+
+  TerminationBalanceAction:
+    description: >
+      H-P0-004: Configured action for handling negative leave balances at termination.
+      Applied at period close for terminated employees.
+    permissible_values:
+      AUTO_DEDUCT:
+        description: >
+          Automatic payroll deduction from final pay. Requires prior written employee
+          consent per Vietnam Labor Code 2019, Article 21.
+      HR_REVIEW:
+        description: >
+          Default. Negative balance flagged for HR manual review and approval
+          before any action. HR must obtain consent if deduction is chosen.
+      WRITE_OFF:
+        description: Negative balance forgiven. No deduction. Event logged.
+      RULE_BASED:
+        description: >
+          Threshold-based rule applied (configured in TenantConfig.termination_writeoff_threshold_days).
+          Balances at or below threshold: WRITE_OFF; above threshold: HR_REVIEW.
+
+  CompTimeExpiryAction:
+    description: >
+      H-P0-002: Action taken when compensatory time balance reaches its expiry date.
+    permissible_values:
+      EXTENSION:
+        description: Manager-approved extension of the expiry date
+      CASHOUT:
+        description: Automatic cash-out; balance amount transferred to PayrollExportPackage
+      FORFEITURE:
+        description: Balance set to zero; CompTimeExpired event logged; no payment
+
+#
+# ─── TYPES ───────────────────────────────────────────────────────────────────
+#
+
+types:
+  ISODate:
+    description: Calendar date in ISO 8601 format (YYYY-MM-DD)
+    uri: linkml:Date
+    base: str
+
+  UTCDateTime:
+    description: Timestamp in UTC, ISO 8601 format
+    uri: linkml:Datetime
+    base: str

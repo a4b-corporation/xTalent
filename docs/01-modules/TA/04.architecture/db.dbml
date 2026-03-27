@@ -1,0 +1,883 @@
+// =============================================================================
+// xTalent Time & Absence — Database Schema (DBML)
+// Step 4: Solution Architecture
+// Date: 2026-03-24
+// Source: LinkML schemas (domain/absence, domain/attendance, domain/shared)
+// Target: PostgreSQL 15+ with row-level security (H9 multi-tenancy)
+// =============================================================================
+//
+// Table Groups:
+//   - ta_absence  : Absence Management bounded context
+//   - ta_attendance: Time & Attendance bounded context
+//   - ta_shared   : Shared Services bounded context
+//   - infrastructure: Cross-cutting tenant table
+//
+// Conventions:
+//   - All tables include tenant_id (uuid, not null) for row-level isolation
+//   - All tables include created_at, updated_at, created_by unless noted
+//   - Append-only tables (leave_movements, punches): INSERT only; no UPDATE/DELETE
+//   - Foreign keys use `ref:` notation (DBML syntax)
+//   - Enums defined at top of each section
+//   - Indexes listed inline via `indexes {}` block
+// =============================================================================
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INFRASTRUCTURE
+// ─────────────────────────────────────────────────────────────────────────────
+
+Table tenants {
+  id uuid [pk, default: `gen_random_uuid()`]
+  code varchar(64) [not null, unique]
+  name varchar(255) [not null]
+  data_region varchar(64) [not null, note: "H10: cloud region tag, e.g. ap-southeast-2"]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    code [unique]
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ENUMS — ta_absence
+// ─────────────────────────────────────────────────────────────────────────────
+
+Enum leave_category {
+  ANNUAL       [note: "Annual paid leave - VLC 2019 Art. 113"]
+  SICK         [note: "Sick/medical leave - VLC 2019 Art. 114"]
+  MATERNITY    [note: "Maternity leave (6 months) - VLC 2019 Art. 139"]
+  PATERNITY    [note: "Paternity leave - Law on Social Insurance Art. 34"]
+  UNPAID       [note: "Unpaid leave by agreement - VLC 2019 Art. 115"]
+  COMP_TIME    [note: "Compensatory time off in lieu of OT payment"]
+  CUSTOM       [note: "Tenant-defined custom leave type"]
+}
+
+Enum entitlement_basis {
+  FIXED        [note: "Full entitlement granted at period start"]
+  ACCRUAL      [note: "Entitlement earned per AccrualPlan"]
+  UNLIMITED    [note: "No balance limit; tracking only"]
+}
+
+Enum leave_unit {
+  DAY          [note: "Balance tracked in working days"]
+  HOUR         [note: "Balance tracked in hours"]
+}
+
+Enum expiry_action {
+  EXTENSION    [note: "Manager-approved extension of expiry date"]
+  CASHOUT      [note: "Auto cash-out to payroll"]
+  FORFEITURE   [note: "Balance set to zero; event logged"]
+}
+
+Enum movement_type {
+  EARN         [note: "Balance credit from accrual or grant"]
+  USE          [note: "Balance debit - leave taken"]
+  RESERVE      [note: "Provisional hold at request submission"]
+  RELEASE      [note: "Reservation released on rejection/cancellation"]
+  EXPIRE       [note: "Balance expired; carryover or comp time"]
+  ADJUST       [note: "Manual HR adjustment with documented reason"]
+  CASHOUT      [note: "Encashment - converted to payroll payment"]
+}
+
+Enum leave_request_status {
+  SUBMITTED            [note: "Balance reservation placed; routing pending"]
+  UNDER_REVIEW         [note: "At least one approval level pending"]
+  APPROVED             [note: "All approvals complete; deduction on leave start"]
+  REJECTED             [note: "Any approver rejected; reservation released"]
+  CANCELLATION_PENDING [note: "H-P0-001: post-deadline cancel awaiting manager"]
+  CANCELLED            [note: "Cancellation complete; balance fully restored"]
+}
+
+Enum reservation_status {
+  ACTIVE     [note: "Reservation in effect; balance held"]
+  RELEASED   [note: "Released on rejection or pre-deadline cancel"]
+  CONVERTED  [note: "Converted to USE movement on leave start"]
+}
+
+Enum accrual_method {
+  MONTHLY_PRO_RATA  [note: "Monthly accrual proportional to days worked"]
+  ANNUAL_FRONT_LOAD [note: "Full year entitlement at year start"]
+  TENURE_BASED      [note: "Entitlement from hire date anniversary"]
+}
+
+Enum accrual_frequency {
+  MONTHLY    [note: "End of each calendar month"]
+  QUARTERLY  [note: "End of each quarter"]
+  ANNUALLY   [note: "Once at start of policy year"]
+}
+
+Enum batch_run_status {
+  RUNNING   [note: "Batch currently executing"]
+  COMPLETED [note: "Batch completed; movements committed"]
+  FAILED    [note: "Batch failed; partial movements rolled back"]
+  SKIPPED   [note: "Skipped - idempotency check: already run for period"]
+}
+
+Enum termination_balance_action {
+  AUTO_DEDUCT [note: "Auto payroll deduction - requires VLC Art. 21 written consent"]
+  HR_REVIEW   [note: "Default: flagged for HR manual review"]
+  WRITE_OFF   [note: "Balance forgiven; event logged"]
+  RULE_BASED  [note: "Threshold-based rule from TenantConfig"]
+}
+
+Enum eligibility_scope {
+  ALL             [note: "All employees in tenant"]
+  JOB_GRADE       [note: "Specific job grade(s)"]
+  DEPARTMENT      [note: "Specific department(s)"]
+  EMPLOYMENT_TYPE [note: "Full-time, part-time, etc."]
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TABLES — ta_absence schema
+// ─────────────────────────────────────────────────────────────────────────────
+
+Table leave_types {
+  id uuid [pk, default: `gen_random_uuid()`]
+  tenant_id uuid [not null, ref: > tenants.id]
+  code varchar(64) [not null, note: "Unique per tenant. Pre-configured: ANNUAL, SICK, MATERNITY, UNPAID (VN)"]
+  name_vn varchar(255) [note: "Display name in Vietnamese"]
+  name_en varchar(255) [not null]
+  leave_category leave_category [not null]
+  entitlement_basis entitlement_basis [not null]
+  unit leave_unit [not null, default: "DAY"]
+  allow_half_day boolean [not null, default: false]
+  allow_advance_leave boolean [not null, default: false]
+  carryover_eligible boolean [not null, default: false]
+  encashment_eligible boolean [not null, default: false]
+  evidence_required boolean [not null, default: false]
+  evidence_grace_period_days integer [note: "VLC Art. 114: days to submit sick cert after leave start"]
+  country_code varchar(2) [not null, default: "VN", note: "ISO 3166-1 alpha-2"]
+  active boolean [not null, default: true]
+  cancellation_deadline_days integer [not null, default: 1, note: "H-P0-001: business days before start; self-cancel blocked after"]
+  expiry_action expiry_action [note: "H-P0-002: action when balance expires"]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  created_by uuid [not null]
+
+  indexes {
+    (tenant_id, code) [unique, name: "uq_leave_types_tenant_code"]
+    tenant_id
+    active
+  }
+}
+
+Table leave_classes {
+  id uuid [pk, default: `gen_random_uuid()`]
+  tenant_id uuid [not null, ref: > tenants.id]
+  name varchar(255) [not null]
+  description text
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  created_by uuid [not null]
+
+  indexes {
+    tenant_id
+  }
+}
+
+Table leave_class_members {
+  id uuid [pk, default: `gen_random_uuid()`]
+  tenant_id uuid [not null, ref: > tenants.id]
+  leave_class_id uuid [not null, ref: > leave_classes.id]
+  leave_type_id uuid [not null, ref: > leave_types.id]
+  rank_order integer [not null, note: "Lower = consumed first in class deduction"]
+  created_at timestamptz [not null, default: `now()`]
+  created_by uuid [not null]
+
+  indexes {
+    (leave_class_id, leave_type_id) [unique]
+    (leave_class_id, rank_order) [unique]
+  }
+}
+
+Table leave_policies {
+  id uuid [pk, default: `gen_random_uuid()`]
+  tenant_id uuid [not null, ref: > tenants.id]
+  policy_name varchar(255) [not null]
+  leave_type_id uuid [not null, ref: > leave_types.id]
+  leave_class_id uuid [ref: > leave_classes.id, note: "Optional class grouping"]
+  eligibility_scope eligibility_scope [not null, default: "ALL"]
+  probation_eligible boolean [not null, default: false]
+  probation_period_days integer [note: "Days from hire before leave rights activate"]
+  accrual_plan_id uuid [ref: > accrual_plans.id]
+  carryover_rule_id uuid [ref: > carryover_rules.id]
+  effective_date date [not null]
+  expiry_date date
+  seniority_rules jsonb [note: "Array of SeniorityRule: {min_years, max_years, entitlement_days}"]
+  active boolean [not null, default: true]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  created_by uuid [not null]
+
+  indexes {
+    tenant_id
+    (tenant_id, leave_type_id)
+    active
+  }
+}
+
+Table accrual_plans {
+  id uuid [pk, default: `gen_random_uuid()`]
+  tenant_id uuid [not null, ref: > tenants.id]
+  plan_name varchar(255) [not null]
+  accrual_method accrual_method [not null]
+  amount_per_period decimal(8,4) [not null, note: "Leave days or hours credited per accrual period"]
+  accrual_frequency accrual_frequency [not null]
+  max_balance decimal(8,4) [note: "Balance cap; null = unlimited"]
+  active boolean [not null, default: true]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  created_by uuid [not null]
+
+  indexes {
+    tenant_id
+  }
+}
+
+Table carryover_rules {
+  id uuid [pk, default: `gen_random_uuid()`]
+  tenant_id uuid [not null, ref: > tenants.id]
+  rule_name varchar(255) [not null]
+  max_carryover_days decimal(8,4) [not null]
+  expiry_months_after_year_end integer [not null, note: "e.g., 3 = expires March 31 of new year"]
+  expiry_action expiry_action [not null]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  created_by uuid [not null]
+
+  indexes {
+    tenant_id
+  }
+}
+
+Table leave_instants {
+  // Read model: computed balance snapshot. Materialized from leave_movements.
+  // Unique per (tenant_id, employee_id, leave_type_id).
+  // Cache-through: invalidated on every leave_movements INSERT for this employee+type.
+  id uuid [pk, default: `gen_random_uuid()`]
+  tenant_id uuid [not null, ref: > tenants.id]
+  employee_id uuid [not null, note: "Ref: Employee Central"]
+  leave_type_id uuid [not null, ref: > leave_types.id]
+  leave_policy_id uuid [ref: > leave_policies.id]
+  earned decimal(8,4) [not null, default: 0]
+  used decimal(8,4) [not null, default: 0]
+  reserved decimal(8,4) [not null, default: 0]
+  available decimal(8,4) [not null, default: 0, note: "Computed: earned - used - reserved"]
+  expiring_soon decimal(8,4) [note: "Balance expiring within next 30 days"]
+  computed_at timestamptz [not null, default: `now()`]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  created_by uuid [not null]
+
+  indexes {
+    (tenant_id, employee_id, leave_type_id) [unique, name: "uq_leave_instants_tenant_emp_type"]
+    (tenant_id, employee_id)
+  }
+}
+
+Table leave_movements {
+  // ADR-TA-001: APPEND-ONLY. No UPDATE or DELETE permitted on this table.
+  // Balance is always computed by summing movement records.
+  // Immutable after creation: is_mutable = false (ADR-TA-001).
+  id uuid [pk, default: `gen_random_uuid()`]
+  tenant_id uuid [not null, ref: > tenants.id]
+  employee_id uuid [not null, note: "Ref: Employee Central"]
+  leave_type_id uuid [not null, ref: > leave_types.id]
+  movement_type movement_type [not null]
+  amount decimal(8,4) [not null, note: "Positive = credit; negative = debit; must not be 0"]
+  effective_date date [not null]
+  expiry_date date [note: "For EARN movements: date this balance expires (FEFO tracking)"]
+  reference_id uuid [note: "ID of originating object: LeaveRequest, AccrualBatch, etc."]
+  reference_type varchar(64) [note: "Type of reference_id: leave_request, accrual_batch_run, etc."]
+  batch_run_id uuid [ref: > accrual_batch_runs.id, note: "Set for EARN movements created by accrual batch"]
+  created_at timestamptz [not null, default: `now()`]
+  created_by varchar(255) [not null, note: "User or system actor; immutable"]
+
+  Note: "Append-only. No UPDATE or DELETE. ADR-TA-001: immutable ledger."
+
+  indexes {
+    (tenant_id, employee_id, leave_type_id)
+    (employee_id, leave_type_id, effective_date)
+    (tenant_id, reference_id, movement_type)
+    effective_date
+  }
+}
+
+Table leave_requests {
+  id uuid [pk, default: `gen_random_uuid()`]
+  tenant_id uuid [not null, ref: > tenants.id]
+  employee_id uuid [not null, note: "Ref: Employee Central"]
+  leave_type_id uuid [not null, ref: > leave_types.id]
+  leave_policy_id uuid [ref: > leave_policies.id]
+  start_date date [not null]
+  end_date date [not null]
+  requested_days decimal(8,4) [not null, note: "Working days (or hours) requested"]
+  unit leave_unit [not null, default: "DAY"]
+  reason text
+  status leave_request_status [not null, default: "SUBMITTED"]
+  cancellation_deadline_at timestamptz [note: "H-P0-001: computed at submission; self-cancel blocked after this"]
+  submitted_at timestamptz [not null]
+  approved_at timestamptz
+  rejected_at timestamptz
+  cancelled_at timestamptz
+  approved_by uuid
+  rejected_by uuid
+  cancelled_by uuid
+  cancellation_approved_by uuid [note: "H-P0-001: manager who approved post-deadline cancellation"]
+  rejection_reason text
+  cancellation_reason text
+  leave_reservation_id uuid [ref: > leave_reservations.id]
+  approval_chain_id uuid [note: "Ref: ta_shared.approval_chains"]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  created_by uuid [not null]
+
+  indexes {
+    (tenant_id, employee_id, status)
+    (tenant_id, employee_id, start_date)
+    (tenant_id, status)
+    approval_chain_id
+  }
+}
+
+Table leave_reservations {
+  id uuid [pk, default: `gen_random_uuid()`]
+  tenant_id uuid [not null, ref: > tenants.id]
+  leave_request_id uuid [not null, ref: > leave_requests.id]
+  employee_id uuid [not null, note: "Ref: Employee Central"]
+  leave_type_id uuid [not null, ref: > leave_types.id]
+  reserved_days decimal(8,4) [not null]
+  status reservation_status [not null, default: "ACTIVE"]
+  reserved_at timestamptz [not null]
+  released_at timestamptz
+  reservation_lines jsonb [note: "FEFO-ordered lines: [{source_movement_id, reserved_amount, expiry_date}]"]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  created_by uuid [not null]
+
+  indexes {
+    (tenant_id, employee_id, leave_type_id, status)
+    leave_request_id [unique]
+  }
+}
+
+Table accrual_batch_runs {
+  id uuid [pk, default: `gen_random_uuid()`]
+  tenant_id uuid [not null, ref: > tenants.id]
+  accrual_plan_id uuid [not null, ref: > accrual_plans.id]
+  accrual_period_start date [not null]
+  accrual_period_end date [not null]
+  status batch_run_status [not null, default: "RUNNING"]
+  employee_count integer [default: 0]
+  movements_created integer [default: 0]
+  started_at timestamptz [not null]
+  completed_at timestamptz
+  failed_at timestamptz
+  failure_reason text
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  created_by uuid [not null]
+
+  indexes {
+    (tenant_id, accrual_plan_id, accrual_period_start) [unique, name: "uq_accrual_batch_idempotency", note: "Idempotency: one completed run per plan per period"]
+    (tenant_id, status)
+  }
+}
+
+Table termination_balance_records {
+  // ADR-TA-001: APPEND-ONLY. Created exactly once per termination. Immutable.
+  id uuid [pk, default: `gen_random_uuid()`]
+  tenant_id uuid [not null, ref: > tenants.id]
+  employee_id uuid [not null, note: "Ref: Employee Central"]
+  termination_date date [not null]
+  balance_snapshots jsonb [not null, note: "Array of TerminationBalanceSnapshot: [{leave_type_id, leave_type_code, earned, used, reserved, available}]"]
+  balance_action termination_balance_action [not null]
+  hr_reviewer_id uuid
+  hr_review_notes text
+  employee_consent_obtained boolean [note: "H-P0-004 / VLC Art. 21: required before AUTO_DEDUCT"]
+  payroll_deduction_amount decimal(12,4)
+  processed_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+  created_by varchar(255) [not null]
+
+  Note: "Append-only. Created once per termination event. H-P0-004. VLC Art. 21 consent tracked."
+
+  indexes {
+    (tenant_id, employee_id) [unique, name: "uq_termination_record_per_employee", note: "One record per termination event"]
+    tenant_id
+    termination_date
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ENUMS — ta_attendance
+// ─────────────────────────────────────────────────────────────────────────────
+
+Enum punch_type {
+  IN   [note: "Clock-in event - start of work session"]
+  OUT  [note: "Clock-out event - end of work session"]
+}
+
+Enum punch_sync_status {
+  PENDING  [note: "H8: captured offline; queued for sync; not yet on server"]
+  SYNCED   [note: "Successfully synchronized to server; authoritative"]
+  CONFLICT [note: "H8: sync conflict detected; requires HR resolution"]
+}
+
+Enum worked_period_status {
+  PROVISIONAL [note: "Punch OUT missing; hours estimated; pending correction"]
+  CONFIRMED   [note: "Both IN and OUT matched; hours calculated"]
+  CORRECTED   [note: "Hours updated via correction punch"]
+  EXCLUDED    [note: "Excluded from timesheet (duplicate, cancelled shift)"]
+}
+
+Enum overtime_type {
+  WEEKDAY       [note: "Regular weekday OT - rate 150% (VLC Art. 98)"]
+  WEEKEND       [note: "Rest day OT - rate 200% (VLC Art. 98)"]
+  PUBLIC_HOLIDAY [note: "Public holiday OT - rate 300% (VLC Art. 98)"]
+}
+
+Enum ot_approval_routing_mode {
+  SKIP_LEVEL [note: "H-P0-003: route to submitter's manager (default)"]
+  CUSTOM     [note: "H-P0-003: route to configured workflow approver"]
+}
+
+Enum ot_request_status {
+  DRAFT     [note: "Not yet submitted"]
+  SUBMITTED [note: "Submitted for approval"]
+  APPROVED  [note: "Approved; OT logged to timesheet"]
+  REJECTED  [note: "Rejected by approver"]
+  CANCELLED [note: "Withdrawn before approval"]
+}
+
+Enum comp_time_expiry_action {
+  EXTENSION  [note: "H-P0-002: manager-approved extension"]
+  CASHOUT    [note: "H-P0-002: auto cash-out to payroll"]
+  FORFEITURE [note: "H-P0-002: balance zeroed; event logged"]
+}
+
+Enum timesheet_status {
+  OPEN      [note: "Period active; worked periods being added"]
+  SUBMITTED [note: "Employee submitted for manager approval"]
+  APPROVED  [note: "Manager approved; ready for payroll export"]
+  LOCKED    [note: "Period closed; timesheet frozen; no changes"]
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TABLES — ta_attendance schema
+// ─────────────────────────────────────────────────────────────────────────────
+
+Table shifts {
+  id uuid [pk, default: `gen_random_uuid()`]
+  tenant_id uuid [not null, ref: > tenants.id]
+  shift_code varchar(64) [not null, note: "Unique per tenant (e.g., MORNING, NIGHT)"]
+  shift_name varchar(255) [not null]
+  start_time varchar(5) [not null, note: "HH:MM 24-hour format"]
+  end_time varchar(5) [not null, note: "HH:MM 24-hour format"]
+  break_duration_minutes integer [not null, default: 60, note: "Excluded from worked hours"]
+  is_overnight boolean [not null, default: false, note: "True if end_time < start_time (spans midnight)"]
+  grace_period_minutes integer [not null, default: 15, note: "Tolerance before late arrival flagged"]
+  active boolean [not null, default: true]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  created_by uuid [not null]
+
+  indexes {
+    (tenant_id, shift_code) [unique]
+    tenant_id
+  }
+}
+
+Table shift_assignments {
+  id uuid [pk, default: `gen_random_uuid()`]
+  tenant_id uuid [not null, ref: > tenants.id]
+  employee_id uuid [not null, note: "Ref: Employee Central"]
+  shift_id uuid [not null, ref: > shifts.id]
+  effective_from date [not null]
+  effective_to date [note: "Null = open-ended assignment"]
+  assigned_by uuid [not null, note: "Manager or HR who created the assignment"]
+  assigned_at timestamptz [not null]
+  notes text
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  created_by uuid [not null]
+
+  indexes {
+    (tenant_id, employee_id, effective_from)
+    (tenant_id, employee_id)
+    shift_id
+  }
+}
+
+Table punches {
+  // ADR-TA-001: APPEND-ONLY. No UPDATE or DELETE.
+  // ADR-TA-004: biometric_ref stores token only — never raw biometric data.
+  // H8: sync_status tracks offline-first punch state.
+  id uuid [pk, default: `gen_random_uuid()`]
+  tenant_id uuid [not null, ref: > tenants.id]
+  employee_id uuid [not null, note: "Ref: Employee Central"]
+  shift_assignment_id uuid [ref: > shift_assignments.id]
+  punch_type punch_type [not null]
+  punched_at timestamptz [not null, note: "Device timestamp (UTC). For offline: local device time."]
+  device_id varchar(255) [note: "Biometric device or kiosk identifier"]
+  biometric_ref varchar(255) [note: "ADR-TA-004: token only; no raw biometric data"]
+  latitude decimal(10,8)
+  longitude decimal(11,8)
+  geofence_validated boolean [not null, default: false, note: "false = outside geofence; logged for HR"]
+  sync_status punch_sync_status [not null, default: "SYNCED"]
+  synced_at timestamptz [note: "Server receipt timestamp; null if PENDING"]
+  conflict_reason text [note: "Set when sync_status = CONFLICT"]
+  is_correction boolean [not null, default: false]
+  corrects_punch_id uuid [ref: > punches.id, note: "Self-referential: original punch being corrected"]
+  idempotency_key varchar(255) [note: "H8: employee_id + punched_at + device_id hash for dedup"]
+  created_at timestamptz [not null, default: `now()`]
+  created_by varchar(255) [not null]
+
+  Note: "Append-only. No UPDATE or DELETE. ADR-TA-001 + ADR-TA-004."
+
+  indexes {
+    (employee_id, punched_at)
+    (tenant_id, employee_id, sync_status)
+    (tenant_id, sync_status)
+    idempotency_key [unique, name: "uq_punch_idempotency"]
+    punched_at
+  }
+}
+
+Table worked_periods {
+  id uuid [pk, default: `gen_random_uuid()`]
+  tenant_id uuid [not null, ref: > tenants.id]
+  employee_id uuid [not null, note: "Ref: Employee Central"]
+  shift_assignment_id uuid [ref: > shift_assignments.id]
+  punch_in_id uuid [not null, ref: > punches.id]
+  punch_out_id uuid [ref: > punches.id, note: "Null if OUT punch missing (PROVISIONAL status)"]
+  work_date date [not null]
+  gross_hours decimal(6,4) [not null, note: "Wall clock time between IN and OUT"]
+  break_hours decimal(6,4) [not null, default: 0]
+  net_hours_worked decimal(6,4) [not null, note: "gross_hours - break_hours"]
+  ot_hours decimal(6,4) [not null, default: 0, note: "Hours beyond scheduled shift"]
+  status worked_period_status [not null, default: "CONFIRMED"]
+  timesheet_id uuid [ref: > timesheets.id]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  created_by uuid [not null]
+
+  indexes {
+    (tenant_id, employee_id, work_date) [unique, name: "uq_worked_period_per_day"]
+    (tenant_id, employee_id)
+    timesheet_id
+  }
+}
+
+Table overtime_requests {
+  id uuid [pk, default: `gen_random_uuid()`]
+  tenant_id uuid [not null, ref: > tenants.id]
+  employee_id uuid [not null, note: "Ref: Employee Central"]
+  work_date date [not null]
+  shift_assignment_id uuid [ref: > shift_assignments.id]
+  requested_ot_hours decimal(6,4) [not null]
+  ot_type overtime_type [not null]
+  ot_rate decimal(4,2) [note: "1.5, 2.0, or 3.0 per VLC Art. 98"]
+  reason text [not null]
+  status ot_request_status [not null, default: "SUBMITTED"]
+  approval_routing_mode ot_approval_routing_mode [not null, default: "SKIP_LEVEL", note: "H-P0-003"]
+  approval_chain_id uuid [note: "Ref: ta_shared.approval_chains"]
+  submitted_at timestamptz [not null]
+  approved_at timestamptz
+  rejected_at timestamptz
+  approved_by uuid
+  rejected_by uuid
+  rejection_reason text
+  comp_time_elected boolean [not null, default: false]
+  daily_ot_cap_hours decimal(4,2) [not null, default: 4, note: "VLC Art. 107 daily cap"]
+  monthly_ot_cap_hours decimal(6,2) [not null, default: 40, note: "VLC Art. 107 monthly cap"]
+  annual_ot_cap_hours decimal(6,2) [not null, default: 300, note: "VLC Art. 107 annual cap"]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  created_by uuid [not null]
+
+  indexes {
+    (tenant_id, employee_id, work_date, status)
+    (tenant_id, employee_id, status)
+    (tenant_id, status)
+  }
+}
+
+Table comp_time_balances {
+  id uuid [pk, default: `gen_random_uuid()`]
+  tenant_id uuid [not null, ref: > tenants.id]
+  employee_id uuid [not null, note: "Ref: Employee Central"]
+  earned_hours decimal(8,4) [not null, default: 0]
+  used_hours decimal(8,4) [not null, default: 0]
+  available_hours decimal(8,4) [not null, default: 0, note: "earned_hours - used_hours"]
+  expiry_date date [note: "Date after which unused comp time expires"]
+  expiry_action comp_time_expiry_action [not null, note: "H-P0-002"]
+  expiry_warning_sent boolean [not null, default: false]
+  last_updated_at timestamptz [not null, default: `now()`]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  created_by uuid [not null]
+
+  indexes {
+    (tenant_id, employee_id) [unique, name: "uq_comp_time_balance_per_emp"]
+    expiry_date
+  }
+}
+
+Table timesheets {
+  id uuid [pk, default: `gen_random_uuid()`]
+  tenant_id uuid [not null, ref: > tenants.id]
+  employee_id uuid [not null, note: "Ref: Employee Central"]
+  period_id uuid [not null, note: "Ref: ta_shared.periods"]
+  status timesheet_status [not null, default: "OPEN"]
+  total_scheduled_hours decimal(8,4) [note: "Total hours scheduled per ShiftAssignments"]
+  total_worked_hours decimal(8,4) [not null, default: 0]
+  total_ot_hours decimal(8,4) [not null, default: 0]
+  total_absent_hours decimal(8,4) [not null, default: 0]
+  timesheet_lines jsonb [note: "Daily breakdown: [{work_date, shift_id, regular_hours, ot_hours_150, ot_hours_200, ot_hours_300, holiday_hours, absent_hours, worked_period_ids}]"]
+  submitted_at timestamptz
+  submitted_by uuid
+  approved_at timestamptz
+  approved_by uuid
+  locked_at timestamptz [note: "Set when Period transitions to LOCKED"]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  created_by uuid [not null]
+
+  indexes {
+    (tenant_id, employee_id, period_id) [unique, name: "uq_timesheet_per_emp_period"]
+    (tenant_id, period_id, status)
+    (tenant_id, status)
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ENUMS — ta_shared
+// ─────────────────────────────────────────────────────────────────────────────
+
+Enum period_status {
+  OPEN   [note: "Active; records may be created and modified"]
+  LOCKED [note: "Frozen for payroll processing; timesheets locked"]
+  CLOSED [note: "Fully closed; PayrollExportPackage generated and dispatched"]
+}
+
+Enum period_type {
+  MONTHLY [note: "Standard monthly payroll period"]
+  CUSTOM  [note: "Non-standard date range"]
+}
+
+Enum approval_routing_mode {
+  SKIP_LEVEL [note: "Route to submitter's manager (one level up)"]
+  CUSTOM     [note: "Route to configured approver matrix"]
+}
+
+Enum notification_channel {
+  EMAIL  [note: "Email via SMTP/ESP"]
+  PUSH   [note: "Mobile push via FCM/APNs"]
+  IN_APP [note: "In-application notification"]
+  SMS    [note: "SMS via configured gateway"]
+}
+
+Enum notification_status {
+  PENDING   [note: "Created; not yet dispatched"]
+  SENT      [note: "Successfully delivered"]
+  FAILED    [note: "Delivery failed after all retries"]
+  CANCELLED [note: "Cancelled (action no longer relevant)"]
+}
+
+Enum payroll_dispatch_status {
+  PENDING      [note: "Export generated; dispatch not yet attempted"]
+  DISPATCHED   [note: "PayrollExportCreated event sent; awaiting ack"]
+  ACKNOWLEDGED [note: "Payroll module confirmed receipt"]
+  FAILED       [note: "Dispatch failed; retry required"]
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TABLES — ta_shared schema
+// ─────────────────────────────────────────────────────────────────────────────
+
+Table periods {
+  id uuid [pk, default: `gen_random_uuid()`]
+  tenant_id uuid [not null, ref: > tenants.id]
+  period_name varchar(255) [not null, note: "e.g., March 2026"]
+  period_type period_type [not null, default: "MONTHLY"]
+  start_date date [not null]
+  end_date date [not null]
+  status period_status [not null, default: "OPEN"]
+  holiday_calendar_id uuid [not null, ref: > holiday_calendars.id]
+  working_days integer [note: "Calculated: calendar days minus weekends and holidays"]
+  locked_at timestamptz
+  locked_by uuid
+  closed_at timestamptz
+  closed_by uuid
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  created_by uuid [not null]
+
+  indexes {
+    (tenant_id, status) [note: "Enforces single OPEN period per tenant at application layer"]
+    (tenant_id, start_date)
+    tenant_id
+  }
+}
+
+Table holiday_calendars {
+  id uuid [pk, default: `gen_random_uuid()`]
+  tenant_id uuid [not null, ref: > tenants.id]
+  calendar_name varchar(255) [not null, note: "e.g., Vietnam Public Holidays 2026"]
+  country_code varchar(2) [not null, default: "VN"]
+  year integer [not null]
+  holidays jsonb [not null, note: "Array of Holiday: [{holiday_date, name_vn, name_en, is_compensated, compensated_date}]"]
+  active boolean [not null, default: true]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  created_by uuid [not null]
+
+  indexes {
+    (tenant_id, country_code, year) [unique, name: "uq_holiday_calendar_per_year"]
+    tenant_id
+    active
+  }
+}
+
+Table approval_chains {
+  id uuid [pk, default: `gen_random_uuid()`]
+  tenant_id uuid [not null, ref: > tenants.id]
+  chain_name varchar(255) [not null]
+  entity_type varchar(64) [not null, note: "LEAVE_REQUEST | OT_REQUEST | TIMESHEET"]
+  routing_mode approval_routing_mode [not null, default: "SKIP_LEVEL", note: "H-P0-003"]
+  escalation_timeout_hours integer [not null, default: 48, note: "0 = no auto-escalation"]
+  escalation_target_role varchar(64) [note: "Role escalated to on timeout e.g. HR_ADMIN"]
+  steps jsonb [not null, note: "Array of ApprovalStep: [{step_order, step_name, approver_role, approver_employee_id, is_optional}]"]
+  active boolean [not null, default: true]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  created_by uuid [not null]
+
+  indexes {
+    (tenant_id, entity_type)
+    tenant_id
+  }
+}
+
+Table notifications {
+  id uuid [pk, default: `gen_random_uuid()`]
+  tenant_id uuid [not null, ref: > tenants.id]
+  event_id uuid [not null, note: "Reference to the domain event that triggered this"]
+  event_type varchar(128) [not null, note: "e.g., LeaveRequestApproved"]
+  recipient_id uuid [not null, note: "Ref: Employee Central"]
+  channel notification_channel [not null]
+  template_key varchar(128) [not null, note: "Resolved at dispatch time for localization"]
+  subject varchar(512)
+  body_preview text [note: "Short preview for logging/debug only"]
+  status notification_status [not null, default: "PENDING"]
+  scheduled_at timestamptz
+  sent_at timestamptz
+  failed_at timestamptz
+  retry_count integer [not null, default: 0]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  created_by varchar(255) [not null]
+
+  indexes {
+    (event_id, recipient_id) [unique, name: "uq_notification_idempotency", note: "Idempotency key"]
+    (tenant_id, recipient_id, status)
+    (tenant_id, status)
+    sent_at
+  }
+}
+
+Table payroll_export_packages {
+  // ADR-TA-001: APPEND-ONLY. Idempotent: unique constraint on (tenant_id, period_id).
+  // Re-running period close returns existing package (checksum verified).
+  id uuid [pk, default: `gen_random_uuid()`]
+  tenant_id uuid [not null, ref: > tenants.id]
+  period_id uuid [not null, ref: > periods.id]
+  generated_at timestamptz [not null]
+  generated_by varchar(255) [not null, note: "Employee ID or system actor"]
+  employee_count integer [not null]
+  total_regular_hours decimal(12,4) [not null]
+  total_ot_hours decimal(12,4) [not null]
+  total_leave_days decimal(12,4) [not null]
+  total_comp_time_hours decimal(12,4) [not null]
+  termination_records_count integer [not null, default: 0]
+  termination_balance_action termination_balance_action [not null, note: "H-P0-004: policy applied to terminated employees"]
+  export_format varchar(16) [not null, note: "JSON | CSV | XML"]
+  checksum varchar(64) [not null, note: "SHA-256 of export payload for integrity verification"]
+  dispatched_at timestamptz
+  dispatch_status payroll_dispatch_status [not null, default: "PENDING"]
+  payroll_system_ref varchar(255) [note: "Reference ID assigned by Payroll module on receipt"]
+  created_at timestamptz [not null, default: `now()`]
+  created_by varchar(255) [not null]
+
+  Note: "Append-only. Idempotent: unique (tenant_id, period_id). H-P0-004."
+
+  indexes {
+    (tenant_id, period_id) [unique, name: "uq_payroll_export_per_period"]
+    (tenant_id, dispatch_status)
+  }
+}
+
+Table tenant_configs {
+  id uuid [pk, default: `gen_random_uuid()`]
+  tenant_id uuid [not null, ref: > tenants.id]
+  default_holiday_calendar_id uuid [not null, ref: > holiday_calendars.id]
+  default_ot_approval_routing_mode approval_routing_mode [not null, default: "SKIP_LEVEL"]
+  cancellation_deadline_days integer [not null, default: 1, note: "H-P0-001"]
+  comp_time_expiry_warning_days integer [not null, default: 30, note: "H-P0-002: days before expiry to notify"]
+  default_comp_time_action comp_time_expiry_action [not null, default: "FORFEITURE", note: "H-P0-002"]
+  termination_balance_default_action termination_balance_action [not null, default: "HR_REVIEW", note: "H-P0-004"]
+  termination_writeoff_threshold_days decimal(8,4) [note: "H-P0-004 RULE_BASED: threshold for auto write-off"]
+  payroll_export_format varchar(16) [not null, default: "JSON"]
+  data_region varchar(64) [not null, note: "H10: cloud region e.g. ap-southeast-2 (Vietnam). Set at onboarding; immutable post-setup."]
+  updated_at timestamptz [not null, default: `now()`]
+  updated_by uuid [not null]
+  created_at timestamptz [not null, default: `now()`]
+  created_by uuid [not null]
+
+  indexes {
+    tenant_id [unique, name: "uq_tenant_config_per_tenant", note: "Exactly one config per tenant"]
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TABLE GROUPS
+// ─────────────────────────────────────────────────────────────────────────────
+
+TableGroup infrastructure {
+  tenants
+}
+
+TableGroup ta_absence {
+  leave_types
+  leave_classes
+  leave_class_members
+  leave_policies
+  accrual_plans
+  carryover_rules
+  leave_instants
+  leave_movements
+  leave_requests
+  leave_reservations
+  accrual_batch_runs
+  termination_balance_records
+}
+
+TableGroup ta_attendance {
+  shifts
+  shift_assignments
+  punches
+  worked_periods
+  overtime_requests
+  comp_time_balances
+  timesheets
+}
+
+TableGroup ta_shared {
+  periods
+  holiday_calendars
+  approval_chains
+  notifications
+  payroll_export_packages
+  tenant_configs
+}

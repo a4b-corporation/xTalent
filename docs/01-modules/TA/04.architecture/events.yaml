@@ -1,0 +1,1615 @@
+# =============================================================================
+# xTalent Time & Absence — Business Event Repository
+# Step 4: Solution Architecture
+# Date: 2026-03-24
+# Source: reality/event-storming.md (54 events) + domain/bounded-contexts.md
+# =============================================================================
+#
+# Event ID Format:
+#   E-ABS-NNN : ta.absence events (24)
+#   E-ATT-NNN : ta.attendance events (26)
+#   E-SHD-NNN : ta.shared events (16)
+#   Total: 66 events (54 from event storming + 12 integration/lifecycle events)
+#
+# Priority:
+#   P0 : Critical business event; must not be lost; permanent retention
+#   P1 : Important business event; long retention
+#   P2 : Operational event; standard retention
+#
+# Retention:
+#   permanent : Never deleted (audit, compliance, ledger)
+#   7-years   : Vietnam Labor Code retention requirement
+#   1-year    : Standard operational retention
+#   90-days   : Notification and operational events
+# =============================================================================
+
+version: "1.0"
+module: time-absence
+generated: "2026-03-24"
+total_events: 66
+source_documents:
+  - reality/event-storming.md
+  - domain/bounded-contexts.md
+  - domain/absence/flows/submit-leave-request.flow.md
+  - domain/absence/flows/approve-leave-request.flow.md
+  - domain/absence/flows/cancel-leave-request.flow.md
+  - domain/attendance/flows/clock-in-out.flow.md
+  - domain/attendance/flows/request-overtime.flow.md
+  - domain/shared/flows/period-close-payroll-export.flow.md
+
+events:
+
+  # ===========================================================================
+  # ta.absence — Absence Management Events (E-ABS-001 through E-ABS-024)
+  # ===========================================================================
+
+  - id: E-ABS-001
+    name: LeaveRequestSubmitted
+    context: ta.absence
+    aggregate: LeaveRequest
+    trigger: Employee submits a new leave request via self-service portal or mobile app
+    command: CMD-ABS-001 SubmitLeaveRequest
+    payload:
+      request_id: uuid
+      employee_id: uuid
+      leave_type_id: uuid
+      leave_type_code: string
+      start_date: date
+      end_date: date
+      requested_days: decimal
+      unit: "DAY|HOUR"
+      reason: string
+      cancellation_deadline_at: datetime
+      approval_chain_id: uuid
+      submitted_at: datetime
+    consumers:
+      - ta.absence (ReserveLeaveBalance → E-ABS-007)
+      - ta.absence (RouteLeaveRequest → E-ABS-003)
+      - ta.shared (notification to manager: ApprovalTaskCreated)
+    producers:
+      - ta.absence (Absence Service)
+    retention: permanent
+    priority: P0
+    policy_refs: [BR-ABS-005, H-P0-001]
+
+  - id: E-ABS-002
+    name: LeaveRequestValidationFailed
+    context: ta.absence
+    aggregate: LeaveRequest
+    trigger: Leave request fails validation (insufficient balance, inactive leave type, etc.)
+    command: CMD-ABS-001 SubmitLeaveRequest
+    payload:
+      employee_id: uuid
+      leave_type_id: uuid
+      start_date: date
+      end_date: date
+      requested_days: decimal
+      validation_error_code: string
+      validation_message: string
+      available_balance: decimal
+    consumers:
+      - ta.absence (internal — request rejected before creation)
+    producers:
+      - ta.absence
+    retention: 1-year
+    priority: P2
+    policy_refs: [BR-ABS-005, BR-ABS-013]
+
+  - id: E-ABS-003
+    name: LeaveRequestRouted
+    context: ta.absence
+    aggregate: ApprovalChain
+    trigger: Approval chain evaluated; first approver assigned
+    command: CMD-ABS-007 RouteLeaveRequest
+    payload:
+      request_id: uuid
+      employee_id: uuid
+      approval_chain_id: uuid
+      first_approver_id: uuid
+      first_approver_role: string
+      routing_mode: "SKIP_LEVEL|CUSTOM"
+    consumers:
+      - ta.shared (ApprovalTaskCreated → notification to approver)
+    producers:
+      - ta.absence
+    retention: 7-years
+    priority: P1
+    policy_refs: [BR-SHD-003-01, BR-SHD-003-02]
+
+  - id: E-ABS-004
+    name: LeaveRequestApproved
+    context: ta.absence
+    aggregate: LeaveRequest
+    trigger: Manager completes final approval level
+    command: CMD-ABS-002 ApproveLeaveRequest
+    payload:
+      request_id: uuid
+      employee_id: uuid
+      leave_type_id: uuid
+      start_date: date
+      end_date: date
+      requested_days: decimal
+      approved_by: uuid
+      approved_at: datetime
+      final_approval: boolean
+    consumers:
+      - ta.absence (schedule DeductLeaveBalance on leave start date)
+      - ta.shared (notification to employee)
+      - analytics-platform
+    producers:
+      - ta.absence
+    retention: permanent
+    priority: P0
+    policy_refs: []
+
+  - id: E-ABS-005
+    name: LeaveRequestRejected
+    context: ta.absence
+    aggregate: LeaveRequest
+    trigger: Manager rejects a leave request
+    command: CMD-ABS-003 RejectLeaveRequest
+    payload:
+      request_id: uuid
+      employee_id: uuid
+      leave_type_id: uuid
+      rejected_by: uuid
+      rejected_at: datetime
+      rejection_reason: string
+    consumers:
+      - ta.absence (ReleaseLeaveBalance reservation)
+      - ta.shared (notification to employee)
+      - analytics-platform
+    producers:
+      - ta.absence
+    retention: 7-years
+    priority: P1
+
+  - id: E-ABS-006
+    name: LeaveRequestCancelled
+    context: ta.absence
+    aggregate: LeaveRequest
+    trigger: Cancellation completed (pre-deadline self-cancel or post-deadline manager-approved)
+    command: CMD-ABS-004 CancelLeaveRequest
+    payload:
+      request_id: uuid
+      employee_id: uuid
+      leave_type_id: uuid
+      cancelled_by: uuid
+      cancellation_approved_by: uuid
+      cancelled_at: datetime
+      cancellation_reason: string
+      was_post_deadline: boolean
+      balance_restored_days: decimal
+    consumers:
+      - ta.absence (ReleaseLeaveBalance or reverse deduction)
+      - ta.shared (notification to employee and manager)
+      - analytics-platform
+    producers:
+      - ta.absence
+    retention: permanent
+    priority: P0
+    policy_refs: [BR-ABS-006, BR-ABS-007, BR-ABS-009, H-P0-001]
+
+  - id: E-ABS-007
+    name: LeaveBalanceReserved
+    context: ta.absence
+    aggregate: LeaveReservation
+    trigger: FEFO reservation placed on balance when request is submitted
+    command: CMD-ABS-008 ReserveLeaveBalance
+    payload:
+      reservation_id: uuid
+      request_id: uuid
+      employee_id: uuid
+      leave_type_id: uuid
+      reserved_days: decimal
+      reservation_lines: array
+      reserved_at: datetime
+    consumers:
+      - ta.absence (update LeaveInstant cache)
+    producers:
+      - ta.absence
+    retention: permanent
+    priority: P0
+    policy_refs: [BR-ABS-005]
+
+  - id: E-ABS-008
+    name: LeaveBalanceDeducted
+    context: ta.absence
+    aggregate: LeaveMovement
+    trigger: Actual leave deducted on leave start date (approved request begins)
+    command: CMD-ABS-009 DeductLeaveBalance
+    payload:
+      movement_id: uuid
+      employee_id: uuid
+      leave_type_id: uuid
+      movement_type: USE
+      amount: decimal
+      effective_date: date
+      reference_id: uuid
+      reference_type: leave_request
+      created_at: datetime
+    consumers:
+      - ta.absence (update LeaveInstant; release reservation)
+      - analytics-platform
+    producers:
+      - ta.absence
+    retention: permanent
+    priority: P0
+    policy_refs: [ADR-TA-001]
+
+  - id: E-ABS-009
+    name: LeaveAccrualProcessed
+    context: ta.absence
+    aggregate: LeaveMovement
+    trigger: Monthly accrual batch creates EARN movement records per AccrualPlan
+    command: CMD-ABS-010 ProcessLeaveAccrual
+    payload:
+      batch_run_id: uuid
+      accrual_plan_id: uuid
+      accrual_period_start: date
+      accrual_period_end: date
+      employee_count: integer
+      movements_created: integer
+      total_days_credited: decimal
+    consumers:
+      - ta.absence (update LeaveInstant for affected employees)
+      - analytics-platform
+    producers:
+      - ta.absence (Accrual Batch Job)
+    retention: permanent
+    priority: P1
+    policy_refs: [ADR-TA-001, ADR-TA-002]
+
+  - id: E-ABS-010
+    name: LeaveCarryoverExecuted
+    context: ta.absence
+    aggregate: LeaveMovement
+    trigger: Year-end carryover batch creates EARN movements with expiry dates
+    command: CMD-ABS-011 ExecuteCarryover
+    payload:
+      batch_run_id: uuid
+      policy_year: integer
+      employee_count: integer
+      total_days_carried: decimal
+      expiry_date: date
+    consumers:
+      - ta.absence (update LeaveInstant)
+      - ta.shared (notification to HR Admin)
+      - analytics-platform
+    producers:
+      - ta.absence (Accrual Batch Job)
+    retention: permanent
+    priority: P1
+    policy_refs: [CarryoverRule]
+
+  - id: E-ABS-011
+    name: LeaveBalanceExpired
+    context: ta.absence
+    aggregate: LeaveMovement
+    trigger: Balance reaches expiry date; expiry action applied (EXTENSION/CASHOUT/FORFEITURE)
+    command: CMD-ABS-012 ExpireLeaveBalance
+    payload:
+      movement_id: uuid
+      employee_id: uuid
+      leave_type_id: uuid
+      expired_amount: decimal
+      expiry_action: "EXTENSION|CASHOUT|FORFEITURE"
+      expiry_date: date
+      cashout_amount: decimal
+    consumers:
+      - ta.absence (update LeaveInstant)
+      - ta.shared (notification to employee; CASHOUT → PayrollExportPackage)
+      - payroll-system (if CASHOUT)
+      - analytics-platform
+    producers:
+      - ta.absence
+    retention: permanent
+    priority: P0
+    policy_refs: [H-P0-002, CarryoverRule, BR-ATT-007]
+
+  - id: E-ABS-012
+    name: LeavePolicyViolationDetected
+    context: ta.absence
+    aggregate: LeaveRequest
+    trigger: Leave request violates a business rule (e.g., minimum notice period, VLC floor)
+    command: ValidateLeaveRequest
+    payload:
+      employee_id: uuid
+      leave_type_id: uuid
+      violation_rule: string
+      violation_message: string
+    consumers:
+      - ta.shared (compliance log)
+    producers:
+      - ta.absence
+    retention: 7-years
+    priority: P1
+    policy_refs: [Multiple BRs]
+
+  - id: E-ABS-013
+    name: LeaveBalanceExceeded
+    context: ta.absence
+    aggregate: LeaveRequest
+    trigger: Request exceeds available leave balance; no advance leave permitted
+    command: ValidateLeaveRequest
+    payload:
+      employee_id: uuid
+      leave_type_id: uuid
+      requested_days: decimal
+      available_balance: decimal
+    consumers:
+      - ta.absence (internal — request rejected)
+    producers:
+      - ta.absence
+    retention: 1-year
+    priority: P2
+    policy_refs: [BR-ABS-005]
+
+  - id: E-ABS-014
+    name: LeaveTypeCreated
+    context: ta.absence
+    aggregate: LeaveType
+    trigger: HR Admin creates a new leave type configuration
+    command: CMD-ABS-013 CreateLeaveType
+    payload:
+      leave_type_id: uuid
+      code: string
+      leave_category: string
+      country_code: string
+      cancellation_deadline_days: integer
+      expiry_action: string
+      created_by: uuid
+    consumers:
+      - analytics-platform
+    producers:
+      - ta.absence
+    retention: permanent
+    priority: P1
+    policy_refs: [BR-ABS-001, BR-ABS-002]
+
+  - id: E-ABS-015
+    name: LeaveTypeDeactivated
+    context: ta.absence
+    aggregate: LeaveType
+    trigger: HR Admin deactivates a leave type (soft delete)
+    command: CMD-ABS-014 DeactivateLeaveType
+    payload:
+      leave_type_id: uuid
+      deactivated_by: uuid
+      has_active_balances: boolean
+    consumers:
+      - ta.shared (notification to HR Admin if active balances exist)
+    producers:
+      - ta.absence
+    retention: permanent
+    priority: P1
+
+  - id: E-ABS-016
+    name: LeavePolicyAssigned
+    context: ta.absence
+    aggregate: LeaveInstant
+    trigger: Leave policy assigned to employee (on hire, transfer, or promotion)
+    command: CMD-ABS-015 AssignLeavePolicy
+    payload:
+      employee_id: uuid
+      leave_policy_id: uuid
+      leave_type_id: uuid
+      trigger_event: "EmployeeHired|EmployeeTransferred|PromotionApplied"
+      effective_date: date
+      initial_balance: decimal
+    consumers:
+      - ta.absence (create initial LeaveInstant records)
+      - analytics-platform
+    producers:
+      - ta.absence
+    retention: permanent
+    priority: P1
+    policy_refs: [BR-ABS-001, BR-ABS-002, BR-ABS-003]
+
+  - id: E-ABS-017
+    name: LeaveEncashmentProcessed
+    context: ta.absence
+    aggregate: LeaveMovement
+    trigger: Unused leave encashed at termination or HR-authorized event (Phase 2)
+    command: ProcessLeaveEncashment
+    payload:
+      employee_id: uuid
+      leave_type_id: uuid
+      encashed_days: decimal
+      encashment_amount: decimal
+      processed_by: uuid
+    consumers:
+      - ta.shared (PayrollExportPackage contribution)
+      - payroll-system
+      - analytics-platform
+    producers:
+      - ta.absence
+    retention: permanent
+    priority: P1
+    policy_refs: [FR-ABS-009]
+
+  - id: E-ABS-018
+    name: CancellationRequestSubmitted
+    context: ta.absence
+    aggregate: LeaveRequest
+    trigger: Employee submits cancellation after the deadline (H-P0-001 post-deadline route)
+    command: CMD-ABS-004 RequestCancellation
+    payload:
+      request_id: uuid
+      employee_id: uuid
+      leave_type_id: uuid
+      cancellation_reason: string
+      submitted_at: datetime
+      cancellation_deadline_at: datetime
+    consumers:
+      - ta.shared (create ApprovalTask for manager)
+      - ta.shared (notification to manager)
+    producers:
+      - ta.absence
+    retention: permanent
+    priority: P0
+    policy_refs: [BR-ABS-007, BR-ABS-008, H-P0-001]
+
+  - id: E-ABS-019
+    name: CancellationApproved
+    context: ta.absence
+    aggregate: LeaveRequest
+    trigger: Manager approves post-deadline cancellation
+    command: CMD-ABS-005 ApproveCancellation
+    payload:
+      request_id: uuid
+      employee_id: uuid
+      approved_by: uuid
+      approved_at: datetime
+      balance_restored_days: decimal
+    consumers:
+      - ta.absence (full balance restoration)
+      - ta.shared (notification to employee)
+      - analytics-platform
+    producers:
+      - ta.absence
+    retention: permanent
+    priority: P0
+    policy_refs: [BR-ABS-009, H-P0-001]
+
+  - id: E-ABS-020
+    name: CancellationRejected
+    context: ta.absence
+    aggregate: LeaveRequest
+    trigger: Manager rejects post-deadline cancellation; request returns to APPROVED
+    command: CMD-ABS-006 RejectCancellation
+    payload:
+      request_id: uuid
+      employee_id: uuid
+      rejected_by: uuid
+      rejected_at: datetime
+      rejection_reason: string
+    consumers:
+      - ta.shared (notification to employee)
+    producers:
+      - ta.absence
+    retention: 7-years
+    priority: P1
+    policy_refs: [H-P0-001]
+
+  - id: E-ABS-021
+    name: AccrualBatchStarted
+    context: ta.absence
+    aggregate: AccrualBatchRun
+    trigger: Accrual batch job initiated (scheduled or manual trigger)
+    command: CMD-ABS-016 StartAccrualBatch
+    payload:
+      batch_run_id: uuid
+      accrual_plan_id: uuid
+      accrual_period_start: date
+      accrual_period_end: date
+      started_at: datetime
+    consumers:
+      - analytics-platform
+    producers:
+      - ta.absence (Accrual Batch Job)
+    retention: 1-year
+    priority: P2
+    policy_refs: [ADR-TA-002]
+
+  - id: E-ABS-022
+    name: AccrualBatchCompleted
+    context: ta.absence
+    aggregate: AccrualBatchRun
+    trigger: Monthly accrual batch finishes successfully; movements committed
+    command: CMD-ABS-016 CompleteAccrualBatch
+    payload:
+      batch_run_id: uuid
+      accrual_plan_id: uuid
+      accrual_period_start: date
+      accrual_period_end: date
+      employee_count: integer
+      movements_created: integer
+      completed_at: datetime
+    consumers:
+      - ta.shared (notification to HR Admin)
+      - analytics-platform
+    producers:
+      - ta.absence (Accrual Batch Job)
+    retention: 7-years
+    priority: P1
+
+  - id: E-ABS-023
+    name: AccrualBatchFailed
+    context: ta.absence
+    aggregate: AccrualBatchRun
+    trigger: Accrual batch encounters error; all partial movements rolled back
+    command: CMD-ABS-016 FailAccrualBatch
+    payload:
+      batch_run_id: uuid
+      accrual_plan_id: uuid
+      accrual_period_start: date
+      failed_at: datetime
+      failure_reason: string
+    consumers:
+      - ta.shared (alert to HR Admin; no partial commits to undo)
+    producers:
+      - ta.absence (Accrual Batch Job)
+    retention: 7-years
+    priority: P0
+    policy_refs: [ADR-TA-002]
+
+  - id: E-ABS-024
+    name: TerminationBalanceSnapshotCreated
+    context: ta.absence
+    aggregate: TerminationBalanceRecord
+    trigger: Employee terminated; all leave balances snapshotted immediately
+    command: CMD-ABS-017 CreateTerminationSnapshot
+    payload:
+      termination_record_id: uuid
+      employee_id: uuid
+      termination_date: date
+      balance_snapshots: array
+      balance_action: "AUTO_DEDUCT|HR_REVIEW|WRITE_OFF|RULE_BASED"
+      employee_consent_obtained: boolean
+      created_at: datetime
+    consumers:
+      - ta.shared (HRAlertQueue; notification to HR Admin)
+      - ta.shared (contribute to PayrollExportPackage at period close)
+      - payroll-system (via PayrollExportCreated if AUTO_DEDUCT with consent)
+      - analytics-platform
+    producers:
+      - ta.absence
+    retention: permanent
+    priority: P0
+    policy_refs: [H-P0-004, BR-SHD-007-01]
+    compliance: "VLC Art. 21 — written employee consent required for AUTO_DEDUCT"
+
+  # ===========================================================================
+  # ta.attendance — Time & Attendance Events (E-ATT-001 through E-ATT-026)
+  # ===========================================================================
+
+  - id: E-ATT-001
+    name: EmployeeClockIn
+    context: ta.attendance
+    aggregate: Punch
+    trigger: Employee initiates clock-in event (online or offline mobile app)
+    command: CMD-ATT-001 ClockIn
+    payload:
+      punch_id: uuid
+      employee_id: uuid
+      punch_type: IN
+      punched_at: datetime
+      device_id: string
+      biometric_ref: string
+      latitude: decimal
+      longitude: decimal
+      geofence_validated: boolean
+      sync_status: "SYNCED|PENDING"
+      idempotency_key: string
+    consumers:
+      - ta.attendance (validate no duplicate active clock-in)
+      - ta.attendance (update DailyAttendanceSummary)
+      - ta.shared (geofence flag notification to manager if geofence_validated = false)
+    producers:
+      - ta.attendance (Attendance Service)
+    retention: 7-years
+    priority: P0
+    policy_refs: [BR-ATT-013, ADR-TA-001, ADR-TA-004]
+
+  - id: E-ATT-002
+    name: EmployeeClockOut
+    context: ta.attendance
+    aggregate: Punch
+    trigger: Employee initiates clock-out event
+    command: CMD-ATT-002 ClockOut
+    payload:
+      punch_id: uuid
+      employee_id: uuid
+      punch_type: OUT
+      punched_at: datetime
+      device_id: string
+      biometric_ref: string
+      latitude: decimal
+      longitude: decimal
+      geofence_validated: boolean
+      sync_status: "SYNCED|PENDING"
+      idempotency_key: string
+    consumers:
+      - ta.attendance (trigger WorkedPeriod calculation → E-ATT-026)
+      - ta.attendance (update Timesheet)
+    producers:
+      - ta.attendance
+    retention: 7-years
+    priority: P0
+    policy_refs: [BR-ATT-013, ADR-TA-001]
+
+  - id: E-ATT-003
+    name: ShiftAssigned
+    context: ta.attendance
+    aggregate: ShiftAssignment
+    trigger: HR Admin assigns a shift to an employee or employee group
+    command: CMD-ATT-003 AssignShift
+    payload:
+      shift_assignment_id: uuid
+      employee_id: uuid
+      shift_id: uuid
+      effective_from: date
+      effective_to: date
+      assigned_by: uuid
+    consumers:
+      - ta.attendance (validate VLC Art. 109 rest period compliance)
+      - analytics-platform
+    producers:
+      - ta.attendance
+    retention: 7-years
+    priority: P1
+    policy_refs: [BR-ATT-015]
+
+  - id: E-ATT-004
+    name: ShiftPatternUpdated
+    context: ta.attendance
+    aggregate: Shift
+    trigger: HR Admin modifies an existing shift definition
+    command: CMD-ATT-004 UpdateShift
+    payload:
+      shift_id: uuid
+      shift_code: string
+      updated_by: uuid
+      changes: object
+    consumers:
+      - ta.attendance (re-evaluate existing ShiftAssignments for compliance)
+    producers:
+      - ta.attendance
+    retention: 7-years
+    priority: P1
+
+  - id: E-ATT-005
+    name: ShiftSwapRequested
+    context: ta.attendance
+    aggregate: ShiftAssignment
+    trigger: Employee initiates a shift swap with a colleague
+    command: CMD-ATT-005 RequestShiftSwap
+    payload:
+      swap_request_id: uuid
+      requesting_employee_id: uuid
+      target_employee_id: uuid
+      shift_date: date
+      requested_at: datetime
+    consumers:
+      - ta.shared (notification to manager; add to ShiftSwapQueue)
+    producers:
+      - ta.attendance
+    retention: 1-year
+    priority: P2
+    policy_refs: [BR-ATT-015]
+
+  - id: E-ATT-006
+    name: OvertimeRequested
+    context: ta.attendance
+    aggregate: OvertimeRequest
+    trigger: Employee submits an overtime request (pre-approval required)
+    command: CMD-ATT-008 SubmitOvertimeRequest
+    payload:
+      ot_request_id: uuid
+      employee_id: uuid
+      work_date: date
+      requested_ot_hours: decimal
+      ot_type: "WEEKDAY|WEEKEND|PUBLIC_HOLIDAY"
+      ot_rate: decimal
+      reason: string
+      approval_routing_mode: "SKIP_LEVEL|CUSTOM"
+      comp_time_elected: boolean
+      submitted_at: datetime
+      daily_ot_remaining_hours: decimal
+      monthly_ot_remaining_hours: decimal
+    consumers:
+      - ta.shared (create ApprovalTask; notification to approver)
+    producers:
+      - ta.attendance
+    retention: 7-years
+    priority: P0
+    policy_refs: [BR-ATT-001, BR-ATT-002, BR-ATT-003, H-P0-003]
+    compliance: "VLC Art. 107 — OT caps enforced at submission"
+
+  - id: E-ATT-007
+    name: OvertimeApproved
+    context: ta.attendance
+    aggregate: OvertimeRequest
+    trigger: Approver approves OT request; OT hours logged to timesheet
+    command: CMD-ATT-009 ApproveOvertimeRequest
+    payload:
+      ot_request_id: uuid
+      employee_id: uuid
+      work_date: date
+      approved_ot_hours: decimal
+      ot_type: string
+      approved_by: uuid
+      approved_at: datetime
+      comp_time_elected: boolean
+      comp_time_hours_credited: decimal
+    consumers:
+      - ta.attendance (update Timesheet; trigger CompTimeAccrued if elected → E-ATT-010)
+      - ta.shared (notification to employee)
+      - analytics-platform
+    producers:
+      - ta.attendance
+    retention: permanent
+    priority: P0
+
+  - id: E-ATT-008
+    name: OvertimeRejected
+    context: ta.attendance
+    aggregate: OvertimeRequest
+    trigger: Approver rejects OT request
+    command: CMD-ATT-010 RejectOvertimeRequest
+    payload:
+      ot_request_id: uuid
+      employee_id: uuid
+      rejected_by: uuid
+      rejected_at: datetime
+      rejection_reason: string
+    consumers:
+      - ta.shared (notification to employee)
+    producers:
+      - ta.attendance
+    retention: 7-years
+    priority: P1
+
+  - id: E-ATT-009
+    name: OvertimeCapWarning
+    context: ta.attendance
+    aggregate: OvertimeRequest
+    trigger: Employee approaching monthly or annual OT cap (80% threshold)
+    command: CMD-ATT-011 EvaluateOTCap
+    payload:
+      employee_id: uuid
+      cap_type: "MONTHLY|ANNUAL"
+      cap_limit_hours: decimal
+      hours_used: decimal
+      hours_remaining: decimal
+      warning_percentage: decimal
+    consumers:
+      - ta.shared (notification to employee and manager)
+    producers:
+      - ta.attendance
+    retention: 1-year
+    priority: P1
+    policy_refs: [BR-ATT-001, BR-ATT-002, BR-ATT-003]
+
+  - id: E-ATT-010
+    name: CompTimeAccrued
+    context: ta.attendance
+    aggregate: CompTimeBalance
+    trigger: OT converted to comp time upon approval (comp_time_elected = true)
+    command: CMD-ATT-012 AccrueCompTime
+    payload:
+      comp_time_balance_id: uuid
+      employee_id: uuid
+      ot_request_id: uuid
+      hours_credited: decimal
+      expiry_date: date
+      expiry_action: "EXTENSION|CASHOUT|FORFEITURE"
+      new_available_hours: decimal
+    consumers:
+      - ta.attendance (update CompTimeBalance)
+      - ta.shared (schedule expiry warning notification)
+    producers:
+      - ta.attendance
+    retention: permanent
+    priority: P0
+    policy_refs: [H-P0-002]
+
+  - id: E-ATT-011
+    name: CompTimeUsed
+    context: ta.attendance
+    aggregate: CompTimeBalance
+    trigger: Employee uses comp time as leave
+    command: CMD-ATT-013 UseCompTime
+    payload:
+      comp_time_balance_id: uuid
+      employee_id: uuid
+      hours_used: decimal
+      remaining_hours: decimal
+      used_at: datetime
+    consumers:
+      - ta.attendance (update CompTimeBalance)
+    producers:
+      - ta.attendance
+    retention: permanent
+    priority: P1
+
+  - id: E-ATT-012
+    name: LateArrivalDetected
+    context: ta.attendance
+    aggregate: ShiftAssignment
+    trigger: Punch-in recorded after shift start time + grace period
+    command: CMD-ATT-014 DetectAttendanceExceptions
+    payload:
+      employee_id: uuid
+      work_date: date
+      scheduled_start: datetime
+      actual_punch_in: datetime
+      late_minutes: integer
+      grace_period_minutes: integer
+    consumers:
+      - ta.shared (notification to manager; update AttendanceExceptionDashboard)
+    producers:
+      - ta.attendance
+    retention: 7-years
+    priority: P2
+    policy_refs: [FR-ATT-004]
+
+  - id: E-ATT-013
+    name: EarlyDepartureDetected
+    context: ta.attendance
+    aggregate: ShiftAssignment
+    trigger: Punch-out recorded before shift end time without approved leave
+    command: CMD-ATT-014 DetectAttendanceExceptions
+    payload:
+      employee_id: uuid
+      work_date: date
+      scheduled_end: datetime
+      actual_punch_out: datetime
+      early_minutes: integer
+    consumers:
+      - ta.shared (notification to manager; update AttendanceExceptionDashboard)
+    producers:
+      - ta.attendance
+    retention: 7-years
+    priority: P2
+    policy_refs: [FR-ATT-004]
+
+  - id: E-ATT-014
+    name: AbsenceDetected
+    context: ta.attendance
+    aggregate: ShiftAssignment
+    trigger: No punch recorded for a scheduled shift day; no approved leave
+    command: CMD-ATT-014 DetectAbsence
+    payload:
+      employee_id: uuid
+      work_date: date
+      shift_id: uuid
+      detected_at: datetime
+    consumers:
+      - ta.shared (notification to manager)
+      - ta.absence (check for pending leave request)
+    producers:
+      - ta.attendance
+    retention: 7-years
+    priority: P1
+    policy_refs: [FR-ATT-004]
+
+  - id: E-ATT-015
+    name: GeofenceViolation
+    context: ta.attendance
+    aggregate: Punch
+    trigger: Punch recorded outside the registered work location geofence
+    command: CMD-ATT-015 ValidateGeofence
+    payload:
+      punch_id: uuid
+      employee_id: uuid
+      punched_at: datetime
+      latitude: decimal
+      longitude: decimal
+      geofence_center_lat: decimal
+      geofence_center_lon: decimal
+      geofence_radius_meters: decimal
+      distance_from_center: decimal
+    consumers:
+      - ta.shared (notification to manager; GeofenceViolationLog)
+    producers:
+      - ta.attendance
+    retention: 7-years
+    priority: P1
+    policy_refs: [FR-ATT-006]
+
+  - id: E-ATT-016
+    name: OvertimeLimitExceeded
+    context: ta.attendance
+    aggregate: OvertimeRequest
+    trigger: OT request would breach VLC Art. 107 monthly or annual cap
+    command: CMD-ATT-011 EnforceOTCap
+    payload:
+      employee_id: uuid
+      ot_request_id: uuid
+      cap_type: "DAILY|MONTHLY|ANNUAL"
+      cap_limit_hours: decimal
+      hours_requested: decimal
+      hours_would_total: decimal
+      override_requested: boolean
+    consumers:
+      - ta.shared (ComplianceLog; notification to manager and HR Admin)
+    producers:
+      - ta.attendance
+    retention: 7-years
+    priority: P0
+    policy_refs: [BR-ATT-001, BR-ATT-002, BR-ATT-003]
+    compliance: "VLC Art. 107 — documented override required"
+
+  - id: E-ATT-017
+    name: TimesheetSubmitted
+    context: ta.attendance
+    aggregate: Timesheet
+    trigger: Employee submits timesheet for period-end approval
+    command: CMD-ATT-016 SubmitTimesheet
+    payload:
+      timesheet_id: uuid
+      employee_id: uuid
+      period_id: uuid
+      total_worked_hours: decimal
+      total_ot_hours: decimal
+      submitted_at: datetime
+    consumers:
+      - ta.shared (ApprovalTask creation; notification to manager)
+    producers:
+      - ta.attendance
+    retention: 7-years
+    priority: P1
+
+  - id: E-ATT-018
+    name: TimesheetApproved
+    context: ta.attendance
+    aggregate: Timesheet
+    trigger: Manager approves the timesheet; timesheet locked
+    command: CMD-ATT-017 ApproveTimesheet
+    payload:
+      timesheet_id: uuid
+      employee_id: uuid
+      period_id: uuid
+      approved_by: uuid
+      approved_at: datetime
+      total_worked_hours: decimal
+      total_ot_hours: decimal
+    consumers:
+      - ta.shared (notification to employee; ready for period close check)
+      - analytics-platform
+    producers:
+      - ta.attendance
+    retention: permanent
+    priority: P0
+
+  - id: E-ATT-019
+    name: TimesheetRejected
+    context: ta.attendance
+    aggregate: Timesheet
+    trigger: Manager rejects timesheet; returns to OPEN for corrections
+    command: CMD-ATT-018 RejectTimesheet
+    payload:
+      timesheet_id: uuid
+      employee_id: uuid
+      rejected_by: uuid
+      rejected_at: datetime
+      rejection_reason: string
+    consumers:
+      - ta.shared (notification to employee)
+    producers:
+      - ta.attendance
+    retention: 7-years
+    priority: P1
+
+  - id: E-ATT-020
+    name: TimesheetCorrected
+    context: ta.attendance
+    aggregate: Timesheet
+    trigger: HR Admin applies post-approval correction to a locked timesheet
+    command: CMD-ATT-019 CorrectTimesheet
+    payload:
+      timesheet_id: uuid
+      employee_id: uuid
+      corrected_by: uuid
+      correction_reason: string
+      corrected_at: datetime
+      previous_total_worked_hours: decimal
+      new_total_worked_hours: decimal
+    consumers:
+      - ta.shared (PayrollExportPackage update if period not yet closed; AuditLog)
+    producers:
+      - ta.attendance
+    retention: permanent
+    priority: P1
+    policy_refs: [BR-ATT-014]
+
+  - id: E-ATT-021
+    name: BiometricPunchReceived
+    context: ta.attendance
+    aggregate: Punch
+    trigger: Biometric device sends authenticated punch event
+    command: CMD-ATT-020 ProcessBiometricPunch
+    payload:
+      punch_id: uuid
+      employee_id: uuid
+      punch_type: "IN|OUT"
+      punched_at: datetime
+      device_id: string
+      biometric_ref: string
+    consumers:
+      - ta.attendance (same processing as EmployeeClockIn/Out; device-originated)
+    producers:
+      - biometric-device-network (external device)
+      - ta.attendance (after ACL processing)
+    retention: 7-years
+    priority: P0
+    policy_refs: [BR-ATT-012, ADR-TA-004]
+
+  - id: E-ATT-022
+    name: ShiftSwapApproved
+    context: ta.attendance
+    aggregate: ShiftAssignment
+    trigger: Manager approves shift swap between employees
+    command: CMD-ATT-006 ApproveShiftSwap
+    payload:
+      swap_request_id: uuid
+      requesting_employee_id: uuid
+      target_employee_id: uuid
+      shift_date: date
+      approved_by: uuid
+    consumers:
+      - ta.attendance (update ShiftAssignment records)
+      - ta.shared (notification to both employees)
+    producers:
+      - ta.attendance
+    retention: 7-years
+    priority: P1
+    policy_refs: [BR-ATT-015]
+
+  - id: E-ATT-023
+    name: ShiftSwapRejected
+    context: ta.attendance
+    aggregate: ShiftAssignment
+    trigger: Manager rejects shift swap
+    command: CMD-ATT-007 RejectShiftSwap
+    payload:
+      swap_request_id: uuid
+      requesting_employee_id: uuid
+      rejected_by: uuid
+      rejection_reason: string
+    consumers:
+      - ta.shared (notification to employee)
+    producers:
+      - ta.attendance
+    retention: 1-year
+    priority: P2
+    policy_refs: [FR-ATT-005]
+
+  - id: E-ATT-024
+    name: CompTimeExpiryWarning
+    context: ta.attendance
+    aggregate: CompTimeBalance
+    trigger: Comp time balance approaching expiry date (N days warning per TenantConfig)
+    command: CMD-ATT-021 SendCompTimeWarning
+    payload:
+      employee_id: uuid
+      comp_time_balance_id: uuid
+      available_hours: decimal
+      expiry_date: date
+      days_until_expiry: integer
+      expiry_action: "EXTENSION|CASHOUT|FORFEITURE"
+    consumers:
+      - ta.shared (notification to employee via configured channel)
+    producers:
+      - ta.attendance
+    retention: 1-year
+    priority: P1
+    policy_refs: [BR-ATT-007, H-P0-002]
+
+  - id: E-ATT-025
+    name: CompTimeExpired
+    context: ta.attendance
+    aggregate: CompTimeBalance
+    trigger: Comp time reaches expiry date; configured action applied
+    command: CMD-ATT-022 ExpireCompTime
+    payload:
+      employee_id: uuid
+      comp_time_balance_id: uuid
+      expired_hours: decimal
+      expiry_action: "EXTENSION|CASHOUT|FORFEITURE"
+      cashout_amount: decimal
+      expired_at: datetime
+    consumers:
+      - ta.attendance (update CompTimeBalance to zero if FORFEITURE)
+      - ta.shared (notification to employee; CASHOUT → PayrollExportPackage)
+      - payroll-system (if CASHOUT)
+      - analytics-platform
+    producers:
+      - ta.attendance
+    retention: permanent
+    priority: P0
+    policy_refs: [BR-ATT-008, H-P0-002]
+
+  - id: E-ATT-026
+    name: WorkedPeriodCalculated
+    context: ta.attendance
+    aggregate: WorkedPeriod
+    trigger: System pairs punch-in/out and computes net worked hours
+    command: CMD-ATT-002 CalculateWorkedPeriod
+    payload:
+      worked_period_id: uuid
+      employee_id: uuid
+      work_date: date
+      punch_in_id: uuid
+      punch_out_id: uuid
+      gross_hours: decimal
+      break_hours: decimal
+      net_hours_worked: decimal
+      ot_hours: decimal
+      status: "PROVISIONAL|CONFIRMED"
+    consumers:
+      - ta.attendance (aggregate into Timesheet)
+    producers:
+      - ta.attendance
+    retention: 7-years
+    priority: P1
+    policy_refs: [FR-ATT-001]
+
+  # ===========================================================================
+  # ta.shared — Shared Services Events (E-SHD-001 through E-SHD-016)
+  # ===========================================================================
+
+  - id: E-SHD-001
+    name: PeriodOpened
+    context: ta.shared
+    aggregate: Period
+    trigger: HR Admin opens a new payroll period (one OPEN per tenant at a time)
+    command: CMD-SHD-001 OpenPeriod
+    payload:
+      period_id: uuid
+      period_name: string
+      start_date: date
+      end_date: date
+      holiday_calendar_id: uuid
+      working_days: integer
+      opened_by: uuid
+      opened_at: datetime
+    consumers:
+      - ta.attendance (trigger auto-creation of Timesheet per employee)
+      - analytics-platform
+    producers:
+      - ta.shared
+    retention: permanent
+    priority: P1
+    policy_refs: [FR-INT-002]
+
+  - id: E-SHD-002
+    name: PeriodClosed
+    context: ta.shared
+    aggregate: Period
+    trigger: HR Admin / Payroll Officer closes period; all preconditions validated
+    command: CMD-SHD-002 ClosePeriod
+    payload:
+      period_id: uuid
+      period_name: string
+      closed_by: uuid
+      closed_at: datetime
+      employee_count: integer
+      all_timesheets_approved: boolean
+      no_pending_leave_requests: boolean
+      termination_balance_action: string
+    consumers:
+      - ta.shared (trigger GeneratePayrollExport → E-SHD-004)
+      - ta.attendance (lock all APPROVED timesheets)
+      - ta.absence (finalize leave deductions for period)
+      - analytics-platform
+    producers:
+      - ta.shared
+    retention: permanent
+    priority: P0
+    policy_refs: [BRD-SHD-001, H-P0-004]
+
+  - id: E-SHD-003
+    name: PeriodClosureBlocked
+    context: ta.shared
+    aggregate: Period
+    trigger: Period close attempted but preconditions not met
+    command: CMD-SHD-002 ClosePeriod
+    payload:
+      period_id: uuid
+      blocked_by_unapproved_timesheets: array
+      blocked_by_pending_leave_requests: array
+      blocked_reason: string
+    consumers:
+      - ta.shared (notification to HR Admin; HRAlertQueue)
+    producers:
+      - ta.shared
+    retention: 1-year
+    priority: P1
+    policy_refs: [BRD-SHD-001]
+
+  - id: E-SHD-004
+    name: PayrollExportGenerated
+    context: ta.shared
+    aggregate: PayrollExportPackage
+    trigger: Payroll export package created at period close (idempotent)
+    command: CMD-SHD-003 GeneratePayrollExport
+    payload:
+      export_package_id: uuid
+      period_id: uuid
+      generated_at: datetime
+      generated_by: string
+      employee_count: integer
+      total_regular_hours: decimal
+      total_ot_hours: decimal
+      total_leave_days: decimal
+      total_comp_time_hours: decimal
+      termination_records_count: integer
+      checksum: string
+      export_format: string
+    consumers:
+      - ta.shared (trigger DeliverPayrollExport → E-SHD-005)
+      - analytics-platform
+    producers:
+      - ta.shared (Payroll Export Job)
+    retention: permanent
+    priority: P0
+    policy_refs: [FR-INT-002]
+
+  - id: E-SHD-005
+    name: PayrollExportDelivered
+    context: ta.shared
+    aggregate: PayrollExportPackage
+    trigger: Export package dispatched to Payroll module; PayrollExportCreated integration event sent
+    command: CMD-SHD-004 DeliverPayrollExport
+    payload:
+      export_package_id: uuid
+      period_id: uuid
+      dispatched_at: datetime
+      dispatch_status: "DISPATCHED|FAILED"
+      payroll_system_ref: string
+    consumers:
+      - payroll-system (PayrollExportCreated integration event — primary cross-module event)
+      - ta.shared (notification to Payroll Officer)
+      - analytics-platform
+    producers:
+      - ta.shared
+    retention: permanent
+    priority: P0
+    policy_refs: [FR-INT-002]
+    note: "PayrollExportDelivered triggers the PayrollExportCreated integration event consumed by the external Payroll System."
+
+  - id: E-SHD-006
+    name: HolidayCalendarPublished
+    context: ta.shared
+    aggregate: HolidayCalendar
+    trigger: HR Admin publishes updated holiday calendar for a year/country
+    command: CMD-SHD-005 PublishHolidayCalendar
+    payload:
+      calendar_id: uuid
+      country_code: string
+      year: integer
+      holiday_count: integer
+      published_by: uuid
+      published_at: datetime
+    consumers:
+      - ta.absence (update working-day exclusions for leave duration calculation)
+      - ta.attendance (update OT rate categories for upcoming holidays)
+      - analytics-platform
+    producers:
+      - ta.shared
+    retention: permanent
+    priority: P1
+    compliance: "VLC Art. 112 — 11 statutory holidays in Vietnam"
+
+  - id: E-SHD-007
+    name: ApprovalTaskCreated
+    context: ta.shared
+    aggregate: ApprovalTask
+    trigger: Workflow engine creates an approval task for a pending request
+    command: CMD-SHD-006 CreateApprovalTask
+    payload:
+      task_id: uuid
+      approval_chain_id: uuid
+      entity_id: uuid
+      entity_type: "LEAVE_REQUEST|OT_REQUEST|TIMESHEET"
+      approver_id: uuid
+      approver_role: string
+      step_order: integer
+      escalation_deadline: datetime
+    consumers:
+      - ta.shared (notification to approver)
+    producers:
+      - ta.shared
+    retention: 7-years
+    priority: P1
+    policy_refs: [BRD-SHD-003]
+
+  - id: E-SHD-008
+    name: ApprovalTaskCompleted
+    context: ta.shared
+    aggregate: ApprovalTask
+    trigger: Approver acts on an approval task (approve or reject)
+    command: CMD-SHD-007 CompleteApprovalTask
+    payload:
+      task_id: uuid
+      entity_id: uuid
+      entity_type: string
+      decision: "APPROVED|REJECTED"
+      acted_by: uuid
+      acted_at: datetime
+      comments: string
+      is_final_step: boolean
+    consumers:
+      - ta.absence or ta.attendance (trigger final event if last approval step)
+    producers:
+      - ta.shared
+    retention: 7-years
+    priority: P1
+    policy_refs: [BRD-SHD-003]
+
+  - id: E-SHD-009
+    name: ApprovalTaskEscalated
+    context: ta.shared
+    aggregate: ApprovalTask
+    trigger: Approval task timed out; escalated to configured escalation target
+    command: CMD-SHD-008 EscalateApprovalTask
+    payload:
+      original_task_id: uuid
+      new_task_id: uuid
+      entity_id: uuid
+      entity_type: string
+      original_approver_id: uuid
+      escalation_target_id: uuid
+      escalation_reason: string
+      escalated_at: datetime
+    consumers:
+      - ta.shared (notification to escalation target and HR Admin; EscalationLog)
+    producers:
+      - ta.shared
+    retention: 7-years
+    priority: P1
+    policy_refs: [BRD-SHD-008]
+
+  - id: E-SHD-010
+    name: NotificationSent
+    context: ta.shared
+    aggregate: Notification
+    trigger: Notification successfully dispatched to recipient via configured channel
+    command: CMD-SHD-009 SendNotification
+    payload:
+      notification_id: uuid
+      event_type: string
+      recipient_id: uuid
+      channel: "EMAIL|PUSH|IN_APP|SMS"
+      sent_at: datetime
+    consumers:
+      - analytics-platform
+    producers:
+      - ta.shared
+    retention: 90-days
+    priority: P2
+    policy_refs: [BRD-SHD-004]
+
+  - id: E-SHD-011
+    name: NotificationDeliveryFailed
+    context: ta.shared
+    aggregate: Notification
+    trigger: Notification delivery failed on primary channel; fallback retry initiated
+    command: CMD-SHD-009 RetryNotification
+    payload:
+      notification_id: uuid
+      recipient_id: uuid
+      channel: string
+      failure_reason: string
+      retry_count: integer
+      failed_at: datetime
+    consumers:
+      - ta.shared (retry on secondary channel — email fallback)
+    producers:
+      - ta.shared
+    retention: 90-days
+    priority: P2
+    policy_refs: [BRD-SHD-004]
+
+  - id: E-SHD-012
+    name: EmployeeHireIntegrated
+    context: ta.shared
+    aggregate: LeaveInstant
+    trigger: EmployeeHired event received from Employee Central; ACL translation complete
+    command: CMD-SHD-010 ProcessEmployeeHire
+    payload:
+      employee_id: uuid
+      tenant_id: uuid
+      hire_date: date
+      job_grade: string
+      department_id: uuid
+      employment_type: string
+      country_code: string
+      integrated_at: datetime
+    consumers:
+      - ta.absence (AssignLeavePolicy; create initial LeaveInstant records)
+      - ta.attendance (create default ShiftAssignment)
+      - analytics-platform
+    producers:
+      - ta.shared (ACL adapter re-publishing Employee Central event)
+    retention: permanent
+    priority: P0
+    policy_refs: [FR-INT-001]
+
+  - id: E-SHD-013
+    name: EmployeeTransferIntegrated
+    context: ta.shared
+    aggregate: LeaveInstant
+    trigger: EmployeeTransferred event received; org chart changes affect approval routing
+    command: CMD-SHD-011 ProcessEmployeeTransfer
+    payload:
+      employee_id: uuid
+      previous_department_id: uuid
+      new_department_id: uuid
+      previous_manager_id: uuid
+      new_manager_id: uuid
+      effective_date: date
+    consumers:
+      - ta.absence (re-evaluate LeavePolicy for new department/grade)
+      - ta.shared (update ApprovalChain routing for pending requests)
+      - analytics-platform
+    producers:
+      - ta.shared (ACL adapter)
+    retention: permanent
+    priority: P1
+    policy_refs: [FR-INT-001]
+
+  - id: E-SHD-014
+    name: EmployeeTerminationIntegrated
+    context: ta.shared
+    aggregate: TerminationBalanceRecord
+    trigger: EmployeeTerminated event received from Employee Central; H-P0-004 triggered
+    command: CMD-SHD-012 ProcessEmployeeTermination
+    payload:
+      employee_id: uuid
+      termination_date: date
+      termination_reason: string
+      final_pay_date: date
+      integrated_at: datetime
+    consumers:
+      - ta.absence (trigger CreateTerminationSnapshot → E-ABS-024)
+      - ta.shared (HRAlertQueue; PayrollExportPackage contribution)
+      - analytics-platform
+    producers:
+      - ta.shared (ACL adapter)
+    retention: permanent
+    priority: P0
+    policy_refs: [H-P0-004, BRD-SHD-007]
+    compliance: "VLC Art. 21 — employee consent required for any payroll deduction"
+
+  - id: E-SHD-015
+    name: ApprovalChainConfigured
+    context: ta.shared
+    aggregate: ApprovalChain
+    trigger: HR Admin / System Admin configures a multi-level approval chain
+    command: CMD-SHD-013 ConfigureApprovalChain
+    payload:
+      approval_chain_id: uuid
+      chain_name: string
+      entity_type: string
+      routing_mode: "SKIP_LEVEL|CUSTOM"
+      step_count: integer
+      configured_by: uuid
+    consumers:
+      - analytics-platform
+    producers:
+      - ta.shared
+    retention: permanent
+    priority: P2
+    policy_refs: [BRD-SHD-003]
+
+  - id: E-SHD-016
+    name: TenantPolicyUpdated
+    context: ta.shared
+    aggregate: TenantConfig
+    trigger: System Admin changes tenant-level policy (H-P0-001/002/003/004 parameters)
+    command: CMD-SHD-014 UpdateTenantPolicy
+    payload:
+      config_id: uuid
+      updated_by: uuid
+      updated_at: datetime
+      changes:
+        cancellation_deadline_days:
+          previous: integer
+          new: integer
+        comp_time_expiry_warning_days:
+          previous: integer
+          new: integer
+        default_comp_time_action:
+          previous: string
+          new: string
+        termination_balance_default_action:
+          previous: string
+          new: string
+    consumers:
+      - analytics-platform
+    producers:
+      - ta.shared
+    retention: permanent
+    priority: P0
+    policy_refs: [H-P0-001, H-P0-002, H-P0-004]
+    note: "Policy changes are not retroactive. Before/after values audited."
+
+  # ===========================================================================
+  # Integration Events (Cross-module)
+  # ===========================================================================
+
+  - id: E-INT-001
+    name: PayrollExportCreated
+    context: ta.shared
+    aggregate: PayrollExportPackage
+    trigger: Period close complete; PayrollExportPackage ready for Payroll System
+    command: CMD-SHD-004 DeliverPayrollExport
+    payload:
+      export_package_id: uuid
+      period_id: uuid
+      tenant_id: uuid
+      generated_at: datetime
+      employee_count: integer
+      total_regular_hours: decimal
+      total_ot_hours: decimal
+      total_leave_days: decimal
+      total_comp_time_hours: decimal
+      termination_records_count: integer
+      termination_balance_action: string
+      export_format: string
+      checksum: string
+      data_region: string
+    consumers:
+      - payroll-system (primary downstream integration consumer)
+    producers:
+      - ta.shared (Payroll Export Job)
+    retention: permanent
+    priority: P0
+    note: "Primary cross-module integration event. Payroll System acknowledges receipt with payroll_system_ref."
+
+  - id: E-INT-002
+    name: PunchSyncConflictDetected
+    context: ta.attendance
+    aggregate: Punch
+    trigger: H8 - offline punch sync detected a conflict (duplicate or overlapping punch)
+    command: SyncPunches (H8 offline sync)
+    payload:
+      punch_idempotency_key: string
+      employee_id: uuid
+      punched_at: datetime
+      device_id: string
+      conflict_type: "DUPLICATE|OVERLAPPING|OUT_OF_ORDER"
+      conflict_reason: string
+      detected_at: datetime
+    consumers:
+      - ta.attendance (flag punch as CONFLICT; block WorkedPeriod calculation)
+      - ta.shared (notification to HR Admin for manual resolution)
+    producers:
+      - ta.attendance (Offline Sync Queue processor)
+    retention: 7-years
+    priority: P1
+    policy_refs: [H8]
+
+  - id: E-INT-003
+    name: PeriodLocked
+    context: ta.shared
+    aggregate: Period
+    trigger: Payroll Officer locks the period; all timesheets frozen
+    command: LockPeriod
+    payload:
+      period_id: uuid
+      period_name: string
+      locked_by: uuid
+      locked_at: datetime
+    consumers:
+      - ta.attendance (freeze all timesheets — no new WorkedPeriods)
+      - ta.absence (freeze leave balance adjustments for period)
+      - ta.shared (notification to HR Admin team)
+    producers:
+      - ta.shared
+    retention: permanent
+    priority: P0
