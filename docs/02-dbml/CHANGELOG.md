@@ -1,6 +1,83 @@
 # xTalent Database Design – Changelog
 
 
+## [27Mar2026-h] – AQ-14: Pay Scale / Ngạch Bậc Configuration (Option D)
+
+> Context: VN has 2 pay scale models — TABLE_LOOKUP (private) and COEFFICIENT_FORMULA (gov/SOE)
+
+### 4.TotalReward.V5.dbml
+
+**`grade_ladder_step` enriched** — 3 new fields:
+- `coefficient` decimal(8,4) — hệ số lương (e.g., 2.34 × lương cơ sở)
+- `months_to_next_step` — step progression rule (NULL = manual)
+- `auto_advance` — auto-advance when time met
+
+### 5.Payroll.V4.dbml
+
+**`pay_profile` enriched** — 2 new fields:
+- `grade_step_mode`: `TABLE_LOOKUP` (salary = step_amount) | `COEFFICIENT_FORMULA` (salary = coefficient × VN_LUONG_CO_SO)
+- `pay_scale_table_code`: FK → TR.grade_ladder.code (different profiles can use different scale tables)
+
+**Domain boundary**: coefficient/step_amount = TR projected (Gross); VN_LUONG_CO_SO = PR statutory_rule (actual)
+
+---
+
+## [27Mar2026-g] – AQ-13: Piece-Rate Configuration (Option C)
+
+> Context: Manufacturing/garment workers on lương sản phẩm need configurable rate per product × quality grade
+
+### 5.Payroll.V4.dbml
+
+**NEW `piece_rate_config`** — (product × quality_grade → rate_per_unit)
+- Product codes: `SHIRT / SHOE / PCB_BOARD / ASSEMBLY_UNIT_A`
+- Quality grades: `STANDARD / GRADE_A / GRADE_B / GRADE_C / REJECT`
+- `quality_multiplier` for grade-based rate derivation
+- `unit_code`: `PIECE / KG / METER / PAIR / SET`
+- Links to `statutory_rule` for min wage floor + OT multiplier
+- `pay_profile_id` NULL = global rate; non-null = profile-specific
+
+**Data flow**: Production/TA → quantities via `input_source_config` → `piece_rate_config` lookup → formula calculates pay
+
+---
+
+## [27Mar2026-f] – AQ-12: Hourly Rate Differentiation (Hybrid C+D)
+
+> Context: Hourly workers need differentiated rates by shift type (regular, night, OT); requires profile defaults + worker overrides
+
+### 5.Payroll.V4.dbml
+
+**Architecture**: 3-layer rate lookup
+1. **Layer 1** `worker_rate_override` — per-worker exception (optional, ~5% workers)
+2. **Layer 2** `pay_profile_rate_config` — profile-level defaults per dimension
+3. **Layer 3** `statutory_rule` — OT multipliers per Labor Code
+
+**NEW `pay_profile_rate_config`** — (pay_profile × rate_dimension → base_rate)
+- Dimensions: `REGULAR / NIGHT / OT_WEEKDAY / OT_WEEKEND / OT_HOLIDAY / HAZARDOUS / SPECIALIZED`
+- Rate types: `FIXED` (absolute VND/h), `MULTIPLIER` (× regular rate), `FORMULA`
+- Links to `statutory_rule` for law-driven OT rates
+
+**NEW `worker_rate_override`** — per-worker exception rates
+- Absolute override rate per dimension (not multiplier to avoid confusion)
+- Governance: `approved_by`, `approved_at`, `reason_code`
+
+**No TA/TR changes needed** — TA already provides hours by `time_type_code`; TR/CO provides base compensation
+
+---
+
+## [27Mar2026-e] – AQ-10: Termination Pay Configuration (Option D)
+
+> Context: Final-pay run needs configurable element scope per termination type
+
+### 5.Payroll.V4.dbml
+
+**NEW `termination_pay_config`** — maps (termination_type × pay_profile) → element list
+- Fields: `termination_type` (RESIGNATION/MUTUAL_AGREEMENT/REDUCTION_IN_FORCE/END_OF_CONTRACT/DISMISSAL/RETIREMENT), `element_id`, `execution_order`, `formula_override_json`
+- Unique: `(pay_profile_id, termination_type, element_id)`
+
+**`batch_type` updated** — added `TERMINATION` value
+
+---
+
 ## [27Mar2026-d] – Temporal Workflow Migration: Deprecate DB Approval Tables
 
 > Context: Workflow orchestration (approval chains, escalation, timeout) will use Temporal workflow engine

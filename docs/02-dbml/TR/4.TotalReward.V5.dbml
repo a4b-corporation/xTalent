@@ -291,6 +291,24 @@ Table comp_core.grade_ladder_step {
   // REM 21Nov2025: step_amount     decimal(18,2) [null]
   step_amount     decimal(18,4) [null]  // CHANGED 21Nov2025: increased precision
   currency        char(3) [null]
+
+  // NEW 27Mar2026: AQ-14 Option D — Dual pay scale mode support
+  // COEFFICIENT_FORMULA mode: salary = coefficient × VN_LUONG_CO_SO (statutory_rule in PR)
+  // TABLE_LOOKUP mode: salary = step_amount (field above)
+  // Both modes coexist — PayProfile.grade_step_mode selects which to use
+  coefficient     decimal(8,4) [null]                   // NEW 27Mar2026 — hệ số lương (e.g., 2.34, 3.66, 6.20)
+  // Ví dụ: Ngạch chuyên viên, Bậc 1 = hệ số 2.34
+  //         salary = 2.34 × 2,340,000 VND (lương cơ sở 2025) = 5,475,600 VND
+  // Note: coefficient thuộc TR domain (projected/Gross)
+  //       VN_LUONG_CO_SO thuộc PR domain (statutory_rule) — TR đọc qua data contract
+
+  // NEW 27Mar2026: AQ-14 — Step Progression Rule (HR-policy, TR domain)
+  // Tự động nâng bậc sau N tháng — TR tính projected, không phải PR
+  months_to_next_step smallint [null]                   // NEW 27Mar2026 — số tháng tối thiểu ở bậc này trước khi nâng bậc (NULL = không tự động)
+  auto_advance    boolean [default: false]              // NEW 27Mar2026 — true = tự động nâng bậc khi đủ months_to_next_step
+  // Ví dụ: Bậc 1 (months=36, auto=true) → sau 3 năm tự nâng lên Bậc 2
+  // Quy trình: TR scheduled job check → nếu đủ điều kiện → tạo compensation_event STEP_ADVANCEMENT
+
   effective_start date
   effective_end   date [null]
   created_date    timestamp [default:`now()`]  // ADDED 21Nov2025: audit trail
@@ -302,6 +320,16 @@ Table comp_core.grade_ladder_step {
     (ladder_id, step_number),
     (ladder_id, grade_v_id, step_number, effective_start) [unique]
   }
+
+  Note: '''
+    CHANGED 27Mar2026: AQ-14 Option D — Dual Pay Scale Mode.
+    Supports two modes selected by PR pay_profile.grade_step_mode:
+      TABLE_LOOKUP: salary = step_amount (set directly by HR)
+      COEFFICIENT_FORMULA: salary = coefficient × VN_LUONG_CO_SO (statutory base)
+    Domain boundary: coefficient + step_amount = TR projected (Gross)
+                     VN_LUONG_CO_SO = PR statutory_rule (actual Net calc)
+    Step progression: months_to_next_step + auto_advance = TR HR-policy rule
+  '''
 }
 
 

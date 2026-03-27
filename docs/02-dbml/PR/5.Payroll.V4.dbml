@@ -472,6 +472,10 @@ Table pay_master.pay_profile { // CHANGED JUL 2025, ENRICHED 27Mar2026
   // NEW 27Mar2026: Option C — explicit configuration columns
   parent_profile_id uuid [ref: > pay_master.pay_profile.id, null]  // NEW 27Mar2026 — inheritance hierarchy. NULL = root profile
   pay_method      varchar(30) [not null, default: 'MONTHLY_SALARY']  // NEW 27Mar2026 — MONTHLY_SALARY | HOURLY | PIECE_RATE | GRADE_STEP | TASK_BASED
+  grade_step_mode varchar(25) [null]                                  // NEW 27Mar2026 — AQ-14: TABLE_LOOKUP | COEFFICIENT_FORMULA (chỉ áp dụng khi pay_method = GRADE_STEP)
+  // TABLE_LOOKUP: salary = TR.grade_ladder_step.step_amount
+  // COEFFICIENT_FORMULA: salary = TR.grade_ladder_step.coefficient × PR.statutory_rule(VN_LUONG_CO_SO)
+  pay_scale_table_code varchar(50) [null]                             // NEW 27Mar2026 — AQ-14: FK tham chiếu đến TR.grade_ladder.code (cho phép profile khác nhau dùng bảng lương khác nhau)
   proration_method varchar(20) [not null, default: 'WORK_DAYS']      // NEW 27Mar2026 — CALENDAR_DAYS | WORK_DAYS | NONE
   rounding_method  varchar(20) [not null, default: 'ROUND_HALF_UP']  // NEW 27Mar2026 — ROUND_HALF_UP | ROUND_DOWN | ROUND_UP | ROUND_NEAREST
   payment_method   varchar(20) [not null, default: 'BANK_TRANSFER']  // NEW 27Mar2026 — BANK_TRANSFER | CASH | CHECK | WALLET
@@ -611,6 +615,265 @@ Table pay_master.pay_deduction_policy { // CHANGED JUL 2025
   updated_at      timestamp [null]
   Note: 'CHANGED JUL 2025. Chính sách deduction, quản lý deduction logic cho payroll.'
 }
+
+// changed 27Mar2026: NEW — AQ-10 Option D: Termination Pay Configuration
+// Maps termination_type × pay_profile → list of PayElements to include in final-pay run
+Table pay_master.termination_pay_config {
+  id              uuid [pk, default: `gen_random_uuid()`]
+  pay_profile_id  uuid [ref: > pay_master.pay_profile.id, not null]
+
+  // NEW 27Mar2026: Termination type determines which elements are included
+  termination_type varchar(30) [not null]               // RESIGNATION | MUTUAL_AGREEMENT | REDUCTION_IN_FORCE | END_OF_CONTRACT | DISMISSAL | RETIREMENT
+  element_id       uuid [ref: > pay_master.pay_element.id, not null]
+
+  is_mandatory    boolean [default: true]                // bắt buộc phải có trong final-pay?
+  execution_order smallint [default: 0]                  // thứ tự tính toán (1=proration, 2=leave_payout, 3=13th_month, 4=severance)
+  formula_override_json jsonb [null]                     // override formula cho context termination (NULL = dùng element default)
+  // Ví dụ formula_override_json cho severance:
+  // {"formula": "tenure_years * coefficient * avg_monthly_salary",
+  //  "params": {"coefficient": {"source": "statutory_rule", "code": "VN_SEVERANCE_COEFF"}}}
+
+  description     text [null]                            // mô tả element trong context termination
+  is_active       boolean [default: true]
+  effective_start_date date
+  effective_end_date   date [null]
+  created_at      timestamp [default: `now()`]
+  updated_at      timestamp [null]
+
+  Indexes {
+    (pay_profile_id, termination_type, element_id) [unique]
+    (pay_profile_id, termination_type, execution_order)
+    (termination_type)
+    (element_id)
+  }
+
+  Note: '''
+    NEW 27Mar2026: AQ-10 Option D — Termination Pay Configuration.
+    Maps (termination_type × pay_profile) → list of PayElements for final-pay run.
+    Mỗi termination type có bộ elements riêng, execution_order riêng.
+    Formula overrides cho phép tùy chỉnh cách tính trong context termination.
+    Examples:
+      - RESIGNATION + MONTHLY_PROFILE → [PRORATED_SALARY(1), LEAVE_PAYOUT(2), 13TH_MONTH_PRORATE(3)]
+      - REDUCTION_IN_FORCE + MONTHLY_PROFILE → [PRORATED_SALARY(1), LEAVE_PAYOUT(2), 13TH_MONTH_PRORATE(3), SEVERANCE(4)]
+      - END_OF_CONTRACT + HOURLY_PROFILE → [FINAL_HOURS_PAY(1), LEAVE_PAYOUT(2)]
+    Severance formula: tenure_years × coefficient × avg_monthly_salary
+      (coefficient = statutory_rule VN_SEVERANCE_COEFF, currently 0.5 per Labor Code)
+  '''
+}
+
+// =============================================================
+// changed 27Mar2026: NEW — AQ-12 Hybrid C+D: Hourly Rate Differentiation
+// =============================================================
+// ARCHITECTURE: 3-layer rate lookup cho hourly/piece-rate workers
+//   Layer 1: Worker-level override (worker_rate_override) — cho exception workers
+//   Layer 2: Profile-level default (pay_profile_rate_config) — group default
+//   Layer 3: Statutory rule fallback (statutory_rule) — OT multipliers theo luật
+//
+// FORMULA: Mỗi loại giờ là 1 PayElement riêng (Option C):
+//   REGULAR_HOURS_PAY = regular_hours × lookupRate(worker, 'REGULAR')
+//   NIGHT_HOURS_PAY   = night_hours   × lookupRate(worker, 'NIGHT')
+//   OT_WEEKDAY_PAY    = ot_weekday_hours × lookupRate(worker, 'OT_WEEKDAY')
+//   OT_WEEKEND_PAY    = ot_weekend_hours × lookupRate(worker, 'OT_WEEKEND')
+//   OT_HOLIDAY_PAY    = ot_holiday_hours × lookupRate(worker, 'OT_HOLIDAY')
+//
+// lookupRate(worker, dimension):
+//   1. Check worker_rate_override(worker_id, dimension) → if exists, return override_rate
+//   2. Check pay_profile_rate_config(profile_id, dimension) → return base_rate
+//   3. For OT dimensions: base_rate = regular_rate × statutory_rule(OT_MULTIPLIER)
+//
+// DATA FLOW:
+//   TA (timesheet_entry.time_type_code) → hours per dimension
+//   TR/CO (compensation_event.basis_amount) → base salary context
+//   PR (rate_config + formula) → calculates pay per hour type
+// =============================================================
+
+// Tầng 2: Default rates tại PayProfile level (Option D)
+// Mỗi PayProfile định nghĩa base rate cho từng loại giờ làm việc
+Table pay_master.pay_profile_rate_config {
+  id              uuid [pk, default: `gen_random_uuid()`]
+  pay_profile_id  uuid [ref: > pay_master.pay_profile.id, not null]
+
+  // Rate dimension — loại giờ làm việc
+  rate_dimension  varchar(30) [not null]               // REGULAR | NIGHT | OT_WEEKDAY | OT_WEEKEND | OT_HOLIDAY | HAZARDOUS | SPECIALIZED
+
+  // Rate definition — cách xác định rate
+  rate_type       varchar(20) [not null, default: 'FIXED']  // FIXED | MULTIPLIER | FORMULA
+  // FIXED: base_rate_amount là rate tuyệt đối (VND/h)
+  // MULTIPLIER: base_rate_amount là hệ số × regular rate (e.g., 1.5 cho OT)
+  // FORMULA: rate tính bằng formula_id
+
+  base_rate_amount decimal(15,4) [null]                // VND/h (nếu FIXED) hoặc multiplier (nếu MULTIPLIER)
+  currency_code   char(3) [default: 'VND']             // đơn vị tiền tệ
+  formula_id      uuid [ref: > pay_master.pay_formula.id, null]  // nếu rate_type = FORMULA
+
+  // Statutory rule reference — cho OT dimensions, link tới luật
+  statutory_rule_id uuid [ref: > pay_master.statutory_rule.id, null]  // e.g., VN_OT_MULTIPLIER_WEEKDAY = 1.5
+
+  description     text [null]
+  is_active       boolean [default: true]
+  effective_start_date date
+  effective_end_date   date [null]
+  created_at      timestamp [default: `now()`]
+  updated_at      timestamp [null]
+
+  Indexes {
+    (pay_profile_id, rate_dimension) [unique]           // 1 rate per dimension per profile
+    (pay_profile_id, rate_dimension, effective_start_date)
+    (rate_dimension)
+    (statutory_rule_id)
+  }
+
+  Note: '''
+    NEW 27Mar2026: AQ-12 Hybrid C+D — Profile-level default rates (Layer 2).
+    Defines base rate per hour-type dimension for all workers assigned to this PayProfile.
+    Workers without individual overrides use these rates.
+    Examples:
+      - MONTHLY_PROFILE: typically empty (monthly salary workers, not hourly)
+      - HOURLY_PROFILE_FACTORY:
+          REGULAR = 50,000 VND/h (FIXED)
+          NIGHT = 65,000 VND/h (FIXED, ≥130% per Labor Code)
+          OT_WEEKDAY = 1.5 (MULTIPLIER × regular, statutory VN_OT_WEEKDAY)
+          OT_WEEKEND = 2.0 (MULTIPLIER × regular, statutory VN_OT_WEEKEND)
+          OT_HOLIDAY = 3.0 (MULTIPLIER × regular, statutory VN_OT_HOLIDAY)
+      - HOURLY_PROFILE_OFFICE:
+          REGULAR = 120,000 VND/h (FIXED)
+          OT_WEEKDAY = 1.5 (MULTIPLIER, same statutory rule)
+    rate_type = FORMULA cho advanced cases (rate phụ thuộc seniority, grade, etc.)
+  '''
+}
+
+
+// Tầng 1: Worker-level rate override (Option B, optional — chỉ cho exception workers)
+// Đa số workers dùng profile default; table này chỉ cho workers có rate khác biệt
+Table pay_master.worker_rate_override {
+  id              uuid [pk, default: `gen_random_uuid()`]
+  worker_id       uuid [not null]                       // FK to person.worker hoặc employment.employee
+  pay_profile_id  uuid [ref: > pay_master.pay_profile.id, not null]  // context: override cho profile nào
+
+  // Rate dimension — cùng enum với pay_profile_rate_config
+  rate_dimension  varchar(30) [not null]               // REGULAR | NIGHT | OT_WEEKDAY | OT_WEEKEND | OT_HOLIDAY | HAZARDOUS | SPECIALIZED
+
+  // Override value — rate tuyệt đối cho worker này
+  override_rate   decimal(15,4) [not null]             // VND/h — giá trị tuyệt đối, KHÔNG phải multiplier
+  currency_code   char(3) [default: 'VND']
+
+  // Lý do override
+  reason_code     varchar(50) [null]                   // SKILL_PREMIUM | SENIORITY | NEGOTIATED | PROBATION_DISCOUNT | GRADE_ADJUSTMENT
+  reason_text     text [null]
+
+  // Audit & governance
+  approved_by     uuid [null]                          // ai approve rate override này
+  approved_at     timestamp [null]
+
+  is_active       boolean [default: true]
+  effective_start_date date
+  effective_end_date   date [null]
+  created_at      timestamp [default: `now()`]
+  updated_at      timestamp [null]
+
+  Indexes {
+    (worker_id, pay_profile_id, rate_dimension) [unique]  // 1 override per dimension per worker per profile
+    (worker_id, pay_profile_id)
+    (pay_profile_id, rate_dimension)
+    (worker_id, is_active)
+  }
+
+  Note: '''
+    NEW 27Mar2026: AQ-12 Hybrid C+D — Worker-level rate override (Layer 1).
+    Optional: chỉ tạo record cho workers có rate khác biệt với profile default.
+    Đa số workers KHÔNG có record ở table này → dùng pay_profile_rate_config.
+    override_rate là giá trị TUYỆT ĐỐI (không phải multiplier) để tránh confusion.
+    Use cases:
+      - Senior technician có rate REGULAR cao hơn default: 60,000 thay vì 50,000
+      - Probation worker có rate thấp hơn: 42,000 (PROBATION_DISCOUNT)
+      - Negotiated rate cho contractor: 150,000 VND/h (NEGOTIATED)
+    Governance: approved_by + approved_at track ai approve rate override.
+    1000 workers nhưng chỉ ~50 workers có override → 50 records (vs Option B: 5000 records)
+  '''
+}
+
+
+// =============================================================
+// changed 27Mar2026: NEW — AQ-13 Option C: Piece-Rate Configuration
+// =============================================================
+// Lương sản phẩm / khoán sản phẩm cho manufacturing, garment, assembly workers
+//
+// ARCHITECTURE:
+//   1. TA/Production system → push quantities via input_source_config
+//      (e.g., PIECE_QTY_SHIRT_A = 150, PIECE_QTY_SHOE_B = 80)
+//   2. piece_rate_config → lookup rate per product × quality grade
+//   3. Formula per PayElement:
+//      PIECE_PAY_SHIRT = lookupQty("SHIRT") × lookupPieceRate("SHIRT", "GRADE_A")
+//   4. Post-calc: MIN_WAGE_FLOOR check
+//      if PIECE_TOTAL < MIN_WAGE_REGION → substitute + flag exception
+//   5. OT piece-rate: statutory_rule OT_MULTIPLIER × normal piece rate
+//
+// DATA FLOW:
+//   Production/TA → quantities (input_value via input_source_config)
+//   PR config → rates (piece_rate_config)
+//   PR formula → PIECE_PAY = qty × rate
+//   PR post-calc → min wage floor check (statutory_rule MIN_WAGE_REGION_X)
+// =============================================================
+
+Table pay_master.piece_rate_config {
+  id              uuid [pk, default: `gen_random_uuid()`]
+  pay_profile_id  uuid [ref: > pay_master.pay_profile.id, null]  // null = global rate; non-null = profile-specific
+
+  // Product identification
+  product_code    varchar(50) [not null]               // SHIRT | SHOE | PCB_BOARD | ASSEMBLY_UNIT_A
+  product_name    varchar(150) [null]                  // Áo sơ mi, Giày da, Bo mạch PCB
+
+  // Quality grade — rate có thể khác nhau theo chất lượng sản phẩm
+  quality_grade   varchar(30) [not null, default: 'STANDARD']  // STANDARD | GRADE_A | GRADE_B | GRADE_C | REJECT
+
+  // Rate
+  rate_per_unit   decimal(15,4) [not null]             // VND/sản phẩm
+  currency_code   char(3) [default: 'VND']
+
+  // Quality multiplier — nếu dùng thay vì FIXED rate per grade
+  // Ví dụ: GRADE_A = 1.2 × base rate, GRADE_B = 1.0, GRADE_C = 0.8, REJECT = 0
+  quality_multiplier decimal(5,3) [null]               // NULL = dùng rate_per_unit trực tiếp
+
+  // Unit of measure
+  unit_code       varchar(20) [default: 'PIECE']       // PIECE | KG | METER | PAIR | SET
+
+  // Min wage floor — statutory rule cho min wage region
+  min_wage_rule_id uuid [ref: > pay_master.statutory_rule.id, null]  // link to MIN_WAGE_REGION_X
+
+  // OT piece-rate — statutory rule cho OT multiplier
+  ot_multiplier_rule_id uuid [ref: > pay_master.statutory_rule.id, null]  // link to VN_OT_MULTIPLIER
+
+  description     text [null]
+  is_active       boolean [default: true]
+  effective_start_date date
+  effective_end_date   date [null]
+  created_at      timestamp [default: `now()`]
+  updated_at      timestamp [null]
+
+  Indexes {
+    (pay_profile_id, product_code, quality_grade) [unique]  // 1 rate per product per grade per profile
+    (product_code, quality_grade)
+    (pay_profile_id, is_active)
+    (product_code, effective_start_date)
+  }
+
+  Note: '''
+    NEW 27Mar2026: AQ-13 Option C — Piece-Rate Configuration.
+    Rate lookup table cho lương sản phẩm: (product × quality_grade) → rate_per_unit.
+    Supports:
+      - Single product: 1 record (SHIRT, STANDARD, 15000 VND/cái)
+      - Multi-product: N records (SHIRT=15000, SHOE=25000, PCB=8000)
+      - Quality grade: (SHIRT, GRADE_A, 18000), (SHIRT, GRADE_B, 15000), (SHIRT, GRADE_C, 12000)
+      - Quality multiplier: base=15000, GRADE_A=1.2×base=18000
+      - Team-based: formula divides team output → individual qty
+      - Min wage floor: min_wage_rule_id → if total < min → substitute + exception
+      - OT piece-rate: ot_multiplier_rule_id → 150% × normal rate for OT hours
+    pay_profile_id = NULL → global rate (all profiles); non-null → profile-specific override.
+    Qty input: TA/production pushes via input_source_config (source_module=PRODUCTION).
+    Formula: PIECE_PAY = SUM(lookupQty(product) × lookupPieceRate(product, grade))
+  '''
+}
+
 
 // Mapping element ↔ benefit/allowance (for advanced/linked policy)
 Table pay_master.pay_benefit_link { // CHANGED JUL 2025
@@ -809,7 +1072,7 @@ Table pay_mgmt.batch {
   pay_group_id    uuid        [ref: > pay_master.pay_group.id, null]          // NEW 27Mar2026 — RESTORED (was deprecated in V3). Pay group cho batch
   period_start    date        [not null]
   period_end      date        [not null]
-  batch_type      varchar(20) [not null]               // REGULAR | SUPPLEMENTAL | RETRO | QUICKPAY  // changed 27Mar2026: thêm QUICKPAY
+  batch_type      varchar(20) [not null]               // REGULAR | SUPPLEMENTAL | RETRO | QUICKPAY | TERMINATION  // changed 27Mar2026: thêm QUICKPAY, TERMINATION (AQ-10)
   run_label       varchar(100)
 
   // changed 27Mar2026: expanded status for separated orchestration vs engine
