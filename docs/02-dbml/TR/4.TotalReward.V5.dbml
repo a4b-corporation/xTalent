@@ -1275,6 +1275,10 @@ Table tr_audit.audit_log {
 //***************************************************
 // * 9. CALCULATION RULES & FORMULAS (NEW MODULE)
 //      ADDED 25Nov2025: Global calculation rules
+//      changed 27Mar2026: ADR Option D – Domain Boundary
+//      TR only owns HR-policy rules (up to Gross).
+//      Statutory rules (TAX, SI, OT) → PR domain (pay_master.statutory_rule)
+//      Xem CHANGELOG [27Mar2026-b] để biết chi tiết.
 // ***************************************************/
 
 // Layer 3: Global Calculation Rules
@@ -1282,7 +1286,11 @@ Table comp_core.calculation_rule_def {
   id              uuid [pk]
   code            varchar(50) [unique, not null]
   name            varchar(200) [not null]
-  rule_category   varchar(30) [not null]   // TAX | SOCIAL_INSURANCE | PRORATION | OVERTIME | ROUNDING | FOREX | ANNUALIZATION
+  // changed 27Mar2026: ADR Option D — restrict to HR-policy categories only
+  // Statutory categories (TAX, SOCIAL_INSURANCE, OVERTIME) → PR domain: pay_master.statutory_rule
+  // V3: TAX | SOCIAL_INSURANCE | PRORATION | OVERTIME | ROUNDING | FOREX | ANNUALIZATION
+  // V4: PRORATION | ROUNDING | FOREX | ANNUALIZATION | COMPENSATION_POLICY
+  rule_category   varchar(30) [not null]   // PRORATION | ROUNDING | FOREX | ANNUALIZATION | COMPENSATION_POLICY
   rule_type       varchar(30) [not null]   // FORMULA | LOOKUP_TABLE | CONDITIONAL | RATE_TABLE | PROGRESSIVE
   
   country_code    char(2) [null]           // ISO country code: VN, SG, US, etc. NULL = global
@@ -1321,15 +1329,23 @@ Table comp_core.calculation_rule_def {
   
   Note: '''
   25Nov2025: Global calculation rules table
-  - Stores tax tables, SI rates, OT multipliers, etc.
+  changed 27Mar2026: ADR Option D – Domain Boundary Enforcement
+  - TR chỉ sở hữu HR-policy rules (tính đến Gross):
+    PRORATION, ROUNDING, FOREX, ANNUALIZATION, COMPENSATION_POLICY
+  - Statutory rules (TAX, SI, OT) đã chuyển sang PR domain:
+    → pay_master.statutory_rule (Payroll module)
   - Versioned with SCD-2 approach (previous_version_id)
   - Country-specific via country_code
   - formula_json contains the actual calculation logic
-  Examples:
-    - VN_PIT_2025: Progressive tax brackets for Vietnam
-    - VN_SI_2025: Social insurance rates
-    - VN_OT_MULT_2019: Overtime multipliers per Labor Code
-    - SG_CPF_2025: Singapore CPF rates
+  Examples (TR scope only):
+    - VN_PRORATION_2025: Proration rules for mid-month changes
+    - ANNUALIZATION_MONTHLY: Convert monthly → annual for comp planning
+    - FOREX_DAILY: Currency conversion for multi-currency comp
+  Migrated to PR (no longer created here):
+    - VN_PIT_2025 → pay_master.statutory_rule (PR)
+    - VN_SI_2025 → pay_master.statutory_rule (PR)
+    - VN_OT_MULT_2019 → pay_master.statutory_rule (PR)
+    - SG_CPF_2025 → pay_master.statutory_rule (PR)
   '''
 }
 
@@ -1340,7 +1356,11 @@ Table comp_core.component_calculation_rule {
   component_id    uuid [ref: > comp_core.pay_component_def.id, not null]
   rule_id         uuid [ref: > comp_core.calculation_rule_def.id, not null]
   
-  rule_scope      varchar(30) [not null]   // COMPONENT_CALC | TAX | PRORATION | VALIDATION | SI_CALCULATION
+  // changed 27Mar2026: ADR Option D — restrict to HR-policy scopes
+  // V3: COMPONENT_CALC | TAX | PRORATION | VALIDATION | SI_CALCULATION
+  // V4: COMPONENT_CALC | PRORATION | VALIDATION | ANNUALIZATION
+  // TAX, SI_CALCULATION → PR domain (pay_engine handles these)
+  rule_scope      varchar(30) [not null]   // COMPONENT_CALC | PRORATION | VALIDATION | ANNUALIZATION
   execution_order int [default:0]          // When multiple rules apply to same component
   
   override_params jsonb [null]             // Component-specific parameter overrides
@@ -1363,10 +1383,12 @@ Table comp_core.component_calculation_rule {
   
   Note: '''
   25Nov2025: Links pay components to calculation rules
-  - Allows component-specific rule application
+  changed 27Mar2026: ADR Option D — scopes restricted to HR-policy only
+  - Allows component-specific rule application (proration, annualization, validation)
   - execution_order determines calculation sequence
   - override_params can customize rule behavior per component
-  Example: LAM_THEM_GIO component → VN_OT_MULT_2019 rule
+  - TAX, SI_CALCULATION scopes → PR engine (pay_engine.calculation_step)
+  Example: LUONG_CO_BAN component → VN_PRORATION_2025 rule
   '''
 }
 
@@ -1377,8 +1399,12 @@ Table comp_core.basis_calculation_rule {
   salary_basis_id uuid [ref: > comp_core.salary_basis.id, not null]
   rule_id         uuid [ref: > comp_core.calculation_rule_def.id, not null]
   
-  rule_scope      varchar(30) [not null]   // PRORATION | TAX | ROUNDING | ANNUALIZATION | SI_CALCULATION | GROSS_TO_NET
-  execution_order int [default:0]          // Calculation sequence (e.g., 1=proration, 2=gross, 3=SI, 4=tax, 5=net)
+  // changed 27Mar2026: ADR Option D — restrict to HR-policy scopes
+  // V3: PRORATION | TAX | ROUNDING | ANNUALIZATION | SI_CALCULATION | GROSS_TO_NET
+  // V4: PRORATION | ROUNDING | ANNUALIZATION
+  // TAX, SI_CALCULATION, GROSS_TO_NET → PR domain (pay_engine handles Gross→Net)
+  rule_scope      varchar(30) [not null]   // PRORATION | ROUNDING | ANNUALIZATION
+  execution_order int [default:0]          // Calculation sequence (e.g., 1=proration, 2=rounding, 3=annualization)
   
   override_params jsonb [null]             // Basis-specific parameter overrides
   
@@ -1400,43 +1426,46 @@ Table comp_core.basis_calculation_rule {
   
   Note: '''
   25Nov2025: Links salary basis to calculation rules
-  - Defines which rules apply to entire basis
-  - execution_order critical for multi-step calculations (gross→SI→tax→net)
+  changed 27Mar2026: ADR Option D — scopes restricted to HR-policy only
+  - Defines which rules apply to entire basis (proration, rounding, annualization)
+  - execution_order for TR-scope calculations only
+  - SI→tax→net steps → PR engine (pay_engine.calculation_step + pay_master.statutory_rule)
   - override_params can customize rule behavior per basis
-  Example: LUONG_THANG_VN basis → VN_PIT_2025 + VN_SI_2025 rules
+  Example: LUONG_THANG_VN basis → VN_PRORATION_2025 rule (TR scope)
+           VN_PIT_2025 + VN_SI_2025 → pay_master.statutory_rule (PR scope)
   '''
 }
 
 
-// Optional: Pre-calculated tax/SI lookup for performance
-Table comp_core.tax_calculation_cache {
-  id              uuid [pk]
-  rule_id         uuid [ref: > comp_core.calculation_rule_def.id, not null]
-  
-  input_amount    decimal(18,4) [not null]      // Taxable income
-  output_tax      decimal(18,4) [not null]      // Calculated tax
-  output_details  jsonb [null]                  // Breakdown by bracket
-  
-  params_hash     varchar(64) [not null]        // Hash of input parameters for cache key
-  
-  calculated_at   timestamp [default:`now()`]
-  expires_at      timestamp [not null]
-  
-  Indexes {
-    (rule_id, params_hash) [unique],
-    (rule_id, input_amount),
-    (expires_at),
-    (calculated_at)
-  }
-  
-  Note: '''
-  25Nov2025: Performance optimization table
-  - Caches pre-calculated tax/SI amounts
-  - params_hash = MD5(rule_id + input_amount + deductions + etc)
-  - expires_at for cache invalidation
-  - Speeds up payroll processing for repeated calculations
-  '''
-}
+// changed 27Mar2026: DEPRECATED — ADR Option D
+// Tax calculation thuộc PR domain (pay_engine). Table này không còn thuộc TR.
+// Nếu PR cần cache, sẽ tạo tại pay_engine schema.
+// Giữ lại comment để tham chiếu migration.
+// Table comp_core.tax_calculation_cache {
+//   id              uuid [pk]
+//   rule_id         uuid [ref: > comp_core.calculation_rule_def.id, not null]
+//   
+//   input_amount    decimal(18,4) [not null]      // Taxable income
+//   output_tax      decimal(18,4) [not null]      // Calculated tax
+//   output_details  jsonb [null]                  // Breakdown by bracket
+//   
+//   params_hash     varchar(64) [not null]        // Hash of input parameters for cache key
+//   
+//   calculated_at   timestamp [default:`now()`]
+//   expires_at      timestamp [not null]
+//   
+//   Indexes {
+//     (rule_id, params_hash) [unique],
+//     (rule_id, input_amount),
+//     (expires_at),
+//     (calculated_at)
+//   }
+//   
+//   Note: '''
+//   25Nov2025: Performance optimization table — DEPRECATED 27Mar2026
+//   Tax/SI calculation là PR domain → cache nếu cần sẽ ở pay_engine
+//   '''
+// }
 
 
 //***************************************************

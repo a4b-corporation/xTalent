@@ -1,6 +1,70 @@
 # xTalent Database Design – Changelog
 
 
+## [27Mar2026-c] – AQ-02: PayProfile Rich Relational Schema (Option C)
+
+> Context: `pay_profile` was a minimal container (code, name only). Needs explicit config columns for BRD story writing.
+> Decision: **Option C — Rich Relational Schema** with explicit columns + join tables
+
+### 5.Payroll.V4.dbml
+
+**`pay_profile` ENRICHED** (8 new columns)
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| `parent_profile_id` | FK self-ref | Profile inheritance hierarchy |
+| `pay_method` | varchar(30) | MONTHLY_SALARY, HOURLY, PIECE_RATE, GRADE_STEP, TASK_BASED |
+| `proration_method` | varchar(20) | CALENDAR_DAYS, WORK_DAYS, NONE |
+| `rounding_method` | varchar(20) | ROUND_HALF_UP, ROUND_DOWN, ROUND_UP, ROUND_NEAREST |
+| `payment_method` | varchar(20) | BANK_TRANSFER, CASH, CHECK, WALLET |
+| `default_currency` | char(3) | Override currency (NULL = inherit from pay_group) |
+| `min_wage_rule_id` | FK → statutory_rule | Minimum wage region compliance |
+| `default_calendar_id` | FK → pay_calendar | Default calendar |
+
+**NEW join tables (2 tables)**
+
+| Table | Purpose |
+|-------|---------|
+| `pay_profile_element` | Bind elements to profile (priority, default_amount, formula override) |
+| `pay_profile_rule` | Bind statutory rules to profile (execution_order, override_params) |
+
+---
+
+## [27Mar2026-b] – ADR Option D: Calculation Rule Domain Boundary
+
+> Context: Cross-module conflict between TR `calculation_rule_def` and PR `statutory_rule`
+> Decision: **Option D — Dual Ownership with Formal Contract**
+> - TR owns HR-policy rules (up to Gross): PRORATION, ROUNDING, FOREX, ANNUALIZATION, COMPENSATION_POLICY
+> - PR owns statutory rules (Gross→Net): TAX, SOCIAL_INSURANCE, OVERTIME, GROSS_TO_NET
+> - Data contract: TR → PR delivers `compensation.basis` (gross) as data, not executable rules
+
+### 4.TotalReward.V5.dbml
+
+**`calculation_rule_def.rule_category` restricted**
+- Removed: TAX, SOCIAL_INSURANCE, OVERTIME (→ PR domain)
+- Kept: PRORATION | ROUNDING | FOREX | ANNUALIZATION | COMPENSATION_POLICY
+
+**`component_calculation_rule.rule_scope` restricted**
+- Removed: TAX, SI_CALCULATION (→ PR domain)
+- Kept: COMPONENT_CALC | PRORATION | VALIDATION | ANNUALIZATION
+
+**`basis_calculation_rule.rule_scope` restricted**
+- Removed: TAX, SI_CALCULATION, GROSS_TO_NET (→ PR domain)
+- Kept: PRORATION | ROUNDING | ANNUALIZATION
+
+**`tax_calculation_cache` DEPRECATED**
+- Entire table commented out — tax calculation is PR engine's responsibility
+- If PR needs cache, will create at `pay_engine` schema
+
+### 5.Payroll.V4.dbml
+
+**`statutory_rule` ENRICHED** (Single Authority for statutory rules)
+- New fields: `rule_category`, `rule_type`, `country_code`, `jurisdiction`, `legal_reference`
+- New indexes: `(rule_category)`, `(rule_category, country_code)`, `(country_code)`
+- Scope: TAX | SOCIAL_INSURANCE | OVERTIME | GROSS_TO_NET
+
+---
+
 ## [27Mar2026] – Payroll Engine Separation (V3 → V4)
 
 > Review: [review-03-payroll-engine-separation.md](./review-03-payroll-engine-separation.md)

@@ -340,22 +340,60 @@ Table pay_bank.payment_line {
 
 // --------------------- CHANGED JUL 2025: NEW TABLES (BỔ SUNG) ---------------------
 
-Table pay_master.statutory_rule { // CHANGED JUL 2025
+// changed 27Mar2026: ENRICHED — ADR Option D Domain Boundary
+// statutory_rule là Single Authority cho statutory/legal calculation rules
+// Scope: TAX | SOCIAL_INSURANCE | OVERTIME | GROSS_TO_NET
+// (TR's calculation_rule_def chỉ giữ HR-policy rules: PRORATION, ROUNDING, ANNUALIZATION, FOREX)
+Table pay_master.statutory_rule { // CHANGED JUL 2025, ENRICHED 27Mar2026
   id uuid [pk, default: `gen_random_uuid()`]
   code varchar(50) [unique]
   name varchar(255)
   market_id uuid [ref: > common.talent_market.id]
+
+  // NEW 27Mar2026: Enriched fields for full statutory rule support
+  rule_category   varchar(30) [not null]   // NEW 27Mar2026 — TAX | SOCIAL_INSURANCE | OVERTIME | GROSS_TO_NET
+  rule_type       varchar(30) [not null, default: 'FORMULA']   // NEW 27Mar2026 — FORMULA | LOOKUP_TABLE | CONDITIONAL | RATE_TABLE | PROGRESSIVE
+  country_code    char(2) [null]           // NEW 27Mar2026 — ISO country code: VN, SG, US. NULL = global
+  jurisdiction    varchar(50) [null]       // NEW 27Mar2026 — State/Province/City if applicable
+  legal_reference text [null]              // NEW 27Mar2026 — Legal citation (e.g., "Article 107, Labor Code 2019")
+
   description text [null]
-  formula_json jsonb [null]
+  formula_json jsonb [null]                // Actual statutory calculation logic/data
   valid_from date
   valid_to date [null]
   is_active boolean [default: true]
+
+  // SCD-2 versioning
+  //version_number  int [default:1]        // future: explicit version tracking
   effective_start_date date    // SCD2 // CHANGED JUL 2025
   effective_end_date date [null] // SCD2 // CHANGED JUL 2025
   is_current_flag boolean [default: true] // SCD2 // CHANGED JUL 2025
+
   created_at timestamp [default: `now()`]
   updated_at timestamp [null]
-  Note: 'CHANGED JUL 2025. Rule pháp lý payroll, gán vào pay_element.'
+
+  Indexes {
+    (code)
+    (rule_category)                        // NEW 27Mar2026
+    (rule_category, country_code)          // NEW 27Mar2026
+    (country_code)                         // NEW 27Mar2026
+    (code, is_current_flag)                // NEW 27Mar2026
+  }
+
+  Note: '''
+    CHANGED JUL 2025. ENRICHED 27Mar2026 — ADR Option D Domain Boundary.
+    Single Authority cho statutory/legal calculation rules trong Payroll.
+    Scope: TAX (PIT brackets), SOCIAL_INSURANCE (SI rates/ceilings),
+           OVERTIME (OT multipliers), GROSS_TO_NET (full net pay pipeline).
+    TR module's calculation_rule_def chỉ giữ HR-policy rules (PRORATION, ROUNDING, etc.)
+    Data contract: TR → PR giao compensation.basis (gross) as DATA.
+    PR dùng statutory_rule + pay_formula + pay_engine để tính deductions → net.
+    Examples:
+      - VN_PIT_2025: Progressive tax brackets for Vietnam
+      - VN_SI_2025: Social insurance rates (BHXH, BHYT, BHTN)
+      - VN_OT_MULT_2019: Overtime multipliers per Labor Code 2019
+      - SG_CPF_2025: Singapore CPF rates
+  '''
 }
 
 Table pay_master.gl_mapping { // CHANGED JUL 2025
@@ -419,24 +457,60 @@ Table pay_master.pay_formula { // CHANGED JUL 2025
 }
 
 
-Table pay_master.pay_profile { // CHANGED JUL 2025 - NEW, chuẩn hóa theo best practice quốc tế
+// changed 27Mar2026: ENRICHED — AQ-02 Option C (Rich Relational Schema)
+// PayProfile is the central configuration bundle for a worker group.
+// Explicit columns for key parameters instead of opaque JSON.
+Table pay_master.pay_profile { // CHANGED JUL 2025, ENRICHED 27Mar2026
   id              uuid [pk, default: `gen_random_uuid()`]
   code            varchar(50) [unique]
   name            varchar(100)
   legal_entity_id uuid [ref: > org_legal.entity.id, null]
-  market_id       uuid [ref: > common.talent_market.id, null] // optional
+  market_id       uuid [ref: > common.talent_market.id, null]
   description     text [null]
-  status_code     varchar(20) [default: 'ACTIVE']
-  metadata        jsonb [null]
+  status_code     varchar(20) [default: 'ACTIVE']           // ACTIVE | INACTIVE | DRAFT
+
+  // NEW 27Mar2026: Option C — explicit configuration columns
+  parent_profile_id uuid [ref: > pay_master.pay_profile.id, null]  // NEW 27Mar2026 — inheritance hierarchy. NULL = root profile
+  pay_method      varchar(30) [not null, default: 'MONTHLY_SALARY']  // NEW 27Mar2026 — MONTHLY_SALARY | HOURLY | PIECE_RATE | GRADE_STEP | TASK_BASED
+  proration_method varchar(20) [not null, default: 'WORK_DAYS']      // NEW 27Mar2026 — CALENDAR_DAYS | WORK_DAYS | NONE
+  rounding_method  varchar(20) [not null, default: 'ROUND_HALF_UP']  // NEW 27Mar2026 — ROUND_HALF_UP | ROUND_DOWN | ROUND_UP | ROUND_NEAREST
+  payment_method   varchar(20) [not null, default: 'BANK_TRANSFER']  // NEW 27Mar2026 — BANK_TRANSFER | CASH | CHECK | WALLET
+  default_currency char(3)     [null]                                 // NEW 27Mar2026 — override currency (NULL = inherit from pay_group)
+  min_wage_rule_id uuid [ref: > pay_master.statutory_rule.id, null]   // NEW 27Mar2026 — FK to statutory_rule for minimum wage region
+  default_calendar_id uuid [ref: > pay_master.pay_calendar.id, null]  // NEW 27Mar2026 — default calendar if not overridden by pay_group
+
+  metadata        jsonb [null]                                        // for truly optional/rare settings only
   effective_start_date date
   effective_end_date   date [null]
   is_current_flag      boolean [default: true]
   created_at          timestamp [default: `now()`]
   updated_at          timestamp [null]
-  Note: 'CHANGED JUL 2025. Payroll Profile cho phép gắn các rule, element, policy thành 1 bundle/profile. Dùng cho phân quyền chính sách trả lương động.'
+
+  Indexes {
+    (code)
+    (pay_method)                           // NEW 27Mar2026
+    (parent_profile_id)                    // NEW 27Mar2026
+    (legal_entity_id, market_id)           // NEW 27Mar2026
+    (min_wage_rule_id)                     // NEW 27Mar2026
+  }
+
+  Note: '''
+    CHANGED JUL 2025. ENRICHED 27Mar2026 — AQ-02 Option C.
+    Central configuration bundle for worker groups.
+    Explicit columns enable DB-level validation, queryable without JSON parsing.
+    Supports hierarchy via parent_profile_id (child inherits parent settings unless overridden).
+    pay_method: how compensation is calculated (monthly, hourly, piece-rate, etc.)
+    proration_method: how mid-period changes are prorated
+    rounding_method: how amounts are rounded
+    payment_method: how payment is delivered
+    min_wage_rule_id: FK to statutory_rule for region-specific minimum wage compliance
+    Element bindings → pay_profile_element join table
+    Rule bindings → pay_profile_rule join table
+    Worker assignment → pay_profile_map join table
+  '''
 }
 
-Table pay_master.pay_profile_map { // NEW, option
+Table pay_master.pay_profile_map { // NEW JUL 2025, option
   id              uuid [pk, default: `gen_random_uuid()`]
   pay_profile_id  uuid [ref: > pay_master.pay_profile.id]
   pay_group_id    uuid [ref: > pay_master.pay_group.id, null]
@@ -450,6 +524,66 @@ Table pay_master.pay_profile_map { // NEW, option
   created_at      timestamp [default: `now()`]
   updated_at      timestamp [null]
   Note: 'Mapping profile với pay group/employee nếu cần. Optional – mở rộng future.'
+}
+
+// changed 27Mar2026: NEW — AQ-02 Option C join table
+// Bind pay_element vào pay_profile với priority và override config
+Table pay_master.pay_profile_element {
+  id              uuid [pk, default: `gen_random_uuid()`]
+  profile_id      uuid [ref: > pay_master.pay_profile.id, not null]
+  element_id      uuid [ref: > pay_master.pay_element.id, not null]
+  is_mandatory    boolean [default: false]           // bắt buộc trong profile?
+  priority_order  smallint [null]                    // override pay_element.priority_order nếu cần
+  default_amount  decimal(18,2) [null]               // giá trị mặc định cho element trong profile
+  override_formula_json jsonb [null]                 // override formula riêng cho profile (NULL = dùng element default)
+  is_active       boolean [default: true]
+  effective_start_date date
+  effective_end_date   date [null]
+  created_at      timestamp [default: `now()`]
+  updated_at      timestamp [null]
+
+  Indexes {
+    (profile_id, element_id) [unique]
+    (profile_id, is_active)
+    (element_id)
+  }
+
+  Note: '''
+    NEW 27Mar2026: AQ-02 Option C — Element binding join table.
+    Defines which pay_elements are included in a pay_profile.
+    Allows per-profile overrides: priority_order, default_amount, formula.
+    is_mandatory = true → element always included in payroll run for this profile.
+  '''
+}
+
+// changed 27Mar2026: NEW — AQ-02 Option C join table
+// Bind statutory_rule vào pay_profile (tax rules, SI rules per profile)
+Table pay_master.pay_profile_rule {
+  id              uuid [pk, default: `gen_random_uuid()`]
+  profile_id      uuid [ref: > pay_master.pay_profile.id, not null]
+  rule_id         uuid [ref: > pay_master.statutory_rule.id, not null]
+  rule_scope      varchar(30) [not null]             // TAX | SOCIAL_INSURANCE | OVERTIME | GROSS_TO_NET
+  execution_order smallint [default: 0]              // thứ tự thực thi (1=SI, 2=tax, 3=net...)
+  override_params jsonb [null]                       // profile-specific overrides (e.g., special tax bracket)
+  is_active       boolean [default: true]
+  effective_start_date date
+  effective_end_date   date [null]
+  created_at      timestamp [default: `now()`]
+  updated_at      timestamp [null]
+
+  Indexes {
+    (profile_id, rule_id) [unique]
+    (profile_id, rule_scope, execution_order)
+    (rule_id)
+  }
+
+  Note: '''
+    NEW 27Mar2026: AQ-02 Option C — Statutory rule binding join table.
+    Defines which statutory_rules apply to a pay_profile.
+    execution_order determines calculation sequence (e.g., 1=SI, 2=PIT, 3=G2N).
+    override_params for profile-specific customization.
+    rule_scope aligned with statutory_rule.rule_category.
+  '''
 }
 
 
