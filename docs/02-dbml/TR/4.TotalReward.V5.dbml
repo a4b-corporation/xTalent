@@ -388,7 +388,7 @@ Table comp_core.comp_cycle {
   // REM 21Nov2025: budget_amount   decimal(18,2) [null]
   budget_amount   decimal(18,4) [null]  // CHANGED 21Nov2025: increased precision
   budget_currency char(3) [null]        // ADDED 21Nov2025: explicit currency
-  workflow_state  jsonb [null]
+  // workflow_state  jsonb [null]    // DEPRECATED 27Mar2026 → Temporal workflow engine
   status          varchar(20) [default:'DRAFT']  // DRAFT | OPEN | IN_REVIEW | APPROVED | CLOSED | CANCELLED
   created_date    timestamp [default:`now()`]  // ADDED 21Nov2025: audit trail
   created_by      uuid                          // ADDED 21Nov2025: audit trail
@@ -424,7 +424,7 @@ Table comp_core.comp_adjustment {
   // REM 21Nov2025: note            text [null]
   rationale_text  text [null]           // CHANGED 21Nov2025: renamed from note for clarity
   approval_status varchar(20) [default:'PENDING']  // DRAFT | PENDING | APPROVED | REJECTED | WITHDRAWN
-  workflow_state  jsonb [null]
+  // workflow_state  jsonb [null]    // DEPRECATED 27Mar2026 → Temporal workflow engine
   submitted_date  timestamp [null]      // ADDED 21Nov2025: when submitted for approval
   submitted_by    uuid [null]           // ADDED 21Nov2025: who submitted
   approver_emp_id uuid [ref: > employment.employee.id, null]
@@ -552,7 +552,7 @@ Table comp_incentive.bonus_cycle {
   // REM 21Nov2025: budget_amount   decimal(18,2)
   budget_amount   decimal(18,4)         // CHANGED 21Nov2025: increased precision
   currency        char(3)
-  workflow_state  jsonb [null]
+  // workflow_state  jsonb [null]    // DEPRECATED 27Mar2026 → Temporal workflow engine
   status          varchar(20)
   created_date    timestamp [default:`now()`]  // ADDED 21Nov2025: audit trail
   created_by      uuid                          // ADDED 21Nov2025: audit trail

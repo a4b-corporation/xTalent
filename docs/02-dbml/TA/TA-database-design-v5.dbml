@@ -1221,7 +1221,7 @@ Table absence.leave_request {
   qty_hours_req decimal(6,2) [null]
   
   status_code   varchar(20)                     // DRAFT, PENDING, APPROVED, REJECTED, WITHDRAWN, CANCELLED
-  workflow_state jsonb  [null]
+  // workflow_state jsonb  [null]   // DEPRECATED 27Mar2026 → Temporal workflow engine
   reason        text [null]
   
   instant_id    uuid [null, ref: > absence.leave_instant.id]
@@ -1231,7 +1231,7 @@ Table absence.leave_request {
   approved_at   timestamp [null]                // 2025-12-01 NEW
   rejection_reason text [null]                  // 2025-12-01 NEW
   
-  escalation_level smallint [default:0]
+  // escalation_level smallint [default:0]  // DEPRECATED 27Mar2026 → Temporal workflow engine
   
   metadata      jsonb
   created_at    timestamp [default:`now()`]
@@ -1262,29 +1262,31 @@ Table absence.leave_reservation {
 // 2025-12-01 KEEP: Giữ nguyên thiết kế v4
 
 
-/*----------- 7. Approval (NEW - Multi-level approval) ---------*/
-// [v5] NEW TABLE: Multi-level approval workflow
-Table absence.approval {
-  id                uuid [pk]
-  request_id        uuid [ref: > absence.leave_request.id]
-  
-  approval_level    int [default:1]             // 1, 2, 3...
-  approver_id       uuid [ref: > employment.employee.id]
-  
-  status_code       varchar(20) [default:'PENDING'] // PENDING, APPROVED, REJECTED
-  decision_date     timestamp [null]
-  comments          text [null]
-  
-  metadata          jsonb
-  created_at        timestamp [default:`now()`]
-  
-  Indexes { 
-    (request_id, approval_level)
-    (approver_id, status_code)
-  }
-}
+/*----------- 7. Approval (DEPRECATED → Temporal) --------------*/
+// DEPRECATED 27Mar2026: Multi-level approval workflow → Temporal workflow engine
+// State tracking vẫn giữ trên leave_request.status_code + approved_by/approved_at
+// Temporal sẽ update leave_request.status_code via activity/signal
+// Table absence.approval {
+//   id                uuid [pk]
+//   request_id        uuid [ref: > absence.leave_request.id]
+//   
+//   approval_level    int [default:1]             // 1, 2, 3...
+//   approver_id       uuid [ref: > employment.employee.id]
+//   
+//   status_code       varchar(20) [default:'PENDING'] // PENDING, APPROVED, REJECTED
+//   decision_date     timestamp [null]
+//   comments          text [null]
+//   
+//   metadata          jsonb
+//   created_at        timestamp [default:`now()`]
+//   
+//   Indexes { 
+//     (request_id, approval_level)
+//     (approver_id, status_code)
+//   }
+// }
 
-// 2025-12-01 NEW: Support multi-level approval workflow
+// 2025-12-01 NEW, DEPRECATED 27Mar2026 → Temporal workflow engine
 
 
 /*----------- 8-12. Giữ nguyên các bảng v4 khác ----------------*/

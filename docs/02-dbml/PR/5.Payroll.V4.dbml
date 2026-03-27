@@ -892,32 +892,34 @@ Table pay_mgmt.manual_adjust {                    // CHANGED JUL 2025, MIGRATED 
   Note: 'changed 27Mar2026: MIGRATED from pay_run.manual_adjust. FK refs updated to pay_mgmt.batch.'
 }
 
-// changed 27Mar2026: NEW — Batch approval workflow
-// Governance cho payroll run: multi-level approval trước khi confirm
-Table pay_mgmt.batch_approval {
-  id              uuid        [pk, default: `gen_random_uuid()`]
-  batch_id        uuid        [ref: > pay_mgmt.batch.id, not null]
-  approval_level  smallint    [not null, default: 1]          // 1, 2, 3…
-  approver_id     uuid        [ref: > employment.employee.id, not null]
-  status_code     varchar(20) [not null, default: 'PENDING']  // PENDING | APPROVED | REJECTED | DELEGATED
-  approved_at     timestamp   [null]
-  comments        text        [null]
-  delegated_to_id uuid        [ref: > employment.employee.id, null]  // nếu ủy quyền
-  metadata        jsonb       [null]
-  created_at      timestamp   [default: `now()`]
-
-  Indexes {
-    (batch_id, approval_level) [unique]
-    (approver_id, status_code)
-    (batch_id, status_code)
-  }
-
-  Note: '''
-    NEW 27Mar2026: Multi-level approval workflow cho payroll batch.
-    Batch phải qua tất cả approval levels (status = APPROVED) trước khi CONFIRMED.
-    Supports delegation (delegated_to_id).
-  '''
-}
+// changed 27Mar2026: DEPRECATED — Temporal Workflow Migration
+// Workflow orchestration (approval chains, escalation, timeout) → Temporal workflow engine
+// State tracking vẫn giữ trên pay_mgmt.batch.status_code
+// Temporal sẽ update batch.status_code via activity/signal khi approval hoàn thành
+// Table pay_mgmt.batch_approval {
+//   id              uuid        [pk, default: `gen_random_uuid()`]
+//   batch_id        uuid        [ref: > pay_mgmt.batch.id, not null]
+//   approval_level  smallint    [not null, default: 1]          // 1, 2, 3…
+//   approver_id     uuid        [ref: > employment.employee.id, not null]
+//   status_code     varchar(20) [not null, default: 'PENDING']  // PENDING | APPROVED | REJECTED | DELEGATED
+//   approved_at     timestamp   [null]
+//   comments        text        [null]
+//   delegated_to_id uuid        [ref: > employment.employee.id, null]
+//   metadata        jsonb       [null]
+//   created_at      timestamp   [default: `now()`]
+//
+//   Indexes {
+//     (batch_id, approval_level) [unique]
+//     (approver_id, status_code)
+//     (batch_id, status_code)
+//   }
+//
+//   Note: '''
+//     NEW 27Mar2026, DEPRECATED 27Mar2026 → Temporal workflow.
+//     Approval chain, escalation, delegation → Temporal workflow engine.
+//     batch.status_code remains as state marker.
+//   '''
+// }
 
 
 // =============================================================

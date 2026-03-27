@@ -1,6 +1,35 @@
 # xTalent Database Design – Changelog
 
 
+## [27Mar2026-d] – Temporal Workflow Migration: Deprecate DB Approval Tables
+
+> Context: Workflow orchestration (approval chains, escalation, timeout) will use Temporal workflow engine
+> Principle: DB keeps **state tracking** (`status_code`, `approved_by/at`); Temporal handles **orchestration**
+
+### Deprecated Tables (2)
+
+| Table | Module | File |
+|-------|--------|------|
+| `pay_mgmt.batch_approval` | PR | `5.Payroll.V4.dbml` |
+| `absence.approval` | TA | `TA-database-design-v5.dbml` |
+
+### Deprecated Fields (5)
+
+| Field | Table | Module |
+|-------|-------|--------|
+| `workflow_state` jsonb | `comp_core.comp_cycle` | TR |
+| `workflow_state` jsonb | `comp_core.comp_adjustment` | TR |
+| `workflow_state` jsonb | `comp_incentive.bonus_cycle` | TR |
+| `workflow_state` jsonb | `absence.leave_request` | TA |
+| `escalation_level` smallint | `absence.leave_request` | TA |
+
+### Kept (state + audit stamps)
+- `status_code` on all entity tables — Temporal updates via activity/signal
+- `approved_by`, `approved_at` — final audit stamp
+- `requires_approval` flags — config input to Temporal
+
+---
+
 ## [27Mar2026-c] – AQ-02: PayProfile Rich Relational Schema (Option C)
 
 > Context: `pay_profile` was a minimal container (code, name only). Needs explicit config columns for BRD story writing.
