@@ -15,6 +15,127 @@
 //===============================================================
 
 //===============================================================
+//  ENUMS — Validation Reference (changed 27Mar2026)
+//  Source: Brainstormed db.dbml (LinkML schemas + BRD)
+//  Note: Columns vẫn giữ varchar cho backward compatibility.
+//        Enum dùng làm documentation & DB check constraint reference.
+//===============================================================
+
+// --- TA Attendance Enums ---
+
+Enum punch_type {
+  IN   [note: "Clock-in event"]
+  OUT  [note: "Clock-out event"]
+}
+
+Enum punch_sync_status {
+  PENDING  [note: "Captured offline; queued for sync"]
+  SYNCED   [note: "Successfully synchronized to server"]
+  CONFLICT [note: "Sync conflict detected; requires HR resolution"]
+}
+
+Enum worked_period_status {
+  PROVISIONAL [note: "Punch OUT missing; hours estimated"]
+  CONFIRMED   [note: "Both IN and OUT matched; hours calculated"]
+  CORRECTED   [note: "Hours updated via correction punch"]
+  EXCLUDED    [note: "Excluded from timesheet"]
+}
+
+Enum overtime_type {
+  WEEKDAY        [note: "Regular weekday OT — rate 150% (VLC Art. 98)"]
+  WEEKEND        [note: "Rest day OT — rate 200% (VLC Art. 98)"]
+  PUBLIC_HOLIDAY [note: "Public holiday OT — rate 300% (VLC Art. 98)"]
+}
+
+Enum timesheet_status {
+  OPEN      [note: "Period active; entries being added"]
+  SUBMITTED [note: "Employee submitted for manager approval"]
+  APPROVED  [note: "Manager approved; ready for payroll"]
+  LOCKED    [note: "Period closed; frozen; no changes"]
+}
+
+// --- TA Absence Enums ---
+
+Enum leave_category {
+  ANNUAL    [note: "Annual paid leave — VLC 2019 Art. 113"]
+  SICK      [note: "Sick/medical leave — VLC 2019 Art. 114"]
+  MATERNITY [note: "Maternity leave (6 months) — VLC 2019 Art. 139"]
+  PATERNITY [note: "Paternity leave — Law on Social Insurance Art. 34"]
+  UNPAID    [note: "Unpaid leave by agreement — VLC 2019 Art. 115"]
+  COMP_TIME [note: "Compensatory time off in lieu of OT payment"]
+  CUSTOM    [note: "Tenant-defined custom leave type"]
+}
+
+Enum entitlement_basis {
+  FIXED     [note: "Full entitlement granted at period start"]
+  ACCRUAL   [note: "Entitlement earned per accrual plan"]
+  UNLIMITED [note: "No balance limit; tracking only"]
+}
+
+Enum leave_unit {
+  DAY  [note: "Balance tracked in working days"]
+  HOUR [note: "Balance tracked in hours"]
+}
+
+Enum movement_type {
+  EARN    [note: "Balance credit from accrual or grant"]
+  USE     [note: "Balance debit — leave taken"]
+  RESERVE [note: "Provisional hold at request submission"]
+  RELEASE [note: "Reservation released on rejection/cancellation"]
+  EXPIRE  [note: "Balance expired; carryover or comp time"]
+  ADJUST  [note: "Manual HR adjustment with documented reason"]
+  CASHOUT [note: "Encashment — converted to payroll payment"]
+}
+
+Enum leave_request_status {
+  SUBMITTED            [note: "Balance reservation placed; routing pending"]
+  UNDER_REVIEW         [note: "At least one approval level pending"]
+  APPROVED             [note: "All approvals complete; deduction on leave start"]
+  REJECTED             [note: "Any approver rejected; reservation released"]
+  CANCELLATION_PENDING [note: "Post-deadline cancel awaiting manager"]
+  CANCELLED            [note: "Cancellation complete; balance fully restored"]
+}
+
+Enum reservation_status {
+  ACTIVE    [note: "Reservation in effect; balance held"]
+  RELEASED  [note: "Released on rejection or pre-deadline cancel"]
+  CONVERTED [note: "Converted to USE movement on leave start"]
+}
+
+Enum expiry_action {
+  EXTENSION  [note: "Manager-approved extension of expiry date"]
+  CASHOUT    [note: "Auto cash-out to payroll"]
+  FORFEITURE [note: "Balance set to zero; event logged"]
+}
+
+Enum comp_time_expiry_action {
+  EXTENSION  [note: "Manager-approved extension"]
+  CASHOUT    [note: "Auto cash-out to payroll"]
+  FORFEITURE [note: "Balance zeroed; event logged"]
+}
+
+Enum termination_balance_action {
+  AUTO_DEDUCT [note: "Auto payroll deduction — requires VLC Art. 21 written consent"]
+  HR_REVIEW   [note: "Default: flagged for HR manual review"]
+  WRITE_OFF   [note: "Balance forgiven; event logged"]
+  RULE_BASED  [note: "Threshold-based rule"]
+}
+
+// --- Shared Enums ---
+
+Enum period_status {
+  OPEN   [note: "Active; records may be created and modified"]
+  LOCKED [note: "Frozen for payroll processing; timesheets locked"]
+  CLOSED [note: "Fully closed; payroll export dispatched"]
+}
+
+Enum period_type {
+  MONTHLY [note: "Standard monthly payroll period"]
+  CUSTOM  [note: "Non-standard date range"]
+}
+
+
+//===============================================================
 //  LEVEL 1: TIME SEGMENT (Atomic Unit)
 //===============================================================
 
@@ -46,8 +167,8 @@ Table ta.time_segment {
   effective_start   date
   effective_end     date [null]
   
-  created_at        timestamp [default:`now()`]
-  updated_at        timestamp [null]
+  created_at        timestamptz [default:`now()`]
+  updated_at        timestamptz [null]
   
   Note: 'Atomic building block. Can be relative (offset) or absolute (time).'
 }
@@ -91,8 +212,8 @@ Table ta.shift_def {
   effective_start   date
   effective_end     date [null]
   
-  created_at        timestamp [default:`now()`]
-  updated_at        timestamp [null]
+  created_at        timestamptz [default:`now()`]
+  updated_at        timestamptz [null]
   
   Note: 'Composition of time segments. Three types: ELAPSED (fixed), PUNCH (flexible), FLEX (hybrid).'
 }
@@ -140,8 +261,8 @@ Table ta.day_model {
   effective_start   date
   effective_end     date [null]
   
-  created_at        timestamp [default:`now()`]
-  updated_at        timestamp [null]
+  created_at        timestamptz [default:`now()`]
+  updated_at        timestamptz [null]
   
   Note: 'Represents one day in a work schedule. Links to a shift or marks as OFF/HOLIDAY.'
 }
@@ -169,8 +290,8 @@ Table ta.pattern_template {
   effective_start   date
   effective_end     date [null]
   
-  created_at        timestamp [default:`now()`]
-  updated_at        timestamp [null]
+  created_at        timestamptz [default:`now()`]
+  updated_at        timestamptz [null]
   
   Note: 'Cycle of day models. E.g., 5x8 (5 days work, 8 hours), 4on-4off, 14/14 rotation.'
 }
@@ -217,8 +338,8 @@ Table ta.schedule_assignment {
   effective_end     date [null]
   
   metadata          jsonb
-  created_at        timestamp [default:`now()`]
-  updated_at        timestamp [null]
+  created_at        timestamptz [default:`now()`]
+  updated_at        timestamptz [null]
   
   Note: 'Combines pattern with calendar and rotation offset. Defines WHO gets WHICH pattern.'
 }
@@ -279,7 +400,7 @@ Table ta.schedule_override {
   notes             text [null]
   
   created_by        uuid [ref: > employment.employee.id]
-  created_at        timestamp [default:`now()`]
+  created_at        timestamptz [default:`now()`]
   
   metadata          jsonb
   
@@ -312,17 +433,37 @@ Table ta.open_shift_pool {
 Table ta.clock_event {
   id                uuid [pk]
   employee_id       uuid [ref: > employment.employee.id]
-  event_dt          timestamp
-  event_type        varchar(10)                 // IN | OUT | BREAK_IN | BREAK_OUT
+  event_dt          timestamptz                  // 27Mar2026: changed timestamp → timestamptz (Change 10)
+  event_type        varchar(10)                 // See Enum punch_type: IN | OUT | BREAK_IN | BREAK_OUT
   source            varchar(50)                 // MOBILE | KIOSK | API
   device_id         varchar(50) [null]
   geo_lat           decimal(9,6) [null]
   geo_long          decimal(9,6) [null]
+  
+  // 27Mar2026 NEW: Offline-first sync support (Change 5, Source: db.dbml punches)
+  sync_status       varchar(20) [default:'SYNCED']  // See Enum punch_sync_status: PENDING | SYNCED | CONFLICT
+  synced_at         timestamptz [null]              // Server receipt time; NULL = instant sync
+  conflict_reason   text [null]                     // e.g., "Duplicate event within 60s tolerance"
+  
+  // 27Mar2026 NEW: Geofence validation (Change 5)
+  geofence_validated boolean [default:false]         // true = device was within designated geofence at punch time
+  
+  // 27Mar2026 NEW: Correction tracking (Change 5)
+  is_correction     boolean [default:false]         // true = this event corrects a prior punch
+  corrects_event_id uuid [ref: > ta.clock_event.id, null]  // Self-ref: ID of the original event being corrected
+  
+  // 27Mar2026 NEW: Idempotency (Change 5)
+  idempotency_key   varchar(255) [null]             // Client-generated dedup key for offline-first sync
+  
   metadata          jsonb
   
-  Indexes { (employee_id, event_dt) }
+  Indexes {
+    (employee_id, event_dt)
+    (idempotency_key) [unique]                      // 27Mar2026 NEW: prevent duplicate syncs
+    (employee_id, sync_status)                      // 27Mar2026 NEW: query pending syncs per employee
+  }
   
-  Note: 'Raw clock-in/out events from devices.'
+  Note: 'Append-only table (ADR-TA-001). Raw clock-in/out events from devices. No UPDATEs allowed — corrections via is_correction + corrects_event_id.'
 }
 
 /*----------- Timesheet (Processed time entries) ----------------*/
@@ -331,9 +472,13 @@ Table ta.timesheet_header {
   employee_id       uuid [ref: > employment.employee.id]
   period_start      date
   period_end        date
-  status_code       varchar(20)                 // OPEN | SUBMITTED | APPROVED
+  status_code       varchar(20)                 // See Enum timesheet_status: OPEN | SUBMITTED | APPROVED | LOCKED
   total_hours       decimal(6,2) [null]
-  workflow_state    jsonb  [null]
+  
+  // 27Mar2026 NEW: Period management integration (Change 8)
+  period_id         uuid [ref: > ta.period.id, null]  // FK to ta.period for payroll cycle tracking
+  
+  workflow_state    jsonb  [null]               // DEPRECATED 27Mar2026-d: Use Temporal workflow
   metadata          jsonb
   
   Indexes { (employee_id, period_start) }
@@ -378,8 +523,8 @@ Table ta.time_type_element_map {
   effective_end     date [null]
 
   metadata          jsonb [null]
-  created_at        timestamp [default:`now()`]
-  updated_at        timestamp [null]
+  created_at        timestamptz [default:`now()`]
+  updated_at        timestamptz [null]
 
   Indexes {
     (time_type_code, pay_element_code, effective_start) [unique]
@@ -406,7 +551,7 @@ Table ta.time_exception {
   status_code       varchar(20)                 // OPEN | RESOLVED
   reason            text [null]
   resolved_by       uuid [ref: > employment.employee.id, null]
-  resolved_at       timestamp [null]
+  resolved_at       timestamptz [null]
   metadata          jsonb
   
   Indexes { (employee_id, work_date) }
@@ -480,8 +625,8 @@ Table employment.employee {
   hire_date         date
   termination_date  date [null]
   metadata          jsonb
-  created_at        timestamp [default:`now()`]
-  updated_at        timestamp [null]
+  created_at        timestamptz [default:`now()`]
+  updated_at        timestamptz [null]
   
   Indexes { (legal_entity_id, employee_code) [unique] }
 }
@@ -543,44 +688,27 @@ Table org_bu.unit {
 //  PHẦN 1: TIME & ATTENDANCE (TA Schema)
 //===============================================================
 
-/*----------- 1. Shift Pattern (Nâng cấp từ shift_def) ---------*/
+// COMMENTED OUT 27Mar2026: Đã merge vào ta.shift_def (Level 2) ở phần trên.
+// /*----------- 1. Shift Pattern (Nâng cấp từ shift_def) ---------*/
 // [DUPLICATE] This table overlaps with 'ta.shift_def' defined at Level 2 above.
-Table ta.shift_pattern_DUPLICATE {
-  id             uuid [pk]
-  code           varchar(50) [unique]          // DAY_SHIFT, NIGHT_SHIFT, ROTATING
-  name           varchar(100)
-  
-  // 2025-12-01 RENAMED: start_time/end_time → scheduled_start_time/scheduled_end_time
-  scheduled_start_time     time
-  scheduled_end_time       time
-  
-  // 2025-12-01 RENAMED: day_breaker_min → overnight_flag (boolean rõ ràng hơn)
-  is_overnight   boolean [default:false]       // true nếu ca qua đêm
-  
-  duration_hours decimal(5,2)                  // 2025-12-01 NEW: tổng giờ làm việc
-  break_duration_hours decimal(5,2) [default:0] // 2025-12-01 NEW: tổng giờ nghỉ
-  
-  working_days   jsonb                         // 2025-12-01 NEW: ["MON","TUE","WED","THU","FRI"]
-  
-  // 2025-12-01 RENAMED: segment_json → breaks_json (rõ ràng hơn)
-  breaks_json    jsonb                         // [{type:"LUNCH",startOffset:4.0,duration:1.0,isPaid:false}]
-  
-  color          varchar(7) [null]             // 2025-12-01 NEW: màu hiển thị UI (#FF5733)
-  
-  metadata       jsonb
-  is_active      boolean [default:true]        // 2025-12-01 NEW
-  effective_start date
-  effective_end   date [null]
-  
-  created_at     timestamp [default:`now()`]   // 2025-12-01 NEW
-  updated_at     timestamp [null]              // 2025-12-01 NEW
-}
-
-// 2025-12-01 COMMENT: Đổi tên từ shift_def → shift_pattern để phù hợp với ontology
-// Note {
-//   Bảng cũ: ta.shift_def
-//   Bảng mới: ta.shift_pattern
-//   Migration: RENAME TABLE ta.shift_def TO ta.shift_pattern
+// Table ta.shift_pattern_DUPLICATE {
+//   id             uuid [pk]
+//   code           varchar(50) [unique]
+//   name           varchar(100)
+//   scheduled_start_time     time
+//   scheduled_end_time       time
+//   is_overnight   boolean [default:false]
+//   duration_hours decimal(5,2)
+//   break_duration_hours decimal(5,2) [default:0]
+//   working_days   jsonb
+//   breaks_json    jsonb
+//   color          varchar(7) [null]
+//   metadata       jsonb
+//   is_active      boolean [default:true]
+//   effective_start date
+//   effective_end   date [null]
+//   created_at     timestamp [default:`now()`]
+//   updated_at     timestamp [null]
 // }
 
 
@@ -594,7 +722,7 @@ Table ta.shift_break {
   is_paid           boolean [default:false]
   is_mandatory      boolean [default:true]
   
-  created_at        timestamp [default:`now()`]
+  created_at        timestamptz [default:`now()`]
   
   Indexes { (shift_pattern_id) }
 }
@@ -602,48 +730,10 @@ Table ta.shift_break {
 // 2025-12-01 NEW: Tách riêng breaks thành bảng để dễ quản lý và query
 
 
-/*----------- 3. Shift (Nâng cấp từ generated_roster) ----------*/
+// COMMENTED OUT 27Mar2026: Đã merge vào ta.generated_roster (Level 6) ở phần trên.
+// /*----------- 3. Shift (Nâng cấp từ generated_roster) ----------*/
 // [DUPLICATE] This table overlaps with 'ta.generated_roster' defined at Level 6 above.
-Table ta.shift_DUPLICATE {
-  id                uuid [pk]
-  employee_id       uuid [ref: > employment.employee.id]
-  shift_pattern_id  uuid [ref: > ta.shift_pattern.id, null] // null nếu ad-hoc shift
-  shift_date        date
-  
-  // 2025-12-01 NEW: Lưu thông tin shift cụ thể (có thể khác pattern)
-  scheduled_start_time time
-  scheduled_end_time   time
-  duration_hours       decimal(5,2)
-  break_duration_hours decimal(5,2) [default:0]
-  
-  location          varchar(255) [null]         // 2025-12-01 NEW: địa điểm làm việc
-  
-  status_code       varchar(20) [default:'SCHEDULED'] // SCHEDULED, CONFIRMED, IN_PROGRESS, COMPLETED, CANCELLED, NO_SHOW
-  
-  // 2025-12-01 KEEP: Giữ các trường tracking nguồn gốc
-  schedule_id       uuid [ref: > ta.schedule.id, null]  // 2025-12-01 RENAMED from source_sched_id
-  is_override       boolean [default:false]     // 2025-12-01 NEW: thay thế override_id
-  
-  is_overtime       boolean [default:false]     // 2025-12-01 NEW
-  notes             text [null]                 // 2025-12-01 NEW
-  
-  metadata          jsonb
-  created_at        timestamp [default:`now()`]
-  updated_at        timestamp [null]
-  
-  Indexes { 
-    (employee_id, shift_date) [unique]
-    (shift_pattern_id, shift_date)
-    (status_code)
-  }
-}
-
-// 2025-12-01 COMMENT: Đổi tên từ generated_roster → shift
-// Lý do: "Shift" rõ ràng hơn, phù hợp với ontology
-// Migration: 
-//   - RENAME TABLE ta.generated_roster TO ta.shift
-//   - ADD COLUMN status_code, location, notes, is_overtime
-//   - RENAME COLUMN source_sched_id TO schedule_id
+// Table ta.shift_DUPLICATE { ... }
 
 
 /*----------- 4. Schedule (NEW - thay thế pattern_template) ----*/
@@ -658,13 +748,13 @@ Table ta.schedule {
   
   status_code     varchar(20) [default:'DRAFT'] // DRAFT, PUBLISHED, ACTIVE, ARCHIVED
   
-  published_at    timestamp [null]              // 2025-12-01 NEW
+  published_at    timestamptz [null]              // 2025-12-01 NEW
   published_by    uuid [ref: > employment.employee.id, null]
   
   metadata        jsonb
-  created_at      timestamp [default:`now()`]
+  created_at      timestamptz [default:`now()`]
   created_by      uuid [ref: > employment.employee.id]
-  updated_at      timestamp [null]
+  updated_at      timestamptz [null]
   
   Indexes { (org_unit_id, start_date) }
 }
@@ -681,8 +771,8 @@ Table ta.attendance_record {
   shift_id            uuid [ref: > ta.shift.id, null]
   attendance_date     date
   
-  clock_in_time       timestamp [null]
-  clock_out_time      timestamp [null]
+  clock_in_time       timestamptz [null]           // 27Mar2026: changed (Change 10)
+  clock_out_time      timestamptz [null]           // 27Mar2026: changed (Change 10)
   
   scheduled_start_time time [null]
   scheduled_end_time   time [null]
@@ -702,11 +792,11 @@ Table ta.attendance_record {
   
   is_approved         boolean [default:false]
   approved_by         uuid [ref: > employment.employee.id, null]
-  approved_at         timestamp [null]
+  approved_at         timestamptz [null]
   
   metadata            jsonb
-  created_at          timestamp [default:`now()`]
-  updated_at          timestamp [null]
+  created_at          timestamptz [default:`now()`]
+  updated_at          timestamptz [null]
   
   Indexes { 
     (employee_id, attendance_date) [unique]
@@ -720,87 +810,16 @@ Table ta.attendance_record {
 // AttendanceRecord là bản ghi chấm công đã xử lý
 
 
-/*----------- 6. Timesheet Entry (Nâng cấp timesheet_line) -----*/
-// [v5] RENAMED: From ta.timesheet_line (header removed)
+// COMMENTED OUT 27Mar2026: Đã merge vào ta.timesheet_line ở phần trên.
+// /*----------- 6. Timesheet Entry (Nâng cấp timesheet_line) -----*/
 // [DUPLICATE] This table overlaps with 'ta.timesheet_line' defined above.
-Table ta.timesheet_entry_DUPLICATE {
-  id                uuid [pk]
-  employee_id       uuid [ref: > employment.employee.id]  // 2025-12-01 NEW: denormalize để query dễ
-  
-  entry_date        date
-  start_time        timestamp
-  end_time          timestamp [null]            // null nếu đang in progress
-  duration_hours    decimal(5,2) [null]
-  
-  time_type_code    varchar(50)                 // REGULAR, OVERTIME, DOUBLE_TIME, HOLIDAY, NIGHT_SHIFT
-  
-  project_id        uuid [null]                 // 2025-12-01 NEW
-  task_id           uuid [null]                 // 2025-12-01 NEW
-  description       text [null]
-  
-  is_billable       boolean [default:false]     // 2025-12-01 NEW
-  
-  status_code       varchar(20) [default:'DRAFT'] // DRAFT, SUBMITTED, APPROVED, REJECTED
-  
-  submitted_at      timestamp [null]
-  approved_by       uuid [ref: > employment.employee.id, null]
-  approved_at       timestamp [null]
-  rejection_reason  text [null]                 // 2025-12-01 NEW
-  
-  attendance_record_id uuid [ref: > ta.attendance_record.id, null] // 2025-12-01 NEW: link
-  
-  metadata          jsonb
-  created_at        timestamp [default:`now()`]
-  updated_at        timestamp [null]
-  
-  Indexes { 
-    (employee_id, entry_date)
-    (project_id)
-    (status_code)
-  }
-}
-
-// 2025-12-01 COMMENT: Đổi tên từ timesheet_line → timesheet_entry
-// Xóa timesheet_header (không cần thiết, group by employee_id + period)
+// Table ta.timesheet_entry_DUPLICATE { ... }
 
 
-/*----------- 7. Time Exception (Giữ, bổ sung) -----------------*/
+// COMMENTED OUT 27Mar2026: Đã merge vào ta.time_exception ở phần trên.
+// /*----------- 7. Time Exception (Giữ, bổ sung) -----------------*/
 // [DUPLICATE] This table is a duplicate of 'ta.time_exception' defined above.
-Table ta.time_exception_DUPLICATE {
-  id                uuid [pk]
-  attendance_record_id uuid [ref: > ta.attendance_record.id]
-  
-  exception_type    varchar(50)                 // LATE_IN, EARLY_OUT, MISSING_PUNCH_IN, MISSING_PUNCH_OUT, UNAUTHORIZED_ABSENCE, LONG_BREAK
-  exception_date    date                        // 2025-12-01 NEW: denormalize
-  
-  severity_code     varchar(20) [default:'WARNING'] // INFO, WARNING, VIOLATION
-  
-  minutes           int [null]                  // duration of exception
-  reason            text [null]
-  
-  is_excused        boolean [default:false]
-  excused_by        uuid [ref: > employment.employee.id, null]
-  excused_at        timestamp [null]
-  excuse_reason     text [null]
-  
-  requires_action   boolean [default:true]
-  action_taken      text [null]
-  
-  metadata          jsonb
-  created_at        timestamp [default:`now()`]
-  updated_at        timestamp [null]
-  
-  Indexes { 
-    (attendance_record_id)
-    (exception_date)
-    (is_excused)
-  }
-}
-
-// 2025-12-01 CHANGED: 
-//   - ADD attendance_record_id (thay vì employee_id + work_date)
-//   - ADD exception_type enum rõ ràng
-//   - ADD severity_code, excuse workflow
+// Table ta.time_exception_DUPLICATE { ... }
 
 
 /*----------- 8. Shift Swap Request (NEW) -----------------------*/
@@ -813,22 +832,22 @@ Table ta.shift_swap_request {
   requestor_shift_id uuid [ref: > ta.shift.id]
   target_shift_id    uuid [ref: > ta.shift.id]
   
-  request_date      timestamp [default:`now()`]
+  request_date      timestamptz [default:`now()`]
   reason            text [null]
   
   status_code       varchar(30) [default:'PENDING'] // PENDING, ACCEPTED_BY_TARGET, REJECTED_BY_TARGET, APPROVED, REJECTED, CANCELLED
   
   target_response   varchar(20) [default:'PENDING'] // PENDING, ACCEPTED, REJECTED
-  target_response_at timestamp [null]
+  target_response_at timestamptz [null]
   
   manager_approval  varchar(20) [default:'PENDING'] // PENDING, APPROVED, REJECTED
   approved_by       uuid [ref: > employment.employee.id, null]
-  approved_at       timestamp [null]
+  approved_at       timestamptz [null]
   rejection_reason  text [null]
   
   metadata          jsonb
-  created_at        timestamp [default:`now()`]
-  updated_at        timestamp [null]
+  created_at        timestamptz [default:`now()`]
+  updated_at        timestamptz [null]
   
   Indexes { 
     (requestor_id)
@@ -847,17 +866,17 @@ Table ta.shift_bid {
   worker_id         uuid [ref: > employment.employee.id]
   shift_id          uuid [ref: > ta.shift.id]
   
-  bid_date          timestamp [default:`now()`]
+  bid_date          timestamptz [default:`now()`]
   priority          int [null]                  // worker's priority ranking
   reason            text [null]
   
   status_code       varchar(20) [default:'PENDING'] // PENDING, ACCEPTED, REJECTED, EXPIRED
   
-  assigned_at       timestamp [null]
-  expires_at        timestamp [null]
+  assigned_at       timestamptz [null]
+  expires_at        timestamptz [null]
   
   metadata          jsonb
-  created_at        timestamp [default:`now()`]
+  created_at        timestamptz [default:`now()`]
   
   Indexes { 
     (worker_id, shift_id) [unique]
@@ -868,98 +887,67 @@ Table ta.shift_bid {
 // 2025-12-01 NEW: Shift bidding for open shifts
 
 
-/*----------- 10. Overtime Rule (Nâng cấp eval_rule) -----------*/
-// [v5] RENAMED: From ta.eval_rule
+// COMMENTED OUT 27Mar2026: Đã merge vào ta.eval_rule ở phần trên.
+// /*----------- 10. Overtime Rule (Nâng cấp eval_rule) -----------*/
 // [DUPLICATE] This table overlaps with 'ta.eval_rule' defined above.
-Table ta.overtime_rule_DUPLICATE {
-  id                uuid [pk]
-  code              varchar(50) [unique]
-  name              varchar(100)
-  
-  rule_type         varchar(30)                 // DAILY, WEEKLY, CONSECUTIVE_DAYS, HOLIDAY, NIGHT_SHIFT
-  threshold_hours   decimal(5,2)                // e.g., 8 for daily, 40 for weekly
-  multiplier        decimal(4,2)                // e.g., 1.5, 2.0, 3.0
-  
-  requires_approval boolean [default:true]
-  
-  is_active         boolean [default:true]
-  effective_start   date
-  effective_end     date [null]
-  
-  metadata          jsonb
-  created_at        timestamp [default:`now()`]
-  updated_at        timestamp [null]
-}
-
-// 2025-12-01 COMMENT: Đổi tên từ eval_rule → overtime_rule (rõ ràng hơn)
+// Table ta.overtime_rule_DUPLICATE { ... }
 
 
 /*----------- 11. Overtime Request (NEW) ------------------------*/
 // [v5] NEW TABLE: Pre-approval workflow for overtime
+// 27Mar2026 ENHANCED: OT type classification (VLC Art. 98), caps (VLC Art. 107), comp-time election (Change 7)
 Table ta.overtime_request {
   id                uuid [pk]
   worker_id         uuid [ref: > employment.employee.id]
   
-  request_date      timestamp [default:`now()`]
+  request_date      timestamptz [default:`now()`]  // 27Mar2026: changed timestamp → timestamptz (Change 10)
   planned_date      date
   estimated_hours   decimal(5,2)
   reason            text
   
   project_id        uuid [null]
   
+  // 27Mar2026 NEW: OT type classification (Change 7, VLC Art. 98)
+  ot_type           varchar(20) [null]           // See Enum overtime_type: WEEKDAY | WEEKEND | PUBLIC_HOLIDAY
+  ot_rate           decimal(4,2) [null]          // 1.5 (weekday) | 2.0 (weekend) | 3.0 (holiday) per VLC Art. 98
+  
+  // 27Mar2026 NEW: Comp time election (Change 7)
+  comp_time_elected boolean [default:false]      // true = employee takes comp-time off instead of OT pay
+  
+  // 27Mar2026 NEW: VLC Art. 107 caps — for validation and audit
+  // Note: These are snapshot values at request time. Actual cap enforcement is done by service layer.
+  daily_ot_cap_hours   decimal(4,2) [default:4]  // VLC Art. 107: max 4h/day
+  monthly_ot_cap_hours decimal(6,2) [default:40] // VLC Art. 107: max 40h/month
+  annual_ot_cap_hours  decimal(6,2) [default:300] // VLC Art. 107: max 300h/year (with consent)
+  
   status_code       varchar(20) [default:'PENDING'] // PENDING, APPROVED, REJECTED, CANCELLED
   
   approved_by       uuid [ref: > employment.employee.id, null]
-  approved_at       timestamp [null]
+  approved_at       timestamptz [null]              // 27Mar2026: changed timestamp → timestamptz (Change 10)
   rejection_reason  text [null]
   
   actual_hours      decimal(5,2) [null]         // filled after work completed
   
   metadata          jsonb
-  created_at        timestamp [default:`now()`]
-  updated_at        timestamp [null]
+  created_at        timestamptz [default:`now()`]   // 27Mar2026: changed timestamp → timestamptz (Change 10)
+  updated_at        timestamptz [null]              // 27Mar2026: changed timestamp → timestamptz (Change 10)
   
   Indexes { 
     (worker_id, planned_date)
     (status_code)
   }
+  
+  Note: 'VLC Art. 107: OT caps — daily=4h, monthly=40h, annual=200-300h (300h requires written consent). VLC Art. 98: OT rates — weekday=150%, weekend=200%, public_holiday=300%.'
 }
 
 // 2025-12-01 NEW: Pre-approval for overtime
+// 27Mar2026 ENHANCED: Added ot_type, ot_rate, comp_time_elected, VLC caps
 
 
-/*----------- 12. Overtime Calculation (Nâng cấp eval_result) --*/
-// [v5] RENAMED: From ta.eval_result
+// COMMENTED OUT 27Mar2026: Đã merge vào ta.eval_result ở phần trên.
+// /*----------- 12. Overtime Calculation (Nâng cấp eval_result) --*/
 // [DUPLICATE] This table overlaps with 'ta.eval_result' defined above.
-Table ta.overtime_calculation_DUPLICATE {
-  id                uuid [pk]
-  worker_id         uuid [ref: > employment.employee.id]
-  
-  period_start      date
-  period_end        date
-  
-  regular_hours     decimal(6,2)
-  overtime_hours    decimal(6,2)
-  double_time_hours decimal(6,2) [default:0]
-  holiday_hours     decimal(6,2) [default:0]
-  night_shift_hours decimal(6,2) [default:0]
-  total_hours       decimal(6,2)
-  
-  is_approved       boolean [default:false]
-  approved_by       uuid [ref: > employment.employee.id, null]
-  approved_at       timestamp [null]
-  
-  metadata          jsonb
-  created_at        timestamp [default:`now()`]
-  
-  Indexes { 
-    (worker_id, period_start)
-    (is_approved)
-  }
-}
-
-// 2025-12-01 COMMENT: Đổi tên từ eval_result → overtime_calculation
-// Thêm breakdown theo loại OT
+// Table ta.overtime_calculation_DUPLICATE { ... }
 
 
 //===============================================================
@@ -992,10 +980,10 @@ Table absence.leave_type {
   effective_start   date
   effective_end     date [null]
   
-  created_at        timestamp [default:`now()`] // 2025-12-01 NEW
-  updated_at        timestamp [null]            // 2025-12-01 NEW
+  created_at        timestamptz [default:`now()`] // 2025-12-01 NEW
+  updated_at        timestamptz [null]            // 2025-12-01 NEW
   
-  Note: 'changed 12dec2025: Added default_eligibility_profile_id for hybrid eligibility model'
+  Note: 'changed 12dec2025: Added default_eligibility_profile_id for hybrid eligibility model. VLC refs: Art. 113 (annual 12d), Art. 114 (sick 30-180d), Art. 139 (maternity 6m), Art. 115 (unpaid by agreement). See Enum leave_category.'
 }
 
 // 2025-12-01 KEEP: Giữ nguyên thiết kế v4
@@ -1035,8 +1023,8 @@ Table absence.leave_class {
   effective_end     date [null]
   metadata          jsonb
   
-  created_at        timestamp [default:`now()`] // 2025-12-01 NEW
-  updated_at        timestamp [null]            // 2025-12-01 NEW
+  created_at        timestamptz [default:`now()`] // 2025-12-01 NEW
+  updated_at        timestamptz [null]            // 2025-12-01 NEW
   
   Note: 'changed 12dec2025: Added default_eligibility_profile_id. eligibility_json DEPRECATED - use Core.EligibilityProfile for new implementations'
 }
@@ -1115,8 +1103,8 @@ Table absence.leave_instant {
   effective_end     date [null]
   metadata          jsonb
   
-  created_at        timestamp [default:`now()`] // 2025-12-01 NEW
-  updated_at        timestamp [null]            // 2025-12-01 NEW
+  created_at        timestamptz [default:`now()`] // 2025-12-01 NEW
+  updated_at        timestamptz [null]            // 2025-12-01 NEW
   
   Indexes {
     (employee_id, class_id)
@@ -1179,7 +1167,7 @@ Table absence.leave_movement {
   period_id         uuid  [null]
   effective_date    date
   expire_date       date [null]
-  posted_at         timestamp [default: `now()`]
+  posted_at         timestamptz [default: `now()`]  // 27Mar2026: changed (Change 10)
   
   request_id        uuid [null]
   lot_id            uuid [null, ref: > absence.leave_instant_detail.id]
@@ -1226,16 +1214,16 @@ Table absence.leave_request {
   
   instant_id    uuid [null, ref: > absence.leave_instant.id]
   
-  submitted_at  timestamp [null]                // 2025-12-01 NEW
+  submitted_at  timestamptz [null]              // 2025-12-01 NEW; 27Mar2026: changed (Change 10)
   approved_by   uuid [ref: > employment.employee.id, null] // 2025-12-01 NEW
-  approved_at   timestamp [null]                // 2025-12-01 NEW
+  approved_at   timestamptz [null]              // 2025-12-01 NEW; 27Mar2026: changed (Change 10)
   rejection_reason text [null]                  // 2025-12-01 NEW
   
   // escalation_level smallint [default:0]  // DEPRECATED 27Mar2026 → Temporal workflow engine
   
   metadata      jsonb
-  created_at    timestamp [default:`now()`]
-  updated_at    timestamp [null]                // 2025-12-01 NEW
+  created_at    timestamptz [default:`now()`]
+  updated_at    timestamptz [null]                // 2025-12-01 NEW
   
   Indexes {
     (employee_id, status_code)
@@ -1254,9 +1242,9 @@ Table absence.leave_reservation {
   request_id     uuid [pk, ref: > absence.leave_request.id]
   instant_id     uuid [ref: > absence.leave_instant.id]
   reserved_qty   decimal(10,2)
-  expires_at     timestamp [null]
+  expires_at     timestamptz [null]
   
-  created_at     timestamp [default:`now()`]    // 2025-12-01 NEW
+  created_at     timestamptz [default:`now()`]    // 2025-12-01 NEW
 }
 
 // 2025-12-01 KEEP: Giữ nguyên thiết kế v4
@@ -1356,6 +1344,165 @@ Table shared.period_profile {
 }
 
 // 2025-12-01 NEW: Shared period definition
+
+
+//===============================================================
+//  NEW TABLES — 27Mar2026 (Changes 6, 8, 9)
+//===============================================================
+
+/*----------- Period Management (NEW 27Mar2026, Change 8) -------*/
+// Payroll period lifecycle: OPEN → LOCKED → CLOSED
+// Cross-module: Used by ta.timesheet_header.period_id FK
+Table ta.period {
+  id              uuid [pk]
+  code            varchar(50) [unique]             // e.g., "2026-03", "2026-Q1-W12"
+  name            varchar(100)                     // e.g., "March 2026"
+  
+  period_type     varchar(20) [default:'MONTHLY']  // See Enum period_type: MONTHLY | CUSTOM
+  start_date      date
+  end_date        date
+  
+  status_code     varchar(20) [default:'OPEN']     // See Enum period_status: OPEN | LOCKED | CLOSED
+  locked_at       timestamptz [null]               // When period was locked for payroll processing
+  locked_by       uuid [ref: > employment.employee.id, null]
+  
+  metadata        jsonb
+  created_at      timestamptz [default:`now()`]
+  updated_at      timestamptz [null]
+  
+  Indexes {
+    (start_date, end_date) [unique]
+    (status_code)
+  }
+  
+  Note: 'Payroll period lifecycle. OPEN = accepting records/timesheets. LOCKED = frozen for payroll processing. CLOSED = finalized and exported. Used by timesheet_header.period_id.'
+}
+
+
+/*----------- Comp Time Balance (NEW 27Mar2026, Change 6) -------*/
+// Compensatory time off balance for employees taking comp-time instead of OT pay
+// Cross-module: overtime_request.comp_time_elected → feeds into this balance
+Table ta.comp_time_balance {
+  id               uuid [pk]
+  employee_id      uuid [ref: > employment.employee.id]
+  
+  earned_hours     decimal(8,4) [default:0]       // Total comp hours earned from approved OT
+  used_hours       decimal(8,4) [default:0]       // Total comp hours used (taken as leave)
+  available_hours  decimal(8,4) [default:0]       // = earned - used (computed or trigger-maintained)
+  
+  expiry_date      date [null]                    // When unused comp-time expires
+  expiry_action    varchar(20) [null]             // See Enum comp_time_expiry_action: EXTENSION | CASHOUT | FORFEITURE
+  
+  metadata         jsonb
+  created_at       timestamptz [default:`now()`]
+  updated_at       timestamptz [null]
+  
+  Indexes {
+    (employee_id) [unique]                        // One balance record per employee
+    (expiry_date)                                 // Query soon-to-expire balances
+  }
+  
+  Note: 'Compensatory time off balance. VLC Art. 98: OT comp-time in lieu of payment. Flow: overtime_request(comp_time_elected=true) → approved → earned_hours increments.'
+}
+
+
+/*----------- Termination Balance Record (NEW 27Mar2026, Change 9) */
+// Leave balance snapshot at employee termination for compliance and payroll deduction
+// Cross-module: Payroll has pay_master.termination_pay_config (AQ-10) for final-pay elements
+Table absence.termination_balance_record {
+  id                      uuid [pk]
+  employee_id             uuid [ref: > employment.employee.id]
+  termination_date        date
+  
+  // Snapshot of all leave balances at termination
+  balance_snapshots       jsonb                  // [{leave_type_code, earned, used, reserved, available}]
+  
+  // Balance disposition
+  balance_action          varchar(20) [default:'HR_REVIEW']  // See Enum termination_balance_action: AUTO_DEDUCT | HR_REVIEW | WRITE_OFF | RULE_BASED
+  
+  // VLC Art. 21: Written consent required before auto-deduction from final pay
+  employee_consent_obtained boolean [default:false]  // REQUIRED for AUTO_DEDUCT action
+  
+  // HR review
+  hr_reviewer_id          uuid [ref: > employment.employee.id, null]
+  hr_review_notes         text [null]
+  reviewed_at             timestamptz [null]
+  
+  // Payroll integration
+  payroll_deduction_amount decimal(15,2) [null]  // Amount sent to Payroll for deduction from final pay
+  
+  metadata                jsonb
+  created_at              timestamptz [default:`now()`]
+  updated_at              timestamptz [null]
+  
+  Indexes {
+    (employee_id, termination_date) [unique]     // One record per employee per termination
+  }
+  
+  Note: 'Leave balance snapshot at termination. VLC Art. 21: auto-deduction from final pay requires written employee consent. Cross-module: Payroll pay_master.termination_pay_config handles the payment element.'
+}
+
+
+//===============================================================
+//  BOUNDED CONTEXT — TableGroups (27Mar2026, Change 3)
+//  Phân rõ 5 bounded contexts cho TA module
+//===============================================================
+
+TableGroup ta_scheduling {
+  ta.time_segment
+  ta.shift_def
+  ta.shift_segment
+  ta.day_model
+  ta.pattern_template
+  ta.pattern_day
+  ta.schedule_assignment
+  ta.generated_roster
+  ta.schedule_override
+  ta.open_shift_pool
+}
+
+TableGroup ta_attendance {
+  ta.clock_event
+  ta.timesheet_header
+  ta.timesheet_line
+  ta.time_type_element_map
+  ta.time_exception
+  ta.eval_rule
+  ta.eval_result
+  ta.period
+}
+
+TableGroup ta_absence {
+  absence.leave_type
+  absence.leave_class
+  absence.leave_policy
+  absence.policy_assignment
+  absence.leave_instant
+  absence.leave_instant_detail
+  absence.leave_movement
+  absence.leave_request
+  absence.leave_reservation
+  absence.leave_event_def
+  absence.holiday_calendar
+  absence.holiday_date
+  absence.termination_balance_record
+}
+
+TableGroup ta_operational {
+  ta.shift_swap_request
+  ta.shift_bid
+  ta.overtime_request
+  ta.attendance_record
+  ta.shift_break
+  ta.schedule
+  ta.comp_time_balance
+}
+
+TableGroup ta_shared {
+  shared.schedule
+  shared.holiday
+  shared.period_profile
+}
 
 
 //===============================================================

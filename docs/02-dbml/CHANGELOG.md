@@ -1,6 +1,77 @@
 # xTalent Database Design – Changelog
 
 
+## [27Mar2026-i] – TA v5.1: Schema Quality & Compliance Update
+
+> Context: Cherry-pick best practices from brainstormed `db.dbml` into production `TA-database-design-v5.dbml`. Preserves 6-level scheduling hierarchy and all cross-module integrations.
+
+### TA-database-design-v5.dbml
+
+**Change 1 – Comment out 6 DUPLICATE tables**
+- `ta.shift_pattern_DUPLICATE`, `ta.shift_DUPLICATE`, `ta.timesheet_entry_DUPLICATE`, `ta.time_exception_DUPLICATE`, `ta.overtime_rule_DUPLICATE`, `ta.overtime_calculation_DUPLICATE`
+- These overlap with tables defined in the 6-level hierarchy above
+
+**Change 2 – 15+ Enum definitions (documentation & validation reference)**
+- Attendance: `punch_type`, `punch_sync_status`, `worked_period_status`, `overtime_type`, `timesheet_status`
+- Absence: `leave_category`, `entitlement_basis`, `leave_unit`, `movement_type`, `leave_request_status`, `reservation_status`, `expiry_action`, `comp_time_expiry_action`, `termination_balance_action`
+- Shared: `period_status`, `period_type`
+- Note: Columns remain `varchar` for backward compatibility; enums are doc/constraint references
+
+**Change 3 – 5 Bounded Context TableGroups**
+
+| TableGroup | Tables |
+|---|---|
+| `ta_scheduling` | time_segment, shift_def, shift_segment, day_model, pattern_template, pattern_day, schedule_assignment, generated_roster, schedule_override, open_shift_pool |
+| `ta_attendance` | clock_event, timesheet_header, timesheet_line, time_type_element_map, time_exception, eval_rule, eval_result, period |
+| `ta_absence` | leave_type, leave_class, leave_policy, policy_assignment, leave_instant, leave_instant_detail, leave_movement, leave_request, leave_reservation, leave_event_def, holiday_calendar, holiday_date, termination_balance_record |
+| `ta_operational` | shift_swap_request, shift_bid, overtime_request, attendance_record, shift_break, schedule, comp_time_balance |
+| `ta_shared` | shared.schedule, shared.holiday, shared.period_profile |
+
+**Change 4 – VLC Compliance annotations**
+- `ta.clock_event`: Append-only (ADR-TA-001)
+- `ta.overtime_request`: VLC Art. 107 caps (daily=4h, monthly=40h, annual=300h), VLC Art. 98 rates
+- `absence.leave_type`: VLC Art. 113 (annual), Art. 114 (sick), Art. 139 (maternity), Art. 115 (unpaid)
+
+**Change 5 – `ta.clock_event` enhanced** (7 new fields)
+
+| Field | Type | Purpose |
+|---|---|---|
+| `sync_status` | varchar(20) | Offline-first: PENDING / SYNCED / CONFLICT |
+| `synced_at` | timestamptz | Server receipt time |
+| `conflict_reason` | text | Sync conflict explanation |
+| `geofence_validated` | boolean | Device within designated geofence |
+| `is_correction` | boolean | Correction punch marker |
+| `corrects_event_id` | uuid (self-ref) | Links to original event |
+| `idempotency_key` | varchar(255) | Client dedup key (unique index) |
+
+**Change 6 – NEW `ta.comp_time_balance`**
+- Tracks compensatory time off earned from OT (VLC Art. 98)
+- Fields: `earned_hours`, `used_hours`, `available_hours`, `expiry_date`, `expiry_action`
+- One record per employee (unique index)
+
+**Change 7 – `ta.overtime_request` enhanced** (6 new fields)
+- `ot_type`: WEEKDAY/WEEKEND/PUBLIC_HOLIDAY (VLC Art. 98)
+- `ot_rate`: 1.5/2.0/3.0
+- `comp_time_elected`: boolean — take comp-time instead of pay
+- VLC Art. 107 caps: `daily_ot_cap_hours` (4), `monthly_ot_cap_hours` (40), `annual_ot_cap_hours` (300)
+
+**Change 8 – NEW `ta.period`**
+- Payroll period lifecycle: OPEN → LOCKED → CLOSED
+- `ta.timesheet_header.period_id` FK added for cross-reference
+
+**Change 9 – NEW `absence.termination_balance_record`**
+- Leave balance snapshot at employee termination
+- `balance_action`: AUTO_DEDUCT / HR_REVIEW / WRITE_OFF / RULE_BASED
+- `employee_consent_obtained`: VLC Art. 21 compliance (written consent for auto-deduction)
+- Cross-module: Payroll `pay_master.termination_pay_config` handles payment element
+
+**Change 10 – `timestamp` → `timestamptz` (61 fields)**
+- All `timestamp` fields in non-commented tables converted to `timestamptz`
+- Critical: `clock_event.event_dt`, `attendance_record.clock_in/out_time`, `leave_movement.posted_at`
+- PostgreSQL best practice: same storage, prevents timezone ambiguity
+
+---
+
 ## [27Mar2026-h] – AQ-14: Pay Scale / Ngạch Bậc Configuration (Option D)
 
 > Context: VN has 2 pay scale models — TABLE_LOOKUP (private) and COEFFICIENT_FORMULA (gov/SOE)
