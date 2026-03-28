@@ -1,0 +1,978 @@
+// ============================================================
+// DATABASE SCHEMA: Total Rewards — xTalent HCM
+// Version: 1.0.0
+// Date: 2026-03-26
+// Schema prefix: tr
+//
+// Naming conventions (aligned with xTalent CO module):
+//   - worker_id (not employee_id)
+//   - working_relationship_id (not employment_id)
+//   - legal_entity_id (not company_id)
+//   - business_unit_id (not department_id)
+//   - All PKs: uuid with gen_random_uuid()
+//   - Timestamps: timestamptz
+//   - SCD Type 2: effective_start_date, effective_end_date, is_current
+//
+// Cross-module FK references (owned by CO module — do not duplicate):
+//   - worker_id         → co.worker.id
+//   - working_relationship_id → co.working_relationship.id
+//   - legal_entity_id   → co.legal_entity.id
+//   - business_unit_id  → co.business_unit.id
+//   - grade_id          → co.grade.id
+// ============================================================
+
+// ============================================================
+// === BC-01: Compensation Management ===
+// ============================================================
+
+Table tr.salary_basis {
+  Note: "Template defining salary structure for a type of WorkingRelationship. Scoped per country or global."
+
+  id                    uuid          [pk, default: `gen_random_uuid()`]
+  name                  varchar(255)  [not null]
+  pay_frequency         varchar(20)   [not null, note: "HOURLY | MONTHLY | ANNUAL"]
+  default_currency      char(3)       [not null, note: "ISO 4217"]
+  country_code          char(2)       [null, note: "Phase 1 scope; Phase 2 migrate to config_scope_id"]
+  config_scope_id       uuid          [null, note: "Phase 2 ConfigScope FK"]
+  allowed_component_ids uuid[]        [null, note: "Array of pay_component_def IDs permitted on this basis"]
+  is_active             bool          [not null, default: true]
+  created_at            timestamptz   [not null, default: `now()`]
+  updated_at            timestamptz
+
+  Indexes {
+    (country_code)
+    (is_active)
+  }
+}
+
+Table tr.pay_component_def {
+  Note: "Reusable definition of a salary component. Examples: Base Salary, Phone Allowance, Transport Allowance."
+
+  id                        uuid          [pk, default: `gen_random_uuid()`]
+  code                      varchar(100)  [not null, unique, note: "Business code e.g. BASE_SALARY_VN, PHONE_ALLOWANCE"]
+  name                      varchar(255)  [not null]
+  name_local                varchar(255)  [null, note: "Localized name e.g. Vietnamese"]
+  component_type            varchar(30)   [not null, note: "BASE_SALARY | ALLOWANCE | BENEFIT_SUPPLEMENT | INCENTIVE | OVERTIME | OTHER"]
+  tax_treatment             varchar(40)   [not null, note: "TAXABLE | NON_TAXABLE | TAXABLE_ABOVE_THRESHOLD | CONFIGURABLE"]
+  proration_method          varchar(20)   [not null, note: "CALENDAR_DAYS | WORKING_DAYS | FIXED_30 | NONE"]
+  formula_json              jsonb         [null, note: "Optional formula: {type: PERCENTAGE, base: BASE_SALARY, rate: 0.1}"]
+  is_taxable_benefit_in_kind bool         [not null, default: false]
+  country_code              char(2)       [null]
+  is_active                 bool          [not null, default: true]
+  created_at                timestamptz   [not null, default: `now()`]
+  updated_at                timestamptz
+
+  Indexes {
+    (code) [unique]
+    (component_type)
+    (country_code)
+  }
+}
+
+Table tr.salary_record {
+  Note: "SCD Type 2 — INSERT only when changing, never UPDATE existing rows. Single source of truth for Worker salary at any point in time."
+
+  id                      uuid          [pk, default: `gen_random_uuid()`]
+  worker_id               uuid          [not null, note: "FK → co.worker.id (owned by CO module)"]
+  working_relationship_id uuid          [not null, note: "FK → co.working_relationship.id"]
+  salary_basis_id         uuid          [not null, ref: > tr.salary_basis.id]
+  gross_amount            decimal(18,4) [not null]
+  gross_currency          char(3)       [not null]
+  change_reason           varchar(30)   [not null, note: "MERIT_INCREASE | PROMOTION | MARKET_ADJUSTMENT | NEW_HIRE | ROLE_CHANGE | CYCLE_ADJUSTMENT | CORRECTION | REGULATORY"]
+  cycle_id                uuid          [null, ref: > tr.compensation_cycle.id, note: "FK if change originated from a cycle"]
+  proposal_id             uuid          [null, ref: > tr.compensation_proposal.id, note: "FK if change originated from proposal"]
+  compa_ratio             decimal(8,4)  [null, note: "ActualSalary / MidpointSalary × 100"]
+  compa_ratio_computed_at date          [null]
+  pay_range_id            uuid          [null, ref: > tr.pay_range.id, note: "PayRange used for compa-ratio computation"]
+  audit_id                uuid          [null, note: "FK → tr.audit_record.id (BC-10)"]
+  created_by              uuid          [not null, note: "worker_id of creator"]
+  // SCD Type 2 fields
+  effective_start_date    date          [not null]
+  effective_end_date      date          [null, note: "NULL = current record"]
+  is_current              bool          [not null, default: true]
+  created_at              timestamptz   [not null, default: `now()`]
+
+  Indexes {
+    (worker_id, is_current)
+    (worker_id, effective_start_date)
+    (working_relationship_id)
+    (cycle_id)
+  }
+}
+
+Table tr.salary_record_component {
+  Note: "Breakdown of salary_record gross into individual pay components."
+
+  id                  uuid          [pk, default: `gen_random_uuid()`]
+  salary_record_id    uuid          [not null, ref: > tr.salary_record.id]
+  component_def_id    uuid          [not null, ref: > tr.pay_component_def.id]
+  amount              decimal(18,4) [not null]
+  currency            char(3)       [not null]
+  is_override         bool          [not null, default: false, note: "True if manually set, overriding formula"]
+  created_at          timestamptz   [not null, default: `now()`]
+
+  Indexes {
+    (salary_record_id)
+    (component_def_id)
+  }
+}
+
+Table tr.pay_range {
+  Note: "SCD Type 2 — INSERT only when changing, never UPDATE existing rows. Salary band (min/mid/max) for a Grade at a specific scope."
+
+  id                    uuid          [pk, default: `gen_random_uuid()`]
+  grade_id              uuid          [not null, note: "FK → co.grade.id (owned by CO module)"]
+  min_amount            decimal(18,4) [not null]
+  mid_amount            decimal(18,4) [not null]
+  max_amount            decimal(18,4) [not null]
+  currency              char(3)       [not null]
+  country_code          char(2)       [null]
+  config_scope_id       uuid          [null, note: "Most-specific scope wins (BU > LE > Country > Global)"]
+  // SCD Type 2 fields
+  effective_start_date  date          [not null]
+  effective_end_date    date          [null, note: "NULL = current record"]
+  is_current            bool          [not null, default: true]
+  created_at            timestamptz   [not null, default: `now()`]
+
+  Indexes {
+    (grade_id, is_current)
+    (grade_id, effective_start_date)
+    (country_code)
+  }
+}
+
+Table tr.compensation_cycle {
+  Note: "Annual/periodic salary review cycle. Lifecycle: DRAFT → OPEN → REVIEW → APPROVED → CLOSED."
+
+  id                    uuid          [pk, default: `gen_random_uuid()`]
+  name                  varchar(255)  [not null]
+  cycle_year            int           [not null]
+  status                varchar(20)   [not null, note: "DRAFT | OPEN | REVIEW | APPROVED | CLOSED"]
+  budget_amount         decimal(18,4) [not null]
+  budget_currency       char(3)       [not null]
+  budget_remaining      decimal(18,4) [not null, note: "Real-time updated as proposals submit/approve/reject"]
+  scope_id              uuid          [null, note: "LE or BU scope; NULL = company-wide"]
+  eligible_worker_ids   uuid[]        [null, note: "Workers eligible for this cycle"]
+  opened_at             timestamptz   [null]
+  closed_at             timestamptz   [null]
+  created_by            uuid          [not null]
+  created_at            timestamptz   [not null, default: `now()`]
+  updated_at            timestamptz
+
+  Indexes {
+    (cycle_year, status)
+    (status)
+  }
+}
+
+Table tr.compensation_proposal {
+  Note: "Salary change proposal for a Worker within a CompensationCycle. Requires approval before becoming effective."
+
+  id                    uuid          [pk, default: `gen_random_uuid()`]
+  cycle_id              uuid          [not null, ref: > tr.compensation_cycle.id]
+  worker_id             uuid          [not null, note: "FK → co.worker.id"]
+  current_amount        decimal(18,4) [not null]
+  current_currency      char(3)       [not null]
+  proposed_amount       decimal(18,4) [not null]
+  proposed_currency     char(3)       [not null]
+  change_pct            decimal(8,4)  [not null, note: "(proposed - current) / current × 100"]
+  change_type           varchar(30)   [not null, note: "MERIT_INCREASE | PROMOTION | MARKET_ADJUSTMENT | etc."]
+  status                varchar(30)   [not null, note: "DRAFT | PENDING_APPROVAL | APPROVED | REJECTED | SCHEDULED | EFFECTIVE | WITHDRAWN"]
+  submitted_by          uuid          [not null, note: "People Manager worker_id"]
+  justification         text          [not null]
+  effective_date        date          [not null]
+  approved_by           uuid          [null]
+  approved_at           timestamptz   [null]
+  rejection_reason      text          [null]
+  created_at            timestamptz   [not null, default: `now()`]
+  updated_at            timestamptz
+
+  Indexes {
+    (cycle_id, worker_id)
+    (worker_id, status)
+    (status)
+    (effective_date)
+  }
+}
+
+Table tr.deduction_record {
+  Note: "Recurring deduction from Worker salary. Priority ordering enforced during payroll."
+
+  id                    uuid          [pk, default: `gen_random_uuid()`]
+  worker_id             uuid          [not null, note: "FK → co.worker.id"]
+  working_relationship_id uuid        [null, note: "FK → co.working_relationship.id"]
+  deduction_type        varchar(30)   [not null, note: "LOAN | GARNISHMENT | SALARY_ADVANCE | VOLUNTARY | OTHER | BENEFIT_PREMIUM"]
+  amount_per_period     decimal(18,4) [not null]
+  currency              char(3)       [not null]
+  frequency             varchar(20)   [not null, note: "MONTHLY | QUARTERLY | ONCE"]
+  total_amount          decimal(18,4) [null, note: "NULL for open-ended deductions"]
+  remaining_amount      decimal(18,4) [null]
+  priority              int           [not null, note: "Garnishment=1, Loan=2, SalaryAdvance=3, BenefitPremium=4, Voluntary=5"]
+  status                varchar(20)   [not null, note: "ACTIVE | PAUSED | COMPLETED | CANCELLED"]
+  start_date            date          [not null]
+  end_date              date          [null]
+  reference_doc         varchar(500)  [null, note: "Court order ID, loan agreement ref, benefit enrollment ID"]
+  source_enrollment_id  uuid          [null, ref: > tr.benefit_enrollment.id, note: "FK if from benefit enrollment"]
+  created_by            uuid          [not null]
+  created_at            timestamptz   [not null, default: `now()`]
+  updated_at            timestamptz
+
+  Indexes {
+    (worker_id, status)
+    (status)
+    (priority)
+  }
+}
+
+// ============================================================
+// === BC-02: Calculation Engine ===
+// ============================================================
+
+Table tr.calculation_rule {
+  Note: "SCD Type 2 — INSERT only when changing, never UPDATE existing rows. Versioned calculation rule — immutable once created. Historical recalculation uses rule version of that period."
+
+  id                    uuid          [pk, default: `gen_random_uuid()`]
+  rule_type             varchar(30)   [not null, note: "SI_CONTRIBUTION | TAX_WITHHOLDING | PRORATION | BONUS | COMMISSION | FX_CONVERSION | MINIMUM_WAGE_CHECK | CUSTOM"]
+  name                  varchar(255)  [not null]
+  formula_json          jsonb         [not null, note: "Engine-parsed formula: {type, base, rate, tiers, cap_ref, ...}"]
+  country_code          char(2)       [null]
+  config_scope_id       uuid          [null, note: "Phase 2: BU(30) > LE(20) > Country(10) > Global(0)"]
+  version_number        int           [not null, default: 1]
+  notes                 text          [null, note: "Reason for version creation"]
+  created_by            uuid          [not null]
+  // SCD Type 2 fields
+  effective_start_date  date          [not null]
+  effective_end_date    date          [null, note: "NULL = current version"]
+  is_current            bool          [not null, default: true]
+  created_at            timestamptz   [not null, default: `now()`]
+
+  Indexes {
+    (rule_type, country_code, is_current)
+    (rule_type, effective_start_date)
+    (version_number)
+  }
+}
+
+Table tr.contribution_config {
+  Note: "SCD Type 2 — INSERT only when changing, never UPDATE existing rows. Country/LE-specific SI/CPF/BPJS contribution rates. Implemented via CountryContributionEngine plugin."
+
+  id                    uuid          [pk, default: `gen_random_uuid()`]
+  country_code          char(2)       [not null]
+  legal_entity_id       uuid          [null, note: "NULL = applies to all LEs in country"]
+  contribution_type     varchar(20)   [not null, note: "BHXH | BHYT | BHTN | CPF | EPF | BPJS_TK | BPJS_KES | SSS | PHILHEALTH | PAGIBIG | CUSTOM"]
+  employer_rate         decimal(8,6)  [not null, note: "e.g. 0.175000 for 17.5% VN BHXH employer"]
+  employee_rate         decimal(8,6)  [not null, note: "e.g. 0.080000 for 8% VN BHXH employee"]
+  calculation_basis     varchar(50)   [not null, note: "GROSS_SALARY | INSURABLE_SALARY — country-specific definition"]
+  cap_multiplier        decimal(8,4)  [null, note: "VN: 20× minimum wage of zone. NULL = no cap."]
+  cap_currency          char(3)       [null]
+  notes                 text          [null, note: "Regulatory reference e.g. SI Law 2024 Art. 89"]
+  // SCD Type 2 fields
+  effective_start_date  date          [not null]
+  effective_end_date    date          [null]
+  is_current            bool          [not null, default: true]
+  created_at            timestamptz   [not null, default: `now()`]
+
+  Indexes {
+    (country_code, contribution_type, is_current)
+    (legal_entity_id, contribution_type)
+    (effective_start_date)
+  }
+}
+
+Table tr.proration_config {
+  Note: "Configuration for proration method per component per scope. Determines TotalDays for ProrationFactor calculation."
+
+  id                  uuid        [pk, default: `gen_random_uuid()`]
+  component_def_id    uuid        [null, ref: > tr.pay_component_def.id, note: "NULL = applies to all components"]
+  proration_method    varchar(20) [not null, note: "CALENDAR_DAYS | WORKING_DAYS | FIXED_30"]
+  country_code        char(2)     [null]
+  config_scope_id     uuid        [null, note: "Phase 1: country_code; Phase 2: config_scope_id"]
+  effective_start_date date       [not null]
+  is_active           bool        [not null, default: true]
+  created_at          timestamptz [not null, default: `now()`]
+  updated_at          timestamptz
+
+  Indexes {
+    (country_code, is_active)
+    (component_def_id)
+  }
+}
+
+Table tr.min_wage_config {
+  Note: "SCD Type 2 — INSERT only when changing, never UPDATE existing rows. Statutory minimum wage by zone with effective dating. VN: 4 zones per WorkingRelationship.workplace_location."
+
+  id                    uuid          [pk, default: `gen_random_uuid()`]
+  country_code          char(2)       [not null]
+  zone                  varchar(20)   [not null, note: "VN_ZONE_I | VN_ZONE_II | VN_ZONE_III | VN_ZONE_IV | GENERAL"]
+  monthly_min_wage      decimal(18,4) [not null]
+  currency              char(3)       [not null]
+  regulatory_ref        varchar(500)  [null, note: "Government decree/circular reference"]
+  // SCD Type 2 fields
+  effective_start_date  date          [not null]
+  effective_end_date    date          [null]
+  is_current            bool          [not null, default: true]
+  created_at            timestamptz   [not null, default: `now()`]
+
+  Indexes {
+    (country_code, zone, is_current)
+    (country_code, zone, effective_start_date)
+  }
+}
+
+Table tr.fx_rate_record {
+  Note: "Daily FX rate archive — append-only, never update. Alert triggered if delta > configurable threshold (default 5%)."
+
+  id                      uuid          [pk, default: `gen_random_uuid()`]
+  from_currency           char(3)       [not null]
+  to_currency             char(3)       [not null]
+  rate                    decimal(20,8) [not null]
+  rate_date               date          [not null]
+  source                  varchar(20)   [not null, note: "OANDA | REUTERS | CENTRAL_BANK | MANUAL_OVERRIDE"]
+  override_justification  text          [null, note: "Required when source = MANUAL_OVERRIDE (BR-K05)"]
+  approved_by             uuid          [null, note: "Finance Approver worker_id; required for MANUAL_OVERRIDE"]
+  delta_pct               decimal(8,4)  [null, note: "Rate-of-change vs previous day"]
+  previous_rate           decimal(20,8) [null]
+  alert_threshold_pct     decimal(8,4)  [null, note: "Configurable; default 5.0"]
+  created_at              timestamptz   [not null, default: `now()`]
+
+  Indexes {
+    (from_currency, to_currency, rate_date) [unique]
+    (rate_date)
+  }
+}
+
+// ============================================================
+// === BC-03: Variable Pay ===
+// ============================================================
+
+Table tr.bonus_plan {
+  Note: "Periodic bonus plan template. Defines eligible population, formula, performance modifiers, approval workflow."
+
+  id                        uuid          [pk, default: `gen_random_uuid()`]
+  name                      varchar(255)  [not null]
+  period_type               varchar(20)   [not null, note: "ANNUAL | SEMI_ANNUAL | QUARTERLY | SPOT"]
+  target_pct_of_salary      decimal(8,4)  [not null, note: "e.g. 0.15 = 15% of base salary"]
+  formula_json              jsonb         [not null, note: "JSON formula for bonus calculation"]
+  eligible_grade_ids        uuid[]        [null]
+  eligible_job_family_ids   uuid[]        [null]
+  country_code              char(2)       [null]
+  config_scope_id           uuid          [null]
+  approval_threshold_pct    decimal(8,4)  [null, note: "Bonus above this % requires higher approval tier"]
+  max_bonus_pct             decimal(8,4)  [null, note: "Hard cap as % of salary; NULL = no cap"]
+  is_taxable                bool          [not null, default: true]
+  is_active                 bool          [not null, default: true]
+  created_by                uuid          [not null]
+  created_at                timestamptz   [not null, default: `now()`]
+  updated_at                timestamptz
+
+  Indexes {
+    (period_type, is_active)
+    (country_code)
+  }
+}
+
+Table tr.bonus_plan_performance_modifier {
+  Note: "Rating → bonus multiplier mapping per BonusPlan. Configurable per plan — never hardcoded."
+
+  id              uuid          [pk, default: `gen_random_uuid()`]
+  bonus_plan_id   uuid          [not null, ref: > tr.bonus_plan.id]
+  rating_code     varchar(50)   [not null, note: "Performance rating code from PM module"]
+  multiplier      decimal(8,4)  [not null, note: "e.g. 1.5 for Exceeds, 1.0 for Meets, 0.0 for PIP"]
+  created_at      timestamptz   [not null, default: `now()`]
+
+  Indexes {
+    (bonus_plan_id)
+    (bonus_plan_id, rating_code) [unique]
+  }
+}
+
+Table tr.bonus_statement {
+  Note: "Calculated bonus for one Worker in one period. IMMUTABLE after PAID — duplicate payment prevented by idempotency_key."
+
+  id                    uuid          [pk, default: `gen_random_uuid()`]
+  worker_id             uuid          [not null, note: "FK → co.worker.id"]
+  plan_id               uuid          [not null, ref: > tr.bonus_plan.id]
+  period_type           varchar(20)   [not null]
+  period_year           int           [not null]
+  period_label          varchar(20)   [not null, note: "e.g. FY2026, Q1-2026"]
+  base_amount           decimal(18,4) [not null, note: "Salary basis used for calculation"]
+  currency              char(3)       [not null]
+  target_bonus_amount   decimal(18,4) [not null]
+  performance_modifier  decimal(8,4)  [not null, note: "Applied multiplier from PerformanceModifier mapping"]
+  final_amount          decimal(18,4) [not null, note: "target_bonus_amount × performance_modifier"]
+  status                varchar(30)   [not null, note: "DRAFT | CALCULATED | PENDING_APPROVAL | APPROVED | REJECTED | SCHEDULED | PAID"]
+  approved_by           uuid          [null]
+  approved_at           timestamptz   [null]
+  paid_at               timestamptz   [null]
+  idempotency_key       varchar(255)  [not null, unique, note: "Prevent duplicate payment: worker_id+plan_id+period"]
+  taxable_item_id       uuid          [null, note: "FK → tr.taxable_item.id if bonus is taxable"]
+  created_at            timestamptz   [not null, default: `now()`]
+  updated_at            timestamptz
+
+  Indexes {
+    (worker_id, plan_id, period_year)
+    (idempotency_key) [unique]
+    (status)
+  }
+}
+
+Table tr.commission_plan {
+  Note: "Commission plan definition with quota, tiers, and accelerators. Tiers must be non-overlapping and exhaustive."
+
+  id                      uuid          [pk, default: `gen_random_uuid()`]
+  name                    varchar(255)  [not null]
+  plan_year               int           [not null]
+  tier_type               varchar(20)   [not null, note: "FLAT | TIERED | SLAB"]
+  quota_amount            decimal(18,4) [not null]
+  quota_currency          char(3)       [not null]
+  max_commission_amount   decimal(18,4) [null, note: "Hard cap; NULL = no cap"]
+  eligible_job_family_ids uuid[]        [null]
+  country_code            char(2)       [null]
+  config_scope_id         uuid          [null]
+  is_active               bool          [not null, default: true]
+  created_by              uuid          [not null]
+  created_at              timestamptz   [not null, default: `now()`]
+  updated_at              timestamptz
+
+  Indexes {
+    (plan_year, is_active)
+    (country_code)
+  }
+}
+
+Table tr.commission_tier {
+  Note: "One tier in a commission plan. from_pct and to_pct define the attainment band."
+
+  id              uuid          [pk, default: `gen_random_uuid()`]
+  plan_id         uuid          [not null, ref: > tr.commission_plan.id]
+  from_pct        decimal(8,4)  [not null, note: "Lower bound of attainment % (inclusive)"]
+  to_pct          decimal(8,4)  [null, note: "Upper bound of attainment % (exclusive). NULL = unbounded"]
+  rate            decimal(8,6)  [not null, note: "Commission rate e.g. 0.080000 = 8%"]
+  accelerator     decimal(8,4)  [null, note: "Multiplier for exceeding quota e.g. 1.5"]
+  created_at      timestamptz   [not null, default: `now()`]
+
+  Indexes {
+    (plan_id)
+    (plan_id, from_pct) [unique]
+  }
+}
+
+Table tr.commission_statement {
+  Note: "Monthly commission calculation for one Worker. Updated real-time (<5 seconds) as SalesTransactions sync via Kafka."
+
+  id                      uuid          [pk, default: `gen_random_uuid()`]
+  worker_id               uuid          [not null, note: "FK → co.worker.id"]
+  plan_id                 uuid          [not null, ref: > tr.commission_plan.id]
+  period                  char(7)       [not null, note: "YYYY-MM"]
+  actual_sales            decimal(18,4) [not null]
+  quota_target            decimal(18,4) [not null]
+  attainment_pct          decimal(8,4)  [not null, note: "actual_sales / quota_target × 100"]
+  applied_tier_id         uuid          [null, ref: > tr.commission_tier.id]
+  commission_amount       decimal(18,4) [not null]
+  currency                char(3)       [not null]
+  is_capped               bool          [not null, default: false]
+  status                  varchar(30)   [not null, note: "OPEN | PENDING_REVIEW | FINALIZED | PAID"]
+  last_recalculated_at    timestamptz   [not null]
+  finalized_at            timestamptz   [null]
+  paid_at                 timestamptz   [null]
+  created_at              timestamptz   [not null, default: `now()`]
+  updated_at              timestamptz
+
+  Indexes {
+    (worker_id, period)
+    (plan_id, period)
+    (status)
+  }
+}
+
+Table tr.sales_transaction {
+  Note: "Sales transaction imported from CRM. IMMUTABLE after synced. Idempotent import via crm_transaction_id."
+
+  id                  uuid          [pk, default: `gen_random_uuid()`]
+  crm_transaction_id  varchar(255)  [not null, unique, note: "Original CRM ID — idempotency key (BR-V03)"]
+  worker_id           uuid          [not null, note: "Deal owner FK → co.worker.id"]
+  commission_plan_id  uuid          [null, ref: > tr.commission_plan.id]
+  deal_amount         decimal(18,4) [not null]
+  currency            char(3)       [not null]
+  close_date          date          [not null]
+  period              char(7)       [not null, note: "YYYY-MM derived from close_date"]
+  territory_id        uuid          [null]
+  status              varchar(20)   [not null, note: "SYNCED | VOIDED | DISPUTED"]
+  void_approved_by    uuid          [null, note: "Finance Approver worker_id if voided"]
+  void_reason         text          [null]
+  synced_at           timestamptz   [not null]
+  created_at          timestamptz   [not null, default: `now()`]
+
+  Indexes {
+    (crm_transaction_id) [unique]
+    (worker_id, period)
+    (status)
+  }
+}
+
+Table tr.long_term_incentive {
+  Note: "LTI grant (ESOP, RSU, phantom stock). Vesting schedule with cliff and graded vesting."
+
+  id                    uuid          [pk, default: `gen_random_uuid()`]
+  worker_id             uuid          [not null, note: "FK → co.worker.id"]
+  lti_type              varchar(20)   [not null, note: "ESOP | RSU | PHANTOM_STOCK | PROFIT_SHARING"]
+  grant_date            date          [not null]
+  total_grant_amount    decimal(18,4) [not null]
+  currency              char(3)       [not null]
+  vesting_type          varchar(10)   [not null, note: "CLIFF | GRADED"]
+  cliff_months          int           [not null, note: "Months before any vesting begins e.g. 12"]
+  total_vesting_months  int           [not null, note: "Total vesting period e.g. 48"]
+  total_vested_amount   decimal(18,4) [not null, default: 0]
+  is_fully_vested       bool          [not null, default: false]
+  is_forfeited          bool          [not null, default: false]
+  created_by            uuid          [not null]
+  created_at            timestamptz   [not null, default: `now()`]
+  updated_at            timestamptz
+
+  Indexes {
+    (worker_id)
+    (is_fully_vested, is_forfeited)
+  }
+}
+
+Table tr.vesting_event {
+  Note: "A single vest event in a LTI grant schedule. When status → VESTED: TaxableItem created automatically via Taxable Bridge."
+
+  id              uuid          [pk, default: `gen_random_uuid()`]
+  lti_id          uuid          [not null, ref: > tr.long_term_incentive.id]
+  sequence        int           [not null]
+  vested_date     date          [not null]
+  grant_percent   decimal(8,4)  [not null, note: "Percentage of total grant that vests on this date"]
+  vested_amount   decimal(18,4) [null, note: "Computed monetary value at vest date"]
+  currency        char(3)       [null]
+  status          varchar(20)   [not null, note: "PENDING | VESTED | FORFEITED | CANCELLED"]
+  taxable_item_id uuid          [null, note: "FK → tr.taxable_item.id created when VESTED"]
+  created_at      timestamptz   [not null, default: `now()`]
+  updated_at      timestamptz
+
+  Indexes {
+    (lti_id)
+    (vested_date, status)
+  }
+}
+
+// ============================================================
+// === BC-04: Benefits Administration ===
+// ============================================================
+
+Table tr.benefit_plan {
+  Note: "Benefit plan definition with eligibility profile and carrier configuration."
+
+  id                              uuid          [pk, default: `gen_random_uuid()`]
+  name                            varchar(255)  [not null]
+  plan_type                       varchar(30)   [not null, note: "HEALTH | DENTAL | VISION | LIFE | DISABILITY | RETIREMENT | OTHER"]
+  carrier_id                      uuid          [null, note: "External carrier reference"]
+  carrier_name                    varchar(255)  [null]
+  country_code                    char(2)       [not null]
+  legal_entity_id                 uuid          [null, note: "FK → co.legal_entity.id; NULL = all LEs in country"]
+  enrollment_window_start         date          [null]
+  enrollment_window_end           date          [null]
+  effective_date                  date          [not null]
+  end_date                        date          [null]
+  eligibility_rules               jsonb         [not null, note: "{min_service_months, employment_types[], grade_min, ...}"]
+  employee_contribution_pct       decimal(8,4)  [not null]
+  employer_contribution_pct       decimal(8,4)  [not null]
+  monthly_premium                 decimal(18,4) [null]
+  premium_currency                char(3)       [null]
+  allows_dependents               bool          [not null, default: false]
+  dependent_verification_required bool          [not null, default: false]
+  is_taxable_benefit_in_kind      bool          [not null, default: false]
+  taxable_amount                  decimal(18,4) [null, note: "Taxable portion if benefit-in-kind"]
+  is_active                       bool          [not null, default: true]
+  created_by                      uuid          [not null]
+  created_at                      timestamptz   [not null, default: `now()`]
+  updated_at                      timestamptz
+
+  Indexes {
+    (country_code, is_active)
+    (plan_type)
+    (legal_entity_id)
+  }
+}
+
+Table tr.benefit_enrollment {
+  Note: "Worker election for a benefit plan. Lifecycle: PENDING → ACTIVE → TERMINATED."
+
+  id                    uuid        [pk, default: `gen_random_uuid()`]
+  worker_id             uuid        [not null, note: "FK → co.worker.id"]
+  plan_id               uuid        [not null, ref: > tr.benefit_plan.id]
+  election_type         varchar(20) [not null, note: "NEW | CHANGE | WAIVE"]
+  coverage_tier         varchar(30) [not null, note: "EMPLOYEE_ONLY | EMPLOYEE_PLUS_SPOUSE | FAMILY"]
+  status                varchar(20) [not null, note: "PENDING | ACTIVE | TERMINATED | CANCELLED | DECLINED"]
+  effective_date        date        [not null]
+  end_date              date        [null]
+  deduction_amount      decimal(18,4) [null, note: "Monthly employee deduction amount"]
+  deduction_currency    char(3)     [null]
+  carrier_sync_status   varchar(20) [null, note: "PENDING | SYNCED | FAILED"]
+  carrier_synced_at     timestamptz [null]
+  created_at            timestamptz [not null, default: `now()`]
+  updated_at            timestamptz
+
+  Indexes {
+    (worker_id, plan_id)
+    (worker_id, status)
+    (plan_id, status)
+    (effective_date)
+  }
+}
+
+Table tr.dependent_record {
+  Note: "Worker dependent information with verification workflow for family benefit plans."
+
+  id                      uuid        [pk, default: `gen_random_uuid()`]
+  worker_id               uuid        [not null, note: "FK → co.worker.id"]
+  enrollment_id           uuid        [null, ref: > tr.benefit_enrollment.id]
+  dependent_name          varchar(255) [not null]
+  relationship            varchar(20) [not null, note: "SPOUSE | CHILD | PARENT | DOMESTIC_PARTNER"]
+  date_of_birth           date        [not null]
+  document_type           varchar(50) [null, note: "BIRTH_CERTIFICATE | MARRIAGE_CERTIFICATE | ADOPTION_CERT"]
+  document_ref            varchar(500) [null]
+  verification_status     varchar(30) [not null, note: "PENDING_VERIFICATION | VERIFIED | REJECTED"]
+  verified_at             timestamptz [null]
+  created_at              timestamptz [not null, default: `now()`]
+  updated_at              timestamptz
+
+  Indexes {
+    (worker_id)
+    (enrollment_id)
+    (verification_status)
+  }
+}
+
+// ============================================================
+// === BC-05: Recognition & Engagement ===
+// ============================================================
+
+Table tr.recognition_program {
+  Note: "Recognition program configuration with budget, award types, monthly limits."
+
+  id                    uuid          [pk, default: `gen_random_uuid()`]
+  name                  varchar(255)  [not null]
+  country_code          char(2)       [null]
+  legal_entity_id       uuid          [null]
+  monthly_point_budget  int           [null]
+  max_points_per_send   int           [null]
+  point_expiry_months   int           [not null, default: 12, note: "FIFO expiry; configurable per enterprise"]
+  is_active             bool          [not null, default: true]
+  created_by            uuid          [not null]
+  created_at            timestamptz   [not null, default: `now()`]
+  updated_at            timestamptz
+}
+
+Table tr.point_balance {
+  Note: "Current point balance per Worker with FIFO expiration tracking."
+
+  id                uuid    [pk, default: `gen_random_uuid()`]
+  worker_id         uuid    [not null, unique, note: "FK → co.worker.id"]
+  program_id        uuid    [not null, ref: > tr.recognition_program.id]
+  total_points      int     [not null, default: 0]
+  redeemable_points int     [not null, default: 0]
+  created_at        timestamptz [not null, default: `now()`]
+  updated_at        timestamptz
+
+  Indexes {
+    (worker_id) [unique]
+    (program_id)
+  }
+}
+
+Table tr.point_transaction {
+  Note: "Individual point transaction: earn/redeem/expire. Append-only."
+
+  id                    uuid          [pk, default: `gen_random_uuid()`]
+  worker_id             uuid          [not null, note: "FK → co.worker.id (recipient/redeemer)"]
+  program_id            uuid          [not null, ref: > tr.recognition_program.id]
+  from_worker_id        uuid          [null, note: "Sender for peer recognition; NULL for system-awarded"]
+  transaction_type      varchar(20)   [not null, note: "EARNED | REDEEMED | EXPIRED | ADJUSTED"]
+  points                int           [not null, note: "Positive = earned; negative = redeemed/expired"]
+  balance_after         int           [not null]
+  expiry_date           date          [null, note: "FIFO: oldest points expire first"]
+  perk_catalog_id       uuid          [null, note: "FK if redeemed for a perk"]
+  taxable_item_id       uuid          [null, note: "FK → tr.taxable_item.id if monetary perk is taxable"]
+  reference_note        varchar(500)  [null]
+  created_at            timestamptz   [not null, default: `now()`]
+
+  Indexes {
+    (worker_id)
+    (transaction_type)
+    (expiry_date)
+  }
+}
+
+// ============================================================
+// === BC-06: Offer Management ===
+// ============================================================
+
+Table tr.offer_template {
+  Note: "Offer letter template with merge fields and enterprise branding."
+
+  id              uuid          [pk, default: `gen_random_uuid()`]
+  name            varchar(255)  [not null]
+  country_code    char(2)       [null]
+  legal_entity_id uuid          [null]
+  template_content text         [not null, note: "HTML/markdown with merge field placeholders"]
+  merge_fields    jsonb         [null, note: "List of supported merge fields and their data sources"]
+  is_default      bool          [not null, default: false]
+  is_active       bool          [not null, default: true]
+  created_by      uuid          [not null]
+  created_at      timestamptz   [not null, default: `now()`]
+  updated_at      timestamptz
+
+  Indexes {
+    (country_code, is_active)
+  }
+}
+
+Table tr.offer_record {
+  Note: "Candidate offer lifecycle: DRAFT → APPROVED → SENT → ACCEPTED/DECLINED."
+
+  id                    uuid          [pk, default: `gen_random_uuid()`]
+  template_id           uuid          [null, ref: > tr.offer_template.id]
+  candidate_id          varchar(255)  [not null, note: "External candidate identifier from ATS"]
+  candidate_name        varchar(255)  [not null]
+  candidate_email       varchar(255)  [not null]
+  legal_entity_id       uuid          [not null, note: "FK → co.legal_entity.id"]
+  position_title        varchar(255)  [not null]
+  grade_id              uuid          [null, note: "FK → co.grade.id"]
+  proposed_salary       decimal(18,4) [not null]
+  salary_currency       char(3)       [not null]
+  proposed_start_date   date          [null]
+  status                varchar(30)   [not null, note: "DRAFT | PENDING_APPROVAL | APPROVED | SENT | ACCEPTED | DECLINED | EXPIRED | WITHDRAWN"]
+  submitted_by          uuid          [not null, note: "Hiring Manager worker_id"]
+  approved_by           uuid          [null]
+  approved_at           timestamptz   [null]
+  sent_at               timestamptz   [null]
+  expiry_date           date          [null]
+  signed_document_url   varchar(1000) [null]
+  e_sign_provider       varchar(50)   [null, note: "DOCUSIGN | HELLOSIGN | ADOBE_SIGN"]
+  e_sign_envelope_id    varchar(255)  [null]
+  decline_reason        text          [null]
+  created_at            timestamptz   [not null, default: `now()`]
+  updated_at            timestamptz
+
+  Indexes {
+    (status)
+    (candidate_email)
+    (legal_entity_id, status)
+  }
+}
+
+// ============================================================
+// === BC-07: Total Rewards Statement ===
+// ============================================================
+
+Table tr.tr_statement {
+  Note: "Annual/on-demand total rewards snapshot. Immutable after published. 7-year archival."
+
+  id                    uuid          [pk, default: `gen_random_uuid()`]
+  worker_id             uuid          [not null, note: "FK → co.worker.id"]
+  statement_year        int           [not null]
+  total_compensation    decimal(18,4) [not null]
+  currency              char(3)       [not null]
+  base_salary           decimal(18,4) [null]
+  variable_pay          decimal(18,4) [null]
+  benefits_value        decimal(18,4) [null]
+  recognition_value     decimal(18,4) [null]
+  sections_json         jsonb         [null, note: "Full breakdown per section/category"]
+  status                varchar(20)   [not null, note: "DRAFT | GENERATED | DELIVERED | ARCHIVED"]
+  pdf_url               varchar(1000) [null]
+  delivered_at          timestamptz   [null]
+  viewed_at             timestamptz   [null]
+  created_at            timestamptz   [not null, default: `now()`]
+
+  Indexes {
+    (worker_id, statement_year)
+    (status)
+    (statement_year)
+  }
+}
+
+// ============================================================
+// === BC-08: Taxable Bridge (Cross-cutting) ===
+// ============================================================
+
+Table tr.taxable_item {
+  Note: "Taxable event with idempotency key. Exactly-once delivery to Payroll via dedup. ON CONFLICT (idempotency_key) DO UPDATE SET status = 'DUPLICATE'."
+
+  id                uuid          [pk, default: `gen_random_uuid()`]
+  worker_id         uuid          [not null, note: "FK → co.worker.id"]
+  working_relationship_id uuid    [null, note: "FK → co.working_relationship.id"]
+  source_type       varchar(30)   [not null, note: "EQUITY_VEST | PERK_CASH | BENEFIT_IN_KIND | BONUS | COMMISSION | SALARY"]
+  source_ref_id     uuid          [null, note: "FK to originating entity (vesting_event, bonus_statement, etc.)"]
+  amount            decimal(18,4) [not null]
+  currency          char(3)       [not null]
+  period            char(7)       [not null, note: "YYYY-MM"]
+  idempotency_key   varchar(255)  [not null, unique, note: "Prevents double tax event — format: {source_type}-{source_ref_id}-{period}"]
+  status            varchar(20)   [not null, default: 'PENDING', note: "PENDING | BRIDGED | DUPLICATE | FAILED"]
+  bridged_at        timestamptz   [null]
+  payroll_ack_at    timestamptz   [null]
+  created_at        timestamptz   [not null, default: `now()`]
+
+  Indexes {
+    (idempotency_key) [unique]
+    (worker_id, period)
+    (status)
+    (source_type, source_ref_id)
+  }
+}
+
+// ============================================================
+// === BC-09: Tax & Compliance ===
+// ============================================================
+
+Table tr.tax_bracket {
+  Note: "SCD Type 2 — INSERT only when changing, never UPDATE existing rows. Progressive tax bracket table per country."
+
+  id                    uuid          [pk, default: `gen_random_uuid()`]
+  country_code          char(2)       [not null]
+  bracket_from          decimal(18,4) [not null]
+  bracket_to            decimal(18,4) [null, note: "NULL = unbounded (top bracket)"]
+  tax_rate              decimal(8,6)  [not null, note: "e.g. 0.200000 = 20%"]
+  currency              char(3)       [not null]
+  regulatory_ref        varchar(500)  [null]
+  // SCD Type 2 fields
+  effective_start_date  date          [not null]
+  effective_end_date    date          [null]
+  is_current            bool          [not null, default: true]
+  created_at            timestamptz   [not null, default: `now()`]
+
+  Indexes {
+    (country_code, is_current)
+    (country_code, effective_start_date)
+  }
+}
+
+Table tr.tax_profile {
+  Note: "Worker self-declared tax profile: dependents, personal deductions, family circumstances."
+
+  id                      uuid          [pk, default: `gen_random_uuid()`]
+  worker_id               uuid          [not null, note: "FK → co.worker.id"]
+  country_code            char(2)       [not null]
+  dependent_count         int           [not null, default: 0]
+  personal_deduction      decimal(18,4) [null, note: "Self-deduction amount per country law"]
+  additional_deductions   decimal(18,4) [null]
+  currency                char(3)       [null]
+  declaration_json        jsonb         [null, note: "Country-specific declaration fields (e.g. VN Form 02)"]
+  effective_date          date          [not null]
+  created_at              timestamptz   [not null, default: `now()`]
+  updated_at              timestamptz
+
+  Indexes {
+    (worker_id, country_code)
+  }
+}
+
+Table tr.tax_withholding_record {
+  Note: "Monthly tax withholding calculation per Worker per period."
+
+  id                uuid          [pk, default: `gen_random_uuid()`]
+  worker_id         uuid          [not null, note: "FK → co.worker.id"]
+  period            char(7)       [not null, note: "YYYY-MM"]
+  taxable_income    decimal(18,4) [not null]
+  tax_withheld      decimal(18,4) [not null]
+  currency          char(3)       [not null]
+  bracket_applied   varchar(50)   [null, note: "Reference to tax_bracket row used"]
+  calculation_ref   uuid          [null, note: "FK → tr.calculation_rule.id used"]
+  created_at        timestamptz   [not null, default: `now()`]
+
+  Indexes {
+    (worker_id, period) [unique]
+    (period)
+  }
+}
+
+Table tr.tax_filing {
+  Note: "Tax filing record submitted to authority. Dual-path: API primary + file export always ready."
+
+  id                    uuid          [pk, default: `gen_random_uuid()`]
+  country_code          char(2)       [not null]
+  legal_entity_id       uuid          [not null, note: "FK → co.legal_entity.id"]
+  period                char(7)       [not null, note: "YYYY-MM or YYYY for annual"]
+  filing_type           varchar(20)   [not null, note: "MONTHLY_PIT | ANNUAL_SETTLEMENT | QUARTERLY"]
+  status                varchar(20)   [not null, note: "DRAFT | SUBMITTED | ACKNOWLEDGED | REJECTED | FILE_FALLBACK"]
+  submission_path       varchar(10)   [not null, note: "API | FILE"]
+  authority_ref_number  varchar(255)  [null, note: "Reference number from tax authority"]
+  submitted_by          uuid          [not null, note: "Tax Administrator worker_id"]
+  submitted_at          timestamptz   [null]
+  acknowledged_at       timestamptz   [null]
+  total_withheld        decimal(18,4) [not null]
+  currency              char(3)       [not null]
+  created_at            timestamptz   [not null, default: `now()`]
+  updated_at            timestamptz
+
+  Indexes {
+    (country_code, legal_entity_id, period)
+    (status)
+  }
+}
+
+// ============================================================
+// === BC-10: Audit & Observability (Cross-cutting) ===
+// ============================================================
+
+Table tr.audit_record {
+  Note: "Immutable append-only audit trail. NO DELETE, NO UPDATE — EVER. Separate write-once storage; query-optimized read replica. 7-year retention minimum."
+
+  id              uuid          [pk, default: `gen_random_uuid()`]
+  entity_type     varchar(100)  [not null, note: "Table name e.g. tr.salary_record, tr.bonus_statement"]
+  entity_id       uuid          [not null, note: "PK of the changed entity"]
+  action          varchar(20)   [not null, note: "CREATE | UPDATE | DELETE | VIEW | EXPORT"]
+  actor_id        uuid          [not null, note: "Worker ID of who performed the action"]
+  actor_role      varchar(100)  [not null]
+  before_state    jsonb         [null, note: "State before change; NULL for CREATE"]
+  after_state     jsonb         [null, note: "State after change; NULL for DELETE/VIEW"]
+  change_summary  jsonb         [null, note: "List of changed fields with before/after values"]
+  ip_address      varchar(50)   [null]
+  session_id      varchar(255)  [null]
+  bc_source       varchar(10)   [not null, note: "BC-01 through BC-10 — originating bounded context"]
+  created_at      timestamptz   [not null, default: `now()`]
+
+  Indexes {
+    (entity_type, entity_id)
+    (actor_id)
+    (created_at)
+    (bc_source)
+  }
+}
+
+// ============================================================
+// === Foreign Key References Summary ===
+// ============================================================
+//
+// tr.salary_record.salary_basis_id         → tr.salary_basis.id
+// tr.salary_record.cycle_id                → tr.compensation_cycle.id
+// tr.salary_record.proposal_id             → tr.compensation_proposal.id
+// tr.salary_record.pay_range_id            → tr.pay_range.id
+// tr.salary_record_component.salary_record_id → tr.salary_record.id
+// tr.salary_record_component.component_def_id → tr.pay_component_def.id
+// tr.compensation_proposal.cycle_id        → tr.compensation_cycle.id
+// tr.deduction_record.source_enrollment_id → tr.benefit_enrollment.id
+// tr.proration_config.component_def_id     → tr.pay_component_def.id
+// tr.bonus_plan_performance_modifier.bonus_plan_id → tr.bonus_plan.id
+// tr.bonus_statement.plan_id               → tr.bonus_plan.id
+// tr.commission_tier.plan_id               → tr.commission_plan.id
+// tr.commission_statement.plan_id          → tr.commission_plan.id
+// tr.commission_statement.applied_tier_id  → tr.commission_tier.id
+// tr.sales_transaction.commission_plan_id  → tr.commission_plan.id
+// tr.vesting_event.lti_id                  → tr.long_term_incentive.id
+// tr.benefit_enrollment.plan_id            → tr.benefit_plan.id
+// tr.dependent_record.enrollment_id        → tr.benefit_enrollment.id
+// tr.point_balance.program_id              → tr.recognition_program.id
+// tr.point_transaction.program_id          → tr.recognition_program.id
+// tr.offer_record.template_id              → tr.offer_template.id
+//
+// Cross-module (CO module — do not replicate):
+// *.worker_id                              → co.worker.id
+// *.working_relationship_id                → co.working_relationship.id
+// *.legal_entity_id                        → co.legal_entity.id
+// *.business_unit_id                       → co.business_unit.id
+// *.grade_id                               → co.grade.id
+//
+// Phase 2 migration:
+// All country_code inline fields → config_scope_id FK once config_scope table exists
+// ============================================================

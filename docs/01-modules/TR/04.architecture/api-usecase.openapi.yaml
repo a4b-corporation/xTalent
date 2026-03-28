@@ -1,0 +1,1418 @@
+openapi: 3.0.3
+info:
+  title: xTalent Total Rewards — Use Case API
+  description: |
+    Business intent-driven API for Total Rewards module.
+    Endpoints are named after use cases (business operations), not CRUD.
+    Derived from use case flows: merit-review-cycle, si-contribution-calculation,
+    commission-calculation, minimum-wage-validation, open-enrollment.
+
+    **Naming conventions**:
+    - worker_id (not employee_id)
+    - working_relationship_id (not employment_id)
+    - legal_entity_id (not company_id)
+
+    **Authentication**: Bearer JWT (xTalent IAM)
+    **Versioning**: URL path versioning (/v1/)
+    **Multi-country**: country_code in request body or query param
+  version: "1.0.0"
+  contact:
+    name: xTalent Platform Team
+    email: platform@xtalent.vng.com.vn
+  license:
+    name: VNG Internal
+
+servers:
+  - url: https://api.xtalent.vng.com.vn/tr/v1
+    description: Production
+  - url: https://api-staging.xtalent.vng.com.vn/tr/v1
+    description: Staging
+
+tags:
+  - name: compensation-cycles
+    description: BC-01 — Compensation cycle lifecycle management
+  - name: compensation-proposals
+    description: BC-01 — Merit recommendation and approval workflow
+  - name: calculation
+    description: BC-02 — Execute SI contributions, proration, FX operations
+  - name: variable-pay-bonus
+    description: BC-03 — Bonus plan execution and approval
+  - name: variable-pay-commission
+    description: BC-03 — Commission calculation and real-time dashboard
+  - name: variable-pay-lti
+    description: BC-03 — Long-term incentive grants
+  - name: benefits-enrollment
+    description: BC-04 — Benefit election and open enrollment
+  - name: pay-equity
+    description: BC-01 — Pay equity analysis (USP)
+
+paths:
+
+  # ============================================================
+  # BC-01: Compensation Cycle Lifecycle
+  # ============================================================
+
+  /compensation/cycles:
+    post:
+      operationId: OpenCompensationCycle
+      summary: Open a new compensation cycle
+      description: |
+        Opens a new merit review cycle for a scope (company/LE/BU).
+        Only one cycle can be OPEN per scope at a time.
+        Triggers CompensationCycleOpened event → notifies all People Managers in scope.
+      tags: [compensation-cycles]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OpenCompensationCycleRequest'
+      responses:
+        '201':
+          description: Cycle opened successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompensationCycleResponse'
+        '409':
+          description: Cycle conflict — overlapping open cycle exists for this scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation error (budget <= 0, no eligible workers)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /compensation/cycles/{cycleId}/close:
+    post:
+      operationId: CloseCompensationCycle
+      summary: Close a compensation cycle
+      description: |
+        Closes the cycle — no more proposal submissions accepted.
+        All PENDING_APPROVAL proposals are locked.
+        Publishes CompensationCycleClosed event.
+      tags: [compensation-cycles]
+      parameters:
+        - $ref: '#/components/parameters/cycleId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                close_reason:
+                  type: string
+                  description: Optional reason for early manual close
+      responses:
+        '200':
+          description: Cycle closed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompensationCycleResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Cycle already closed
+
+  # ============================================================
+  # BC-01: Merit Recommendation and Approval
+  # ============================================================
+
+  /compensation/cycles/{cycleId}/proposals:
+    post:
+      operationId: SubmitMeritRecommendation
+      summary: Submit a merit salary recommendation
+      description: |
+        People Manager submits a salary change proposal for a Worker.
+        Hard blocks: MinimumWageViolated if proposed_salary < min wage of worker's zone.
+        Approval routing by change_pct: <5% auto-approve, 5-10% Director, >10% VP.
+        Publishes MeritRecommendationSubmitted event.
+      tags: [compensation-proposals]
+      parameters:
+        - $ref: '#/components/parameters/cycleId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitMeritRecommendationRequest'
+      responses:
+        '201':
+          description: Proposal submitted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompensationProposalResponse'
+        '400':
+          description: MinimumWageViolated — proposed salary below statutory minimum
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MinWageViolationError'
+        '409':
+          description: Cycle not OPEN, or duplicate proposal for same worker in cycle
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /compensation/cycles/{cycleId}/proposals/{proposalId}/approve:
+    post:
+      operationId: ApproveCompensation
+      summary: Approve a compensation proposal
+      description: |
+        Budget Approver (Director/VP) approves a merit recommendation.
+        Schedules salary change for effective_date.
+        Publishes CompensationApproved and SalaryHistoryArchived (SCD Type 2) events.
+      tags: [compensation-proposals]
+      parameters:
+        - $ref: '#/components/parameters/cycleId'
+        - $ref: '#/components/parameters/proposalId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                approval_note:
+                  type: string
+      responses:
+        '200':
+          description: Proposal approved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompensationProposalResponse'
+        '403':
+          description: Insufficient approval authority for this change percentage
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /compensation/cycles/{cycleId}/proposals/{proposalId}/reject:
+    post:
+      operationId: RejectCompensation
+      summary: Reject a compensation proposal
+      description: |
+        Budget Approver rejects a merit recommendation.
+        Restores budget_remaining by the provisional hold amount.
+        Publishes CompensationRejected event.
+      tags: [compensation-proposals]
+      parameters:
+        - $ref: '#/components/parameters/cycleId'
+        - $ref: '#/components/parameters/proposalId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [rejection_reason]
+              properties:
+                rejection_reason:
+                  type: string
+                  minLength: 10
+      responses:
+        '200':
+          description: Proposal rejected and budget restored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompensationProposalResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /compensation/pay-equity/analyze:
+    post:
+      operationId: TriggerPayEquityAnalysis
+      summary: Trigger pay equity gap analysis (USP)
+      description: |
+        Analyzes compa-ratio gaps across gender, ethnicity, or other dimensions.
+        Publishes PayEquityGapDetected if gap exceeds configured threshold.
+        Non-blocking: produces a report only, does not block salary changes.
+      tags: [pay-equity]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [scope_id, analysis_dimensions]
+              properties:
+                scope_id:
+                  type: string
+                  format: uuid
+                  description: LE or BU scope for the analysis
+                analysis_dimensions:
+                  type: array
+                  items:
+                    type: string
+                    enum: [GENDER, GRADE, JOB_FAMILY, TENURE]
+                gap_threshold_pct:
+                  type: number
+                  description: Minimum gap % to flag (default 10%)
+                  default: 10
+      responses:
+        '202':
+          description: Analysis queued; result delivered via event/notification
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_id:
+                    type: string
+                    format: uuid
+                  estimated_completion_seconds:
+                    type: integer
+
+  # ============================================================
+  # BC-02: Calculation Engine Execution
+  # ============================================================
+
+  /calculation/si-contributions/calculate:
+    post:
+      operationId: ExecuteSICalculation
+      summary: Execute Social Insurance contribution calculation
+      description: |
+        Calculates SI/CPF/BPJS/etc. contributions for a Worker in a period.
+        Uses country-specific ContributionConfig (SCD Type 2 — uses config effective at period).
+        VN: applies 20× min wage cap (BR-K02). Returns employee and employer shares.
+        Publishes SIContributionCalculated event. If capped, also SICapApplied.
+      tags: [calculation]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SICalculationRequest'
+      responses:
+        '200':
+          description: Calculation result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SICalculationResponse'
+        '422':
+          description: No ContributionConfig found for country/period
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /calculation/proration/calculate:
+    post:
+      operationId: ExecuteProration
+      summary: Calculate salary proration for a partial period
+      description: |
+        Calculates proration factor for mid-period hire, termination, or change.
+        Method (CALENDAR_DAYS / WORKING_DAYS / FIXED_30) from ProrationConfig per component.
+        Publishes SalaryProrated event.
+      tags: [calculation]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProrationRequest'
+      responses:
+        '200':
+          description: Proration result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProrationResponse'
+
+  /calculation/min-wage/{countryCode}/{zone}:
+    get:
+      operationId: GetMinWage
+      summary: Get current minimum wage for a country/zone
+      description: |
+        Returns the current statutory minimum wage for a country/zone pair.
+        Used by BC-01 and BC-06 for validation at salary creation/offer creation.
+        Zone determines VN wage cap: 20× this value = SI contribution ceiling.
+      tags: [calculation]
+      parameters:
+        - name: countryCode
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Z]{2}$'
+            example: VN
+        - name: zone
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [VN_ZONE_I, VN_ZONE_II, VN_ZONE_III, VN_ZONE_IV, GENERAL]
+        - name: effective_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          description: Defaults to today if not provided
+      responses:
+        '200':
+          description: Minimum wage record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MinWageResponse'
+        '404':
+          description: No min wage config found for this country/zone
+
+  /calculation/fx-rates:
+    post:
+      operationId: UpdateFxRate
+      summary: Import daily FX rate from provider
+      description: |
+        Imports a new FX rate for a currency pair from an external provider.
+        System-invoked daily. Appends to fx_rate_record (append-only, no updates).
+        If delta_pct > threshold (default 5%), triggers FxDeltaAlerted event.
+      tags: [calculation]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateFxRateRequest'
+      responses:
+        '201':
+          description: FX rate recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FxRateResponse'
+
+  /calculation/fx-rates/{rateId}/override:
+    post:
+      operationId: OverrideFxRate
+      summary: Override FX rate with manual Finance-approved value
+      description: |
+        Finance Approver manually overrides an FX rate with justification.
+        Requires override_justification and approved_by (Finance Approver worker_id).
+        Override rate is inserted as a new record with source = MANUAL_OVERRIDE.
+      tags: [calculation]
+      parameters:
+        - name: rateId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FxOverrideRequest'
+      responses:
+        '201':
+          description: Override rate recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FxRateResponse'
+        '422':
+          description: Missing required override_justification or approved_by
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ============================================================
+  # BC-03: Variable Pay — Bonus
+  # ============================================================
+
+  /variable-pay/bonus-plans/{planId}/run:
+    post:
+      operationId: RunBonusCalculation
+      summary: Run bonus calculation for all eligible workers in a plan
+      description: |
+        Triggers bonus calculation for all eligible workers in a BonusPlan.
+        Uses formula_json + performance_modifier mapping.
+        Requires BonusPool to be released (Finance Approver).
+        Publishes BonusCalculated event per worker.
+        Creates TaxableItem records for taxable bonuses.
+      tags: [variable-pay-bonus]
+      parameters:
+        - name: planId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunBonusCalculationRequest'
+      responses:
+        '202':
+          description: Calculation job queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_id:
+                    type: string
+                    format: uuid
+                  worker_count:
+                    type: integer
+                  estimated_completion_seconds:
+                    type: integer
+
+  /variable-pay/bonus-plans/{planId}/approve:
+    post:
+      operationId: ApproveBonus
+      summary: Approve bonus statements for a plan cycle
+      description: |
+        People Manager or Budget Approver approves calculated bonus statements.
+        Publishes BonusApproved event. Creates TaxableItem if bonus is taxable.
+        Schedules PayrollBridge processing.
+      tags: [variable-pay-bonus]
+      parameters:
+        - name: planId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [statement_ids]
+              properties:
+                statement_ids:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+                approval_note:
+                  type: string
+      responses:
+        '200':
+          description: Bonuses approved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  approved_count:
+                    type: integer
+                  total_amount:
+                    type: number
+
+  # ============================================================
+  # BC-03: Variable Pay — Commission
+  # ============================================================
+
+  /variable-pay/commissions/import-transactions:
+    post:
+      operationId: ImportSalesTransactions
+      summary: Import sales transactions from CRM (idempotent)
+      description: |
+        Imports sales transactions from CRM system.
+        IDEMPOTENT: duplicate crm_transaction_id is silently ignored (BR-V03).
+        Triggers real-time commission recalculation via Kafka (<5 seconds).
+        Publishes SalesTransactionsImported and RealTimeCommissionCalculated events.
+      tags: [variable-pay-commission]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImportSalesTransactionsRequest'
+      responses:
+        '200':
+          description: Import result (including deduplication stats)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportSalesTransactionsResponse'
+
+  /variable-pay/workers/{workerId}/commission/{period}:
+    get:
+      operationId: GetCommissionStatement
+      summary: Get real-time commission statement for a worker
+      description: |
+        Returns the current commission statement for a worker in a period.
+        Updated in real-time (<5 seconds) as SalesTransactions are imported via Kafka.
+        Includes current quota attainment, applied tier, commission amount.
+        For real-time streaming updates, use the WebSocket endpoint (separate spec).
+      tags: [variable-pay-commission]
+      parameters:
+        - name: workerId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: period
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^\d{4}-\d{2}$'
+            description: YYYY-MM format
+            example: '2026-03'
+      responses:
+        '200':
+          description: Commission statement
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommissionStatementResponse'
+        '404':
+          description: No commission statement found for this worker/period
+
+  /variable-pay/commissions/{statementId}/dispute:
+    post:
+      operationId: SubmitCommissionDispute
+      summary: Submit a commission dispute
+      description: |
+        Sales Rep submits a dispute with evidence.
+        Disputed amount is frozen; undisputed amount bridges to payroll normally.
+        Publishes DisputeSubmitted event → notifies Sales Ops.
+      tags: [variable-pay-commission]
+      parameters:
+        - name: statementId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [disputed_amount, dispute_reason]
+              properties:
+                disputed_amount:
+                  type: number
+                dispute_reason:
+                  type: string
+                  minLength: 20
+                evidence_refs:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '201':
+          description: Dispute submitted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ============================================================
+  # BC-03: Variable Pay — LTI
+  # ============================================================
+
+  /variable-pay/lti/grants:
+    post:
+      operationId: GrantLTI
+      summary: Grant long-term incentive (RSU/ESOP/Phantom Stock)
+      description: |
+        Creates an LTI grant for a worker with vesting schedule.
+        System automatically generates VestingEvent records based on cliff/vesting config.
+        On vest date: system creates TaxableItem automatically (no manual step required).
+        Publishes EquityGranted event.
+      tags: [variable-pay-lti]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GrantLTIRequest'
+      responses:
+        '201':
+          description: LTI grant created with vesting schedule
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LTIGrantResponse'
+
+  # ============================================================
+  # BC-04: Benefits Enrollment
+  # ============================================================
+
+  /benefits/enrollments:
+    post:
+      operationId: ElectBenefit
+      summary: Worker elects a benefit plan
+      description: |
+        Worker elects, changes, or waives a benefit plan during enrollment window.
+        Validates: eligibility (grade, service length, employment type), window open, one election per plan type.
+        On window close: enrollment finalized, DeductionRecord created, BenefitEnrolled event published.
+        If benefit has taxable value → TaxableItem created automatically via BC-08.
+      tags: [benefits-enrollment]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ElectBenefitRequest'
+      responses:
+        '201':
+          description: Election recorded (pending until window closes)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BenefitEnrollmentResponse'
+        '400':
+          description: Eligibility check failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Enrollment window closed or duplicate election
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /benefits/enrollments/{enrollmentId}/dependents:
+    post:
+      operationId: AddDependent
+      summary: Add a dependent to a benefit enrollment
+      description: |
+        Worker adds a dependent (spouse, child, parent) to a family benefit plan.
+        Requires document verification within 30 days.
+        If not verified → dependent removed, coverage downgraded.
+        Publishes DependentAdded event → carrier update triggered.
+      tags: [benefits-enrollment]
+      parameters:
+        - name: enrollmentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddDependentRequest'
+      responses:
+        '201':
+          description: Dependent added (pending verification)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DependentResponse'
+
+  /benefits/enrollment-windows:
+    post:
+      operationId: OpenEnrollmentWindow
+      summary: HR Admin opens an enrollment window for a benefit plan
+      description: |
+        Opens an enrollment window for workers to elect/change/waive benefit plans.
+        Notifies eligible workers via email and in-app.
+        Publishes OpenEnrollmentStarted event.
+      tags: [benefits-enrollment]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [plan_id, window_start, window_end, effective_date]
+              properties:
+                plan_id:
+                  type: string
+                  format: uuid
+                window_start:
+                  type: string
+                  format: date
+                window_end:
+                  type: string
+                  format: date
+                effective_date:
+                  type: string
+                  format: date
+      responses:
+        '201':
+          description: Enrollment window opened
+
+  /benefits/enrollment-windows/{windowId}/close:
+    post:
+      operationId: CloseEnrollmentWindow
+      summary: Close enrollment window and finalize elections
+      description: |
+        Closes enrollment window. Finalizes all PENDING enrollments.
+        Calculates deduction amounts, creates DeductionRecords.
+        Triggers EDI 834 carrier sync.
+        Publishes OpenEnrollmentClosed, BenefitEnrolled events.
+      tags: [benefits-enrollment]
+      parameters:
+        - name: windowId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Window closed; finalizing enrollments (async)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  finalized_count:
+                    type: integer
+                  carrier_sync_job_id:
+                    type: string
+                    format: uuid
+
+# ============================================================
+# Components
+# ============================================================
+
+components:
+
+  parameters:
+    cycleId:
+      name: cycleId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: CompensationCycle ID
+
+    proposalId:
+      name: proposalId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: CompensationProposal ID
+
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+
+    # --- Compensation ---
+
+    OpenCompensationCycleRequest:
+      type: object
+      required: [name, cycle_year, budget_amount, budget_currency, eligible_worker_ids]
+      properties:
+        name:
+          type: string
+          example: "Merit Review 2026"
+        cycle_year:
+          type: integer
+          example: 2026
+        budget_amount:
+          type: number
+          description: Total budget for this cycle
+          example: 5000000000
+        budget_currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+          example: VND
+        scope_id:
+          type: string
+          format: uuid
+          description: LE or BU scope; null = company-wide
+        eligible_worker_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          minItems: 1
+
+    CompensationCycleResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        cycle_year:
+          type: integer
+        status:
+          type: string
+          enum: [DRAFT, OPEN, REVIEW, APPROVED, CLOSED]
+        budget_amount:
+          type: number
+        budget_currency:
+          type: string
+        budget_remaining:
+          type: number
+        eligible_worker_count:
+          type: integer
+        opened_at:
+          type: string
+          format: date-time
+
+    SubmitMeritRecommendationRequest:
+      type: object
+      required: [worker_id, proposed_amount, proposed_currency, change_type, justification, effective_date]
+      properties:
+        worker_id:
+          type: string
+          format: uuid
+        proposed_amount:
+          type: number
+        proposed_currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+        change_type:
+          type: string
+          enum: [MERIT_INCREASE, PROMOTION, MARKET_ADJUSTMENT, ROLE_CHANGE, CORRECTION]
+        justification:
+          type: string
+          minLength: 20
+        effective_date:
+          type: string
+          format: date
+
+    CompensationProposalResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        cycle_id:
+          type: string
+          format: uuid
+        worker_id:
+          type: string
+          format: uuid
+        current_amount:
+          type: number
+        proposed_amount:
+          type: number
+        currency:
+          type: string
+        change_pct:
+          type: number
+          description: (proposed - current) / current × 100
+        status:
+          type: string
+          enum: [DRAFT, PENDING_APPROVAL, APPROVED, REJECTED, SCHEDULED, EFFECTIVE, WITHDRAWN]
+        effective_date:
+          type: string
+          format: date
+        approval_tier_required:
+          type: string
+          enum: [AUTO, DIRECTOR, VP]
+          description: Derived from change_pct thresholds
+
+    # --- Calculation ---
+
+    SICalculationRequest:
+      type: object
+      required: [worker_id, working_relationship_id, period, gross_salary, currency, country_code]
+      properties:
+        worker_id:
+          type: string
+          format: uuid
+        working_relationship_id:
+          type: string
+          format: uuid
+        period:
+          type: string
+          pattern: '^\d{4}-\d{2}$'
+          description: YYYY-MM
+        gross_salary:
+          type: number
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+        country_code:
+          type: string
+          pattern: '^[A-Z]{2}$'
+        wage_zone:
+          type: string
+          description: VN_ZONE_I through VN_ZONE_IV for Vietnam; GENERAL for others
+
+    SICalculationResponse:
+      type: object
+      properties:
+        worker_id:
+          type: string
+          format: uuid
+        period:
+          type: string
+        contribution_type:
+          type: string
+          description: BHXH | BHYT | BHTN | CPF | etc.
+        employee_share:
+          type: number
+        employer_share:
+          type: number
+        currency:
+          type: string
+        is_capped:
+          type: boolean
+          description: True when salary exceeds 20× min wage cap
+        cap_amount_applied:
+          type: number
+          description: The actual cap threshold applied (if is_capped = true)
+
+    ProrationRequest:
+      type: object
+      required: [worker_id, period, start_day_of_period, component_def_id, country_code]
+      properties:
+        worker_id:
+          type: string
+          format: uuid
+        period:
+          type: string
+          pattern: '^\d{4}-\d{2}$'
+        start_day_of_period:
+          type: integer
+          minimum: 1
+          maximum: 31
+          description: Day of month the worker started (for mid-period hire)
+        end_day_of_period:
+          type: integer
+          minimum: 1
+          maximum: 31
+          description: Day of month the worker ended (for mid-period termination)
+        component_def_id:
+          type: string
+          format: uuid
+        country_code:
+          type: string
+
+    ProrationResponse:
+      type: object
+      properties:
+        worker_id:
+          type: string
+          format: uuid
+        period:
+          type: string
+        actual_days:
+          type: integer
+        total_days:
+          type: integer
+        factor:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: actual_days / total_days
+        method_used:
+          type: string
+          enum: [CALENDAR_DAYS, WORKING_DAYS, FIXED_30]
+
+    MinWageResponse:
+      type: object
+      properties:
+        country_code:
+          type: string
+        zone:
+          type: string
+        monthly_min_wage:
+          type: number
+        currency:
+          type: string
+        effective_start_date:
+          type: string
+          format: date
+        si_cap_20x:
+          type: number
+          description: SI contribution ceiling = 20 × monthly_min_wage (VN-specific)
+        regulatory_ref:
+          type: string
+
+    UpdateFxRateRequest:
+      type: object
+      required: [from_currency, to_currency, rate, rate_date, source]
+      properties:
+        from_currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+        to_currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+        rate:
+          type: number
+        rate_date:
+          type: string
+          format: date
+        source:
+          type: string
+          enum: [OANDA, REUTERS, CENTRAL_BANK, MANUAL_OVERRIDE]
+
+    FxOverrideRequest:
+      type: object
+      required: [rate, override_justification, approved_by]
+      properties:
+        rate:
+          type: number
+        override_justification:
+          type: string
+          minLength: 20
+          description: Required. Reason for manual override (BR-K05).
+        approved_by:
+          type: string
+          format: uuid
+          description: Finance Approver worker_id
+
+    FxRateResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        from_currency:
+          type: string
+        to_currency:
+          type: string
+        rate:
+          type: number
+        rate_date:
+          type: string
+          format: date
+        source:
+          type: string
+        delta_pct:
+          type: number
+          description: Change vs previous day (null for first record)
+        alert_triggered:
+          type: boolean
+          description: True if delta > threshold (FxDeltaAlerted event published)
+
+    # --- Variable Pay ---
+
+    RunBonusCalculationRequest:
+      type: object
+      required: [period_type, period_year]
+      properties:
+        period_type:
+          type: string
+          enum: [ANNUAL, SEMI_ANNUAL, QUARTERLY, SPOT]
+        period_year:
+          type: integer
+        worker_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Subset of workers; null = all eligible workers in plan
+
+    ImportSalesTransactionsRequest:
+      type: object
+      required: [transactions]
+      properties:
+        commission_plan_id:
+          type: string
+          format: uuid
+          description: If provided, links all transactions to this plan
+        transactions:
+          type: array
+          items:
+            $ref: '#/components/schemas/SalesTransactionItem'
+
+    SalesTransactionItem:
+      type: object
+      required: [crm_transaction_id, worker_id, deal_amount, currency, close_date]
+      properties:
+        crm_transaction_id:
+          type: string
+          description: CRM's original transaction ID — used as idempotency key
+        worker_id:
+          type: string
+          format: uuid
+          description: Deal owner's worker_id
+        deal_amount:
+          type: number
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+        close_date:
+          type: string
+          format: date
+        territory_id:
+          type: string
+          format: uuid
+
+    ImportSalesTransactionsResponse:
+      type: object
+      properties:
+        total_submitted:
+          type: integer
+        imported:
+          type: integer
+        duplicates_ignored:
+          type: integer
+          description: Count of records with duplicate crm_transaction_id (idempotent)
+        failed:
+          type: integer
+        recalculation_triggered:
+          type: boolean
+
+    CommissionStatementResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        worker_id:
+          type: string
+          format: uuid
+        plan_id:
+          type: string
+          format: uuid
+        period:
+          type: string
+          description: YYYY-MM
+        actual_sales:
+          type: number
+        quota_target:
+          type: number
+        attainment_pct:
+          type: number
+        applied_tier:
+          type: object
+          properties:
+            from_pct:
+              type: number
+            to_pct:
+              type: number
+            rate:
+              type: number
+            accelerator:
+              type: number
+        commission_amount:
+          type: number
+        currency:
+          type: string
+        is_capped:
+          type: boolean
+        status:
+          type: string
+          enum: [OPEN, PENDING_REVIEW, FINALIZED, PAID]
+        last_recalculated_at:
+          type: string
+          format: date-time
+
+    GrantLTIRequest:
+      type: object
+      required: [worker_id, lti_type, grant_date, total_grant_amount, currency, vesting_type, cliff_months, total_vesting_months]
+      properties:
+        worker_id:
+          type: string
+          format: uuid
+        lti_type:
+          type: string
+          enum: [ESOP, RSU, PHANTOM_STOCK, PROFIT_SHARING]
+        grant_date:
+          type: string
+          format: date
+        total_grant_amount:
+          type: number
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+        vesting_type:
+          type: string
+          enum: [CLIFF, GRADED]
+        cliff_months:
+          type: integer
+          minimum: 1
+          example: 12
+        total_vesting_months:
+          type: integer
+          minimum: 1
+          example: 48
+
+    LTIGrantResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        worker_id:
+          type: string
+          format: uuid
+        lti_type:
+          type: string
+        grant_date:
+          type: string
+          format: date
+        total_grant_amount:
+          type: number
+        currency:
+          type: string
+        vesting_events:
+          type: array
+          items:
+            type: object
+            properties:
+              sequence:
+                type: integer
+              vested_date:
+                type: string
+                format: date
+              grant_percent:
+                type: number
+              status:
+                type: string
+
+    # --- Benefits ---
+
+    ElectBenefitRequest:
+      type: object
+      required: [worker_id, plan_id, election_type, coverage_tier, effective_date]
+      properties:
+        worker_id:
+          type: string
+          format: uuid
+        plan_id:
+          type: string
+          format: uuid
+        election_type:
+          type: string
+          enum: [NEW, CHANGE, WAIVE]
+        coverage_tier:
+          type: string
+          enum: [EMPLOYEE_ONLY, EMPLOYEE_PLUS_SPOUSE, FAMILY]
+        effective_date:
+          type: string
+          format: date
+
+    BenefitEnrollmentResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        worker_id:
+          type: string
+          format: uuid
+        plan_id:
+          type: string
+          format: uuid
+        plan_name:
+          type: string
+        election_type:
+          type: string
+        coverage_tier:
+          type: string
+        status:
+          type: string
+          enum: [PENDING, ACTIVE, TERMINATED, CANCELLED, DECLINED]
+        effective_date:
+          type: string
+          format: date
+        monthly_deduction_amount:
+          type: number
+          description: Employee premium contribution (calculated on finalization)
+        currency:
+          type: string
+
+    AddDependentRequest:
+      type: object
+      required: [dependent_name, relationship, date_of_birth]
+      properties:
+        dependent_name:
+          type: string
+        relationship:
+          type: string
+          enum: [SPOUSE, CHILD, PARENT, DOMESTIC_PARTNER]
+        date_of_birth:
+          type: string
+          format: date
+        document_type:
+          type: string
+          enum: [BIRTH_CERTIFICATE, MARRIAGE_CERTIFICATE, ADOPTION_CERT]
+        document_ref:
+          type: string
+          description: Reference ID of uploaded document
+
+    DependentResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        enrollment_id:
+          type: string
+          format: uuid
+        dependent_name:
+          type: string
+        relationship:
+          type: string
+        verification_status:
+          type: string
+          enum: [PENDING_VERIFICATION, VERIFIED, REJECTED]
+        document_deadline:
+          type: string
+          format: date
+          description: 30-day deadline for document submission
+
+    # --- Common ---
+
+    MinWageViolationError:
+      type: object
+      properties:
+        error_code:
+          type: string
+          example: MINIMUM_WAGE_VIOLATED
+        message:
+          type: string
+          example: "Proposed salary 3,000,000 VND is below minimum wage 4,680,000 VND for VN_ZONE_I"
+        minimum_wage:
+          type: number
+        minimum_wage_currency:
+          type: string
+        zone:
+          type: string
+        regulatory_ref:
+          type: string
+
+    ErrorResponse:
+      type: object
+      properties:
+        error_code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+security:
+  - BearerAuth: []

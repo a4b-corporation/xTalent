@@ -1,0 +1,2093 @@
+openapi: 3.0.3
+info:
+  title: xTalent Total Rewards — Domain (CRUD) API
+  description: |
+    Domain-driven CRUD API for Total Rewards aggregate roots.
+    Provides standard read/create operations for each entity.
+    These endpoints serve admin configuration UIs and integration reads.
+
+    Note: Business intent operations (merit review workflow, bonus approval, etc.)
+    are in the Use Case API (api-usecase.openapi.yaml).
+    Paths here must NOT conflict with use-case API paths.
+
+    **Base path**: /tr/v1/domain/
+    **Naming conventions**: worker_id, working_relationship_id, legal_entity_id
+    **Authentication**: Bearer JWT (xTalent IAM)
+  version: "1.0.0"
+  contact:
+    name: xTalent Platform Team
+    email: platform@xtalent.vng.com.vn
+
+servers:
+  - url: https://api.xtalent.vng.com.vn/tr/v1/domain
+    description: Production
+  - url: https://api-staging.xtalent.vng.com.vn/tr/v1/domain
+    description: Staging
+
+tags:
+  - name: salary-records
+    description: BC-01 — Salary record management (SCD Type 2 — read-only history)
+  - name: pay-ranges
+    description: BC-01 — Pay range CRUD (SCD Type 2)
+  - name: pay-component-defs
+    description: BC-01 — Pay component definition management
+  - name: salary-basis
+    description: BC-01 — Salary basis template management
+  - name: compensation-cycles
+    description: BC-01 — Compensation cycle read
+  - name: calculation-rules
+    description: BC-02 — Versioned calculation rule management (insert-only)
+  - name: contribution-configs
+    description: BC-02 — SI/CPF/BPJS contribution configuration (SCD Type 2)
+  - name: min-wage-configs
+    description: BC-02 — Minimum wage configuration (SCD Type 2)
+  - name: fx-rate-records
+    description: BC-02 — FX rate archive (read-only)
+  - name: bonus-plans
+    description: BC-03 — Bonus plan configuration
+  - name: commission-plans
+    description: BC-03 — Commission plan configuration
+  - name: taxable-items
+    description: BC-08 — Taxable item management
+  - name: audit-records
+    description: BC-10 — Audit trail (read-only)
+  - name: benefit-plans
+    description: BC-04 — Benefit plan configuration
+  - name: tax-brackets
+    description: BC-09 — Tax bracket configuration (SCD Type 2)
+  - name: tax-profiles
+    description: BC-09 — Worker tax profiles
+
+paths:
+
+  # ============================================================
+  # BC-01: Salary Records (SCD Type 2 — Read-Only)
+  # ============================================================
+
+  /salary-records:
+    get:
+      operationId: ListSalaryRecords
+      summary: List salary records with filters
+      description: |
+        Returns salary records (SCD Type 2 history) for workers.
+        Default: is_current=true (current records only).
+        Use is_current=false to get historical records.
+        SCD Type 2: records are never updated — only new records are inserted.
+      tags: [salary-records]
+      parameters:
+        - name: worker_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: working_relationship_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: is_current
+          in: query
+          schema:
+            type: boolean
+            default: true
+          description: Filter for current vs historical records
+        - name: effective_date
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Returns record effective at this date
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+      responses:
+        '200':
+          description: List of salary records
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedSalaryRecords'
+
+    post:
+      operationId: CreateSalaryRecord
+      summary: Create a new salary record (SCD Type 2)
+      description: |
+        Creates a new salary record for a worker.
+        SCD Type 2: automatically closes the previous current record.
+        Validates against MinWage (hard block — BR-C01).
+        Triggers SalaryChanged event → BC-08 Taxable Bridge → Payroll.
+      tags: [salary-records]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSalaryRecordRequest'
+      responses:
+        '201':
+          description: Salary record created (previous record closed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SalaryRecordDetail'
+        '400':
+          description: MinimumWageViolated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /salary-records/{id}:
+    get:
+      operationId: GetSalaryRecord
+      summary: Get a salary record by ID
+      tags: [salary-records]
+      parameters:
+        - $ref: '#/components/parameters/resourceId'
+      responses:
+        '200':
+          description: Salary record detail with components
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SalaryRecordDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ============================================================
+  # BC-01: Pay Ranges (SCD Type 2)
+  # ============================================================
+
+  /pay-ranges:
+    get:
+      operationId: ListPayRanges
+      summary: List pay ranges
+      description: Returns pay range definitions per grade. Default is_current=true.
+      tags: [pay-ranges]
+      parameters:
+        - name: grade_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: country_code
+          in: query
+          schema:
+            type: string
+        - name: is_current
+          in: query
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: List of pay ranges
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedPayRanges'
+
+    post:
+      operationId: CreatePayRange
+      summary: Create a new pay range (SCD Type 2)
+      description: |
+        Creates a new pay range for a grade.
+        SCD Type 2: closes previous record if is_current=true exists.
+        Triggers PayRangeUpdated event.
+      tags: [pay-ranges]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePayRangeRequest'
+      responses:
+        '201':
+          description: Pay range created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayRangeResponse'
+
+  /pay-ranges/{id}:
+    get:
+      operationId: GetPayRange
+      summary: Get pay range by ID
+      tags: [pay-ranges]
+      parameters:
+        - $ref: '#/components/parameters/resourceId'
+      responses:
+        '200':
+          description: Pay range detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayRangeResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ============================================================
+  # BC-01: Pay Component Definitions
+  # ============================================================
+
+  /pay-component-defs:
+    get:
+      operationId: ListPayComponentDefs
+      summary: List pay component definitions
+      tags: [pay-component-defs]
+      parameters:
+        - name: component_type
+          in: query
+          schema:
+            type: string
+            enum: [BASE_SALARY, ALLOWANCE, BENEFIT_SUPPLEMENT, INCENTIVE, OVERTIME, OTHER]
+        - name: country_code
+          in: query
+          schema:
+            type: string
+        - name: is_active
+          in: query
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: List of pay component definitions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PayComponentDefResponse'
+                  total:
+                    type: integer
+
+    post:
+      operationId: CreatePayComponentDef
+      summary: Create a pay component definition
+      tags: [pay-component-defs]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePayComponentDefRequest'
+      responses:
+        '201':
+          description: Pay component definition created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayComponentDefResponse'
+
+  /pay-component-defs/{id}:
+    get:
+      operationId: GetPayComponentDef
+      summary: Get pay component definition by ID
+      tags: [pay-component-defs]
+      parameters:
+        - $ref: '#/components/parameters/resourceId'
+      responses:
+        '200':
+          description: Pay component definition
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayComponentDefResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ============================================================
+  # BC-02: Calculation Rules (Insert-Only / Versioned)
+  # ============================================================
+
+  /calculation-rules:
+    get:
+      operationId: ListCalculationRules
+      summary: List calculation rules
+      description: |
+        Lists versioned calculation rules.
+        IMMUTABLE ONCE CREATED — never update, only new versions inserted.
+        Use is_current=false to see historical versions for auditing.
+      tags: [calculation-rules]
+      parameters:
+        - name: rule_type
+          in: query
+          schema:
+            type: string
+            enum: [SI_CONTRIBUTION, TAX_WITHHOLDING, PRORATION, BONUS, COMMISSION, FX_CONVERSION, MINIMUM_WAGE_CHECK, CUSTOM]
+        - name: country_code
+          in: query
+          schema:
+            type: string
+        - name: is_current
+          in: query
+          schema:
+            type: boolean
+            default: true
+        - name: effective_date
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: List of calculation rules
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedCalculationRules'
+
+    post:
+      operationId: CreateCalculationRule
+      summary: Create a new calculation rule version (insert-only)
+      description: |
+        Creates a new calculation rule version.
+        IMMUTABLE: existing rules are NEVER updated.
+        Closes previous version (sets effective_end_date, is_current=false).
+        Publishes CalculationRuleVersioned event.
+        Historical recalculation uses rule version effective at that period (BR-K06).
+      tags: [calculation-rules]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCalculationRuleRequest'
+      responses:
+        '201':
+          description: New rule version created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalculationRuleResponse'
+
+  /calculation-rules/{id}:
+    get:
+      operationId: GetCalculationRule
+      summary: Get calculation rule by ID
+      tags: [calculation-rules]
+      parameters:
+        - $ref: '#/components/parameters/resourceId'
+      responses:
+        '200':
+          description: Calculation rule detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalculationRuleResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ============================================================
+  # BC-02: Contribution Configs (SCD Type 2)
+  # ============================================================
+
+  /contribution-configs:
+    get:
+      operationId: ListContributionConfigs
+      summary: List contribution configurations
+      description: Returns SI/CPF/BPJS contribution rate configurations per country.
+      tags: [contribution-configs]
+      parameters:
+        - name: country_code
+          in: query
+          schema:
+            type: string
+        - name: contribution_type
+          in: query
+          schema:
+            type: string
+            enum: [BHXH, BHYT, BHTN, CPF, EPF, BPJS_TK, BPJS_KES, SSS, PHILHEALTH, PAGIBIG, CUSTOM]
+        - name: is_current
+          in: query
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: List of contribution configs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedContributionConfigs'
+
+    post:
+      operationId: CreateContributionConfig
+      summary: Create a contribution config (SCD Type 2)
+      description: |
+        Creates a new contribution config for a country/LE.
+        SCD Type 2: closes previous record if overlapping.
+        Triggers CalculationRuleVersioned event.
+      tags: [contribution-configs]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateContributionConfigRequest'
+      responses:
+        '201':
+          description: Contribution config created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContributionConfigResponse'
+
+  /contribution-configs/{id}:
+    get:
+      operationId: GetContributionConfig
+      summary: Get contribution config by ID
+      tags: [contribution-configs]
+      parameters:
+        - $ref: '#/components/parameters/resourceId'
+      responses:
+        '200':
+          description: Contribution config detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContributionConfigResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ============================================================
+  # BC-02: Min Wage Configs (SCD Type 2)
+  # ============================================================
+
+  /min-wage-configs:
+    get:
+      operationId: ListMinWageConfigs
+      summary: List minimum wage configurations
+      tags: [min-wage-configs]
+      parameters:
+        - name: country_code
+          in: query
+          schema:
+            type: string
+        - name: zone
+          in: query
+          schema:
+            type: string
+        - name: is_current
+          in: query
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: List of min wage configs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MinWageConfigResponse'
+
+    post:
+      operationId: CreateMinWageConfig
+      summary: Create a minimum wage config (SCD Type 2)
+      description: |
+        Creates a new minimum wage config for a country/zone.
+        SCD Type 2: closes previous current record.
+        Triggers scan: workers below new minimum are flagged (MinimumWageViolationDetected).
+      tags: [min-wage-configs]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMinWageConfigRequest'
+      responses:
+        '201':
+          description: Min wage config created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MinWageConfigResponse'
+
+  /min-wage-configs/{id}:
+    get:
+      operationId: GetMinWageConfig
+      summary: Get min wage config by ID
+      tags: [min-wage-configs]
+      parameters:
+        - $ref: '#/components/parameters/resourceId'
+      responses:
+        '200':
+          description: Min wage config
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MinWageConfigResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ============================================================
+  # BC-02: FX Rate Records (Append-Only — Read Only via domain API)
+  # ============================================================
+
+  /fx-rate-records:
+    get:
+      operationId: ListFxRateRecords
+      summary: List FX rate records (archive)
+      description: |
+        Append-only FX rate archive. Use UpdateFxRate or OverrideFxRate use-case
+        endpoints to add new rates. This endpoint is read-only.
+      tags: [fx-rate-records]
+      parameters:
+        - name: from_currency
+          in: query
+          schema:
+            type: string
+        - name: to_currency
+          in: query
+          schema:
+            type: string
+        - name: rate_date_from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: rate_date_to
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: source
+          in: query
+          schema:
+            type: string
+            enum: [OANDA, REUTERS, CENTRAL_BANK, MANUAL_OVERRIDE]
+      responses:
+        '200':
+          description: List of FX rate records
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedFxRates'
+
+  /fx-rate-records/{id}:
+    get:
+      operationId: GetFxRateRecord
+      summary: Get FX rate record by ID
+      tags: [fx-rate-records]
+      parameters:
+        - $ref: '#/components/parameters/resourceId'
+      responses:
+        '200':
+          description: FX rate record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FxRateRecordResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ============================================================
+  # BC-03: Bonus Plans
+  # ============================================================
+
+  /bonus-plans:
+    get:
+      operationId: ListBonusPlans
+      summary: List bonus plans
+      tags: [bonus-plans]
+      parameters:
+        - name: period_type
+          in: query
+          schema:
+            type: string
+            enum: [ANNUAL, SEMI_ANNUAL, QUARTERLY, SPOT]
+        - name: country_code
+          in: query
+          schema:
+            type: string
+        - name: is_active
+          in: query
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: List of bonus plans
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedBonusPlans'
+
+    post:
+      operationId: CreateBonusPlan
+      summary: Create a bonus plan
+      tags: [bonus-plans]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBonusPlanRequest'
+      responses:
+        '201':
+          description: Bonus plan created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BonusPlanResponse'
+
+  /bonus-plans/{id}:
+    get:
+      operationId: GetBonusPlan
+      summary: Get bonus plan by ID
+      tags: [bonus-plans]
+      parameters:
+        - $ref: '#/components/parameters/resourceId'
+      responses:
+        '200':
+          description: Bonus plan detail with performance modifiers
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BonusPlanResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      operationId: UpdateBonusPlan
+      summary: Update bonus plan (non-breaking changes only)
+      description: |
+        Updates non-formula metadata (name, eligibility, active status).
+        Formula changes must create a new plan version.
+      tags: [bonus-plans]
+      parameters:
+        - $ref: '#/components/parameters/resourceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateBonusPlanRequest'
+      responses:
+        '200':
+          description: Bonus plan updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BonusPlanResponse'
+
+  # ============================================================
+  # BC-03: Commission Plans
+  # ============================================================
+
+  /commission-plans:
+    get:
+      operationId: ListCommissionPlans
+      summary: List commission plans
+      tags: [commission-plans]
+      parameters:
+        - name: plan_year
+          in: query
+          schema:
+            type: integer
+        - name: country_code
+          in: query
+          schema:
+            type: string
+        - name: is_active
+          in: query
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: List of commission plans with tiers
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedCommissionPlans'
+
+    post:
+      operationId: CreateCommissionPlan
+      summary: Create a commission plan with tiers
+      tags: [commission-plans]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCommissionPlanRequest'
+      responses:
+        '201':
+          description: Commission plan created with validated tiers
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommissionPlanResponse'
+        '422':
+          description: Tier validation failed (overlapping or non-exhaustive)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /commission-plans/{id}:
+    get:
+      operationId: GetCommissionPlan
+      summary: Get commission plan by ID
+      tags: [commission-plans]
+      parameters:
+        - $ref: '#/components/parameters/resourceId'
+      responses:
+        '200':
+          description: Commission plan with tiers
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommissionPlanResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      operationId: UpdateCommissionPlan
+      summary: Update commission plan metadata
+      tags: [commission-plans]
+      parameters:
+        - $ref: '#/components/parameters/resourceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                max_commission_amount:
+                  type: number
+                is_active:
+                  type: boolean
+      responses:
+        '200':
+          description: Commission plan updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommissionPlanResponse'
+
+  # ============================================================
+  # BC-08: Taxable Items
+  # ============================================================
+
+  /taxable-items:
+    get:
+      operationId: ListTaxableItems
+      summary: List taxable items
+      description: Lists taxable items with filters. Used by Payroll and BC-09 Tax.
+      tags: [taxable-items]
+      parameters:
+        - name: worker_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: period
+          in: query
+          schema:
+            type: string
+            pattern: '^\d{4}-\d{2}$'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [PENDING, BRIDGED, DUPLICATE, FAILED]
+        - name: source_type
+          in: query
+          schema:
+            type: string
+            enum: [EQUITY_VEST, PERK_CASH, BENEFIT_IN_KIND, BONUS, COMMISSION, SALARY]
+      responses:
+        '200':
+          description: List of taxable items
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedTaxableItems'
+
+    post:
+      operationId: CreateTaxableItem
+      summary: Create a taxable item (idempotent)
+      description: |
+        Creates a taxable item. Idempotent via idempotency_key.
+        ON CONFLICT (idempotency_key): status set to DUPLICATE (no error returned).
+        Publishes TaxableItemCreated event → triggers PayrollBridge.
+      tags: [taxable-items]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTaxableItemRequest'
+      responses:
+        '201':
+          description: Taxable item created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaxableItemResponse'
+        '200':
+          description: Duplicate — idempotency_key already exists (not an error)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaxableItemResponse'
+
+  /taxable-items/{id}:
+    get:
+      operationId: GetTaxableItem
+      summary: Get taxable item by ID
+      tags: [taxable-items]
+      parameters:
+        - $ref: '#/components/parameters/resourceId'
+      responses:
+        '200':
+          description: Taxable item
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaxableItemResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ============================================================
+  # BC-09: Tax Brackets (SCD Type 2)
+  # ============================================================
+
+  /tax-brackets:
+    get:
+      operationId: ListTaxBrackets
+      summary: List tax brackets
+      tags: [tax-brackets]
+      parameters:
+        - name: country_code
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: is_current
+          in: query
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: List of tax brackets (ordered by bracket_from)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  country_code:
+                    type: string
+                  effective_start_date:
+                    type: string
+                    format: date
+                  brackets:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TaxBracketResponse'
+
+    post:
+      operationId: CreateTaxBracket
+      summary: Create tax bracket (SCD Type 2)
+      description: |
+        Creates a new tax bracket entry.
+        Typically submitted as a set (close previous + insert new) for each bracket band.
+        Publishes TaxBracketConfigured event.
+      tags: [tax-brackets]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTaxBracketRequest'
+      responses:
+        '201':
+          description: Tax bracket created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaxBracketResponse'
+
+  /tax-brackets/{id}:
+    get:
+      operationId: GetTaxBracket
+      summary: Get tax bracket by ID
+      tags: [tax-brackets]
+      parameters:
+        - $ref: '#/components/parameters/resourceId'
+      responses:
+        '200':
+          description: Tax bracket
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaxBracketResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ============================================================
+  # BC-09: Tax Profiles
+  # ============================================================
+
+  /tax-profiles:
+    get:
+      operationId: ListTaxProfiles
+      summary: List worker tax profiles
+      tags: [tax-profiles]
+      parameters:
+        - name: worker_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: country_code
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of tax profiles
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TaxProfileResponse'
+
+    post:
+      operationId: CreateTaxProfile
+      summary: Create or update worker tax profile
+      description: |
+        Worker self-declares tax profile (dependents, personal deductions).
+        Publishes TaxDeclarationUpdated event — affects next period calculation.
+      tags: [tax-profiles]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTaxProfileRequest'
+      responses:
+        '201':
+          description: Tax profile created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaxProfileResponse'
+
+  /tax-profiles/{id}:
+    get:
+      operationId: GetTaxProfile
+      summary: Get tax profile by ID
+      tags: [tax-profiles]
+      parameters:
+        - $ref: '#/components/parameters/resourceId'
+      responses:
+        '200':
+          description: Tax profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaxProfileResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ============================================================
+  # BC-04: Benefit Plans
+  # ============================================================
+
+  /benefit-plans:
+    get:
+      operationId: ListBenefitPlans
+      summary: List benefit plans
+      tags: [benefit-plans]
+      parameters:
+        - name: country_code
+          in: query
+          schema:
+            type: string
+        - name: plan_type
+          in: query
+          schema:
+            type: string
+            enum: [HEALTH, DENTAL, VISION, LIFE, DISABILITY, RETIREMENT, OTHER]
+        - name: is_active
+          in: query
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: List of benefit plans
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedBenefitPlans'
+
+    post:
+      operationId: CreateBenefitPlan
+      summary: Create a benefit plan
+      tags: [benefit-plans]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBenefitPlanRequest'
+      responses:
+        '201':
+          description: Benefit plan created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BenefitPlanResponse'
+
+  /benefit-plans/{id}:
+    get:
+      operationId: GetBenefitPlan
+      summary: Get benefit plan by ID
+      tags: [benefit-plans]
+      parameters:
+        - $ref: '#/components/parameters/resourceId'
+      responses:
+        '200':
+          description: Benefit plan detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BenefitPlanResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ============================================================
+  # BC-10: Audit Records (Read-Only)
+  # ============================================================
+
+  /audit-records:
+    get:
+      operationId: ListAuditRecords
+      summary: List audit records (read-only — immutable)
+      description: |
+        Returns immutable audit trail records. Cannot be modified or deleted.
+        Scoped to the authenticated user's legal entity access.
+        External auditors can only see records for their scoped legal entity.
+        7-year retention minimum.
+      tags: [audit-records]
+      parameters:
+        - name: entity_type
+          in: query
+          schema:
+            type: string
+          description: Filter by entity type (e.g., tr.salary_record)
+        - name: entity_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: actor_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: bc_source
+          in: query
+          schema:
+            type: string
+            enum: [BC-01, BC-02, BC-03, BC-04, BC-05, BC-06, BC-07, BC-08, BC-09, BC-10]
+        - name: action
+          in: query
+          schema:
+            type: string
+            enum: [CREATE, UPDATE, DELETE, VIEW, EXPORT]
+        - name: created_at_from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: created_at_to
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 50
+            maximum: 200
+      responses:
+        '200':
+          description: List of audit records (immutable — read-only)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAuditRecords'
+
+  /audit-records/{id}:
+    get:
+      operationId: GetAuditRecord
+      summary: Get audit record by ID (read-only)
+      tags: [audit-records]
+      parameters:
+        - $ref: '#/components/parameters/resourceId'
+      responses:
+        '200':
+          description: Audit record detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditRecordResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+# ============================================================
+# Components
+# ============================================================
+
+components:
+
+  parameters:
+    resourceId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Resource UUID
+
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+
+    # --- Salary Records ---
+    CreateSalaryRecordRequest:
+      type: object
+      required: [worker_id, working_relationship_id, salary_basis_id, gross_amount, gross_currency, change_reason, effective_start_date]
+      properties:
+        worker_id:
+          type: string
+          format: uuid
+        working_relationship_id:
+          type: string
+          format: uuid
+        salary_basis_id:
+          type: string
+          format: uuid
+        gross_amount:
+          type: number
+        gross_currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+        change_reason:
+          type: string
+          enum: [MERIT_INCREASE, PROMOTION, MARKET_ADJUSTMENT, NEW_HIRE, ROLE_CHANGE, CYCLE_ADJUSTMENT, CORRECTION, REGULATORY]
+        cycle_id:
+          type: string
+          format: uuid
+        proposal_id:
+          type: string
+          format: uuid
+        effective_start_date:
+          type: string
+          format: date
+        components:
+          type: array
+          items:
+            $ref: '#/components/schemas/PayComponentValueInput'
+
+    PayComponentValueInput:
+      type: object
+      required: [component_def_id, amount, currency]
+      properties:
+        component_def_id:
+          type: string
+          format: uuid
+        amount:
+          type: number
+        currency:
+          type: string
+        is_override:
+          type: boolean
+          default: false
+
+    SalaryRecordDetail:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        worker_id:
+          type: string
+          format: uuid
+        working_relationship_id:
+          type: string
+          format: uuid
+        salary_basis_id:
+          type: string
+          format: uuid
+        gross_amount:
+          type: number
+        gross_currency:
+          type: string
+        change_reason:
+          type: string
+        effective_start_date:
+          type: string
+          format: date
+        effective_end_date:
+          type: string
+          format: date
+          nullable: true
+        is_current:
+          type: boolean
+        compa_ratio:
+          type: number
+          nullable: true
+        components:
+          type: array
+          items:
+            $ref: '#/components/schemas/PayComponentValueOutput'
+
+    PayComponentValueOutput:
+      type: object
+      properties:
+        component_def_id:
+          type: string
+          format: uuid
+        component_code:
+          type: string
+        component_name:
+          type: string
+        amount:
+          type: number
+        currency:
+          type: string
+        is_override:
+          type: boolean
+
+    PaginatedSalaryRecords:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SalaryRecordDetail'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+
+    # --- Pay Ranges ---
+    CreatePayRangeRequest:
+      type: object
+      required: [grade_id, min_amount, mid_amount, max_amount, currency, effective_start_date]
+      properties:
+        grade_id:
+          type: string
+          format: uuid
+        min_amount:
+          type: number
+        mid_amount:
+          type: number
+        max_amount:
+          type: number
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+        country_code:
+          type: string
+        effective_start_date:
+          type: string
+          format: date
+
+    PayRangeResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        grade_id:
+          type: string
+          format: uuid
+        min_amount:
+          type: number
+        mid_amount:
+          type: number
+        max_amount:
+          type: number
+        currency:
+          type: string
+        country_code:
+          type: string
+        effective_start_date:
+          type: string
+          format: date
+        effective_end_date:
+          type: string
+          format: date
+          nullable: true
+        is_current:
+          type: boolean
+
+    PaginatedPayRanges:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PayRangeResponse'
+        total:
+          type: integer
+
+    # --- Pay Component Defs ---
+    CreatePayComponentDefRequest:
+      type: object
+      required: [code, name, component_type, tax_treatment, proration_method]
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        name_local:
+          type: string
+        component_type:
+          type: string
+          enum: [BASE_SALARY, ALLOWANCE, BENEFIT_SUPPLEMENT, INCENTIVE, OVERTIME, OTHER]
+        tax_treatment:
+          type: string
+          enum: [TAXABLE, NON_TAXABLE, TAXABLE_ABOVE_THRESHOLD, CONFIGURABLE]
+        proration_method:
+          type: string
+          enum: [CALENDAR_DAYS, WORKING_DAYS, FIXED_30, NONE]
+        formula_json:
+          type: object
+        is_taxable_benefit_in_kind:
+          type: boolean
+          default: false
+        country_code:
+          type: string
+
+    PayComponentDefResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+        name:
+          type: string
+        component_type:
+          type: string
+        tax_treatment:
+          type: string
+        proration_method:
+          type: string
+        is_active:
+          type: boolean
+
+    # --- Calculation Rules ---
+    CreateCalculationRuleRequest:
+      type: object
+      required: [rule_type, name, formula_json, effective_start_date]
+      properties:
+        rule_type:
+          type: string
+          enum: [SI_CONTRIBUTION, TAX_WITHHOLDING, PRORATION, BONUS, COMMISSION, FX_CONVERSION, MINIMUM_WAGE_CHECK, CUSTOM]
+        name:
+          type: string
+        formula_json:
+          type: object
+          description: Engine-parsed formula object
+        country_code:
+          type: string
+        effective_start_date:
+          type: string
+          format: date
+        notes:
+          type: string
+
+    CalculationRuleResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        rule_type:
+          type: string
+        name:
+          type: string
+        formula_json:
+          type: object
+        version_number:
+          type: integer
+        country_code:
+          type: string
+        effective_start_date:
+          type: string
+          format: date
+        effective_end_date:
+          type: string
+          format: date
+          nullable: true
+        is_current:
+          type: boolean
+
+    PaginatedCalculationRules:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CalculationRuleResponse'
+        total:
+          type: integer
+
+    # --- Contribution Configs ---
+    CreateContributionConfigRequest:
+      type: object
+      required: [country_code, contribution_type, employer_rate, employee_rate, calculation_basis, effective_start_date]
+      properties:
+        country_code:
+          type: string
+        legal_entity_id:
+          type: string
+          format: uuid
+        contribution_type:
+          type: string
+          enum: [BHXH, BHYT, BHTN, CPF, EPF, BPJS_TK, BPJS_KES, SSS, PHILHEALTH, PAGIBIG, CUSTOM]
+        employer_rate:
+          type: number
+        employee_rate:
+          type: number
+        calculation_basis:
+          type: string
+        cap_multiplier:
+          type: number
+          nullable: true
+        cap_currency:
+          type: string
+          nullable: true
+        effective_start_date:
+          type: string
+          format: date
+        notes:
+          type: string
+
+    ContributionConfigResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        country_code:
+          type: string
+        contribution_type:
+          type: string
+        employer_rate:
+          type: number
+        employee_rate:
+          type: number
+        calculation_basis:
+          type: string
+        cap_multiplier:
+          type: number
+          nullable: true
+        effective_start_date:
+          type: string
+          format: date
+        effective_end_date:
+          type: string
+          format: date
+          nullable: true
+        is_current:
+          type: boolean
+
+    PaginatedContributionConfigs:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ContributionConfigResponse'
+        total:
+          type: integer
+
+    # --- Min Wage ---
+    CreateMinWageConfigRequest:
+      type: object
+      required: [country_code, zone, monthly_min_wage, currency, effective_start_date]
+      properties:
+        country_code:
+          type: string
+        zone:
+          type: string
+          enum: [VN_ZONE_I, VN_ZONE_II, VN_ZONE_III, VN_ZONE_IV, GENERAL]
+        monthly_min_wage:
+          type: number
+        currency:
+          type: string
+        regulatory_ref:
+          type: string
+        effective_start_date:
+          type: string
+          format: date
+
+    MinWageConfigResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        country_code:
+          type: string
+        zone:
+          type: string
+        monthly_min_wage:
+          type: number
+        currency:
+          type: string
+        regulatory_ref:
+          type: string
+          nullable: true
+        effective_start_date:
+          type: string
+          format: date
+        effective_end_date:
+          type: string
+          format: date
+          nullable: true
+        is_current:
+          type: boolean
+
+    # --- FX Rates ---
+    FxRateRecordResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        from_currency:
+          type: string
+        to_currency:
+          type: string
+        rate:
+          type: number
+        rate_date:
+          type: string
+          format: date
+        source:
+          type: string
+        delta_pct:
+          type: number
+          nullable: true
+
+    PaginatedFxRates:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/FxRateRecordResponse'
+        total:
+          type: integer
+
+    # --- Bonus Plans ---
+    CreateBonusPlanRequest:
+      type: object
+      required: [name, period_type, target_pct_of_salary, formula_json, is_taxable]
+      properties:
+        name:
+          type: string
+        period_type:
+          type: string
+          enum: [ANNUAL, SEMI_ANNUAL, QUARTERLY, SPOT]
+        target_pct_of_salary:
+          type: number
+        formula_json:
+          type: object
+        performance_modifiers:
+          type: array
+          items:
+            type: object
+            required: [rating_code, multiplier]
+            properties:
+              rating_code:
+                type: string
+              multiplier:
+                type: number
+        country_code:
+          type: string
+        max_bonus_pct:
+          type: number
+          nullable: true
+        is_taxable:
+          type: boolean
+
+    UpdateBonusPlanRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        max_bonus_pct:
+          type: number
+          nullable: true
+        is_active:
+          type: boolean
+
+    BonusPlanResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        period_type:
+          type: string
+        target_pct_of_salary:
+          type: number
+        is_taxable:
+          type: boolean
+        is_active:
+          type: boolean
+        performance_modifiers:
+          type: array
+          items:
+            type: object
+            properties:
+              rating_code:
+                type: string
+              multiplier:
+                type: number
+
+    PaginatedBonusPlans:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/BonusPlanResponse'
+        total:
+          type: integer
+
+    # --- Commission Plans ---
+    CreateCommissionPlanRequest:
+      type: object
+      required: [name, plan_year, tier_type, quota_amount, quota_currency, tiers]
+      properties:
+        name:
+          type: string
+        plan_year:
+          type: integer
+        tier_type:
+          type: string
+          enum: [FLAT, TIERED, SLAB]
+        quota_amount:
+          type: number
+        quota_currency:
+          type: string
+        max_commission_amount:
+          type: number
+          nullable: true
+        country_code:
+          type: string
+        tiers:
+          type: array
+          items:
+            type: object
+            required: [from_pct, rate]
+            properties:
+              from_pct:
+                type: number
+              to_pct:
+                type: number
+                nullable: true
+              rate:
+                type: number
+              accelerator:
+                type: number
+                nullable: true
+
+    CommissionPlanResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        plan_year:
+          type: integer
+        tier_type:
+          type: string
+        quota_amount:
+          type: number
+        quota_currency:
+          type: string
+        is_active:
+          type: boolean
+        tiers:
+          type: array
+          items:
+            type: object
+            properties:
+              from_pct:
+                type: number
+              to_pct:
+                type: number
+                nullable: true
+              rate:
+                type: number
+              accelerator:
+                type: number
+                nullable: true
+
+    PaginatedCommissionPlans:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommissionPlanResponse'
+        total:
+          type: integer
+
+    # --- Taxable Items ---
+    CreateTaxableItemRequest:
+      type: object
+      required: [worker_id, source_type, amount, currency, period, idempotency_key]
+      properties:
+        worker_id:
+          type: string
+          format: uuid
+        working_relationship_id:
+          type: string
+          format: uuid
+        source_type:
+          type: string
+          enum: [EQUITY_VEST, PERK_CASH, BENEFIT_IN_KIND, BONUS, COMMISSION, SALARY]
+        source_ref_id:
+          type: string
+          format: uuid
+        amount:
+          type: number
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+        period:
+          type: string
+          pattern: '^\d{4}-\d{2}$'
+        idempotency_key:
+          type: string
+          description: "Format: {source_type}-{source_ref_id}-{period}"
+
+    TaxableItemResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        worker_id:
+          type: string
+          format: uuid
+        source_type:
+          type: string
+        source_ref_id:
+          type: string
+          format: uuid
+          nullable: true
+        amount:
+          type: number
+        currency:
+          type: string
+        period:
+          type: string
+        idempotency_key:
+          type: string
+        status:
+          type: string
+          enum: [PENDING, BRIDGED, DUPLICATE, FAILED]
+        bridged_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    PaginatedTaxableItems:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaxableItemResponse'
+        total:
+          type: integer
+
+    # --- Tax Brackets ---
+    CreateTaxBracketRequest:
+      type: object
+      required: [country_code, bracket_from, tax_rate, currency, effective_start_date]
+      properties:
+        country_code:
+          type: string
+        bracket_from:
+          type: number
+        bracket_to:
+          type: number
+          nullable: true
+        tax_rate:
+          type: number
+        currency:
+          type: string
+        regulatory_ref:
+          type: string
+        effective_start_date:
+          type: string
+          format: date
+
+    TaxBracketResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        country_code:
+          type: string
+        bracket_from:
+          type: number
+        bracket_to:
+          type: number
+          nullable: true
+        tax_rate:
+          type: number
+        currency:
+          type: string
+        effective_start_date:
+          type: string
+          format: date
+        is_current:
+          type: boolean
+
+    # --- Tax Profiles ---
+    CreateTaxProfileRequest:
+      type: object
+      required: [worker_id, country_code, effective_date]
+      properties:
+        worker_id:
+          type: string
+          format: uuid
+        country_code:
+          type: string
+        dependent_count:
+          type: integer
+          default: 0
+        personal_deduction:
+          type: number
+          nullable: true
+        additional_deductions:
+          type: number
+          nullable: true
+        currency:
+          type: string
+        declaration_json:
+          type: object
+          description: Country-specific declaration fields
+        effective_date:
+          type: string
+          format: date
+
+    TaxProfileResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        worker_id:
+          type: string
+          format: uuid
+        country_code:
+          type: string
+        dependent_count:
+          type: integer
+        personal_deduction:
+          type: number
+          nullable: true
+        effective_date:
+          type: string
+          format: date
+
+    # --- Benefit Plans ---
+    CreateBenefitPlanRequest:
+      type: object
+      required: [name, plan_type, country_code, effective_date, eligibility_rules, employee_contribution_pct, employer_contribution_pct]
+      properties:
+        name:
+          type: string
+        plan_type:
+          type: string
+          enum: [HEALTH, DENTAL, VISION, LIFE, DISABILITY, RETIREMENT, OTHER]
+        country_code:
+          type: string
+        legal_entity_id:
+          type: string
+          format: uuid
+        effective_date:
+          type: string
+          format: date
+        eligibility_rules:
+          type: object
+        employee_contribution_pct:
+          type: number
+        employer_contribution_pct:
+          type: number
+        monthly_premium:
+          type: number
+        premium_currency:
+          type: string
+        allows_dependents:
+          type: boolean
+        is_taxable_benefit_in_kind:
+          type: boolean
+
+    BenefitPlanResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        plan_type:
+          type: string
+        country_code:
+          type: string
+        effective_date:
+          type: string
+          format: date
+        is_active:
+          type: boolean
+        employee_contribution_pct:
+          type: number
+        employer_contribution_pct:
+          type: number
+        allows_dependents:
+          type: boolean
+
+    PaginatedBenefitPlans:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/BenefitPlanResponse'
+        total:
+          type: integer
+
+    # --- Audit Records ---
+    AuditRecordResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        entity_type:
+          type: string
+        entity_id:
+          type: string
+          format: uuid
+        action:
+          type: string
+          enum: [CREATE, UPDATE, DELETE, VIEW, EXPORT]
+        actor_id:
+          type: string
+          format: uuid
+        actor_role:
+          type: string
+        before_state:
+          type: object
+          nullable: true
+        after_state:
+          type: object
+          nullable: true
+        change_summary:
+          type: object
+          nullable: true
+        bc_source:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    PaginatedAuditRecords:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditRecordResponse'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+
+    # --- Common ---
+    ErrorResponse:
+      type: object
+      properties:
+        error_code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+security:
+  - BearerAuth: []

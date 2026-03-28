@@ -1,0 +1,541 @@
+id: https://xtalent.vng.com.vn/total-rewards/variable-pay
+name: variable-pay-model
+title: "Total Rewards — Variable Pay (BC-03)"
+description: >
+  LinkML schema for BC-03 Variable Pay.
+  Covers BonusPlan, BonusStatement, CommissionPlan, CommissionStatement,
+  SalesTransaction, LongTermIncentive, VestingSchedule.
+version: "1.0.0"
+license: "VNG Internal"
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  xtalent: https://xtalent.vng.com.vn/
+  varpay: https://xtalent.vng.com.vn/total-rewards/variable-pay/
+
+default_prefix: varpay
+default_range: string
+
+imports:
+  - linkml:types
+
+# ---------------------------------------------------------------------------
+# Enumerations
+# ---------------------------------------------------------------------------
+enums:
+
+  BonusPeriodTypeEnum:
+    permissible_values:
+      ANNUAL: {}
+      SEMI_ANNUAL: {}
+      QUARTERLY: {}
+      SPOT: {}
+
+  BonusStatementStatusEnum:
+    permissible_values:
+      DRAFT: {}
+      CALCULATED: {}
+      PENDING_APPROVAL: {}
+      APPROVED: {}
+      REJECTED: {}
+      SCHEDULED: {}
+      PAID: {}
+
+  CommissionStatementStatusEnum:
+    permissible_values:
+      OPEN:
+        description: In current period; updated real-time
+      PENDING_REVIEW: {}
+      FINALIZED: {}
+      PAID: {}
+
+  CommissionTierTypeEnum:
+    description: Type of commission tier structure
+    permissible_values:
+      FLAT:
+        description: Flat rate regardless of attainment
+      TIERED:
+        description: Different rates per attainment band
+      SLAB:
+        description: All-or-nothing per slab threshold
+
+  LTITypeEnum:
+    description: Loại đãi ngộ dài hạn
+    permissible_values:
+      ESOP:
+        description: Employee Stock Option Plan
+      RSU:
+        description: Restricted Stock Unit
+      PHANTOM_STOCK:
+        description: Cash-settled phantom equity
+      PROFIT_SHARING:
+        description: Profit-sharing plan
+
+  VestingTypeEnum:
+    permissible_values:
+      CLIFF:
+        description: 100% vests after cliff period
+      GRADED:
+        description: Proportional vesting after cliff
+
+  VestingEventStatusEnum:
+    permissible_values:
+      PENDING: {}
+      VESTED: {}
+      FORFEITED:
+        description: Worker terminated before cliff
+      CANCELLED: {}
+
+  SalesTransactionStatusEnum:
+    permissible_values:
+      SYNCED:
+        description: Successfully imported from CRM
+      VOIDED:
+        description: Voided by Finance Approver
+      DISPUTED: {}
+
+# ---------------------------------------------------------------------------
+# Classes
+# ---------------------------------------------------------------------------
+classes:
+
+  # -- Value Objects --
+
+  QuotaAttainment:
+    description: >
+      % quota achieved = ActualSales / QuotaTarget × 100.
+      Determines commission tier and accelerator.
+      Recalculated in real-time when new SalesTransaction is imported.
+    attributes:
+      actual_sales:
+        range: decimal
+        required: true
+      quota_target:
+        range: decimal
+        required: true
+      attainment_pct:
+        range: decimal
+        required: true
+      period:
+        range: string
+        required: true
+        description: YYYY-MM
+      computed_at:
+        range: datetime
+        required: true
+
+  CommissionTier:
+    description: >
+      One tier in a commission plan.
+      from_pct and to_pct define the attainment band (inclusive/exclusive).
+      rate is the commission rate applied to sales in this band.
+      accelerator multiplies base rate when quota exceeded.
+    attributes:
+      from_pct:
+        range: decimal
+        required: true
+        description: Lower bound of attainment % (inclusive)
+      to_pct:
+        range: decimal
+        required: false
+        description: Upper bound of attainment % (exclusive). NULL = unbounded
+      rate:
+        range: decimal
+        required: true
+        description: Commission rate (e.g., 0.08 = 8%)
+      accelerator:
+        range: decimal
+        required: false
+        description: Multiplier for exceeding quota (e.g., 1.5 = 150% of base rate)
+
+  PerformanceModifier:
+    description: >
+      Configurable mapping from Performance Rating to bonus modifier.
+      HR Admin sets per BonusPlan — never hardcoded.
+      Example: Exceeds=1.5, Meets=1.0, BelowExpectations=0.5, PIP=0.0
+    attributes:
+      rating_code:
+        range: string
+        required: true
+        description: Performance rating code from PM module
+      multiplier:
+        range: decimal
+        required: true
+        minimum_value: 0
+
+  VestingEvent:
+    description: >
+      A single vest event in a VestingSchedule.
+      When status → VESTED: TaxableItem is created via Taxable Bridge (no manual step).
+    attributes:
+      sequence:
+        range: integer
+        required: true
+      vested_date:
+        range: date
+        required: true
+      grant_percent:
+        range: decimal
+        required: true
+        description: Percentage of total grant that vests on this date
+      vested_amount:
+        range: decimal
+        required: false
+        description: Computed monetary value at vest date
+      currency:
+        range: string
+        required: false
+      status:
+        range: VestingEventStatusEnum
+        required: true
+      taxable_item_id:
+        range: string
+        required: false
+        description: FK to TaxableItem created when VESTED
+
+  # -- Entities & Aggregates --
+
+  BonusPlan:
+    description: >
+      Periodic bonus plan template.
+      Defines eligible population, formula, performance modifiers, approval workflow.
+      Scoped per country/LE/BU. Reusable across cycles.
+    attributes:
+      id:
+        range: string
+        identifier: true
+        required: true
+      name:
+        range: string
+        required: true
+      period_type:
+        range: BonusPeriodTypeEnum
+        required: true
+      target_pct_of_salary:
+        range: decimal
+        required: true
+        description: Target bonus as % of base salary (e.g., 0.15 = 15%)
+      formula_json:
+        range: string
+        required: true
+        description: >
+          JSON formula for bonus calculation.
+          Example: {"type": "PERCENTAGE", "base": "ANNUAL_BASE", "rate": 0.15}
+      performance_modifiers:
+        range: PerformanceModifier
+        multivalued: true
+        description: Rating → multiplier mapping. Configurable per plan.
+      eligible_grade_ids:
+        range: string
+        multivalued: true
+      eligible_job_family_ids:
+        range: string
+        multivalued: true
+      country_code:
+        range: string
+        required: false
+      config_scope_id:
+        range: string
+        required: false
+      approval_threshold_pct:
+        range: decimal
+        required: false
+        description: Bonus above this % requires higher approval tier
+      max_bonus_pct:
+        range: decimal
+        required: false
+        description: Hard cap as % of salary (NULL = no cap)
+      is_taxable:
+        range: boolean
+        required: true
+      is_active:
+        range: boolean
+        required: true
+      created_by:
+        range: string
+        required: true
+      created_at:
+        range: datetime
+        required: true
+
+  BonusStatement:
+    description: >
+      Calculated bonus for one Worker in one period.
+      IMMUTABLE after PAID — duplicate payment prevented by idempotency_key.
+    attributes:
+      id:
+        range: string
+        identifier: true
+        required: true
+      worker_id:
+        range: string
+        required: true
+      plan_id:
+        range: string
+        required: true
+        description: FK to BonusPlan
+      period_type:
+        range: BonusPeriodTypeEnum
+        required: true
+      period_year:
+        range: integer
+        required: true
+      period_label:
+        range: string
+        required: true
+        description: Human-readable (e.g., "FY2026", "Q1-2026")
+      base_amount:
+        range: decimal
+        required: true
+        description: Salary basis used for calculation
+      target_bonus_amount:
+        range: decimal
+        required: true
+        description: Target before performance modifier
+      performance_modifier:
+        range: decimal
+        required: true
+        description: Applied multiplier from PerformanceModifier mapping
+      final_amount:
+        range: decimal
+        required: true
+        description: target_bonus_amount × performance_modifier
+      currency:
+        range: string
+        required: true
+      status:
+        range: BonusStatementStatusEnum
+        required: true
+      approved_by:
+        range: string
+        required: false
+      approved_at:
+        range: datetime
+        required: false
+      paid_at:
+        range: datetime
+        required: false
+      idempotency_key:
+        range: string
+        required: true
+        description: Unique key to prevent duplicate payment (worker_id + plan_id + period)
+      taxable_item_id:
+        range: string
+        required: false
+        description: FK to TaxableItem if bonus is taxable
+      created_at:
+        range: datetime
+        required: true
+
+  CommissionPlan:
+    description: >
+      Commission plan definition with quota, tiers, and accelerators.
+      Typically annual or quarterly. Tiers must be non-overlapping and exhaustive.
+    attributes:
+      id:
+        range: string
+        identifier: true
+        required: true
+      name:
+        range: string
+        required: true
+      plan_year:
+        range: integer
+        required: true
+      tier_type:
+        range: CommissionTierTypeEnum
+        required: true
+      quota_amount:
+        range: decimal
+        required: true
+        description: Annual/period quota target
+      quota_currency:
+        range: string
+        required: true
+      tiers:
+        range: CommissionTier
+        multivalued: true
+        description: Non-overlapping, exhaustive tiers. Validated on create.
+      max_commission_amount:
+        range: decimal
+        required: false
+        description: Hard cap; NULL = no cap
+      eligible_job_family_ids:
+        range: string
+        multivalued: true
+      country_code:
+        range: string
+        required: false
+      config_scope_id:
+        range: string
+        required: false
+      is_active:
+        range: boolean
+        required: true
+      created_by:
+        range: string
+        required: true
+      created_at:
+        range: datetime
+        required: true
+
+  CommissionStatement:
+    description: >
+      Monthly commission calculation for one Worker.
+      Updated in real-time (<5 seconds) as SalesTransactions sync.
+      Required latency: Kafka streaming, not batch.
+    attributes:
+      id:
+        range: string
+        identifier: true
+        required: true
+      worker_id:
+        range: string
+        required: true
+      plan_id:
+        range: string
+        required: true
+        description: FK to CommissionPlan
+      period:
+        range: string
+        required: true
+        description: YYYY-MM
+      quota_attainment:
+        range: QuotaAttainment
+        required: true
+      applied_tier:
+        range: CommissionTier
+        required: false
+        description: The tier applied based on current attainment
+      commission_amount:
+        range: decimal
+        required: true
+      currency:
+        range: string
+        required: true
+      is_capped:
+        range: boolean
+        required: true
+      status:
+        range: CommissionStatementStatusEnum
+        required: true
+      last_recalculated_at:
+        range: datetime
+        required: true
+      finalized_at:
+        range: datetime
+        required: false
+      paid_at:
+        range: datetime
+        required: false
+      created_at:
+        range: datetime
+        required: true
+
+  SalesTransaction:
+    description: >
+      Sales transaction imported from CRM (Salesforce, etc.).
+      IMMUTABLE after synced. Duplicate prevention via transaction_id (idempotent import).
+      Source of truth for commission calculation.
+    attributes:
+      id:
+        range: string
+        identifier: true
+        required: true
+      crm_transaction_id:
+        range: string
+        required: true
+        description: Original CRM ID — used as idempotency key
+      worker_id:
+        range: string
+        required: true
+        description: Deal owner's Worker ID
+      deal_amount:
+        range: decimal
+        required: true
+      currency:
+        range: string
+        required: true
+      close_date:
+        range: date
+        required: true
+      period:
+        range: string
+        required: true
+        description: YYYY-MM derived from close_date
+      territory_id:
+        range: string
+        required: false
+      status:
+        range: SalesTransactionStatusEnum
+        required: true
+      void_approved_by:
+        range: string
+        required: false
+        description: Finance Approver if voided
+      void_reason:
+        range: string
+        required: false
+      synced_at:
+        range: datetime
+        required: true
+      created_at:
+        range: datetime
+        required: true
+
+  LongTermIncentive:
+    description: >
+      Long-term incentive grant (ESOP, RSU, phantom stock).
+      Has vesting schedule with cliff and graded vesting.
+      VestingEvent → TaxableItem automatically on vest date (no manual step).
+    attributes:
+      id:
+        range: string
+        identifier: true
+        required: true
+      worker_id:
+        range: string
+        required: true
+      lti_type:
+        range: LTITypeEnum
+        required: true
+      grant_date:
+        range: date
+        required: true
+      total_grant_amount:
+        range: decimal
+        required: true
+      currency:
+        range: string
+        required: true
+      vesting_type:
+        range: VestingTypeEnum
+        required: true
+      cliff_months:
+        range: integer
+        required: true
+        description: Months before any vesting begins (e.g., 12)
+      total_vesting_months:
+        range: integer
+        required: true
+        description: Total vesting period (e.g., 48)
+      vesting_events:
+        range: VestingEvent
+        multivalued: true
+        description: Generated by system from vesting schedule
+      total_vested_amount:
+        range: decimal
+        required: true
+        description: Cumulative vested amount; updated on each VestingEvent
+      is_fully_vested:
+        range: boolean
+        required: true
+      is_forfeited:
+        range: boolean
+        required: true
+      created_by:
+        range: string
+        required: true
+      created_at:
+        range: datetime
+        required: true

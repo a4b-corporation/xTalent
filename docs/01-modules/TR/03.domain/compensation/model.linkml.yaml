@@ -1,0 +1,559 @@
+id: https://xtalent.vng.com.vn/total-rewards/compensation
+name: compensation-model
+title: "Total Rewards — Compensation Management (BC-01)"
+description: >
+  LinkML schema for BC-01 Compensation Management.
+  Covers SalaryBasis, PayComponentDef, SalaryRecord (SCD Type 2),
+  PayRange (SCD Type 2), CompensationCycle, CompensationProposal, DeductionRecord.
+version: "1.0.0"
+license: "VNG Internal"
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  xtalent: https://xtalent.vng.com.vn/
+  comp: https://xtalent.vng.com.vn/total-rewards/compensation/
+
+default_prefix: comp
+default_range: string
+
+imports:
+  - linkml:types
+
+# ---------------------------------------------------------------------------
+# Enumerations
+# ---------------------------------------------------------------------------
+enums:
+
+  PayFrequencyEnum:
+    description: Tần suất trả lương
+    permissible_values:
+      HOURLY:
+        description: Trả theo giờ
+      MONTHLY:
+        description: Trả theo tháng
+      ANNUAL:
+        description: Trả theo năm (annualized)
+
+  ComponentTypeEnum:
+    description: Loại thành phần lương
+    permissible_values:
+      BASE_SALARY: {}
+      ALLOWANCE: {}
+      BENEFIT_SUPPLEMENT: {}
+      INCENTIVE: {}
+      OVERTIME: {}
+      OTHER: {}
+
+  TaxTreatmentEnum:
+    description: Chế độ thuế của component
+    permissible_values:
+      TAXABLE: {}
+      NON_TAXABLE: {}
+      TAXABLE_ABOVE_THRESHOLD: {}
+      CONFIGURABLE: {}
+
+  ProrationMethodEnum:
+    description: Phương pháp proration (defined in BC-02, referenced here)
+    permissible_values:
+      CALENDAR_DAYS: {}
+      WORKING_DAYS: {}
+      FIXED_30: {}
+      NONE: {}
+
+  ChangeReasonEnum:
+    description: Lý do thay đổi lương
+    permissible_values:
+      MERIT_INCREASE: {}
+      PROMOTION: {}
+      MARKET_ADJUSTMENT: {}
+      NEW_HIRE: {}
+      ROLE_CHANGE: {}
+      CYCLE_ADJUSTMENT: {}
+      CORRECTION: {}
+      REGULATORY: {}
+
+  CycleStatusEnum:
+    description: Trạng thái CompensationCycle
+    permissible_values:
+      DRAFT: {}
+      OPEN: {}
+      REVIEW: {}
+      APPROVED: {}
+      CLOSED: {}
+
+  ProposalStatusEnum:
+    description: Trạng thái CompensationProposal
+    permissible_values:
+      DRAFT: {}
+      PENDING_APPROVAL: {}
+      APPROVED: {}
+      REJECTED: {}
+      SCHEDULED: {}
+      EFFECTIVE: {}
+      WITHDRAWN: {}
+
+  DeductionTypeEnum:
+    description: Loại khoản khấu trừ
+    permissible_values:
+      LOAN: {}
+      GARNISHMENT: {}
+      SALARY_ADVANCE: {}
+      VOLUNTARY: {}
+      OTHER: {}
+
+  DeductionStatusEnum:
+    description: Trạng thái DeductionRecord
+    permissible_values:
+      ACTIVE: {}
+      PAUSED: {}
+      COMPLETED: {}
+      CANCELLED: {}
+
+  DeductionFrequencyEnum:
+    description: Tần suất khấu trừ
+    permissible_values:
+      MONTHLY: {}
+      QUARTERLY: {}
+      ONCE: {}
+
+# ---------------------------------------------------------------------------
+# Classes
+# ---------------------------------------------------------------------------
+classes:
+
+  # -- Value Objects --
+
+  SalaryAmount:
+    description: >
+      Immutable value object representing a monetary salary amount.
+      Must always carry currency — amount alone is meaningless.
+    attributes:
+      amount:
+        range: decimal
+        required: true
+        minimum_value: 0
+      currency:
+        range: string
+        required: true
+        pattern: "^[A-Z]{3}$"
+        description: ISO 4217 currency code (e.g., VND, SGD, USD)
+
+  EffectivePeriod:
+    description: >
+      SCD Type 2 temporal window. effective_end_date is NULL when current.
+    attributes:
+      effective_start_date:
+        range: date
+        required: true
+      effective_end_date:
+        range: date
+        required: false
+        description: NULL = current record
+      is_current:
+        range: boolean
+        required: true
+
+  CompaRatio:
+    description: >
+      ActualSalary / MidpointSalary × 100.
+      < 80 = below range, 80–120 = in range, > 120 = above range.
+    attributes:
+      value:
+        range: decimal
+        required: true
+      computed_at:
+        range: date
+        required: true
+      pay_range_id:
+        range: string
+        description: FK to PayRange used for computation
+
+  BudgetUtilization:
+    description: >
+      ProposedTotal / CycleBudget × 100. Real-time updated.
+    attributes:
+      utilized_amount:
+        range: decimal
+        required: true
+      budget_amount:
+        range: decimal
+        required: true
+      utilization_pct:
+        range: decimal
+        required: true
+      last_updated_at:
+        range: datetime
+        required: true
+
+  # -- Entities & Aggregates --
+
+  SalaryBasis:
+    description: >
+      Template defining salary structure for a type of WorkingRelationship.
+      Scoped per country/LE or global. Reusable across Workers.
+    attributes:
+      id:
+        range: string
+        identifier: true
+        required: true
+      name:
+        range: string
+        required: true
+      pay_frequency:
+        range: PayFrequencyEnum
+        required: true
+      default_currency:
+        range: string
+        required: true
+        pattern: "^[A-Z]{3}$"
+      country_code:
+        range: string
+        required: false
+        description: Phase 1 scope; Phase 2 migrate to config_scope_id
+      config_scope_id:
+        range: string
+        required: false
+        description: Phase 2 ConfigScope FK (Country/LE/BU)
+      allowed_component_ids:
+        range: string
+        multivalued: true
+        description: List of PayComponentDef IDs permitted on this basis
+      is_active:
+        range: boolean
+        required: true
+      created_at:
+        range: datetime
+        required: true
+
+  PayComponentDef:
+    description: >
+      Reusable definition of a salary component type.
+      Examples: Base Salary, Phone Allowance, Transport Allowance.
+      Carries tax treatment and proration method.
+    attributes:
+      id:
+        range: string
+        identifier: true
+        required: true
+      code:
+        range: string
+        required: true
+        description: Unique business code (e.g., BASE_SALARY_VN, PHONE_ALLOWANCE)
+      name:
+        range: string
+        required: true
+      name_local:
+        range: string
+        required: false
+        description: Localized name (e.g., Vietnamese)
+      component_type:
+        range: ComponentTypeEnum
+        required: true
+      tax_treatment:
+        range: TaxTreatmentEnum
+        required: true
+      proration_method:
+        range: ProrationMethodEnum
+        required: true
+      formula_json:
+        range: string
+        required: false
+        description: >
+          Optional simple formula for derived components.
+          Format: {"type": "PERCENTAGE", "base": "BASE_SALARY", "rate": 0.1}
+      is_taxable_benefit_in_kind:
+        range: boolean
+        required: true
+      country_code:
+        range: string
+        required: false
+      is_active:
+        range: boolean
+        required: true
+      created_at:
+        range: datetime
+        required: true
+
+  SalaryRecord:
+    description: >
+      Single source of truth for a Worker's salary at any point in time.
+      SCD Type 2: each change creates a new record, previous record is closed.
+      NEVER UPDATE an existing record — INSERT + close previous.
+    attributes:
+      id:
+        range: string
+        identifier: true
+        required: true
+      worker_id:
+        range: string
+        required: true
+        description: FK to Worker (owned by CO module)
+      working_relationship_id:
+        range: string
+        required: true
+        description: FK to WorkingRelationship (owned by CO module)
+      salary_basis_id:
+        range: string
+        required: true
+        description: FK to SalaryBasis
+      gross_amount:
+        range: SalaryAmount
+        required: true
+      components:
+        range: PayComponentValue
+        multivalued: true
+        description: Breakdown of gross into individual components
+      effective_start_date:
+        range: date
+        required: true
+      effective_end_date:
+        range: date
+        required: false
+        description: NULL = current record
+      is_current:
+        range: boolean
+        required: true
+      change_reason:
+        range: ChangeReasonEnum
+        required: true
+      cycle_id:
+        range: string
+        required: false
+        description: FK to CompensationCycle if from cycle
+      proposal_id:
+        range: string
+        required: false
+        description: FK to CompensationProposal if from cycle
+      compa_ratio:
+        range: CompaRatio
+        required: false
+      audit_id:
+        range: string
+        required: true
+        description: FK to AuditRecord (BC-10)
+      created_by:
+        range: string
+        required: true
+      created_at:
+        range: datetime
+        required: true
+
+  PayComponentValue:
+    description: >
+      Actual value of a component on a SalaryRecord.
+      Inline value object — not a standalone entity.
+    attributes:
+      component_def_id:
+        range: string
+        required: true
+        description: FK to PayComponentDef
+      amount:
+        range: decimal
+        required: true
+      currency:
+        range: string
+        required: true
+      is_override:
+        range: boolean
+        required: true
+        description: True if manually set, overriding formula
+
+  PayRange:
+    description: >
+      Salary band (min/mid/max) for a Grade at a specific scope.
+      SCD Type 2. Used to compute CompaRatio.
+    attributes:
+      id:
+        range: string
+        identifier: true
+        required: true
+      grade_id:
+        range: string
+        required: true
+        description: FK to Grade (owned by CO module)
+      min_amount:
+        range: SalaryAmount
+        required: true
+      mid_amount:
+        range: SalaryAmount
+        required: true
+      max_amount:
+        range: SalaryAmount
+        required: true
+      country_code:
+        range: string
+        required: false
+      config_scope_id:
+        range: string
+        required: false
+        description: Most-specific scope wins (BU > LE > Country > Global)
+      effective_start_date:
+        range: date
+        required: true
+      effective_end_date:
+        range: date
+        required: false
+      is_current:
+        range: boolean
+        required: true
+      created_at:
+        range: datetime
+        required: true
+
+  CompensationCycle:
+    description: >
+      Annual/periodic salary review cycle.
+      Lifecycle: DRAFT → OPEN → REVIEW → APPROVED → CLOSED.
+      Proposals can only be submitted when OPEN.
+    attributes:
+      id:
+        range: string
+        identifier: true
+        required: true
+      name:
+        range: string
+        required: true
+      cycle_year:
+        range: integer
+        required: true
+      status:
+        range: CycleStatusEnum
+        required: true
+      budget_amount:
+        range: SalaryAmount
+        required: true
+      budget_remaining:
+        range: decimal
+        required: true
+        description: Real-time updated as proposals submit/approve/reject
+      scope_id:
+        range: string
+        required: false
+        description: LE or BU scope; NULL = company-wide
+      eligible_worker_ids:
+        range: string
+        multivalued: true
+        description: Workers eligible for this cycle
+      opened_at:
+        range: datetime
+        required: false
+      closed_at:
+        range: datetime
+        required: false
+      created_by:
+        range: string
+        required: true
+      created_at:
+        range: datetime
+        required: true
+
+  CompensationProposal:
+    description: >
+      Salary change proposal for a Worker within a CompensationCycle.
+      Requires approval workflow before becoming effective.
+      Only submittable when Cycle is OPEN.
+    attributes:
+      id:
+        range: string
+        identifier: true
+        required: true
+      cycle_id:
+        range: string
+        required: true
+        description: FK to CompensationCycle
+      worker_id:
+        range: string
+        required: true
+      current_salary:
+        range: SalaryAmount
+        required: true
+      proposed_salary:
+        range: SalaryAmount
+        required: true
+      change_pct:
+        range: decimal
+        required: true
+        description: (proposed - current) / current × 100
+      change_type:
+        range: ChangeReasonEnum
+        required: true
+      status:
+        range: ProposalStatusEnum
+        required: true
+      submitted_by:
+        range: string
+        required: true
+        description: People Manager's worker_id
+      justification:
+        range: string
+        required: true
+      effective_date:
+        range: date
+        required: true
+      approved_by:
+        range: string
+        required: false
+      approved_at:
+        range: datetime
+        required: false
+      rejection_reason:
+        range: string
+        required: false
+      created_at:
+        range: datetime
+        required: true
+
+  DeductionRecord:
+    description: >
+      Recurring deduction from Worker's salary.
+      Types: loan, garnishment (court order), salary advance, voluntary.
+      Priority ordering enforced during payroll processing.
+    attributes:
+      id:
+        range: string
+        identifier: true
+        required: true
+      worker_id:
+        range: string
+        required: true
+      deduction_type:
+        range: DeductionTypeEnum
+        required: true
+      amount_per_period:
+        range: SalaryAmount
+        required: true
+      frequency:
+        range: DeductionFrequencyEnum
+        required: true
+      total_amount:
+        range: SalaryAmount
+        required: false
+        description: NULL for open-ended deductions (e.g., voluntary)
+      remaining_amount:
+        range: decimal
+        required: false
+      priority:
+        range: integer
+        required: true
+        description: >
+          Deduction priority: Garnishment=1, Loan=2, SalaryAdvance=3, Voluntary=4.
+          Configurable per enterprise.
+      status:
+        range: DeductionStatusEnum
+        required: true
+      start_date:
+        range: date
+        required: true
+      end_date:
+        range: date
+        required: false
+      reference_doc:
+        range: string
+        required: false
+        description: Court order ID for garnishment, loan agreement ref, etc.
+      created_by:
+        range: string
+        required: true
+      created_at:
+        range: datetime
+        required: true

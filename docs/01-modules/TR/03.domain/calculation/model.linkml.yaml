@@ -1,0 +1,447 @@
+id: https://xtalent.vng.com.vn/total-rewards/calculation
+name: calculation-model
+title: "Total Rewards — Calculation Engine (BC-02)"
+description: >
+  LinkML schema for BC-02 Calculation Engine.
+  Covers CalculationRule (versioned), ContributionConfig (SCD Type 2),
+  ProrationConfig, MinWageConfig (SCD Type 2), FxRateRecord.
+  Plugin architecture: CountryContributionEngine, ProrationEngine, FormulaEngine.
+version: "1.0.0"
+license: "VNG Internal"
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  xtalent: https://xtalent.vng.com.vn/
+  calc: https://xtalent.vng.com.vn/total-rewards/calculation/
+
+default_prefix: calc
+default_range: string
+
+imports:
+  - linkml:types
+
+# ---------------------------------------------------------------------------
+# Enumerations
+# ---------------------------------------------------------------------------
+enums:
+
+  RuleTypeEnum:
+    description: Loại quy tắc tính toán
+    permissible_values:
+      SI_CONTRIBUTION:
+        description: Social Insurance (BHXH/BHYT/BHTN)
+      TAX_WITHHOLDING:
+        description: Personal Income Tax
+      PRORATION:
+        description: Partial period proration
+      BONUS:
+        description: Bonus calculation
+      COMMISSION:
+        description: Commission calculation
+      FX_CONVERSION:
+        description: Currency conversion rule
+      MINIMUM_WAGE_CHECK:
+        description: Min wage validation rule
+      CUSTOM:
+        description: Enterprise-specific custom rule
+
+  ProrationMethodEnum:
+    description: Phương pháp tính lương theo ngày
+    permissible_values:
+      CALENDAR_DAYS:
+        description: Divide by actual calendar days in month
+      WORKING_DAYS:
+        description: Divide by actual working days (minus holidays)
+      FIXED_30:
+        description: Always divide by 30 (regardless of month length)
+
+  FxRateSourceEnum:
+    description: Nguồn tỷ giá
+    permissible_values:
+      OANDA: {}
+      REUTERS: {}
+      CENTRAL_BANK: {}
+      MANUAL_OVERRIDE:
+        description: Finance team manual input
+
+  ContributionTypeEnum:
+    description: Loại đóng góp bảo hiểm
+    permissible_values:
+      BHXH:
+        description: Vietnam Social Insurance
+      BHYT:
+        description: Vietnam Health Insurance
+      BHTN:
+        description: Vietnam Unemployment Insurance
+      CPF:
+        description: Singapore Central Provident Fund
+      EPF:
+        description: Malaysia Employees Provident Fund
+      BPJS_TK:
+        description: Indonesia BPJS Ketenagakerjaan
+      BPJS_KES:
+        description: Indonesia BPJS Kesehatan
+      SSS:
+        description: Philippines Social Security System
+      PHILHEALTH:
+        description: Philippines PhilHealth
+      PAGIBIG:
+        description: Philippines Pag-IBIG
+      CUSTOM: {}
+
+  WageZoneEnum:
+    description: Vùng lương Vietnam (or country-specific zone)
+    permissible_values:
+      VN_ZONE_I:
+        description: Hà Nội, TP.HCM và các quận/huyện phát triển
+      VN_ZONE_II:
+        description: Các tỉnh thành phố trực thuộc TW còn lại
+      VN_ZONE_III:
+        description: Các tỉnh còn lại
+      VN_ZONE_IV:
+        description: Các vùng còn lại
+      GENERAL:
+        description: Non-zoned countries (flat minimum wage)
+
+# ---------------------------------------------------------------------------
+# Classes
+# ---------------------------------------------------------------------------
+classes:
+
+  # -- Value Objects --
+
+  FormulaJson:
+    description: >
+      JSON structure describing a calculation formula.
+      Engine parses and executes at runtime — never hardcoded.
+      Platform principle: all logic through FormulaJson.
+    attributes:
+      raw_json:
+        range: string
+        required: true
+        description: >
+          JSON string. Examples:
+          {"type": "PERCENTAGE", "base": "GROSS_SALARY", "rate": 0.08}
+          {"type": "TIERED", "tiers": [...]}
+          {"type": "CAPPED", "formula": {...}, "cap_ref": "MIN_WAGE_20X"}
+
+  CalculationPeriod:
+    description: >
+      The computation period = {year, month}. All calculations are scoped to a period.
+      No "out-of-period" calculations — every result belongs to a period.
+    attributes:
+      year:
+        range: integer
+        required: true
+        minimum_value: 2000
+      month:
+        range: integer
+        required: true
+        minimum_value: 1
+        maximum_value: 12
+      label:
+        range: string
+        description: Human-readable label, e.g., "2026-03"
+
+  ProrationFactor:
+    description: >
+      Result of proration computation = ActualDays / TotalDays.
+      TotalDays depends on ProrationConfig method.
+    attributes:
+      actual_days:
+        range: integer
+        required: true
+      total_days:
+        range: integer
+        required: true
+      factor:
+        range: decimal
+        required: true
+        minimum_value: 0
+        maximum_value: 1
+      method_used:
+        range: ProrationMethodEnum
+        required: true
+
+  ContributionAmount:
+    description: >
+      Result of SI/CPF/BPJS contribution calculation.
+      is_capped = true when salary > cap threshold.
+    attributes:
+      employee_share:
+        range: decimal
+        required: true
+      employer_share:
+        range: decimal
+        required: true
+      currency:
+        range: string
+        required: true
+        pattern: "^[A-Z]{3}$"
+      period:
+        range: string
+        required: true
+        description: YYYY-MM format
+      is_capped:
+        range: boolean
+        required: true
+        description: True when salary exceeds cap threshold
+
+  RuleVersion:
+    description: >
+      Metadata of a CalculationRule version.
+      When recalculating historical periods, use version with effective_period overlap.
+    attributes:
+      version_number:
+        range: integer
+        required: true
+      effective_start:
+        range: date
+        required: true
+      effective_end:
+        range: date
+        required: false
+        description: NULL = current version
+      is_current:
+        range: boolean
+        required: true
+
+  FxDelta:
+    description: >
+      Rate-of-change vs previous day. > configurable threshold triggers FxDeltaAlerted.
+      Default threshold = 5%.
+    attributes:
+      delta_pct:
+        range: decimal
+        required: true
+      previous_rate:
+        range: decimal
+        required: true
+      current_rate:
+        range: decimal
+        required: true
+      threshold_pct:
+        range: decimal
+        required: true
+        description: Configurable; default 5.0
+
+  # -- Entities & Aggregates --
+
+  CalculationRule:
+    description: >
+      Versioned calculation rule — stores formula/rate as formula_json.
+      Each change creates a new version; old version preserved for historical recalculation.
+      IMMUTABLE ONCE CREATED — never UPDATE, only INSERT new version.
+    attributes:
+      id:
+        range: string
+        identifier: true
+        required: true
+      rule_type:
+        range: RuleTypeEnum
+        required: true
+      name:
+        range: string
+        required: true
+      formula_json:
+        range: FormulaJson
+        required: true
+      version:
+        range: RuleVersion
+        required: true
+      country_code:
+        range: string
+        required: false
+      config_scope_id:
+        range: string
+        required: false
+        description: >
+          Phase 2 scope. Priority: BU(30) > LE(20) > Country(10) > Global(0).
+          When no match found for Worker's scope → error "No calculation rule found"
+      effective_start_date:
+        range: date
+        required: true
+      effective_end_date:
+        range: date
+        required: false
+      is_current:
+        range: boolean
+        required: true
+      version_number:
+        range: integer
+        required: true
+      created_by:
+        range: string
+        required: true
+      created_at:
+        range: datetime
+        required: true
+      notes:
+        range: string
+        required: false
+        description: Reason for version creation
+
+  ContributionConfig:
+    description: >
+      Country/LE-specific SI/CPF/BPJS contribution configuration.
+      Stores employer_rate, employee_rate, calculation basis, cap.
+      SCD Type 2. Implemented via CountryContributionEngine plugin.
+    attributes:
+      id:
+        range: string
+        identifier: true
+        required: true
+      country_code:
+        range: string
+        required: true
+      legal_entity_id:
+        range: string
+        required: false
+        description: NULL = applies to all LEs in country
+      contribution_type:
+        range: ContributionTypeEnum
+        required: true
+      employer_rate:
+        range: decimal
+        required: true
+        description: Employer contribution rate (e.g., 0.175 for VN BHXH 17.5%)
+      employee_rate:
+        range: decimal
+        required: true
+        description: Employee contribution rate (e.g., 0.08 for VN BHXH 8%)
+      calculation_basis:
+        range: string
+        required: true
+        description: >
+          What salary basis is used (e.g., "GROSS_SALARY", "INSURABLE_SALARY").
+          Country-specific definition.
+      cap_multiplier:
+        range: decimal
+        required: false
+        description: >
+          VN: 20× minimum wage of zone. NULL = no cap.
+      cap_currency:
+        range: string
+        required: false
+      effective_start_date:
+        range: date
+        required: true
+      effective_end_date:
+        range: date
+        required: false
+      is_current:
+        range: boolean
+        required: true
+      notes:
+        range: string
+        required: false
+        description: Regulatory reference (e.g., "SI Law 2024, Art. 89")
+
+  ProrationConfig:
+    description: >
+      Configuration for proration method — per component per scope.
+      Determines TotalDays for ProrationFactor calculation.
+    attributes:
+      id:
+        range: string
+        identifier: true
+        required: true
+      component_def_id:
+        range: string
+        required: false
+        description: NULL = applies to all components
+      proration_method:
+        range: ProrationMethodEnum
+        required: true
+      country_code:
+        range: string
+        required: false
+      config_scope_id:
+        range: string
+        required: false
+        description: Most-specific wins; Phase 1 country_code, Phase 2 config_scope_id
+      effective_start_date:
+        range: date
+        required: true
+      is_active:
+        range: boolean
+        required: true
+
+  MinWageConfig:
+    description: >
+      Minimum wage table by zone/country with effective dating (SCD Type 2).
+      Vietnam: 4 zones determined by WorkingRelationship.workplace_location.
+      When zone changes, new cap applies from NEXT MONTH (BR-K03).
+    attributes:
+      id:
+        range: string
+        identifier: true
+        required: true
+      country_code:
+        range: string
+        required: true
+      zone:
+        range: WageZoneEnum
+        required: true
+      monthly_min_wage:
+        range: decimal
+        required: true
+      currency:
+        range: string
+        required: true
+        pattern: "^[A-Z]{3}$"
+      effective_start_date:
+        range: date
+        required: true
+      effective_end_date:
+        range: date
+        required: false
+      is_current:
+        range: boolean
+        required: true
+      regulatory_ref:
+        range: string
+        required: false
+        description: Government decree/circular reference
+
+  FxRateRecord:
+    description: >
+      Daily FX rate from external provider. Archived — never update, only insert.
+      Alert triggered if delta > configurable threshold (default 5%).
+    attributes:
+      id:
+        range: string
+        identifier: true
+        required: true
+      from_currency:
+        range: string
+        required: true
+        pattern: "^[A-Z]{3}$"
+      to_currency:
+        range: string
+        required: true
+        pattern: "^[A-Z]{3}$"
+      rate:
+        range: decimal
+        required: true
+      rate_date:
+        range: date
+        required: true
+      source:
+        range: FxRateSourceEnum
+        required: true
+      override_justification:
+        range: string
+        required: false
+        description: Required when source = MANUAL_OVERRIDE (BR-K05)
+      approved_by:
+        range: string
+        required: false
+        description: Finance Approver's worker_id; required for MANUAL_OVERRIDE
+      delta:
+        range: FxDelta
+        required: false
+        description: Computed vs previous day; NULL for first record
+      created_at:
+        range: datetime
+        required: true

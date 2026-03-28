@@ -1,0 +1,1343 @@
+# ============================================================
+# Event Repository — Total Rewards / xTalent HCM
+# Version: 1.0.0
+# Date: 2026-03-26
+#
+# Aggregated from:
+#   - Event Storming (reality/event-storming.md) — 55 events
+#   - BC Glossaries (domain/*/glossary.md)
+#   - Use Case Flows (domain/*/flows/*.flow.md)
+#   - BC interaction contracts (bounded-contexts.md)
+#
+# Kafka config defaults:
+#   - At-least-once delivery (consumers must be idempotent)
+#   - Ordering key = worker_id for per-worker events
+#   - Retention: 90 days default; 365 days for audit events
+#   - Schema registry: Confluent Schema Registry (Avro/JSON Schema)
+# ============================================================
+
+kafka_defaults:
+  bootstrap_servers: kafka.xtalent.vng.com.vn:9092
+  schema_registry: https://schema-registry.xtalent.vng.com.vn
+  delivery_guarantee: at_least_once
+  consumer_dedup_required: true
+
+events:
+
+  # ============================================================
+  # BC-01: Compensation Management
+  # ============================================================
+
+  - name: SalaryStructureCreated
+    version: "1.0"
+    event_id: E-CC-001
+    bounded_context: BC-01
+    kafka_topic: tr.salary-structure-created.v1
+    trigger: HR Admin creates a new SalaryBasis with PayComponentDefs
+    payload:
+      salary_basis_id: uuid
+      name: string
+      pay_frequency: string
+      default_currency: string
+      country_code: string
+      component_count: integer
+      created_by: uuid
+    consumers:
+      - BC-10 Audit & Observability
+    retention_days: 365
+    ordering_key: salary_basis_id
+
+  - name: CompensationCycleOpened
+    version: "1.0"
+    event_id: E-CC-004
+    bounded_context: BC-01
+    kafka_topic: tr.compensation-cycle-opened.v1
+    trigger: Compensation Admin executes OpenCompensationCycle command
+    payload:
+      cycle_id: uuid
+      name: string
+      cycle_year: integer
+      budget_amount: decimal
+      budget_currency: string
+      scope_id: uuid_nullable
+      eligible_worker_count: integer
+      opened_at: datetime
+      opened_by: uuid
+    consumers:
+      - Notification Service (people manager alerts)
+      - BC-10 Audit & Observability
+    retention_days: 365
+    ordering_key: cycle_id
+
+  - name: MeritRecommendationSubmitted
+    version: "1.0"
+    event_id: E-CC-005
+    bounded_context: BC-01
+    kafka_topic: tr.merit-recommendation-submitted.v1
+    trigger: People Manager submits SubmitMeritRecommendation command
+    payload:
+      proposal_id: uuid
+      cycle_id: uuid
+      worker_id: uuid
+      submitted_by: uuid
+      current_amount: decimal
+      proposed_amount: decimal
+      currency: string
+      change_pct: decimal
+      change_type: string
+      effective_date: date
+      approval_tier_required: string
+    consumers:
+      - Approval Workflow Service
+      - BC-10 Audit & Observability
+    retention_days: 365
+    ordering_key: worker_id
+
+  - name: CompensationApproved
+    version: "1.0"
+    event_id: E-CC-006
+    bounded_context: BC-01
+    kafka_topic: tr.compensation-approved.v1
+    trigger: Budget Approver executes ApproveCompensation command
+    payload:
+      proposal_id: uuid
+      cycle_id: uuid
+      worker_id: uuid
+      approved_by: uuid
+      approved_at: datetime
+      new_amount: decimal
+      currency: string
+      change_pct: decimal
+      effective_date: date
+    consumers:
+      - BC-08 Taxable Bridge
+      - Notification Service
+      - BC-10 Audit & Observability
+    retention_days: 365
+    ordering_key: worker_id
+
+  - name: CompensationRejected
+    version: "1.0"
+    event_id: E-CC-007
+    bounded_context: BC-01
+    kafka_topic: tr.compensation-rejected.v1
+    trigger: Budget Approver executes RejectCompensation command
+    payload:
+      proposal_id: uuid
+      cycle_id: uuid
+      worker_id: uuid
+      rejected_by: uuid
+      rejected_at: datetime
+      rejection_reason: string
+      budget_restored_amount: decimal
+    consumers:
+      - Notification Service
+      - BC-10 Audit & Observability
+    retention_days: 365
+    ordering_key: worker_id
+
+  - name: SalaryChanged
+    version: "1.0"
+    event_id: E-CC-008
+    bounded_context: BC-01
+    kafka_topic: tr.salary-changed.v1
+    trigger: ActivateSalaryChange command — cron detects effective_date = today
+    description: |
+      Critical event for Payroll bridge. SCD Type 2 operation completed.
+      Previous salary_record closed; new record inserted.
+      SLA: Payroll must ack within 15 minutes.
+    payload:
+      worker_id: uuid
+      working_relationship_id: uuid
+      previous_salary_record_id: uuid
+      new_salary_record_id: uuid
+      previous_amount: decimal
+      new_amount: decimal
+      currency: string
+      effective_date: date
+      change_reason: string
+      period: string
+    consumers:
+      - BC-08 Taxable Bridge
+      - Payroll Module (SLA: ack within 15 min)
+      - BC-10 Audit & Observability
+    retention_days: 90
+    ordering_key: worker_id
+
+  - name: SalaryHistoryArchived
+    version: "1.0"
+    event_id: E-CC-010
+    bounded_context: BC-01
+    kafka_topic: tr.salary-history-archived.v1
+    trigger: SCD Type 2 INSERT operation after compensation approval
+    payload:
+      worker_id: uuid
+      archived_record_id: uuid
+      new_record_id: uuid
+      effective_end_date: date
+      archived_at: datetime
+    consumers:
+      - BC-07 TR Statement (data refresh)
+      - BC-10 Audit & Observability
+    retention_days: 365
+    ordering_key: worker_id
+
+  - name: CompensationCycleClosed
+    version: "1.0"
+    event_id: E-CC-009
+    bounded_context: BC-01
+    kafka_topic: tr.compensation-cycle-closed.v1
+    trigger: Compensation Admin or system closes cycle
+    payload:
+      cycle_id: uuid
+      cycle_year: integer
+      closed_at: datetime
+      closed_by: uuid
+      total_proposals: integer
+      approved_proposals: integer
+      rejected_proposals: integer
+      total_budget_utilized: decimal
+      currency: string
+    consumers:
+      - BC-07 TR Statement
+      - Analytics Service
+      - BC-10 Audit & Observability
+    retention_days: 365
+    ordering_key: cycle_id
+
+  - name: MinimumWageViolated
+    version: "1.0"
+    event_id: E-CC-012
+    bounded_context: BC-01
+    kafka_topic: tr.minimum-wage-violated.v1
+    trigger: System validates salary against MinWageConfig (hard block)
+    payload:
+      worker_id: uuid
+      attempted_amount: decimal
+      minimum_wage_amount: decimal
+      currency: string
+      country_code: string
+      zone: string
+      triggered_by: string
+      proposal_id: uuid_nullable
+      offer_record_id: uuid_nullable
+    consumers:
+      - BC-10 Audit & Observability
+      - HR Admin notification
+    retention_days: 365
+    ordering_key: worker_id
+
+  - name: PayEquityGapDetected
+    version: "1.0"
+    event_id: E-CC-014
+    bounded_context: BC-01
+    kafka_topic: tr.pay-equity-gap-detected.v1
+    trigger: TriggerPayEquityAnalysis completes with gap > threshold (USP)
+    payload:
+      analysis_id: uuid
+      scope_id: uuid
+      gap_dimension: string
+      affected_worker_count: integer
+      avg_gap_pct: decimal
+      max_gap_pct: decimal
+      report_url: string
+      detected_at: datetime
+    consumers:
+      - Compliance Officer notification
+      - BC-10 Audit & Observability
+    retention_days: 365
+    ordering_key: analysis_id
+
+  - name: PayRangeUpdated
+    version: "1.0"
+    event_id: E-CC-003
+    bounded_context: BC-01
+    kafka_topic: tr.pay-range-updated.v1
+    trigger: Compensation Admin creates new PayRange (SCD Type 2)
+    payload:
+      pay_range_id: uuid
+      grade_id: uuid
+      min_amount: decimal
+      mid_amount: decimal
+      max_amount: decimal
+      currency: string
+      effective_start_date: date
+    consumers:
+      - BC-10 Audit & Observability
+    retention_days: 365
+    ordering_key: grade_id
+
+  - name: BudgetVarianceAlerted
+    version: "1.0"
+    event_id: E-CC-011
+    bounded_context: BC-01
+    kafka_topic: tr.budget-variance-alerted.v1
+    trigger: budget_remaining < 5% of total cycle budget
+    payload:
+      cycle_id: uuid
+      budget_remaining: decimal
+      budget_total: decimal
+      utilization_pct: decimal
+      currency: string
+    consumers:
+      - Finance Approver notification
+      - Compensation Admin notification
+      - BC-10 Audit & Observability
+    retention_days: 90
+    ordering_key: cycle_id
+
+  - name: DeductionSetup
+    version: "1.0"
+    event_id: E-DED-001
+    bounded_context: BC-01
+    kafka_topic: tr.deduction-setup.v1
+    trigger: HR Admin creates DeductionRecord (loan, garnishment, benefit premium)
+    payload:
+      deduction_id: uuid
+      worker_id: uuid
+      deduction_type: string
+      amount_per_period: decimal
+      currency: string
+      frequency: string
+      priority: integer
+      start_date: date
+    consumers:
+      - Payroll Module
+      - BC-10 Audit & Observability
+    retention_days: 365
+    ordering_key: worker_id
+
+  - name: DeductionsProcessed
+    version: "1.0"
+    event_id: E-DED-003
+    bounded_context: BC-01
+    kafka_topic: tr.deductions-processed.v1
+    trigger: Payroll run — deduction priority ordering applied
+    payload:
+      worker_id: uuid
+      period: string
+      deductions_applied: array
+      net_pay: decimal
+      currency: string
+    consumers:
+      - Payroll Module
+      - BC-10 Audit & Observability
+    retention_days: 90
+    ordering_key: worker_id
+
+  # ============================================================
+  # BC-02: Calculation Engine
+  # ============================================================
+
+  - name: CalculationRuleVersioned
+    version: "1.0"
+    event_id: E-CR-004
+    bounded_context: BC-02
+    kafka_topic: tr.calculation-rule-versioned.v1
+    trigger: HR Admin creates new CalculationRule version (insert-only — BR-K04)
+    payload:
+      rule_id: uuid
+      rule_type: string
+      version_number: integer
+      country_code: string
+      effective_start_date: date
+      previous_version_id: uuid_nullable
+      created_by: uuid
+      notes: string
+    consumers:
+      - BC-10 Audit & Observability
+    retention_days: 365
+    ordering_key: rule_id
+
+  - name: SIContributionCalculated
+    version: "1.0"
+    event_id: E-CR-001
+    bounded_context: BC-02
+    kafka_topic: tr.si-contribution-calculated.v1
+    trigger: Payroll run invokes CalculateSIContribution command
+    payload:
+      worker_id: uuid
+      period: string
+      country_code: string
+      contribution_type: string
+      employee_share: decimal
+      employer_share: decimal
+      currency: string
+      is_capped: boolean
+      calculation_rule_id: uuid
+    consumers:
+      - Payroll Module
+      - BC-09 Tax & Compliance
+      - BC-10 Audit & Observability
+    retention_days: 90
+    ordering_key: worker_id
+
+  - name: SICapApplied
+    version: "1.0"
+    event_id: E-CR-002
+    bounded_context: BC-02
+    kafka_topic: tr.si-cap-applied.v1
+    trigger: Salary > 20× min wage zone — contribution capped (BR-K02)
+    payload:
+      worker_id: uuid
+      period: string
+      gross_salary: decimal
+      cap_threshold: decimal
+      currency: string
+      zone: string
+      employee_share_at_cap: decimal
+      employer_share_at_cap: decimal
+    consumers:
+      - BC-10 Audit & Observability
+    retention_days: 90
+    ordering_key: worker_id
+
+  - name: SalaryProrated
+    version: "1.0"
+    event_id: E-CR-003
+    bounded_context: BC-02
+    kafka_topic: tr.salary-prorated.v1
+    trigger: Mid-period hire/termination/change — ProrateSalary command
+    payload:
+      worker_id: uuid
+      period: string
+      actual_days: integer
+      total_days: integer
+      factor: decimal
+      method_used: string
+      prorated_amount: decimal
+      currency: string
+    consumers:
+      - Payroll Module
+      - BC-10 Audit & Observability
+    retention_days: 90
+    ordering_key: worker_id
+
+  - name: FxRateUpdated
+    version: "1.0"
+    event_id: E-CR-006
+    bounded_context: BC-02
+    kafka_topic: tr.fx-rate-updated.v1
+    trigger: Daily FX provider sync or Finance manual override
+    payload:
+      fx_record_id: uuid
+      from_currency: string
+      to_currency: string
+      rate: decimal
+      rate_date: date
+      source: string
+      delta_pct: decimal_nullable
+    consumers:
+      - BC-03 Variable Pay (multi-currency commissions)
+      - BC-10 Audit & Observability
+    retention_days: 90
+    ordering_key: fx_record_id
+
+  - name: FxDeltaAlerted
+    version: "1.0"
+    event_id: E-CR-007
+    bounded_context: BC-02
+    kafka_topic: tr.fx-delta-alerted.v1
+    trigger: FX rate change > configurable threshold (default 5%)
+    payload:
+      fx_record_id: uuid
+      from_currency: string
+      to_currency: string
+      delta_pct: decimal
+      threshold_pct: decimal
+      previous_rate: decimal
+      current_rate: decimal
+      rate_date: date
+    consumers:
+      - Finance Approver notification
+      - BC-10 Audit & Observability
+    retention_days: 90
+    ordering_key: fx_record_id
+
+  - name: CalculationCompleted
+    version: "1.0"
+    event_id: E-CR-008
+    bounded_context: BC-02
+    kafka_topic: tr.calculation-completed.v1
+    trigger: All components calculated for a period — ready for Payroll bridge
+    payload:
+      worker_id: uuid
+      period: string
+      calculation_run_id: uuid
+      components_calculated: array
+      total_gross: decimal
+      currency: string
+      completed_at: datetime
+    consumers:
+      - BC-08 Taxable Bridge (triggers bridge processing)
+      - Payroll Module
+      - BC-10 Audit & Observability
+    retention_days: 90
+    ordering_key: worker_id
+
+  # ============================================================
+  # BC-03: Variable Pay
+  # ============================================================
+
+  - name: BonusPlanConfigured
+    version: "1.0"
+    event_id: E-VP-001
+    bounded_context: BC-03
+    kafka_topic: tr.bonus-plan-configured.v1
+    trigger: Compensation Admin configures BonusPlan
+    payload:
+      plan_id: uuid
+      name: string
+      period_type: string
+      target_pct_of_salary: decimal
+      country_code: string
+      is_taxable: boolean
+      created_by: uuid
+    consumers:
+      - BC-10 Audit & Observability
+    retention_days: 365
+    ordering_key: plan_id
+
+  - name: BonusPoolReleased
+    version: "1.0"
+    event_id: E-VP-002
+    bounded_context: BC-03
+    kafka_topic: tr.bonus-pool-released.v1
+    trigger: Finance Approver releases bonus pool (company performance confirmed)
+    payload:
+      plan_id: uuid
+      pool_amount: decimal
+      currency: string
+      period_label: string
+      released_by: uuid
+      released_at: datetime
+    consumers:
+      - BC-10 Audit & Observability
+    retention_days: 365
+    ordering_key: plan_id
+
+  - name: BonusCalculated
+    version: "1.0"
+    event_id: E-VP-003
+    bounded_context: BC-03
+    kafka_topic: tr.bonus-calculated.v1
+    trigger: System runs RunBonusCalculation — per-worker result
+    payload:
+      statement_id: uuid
+      worker_id: uuid
+      plan_id: uuid
+      period_label: string
+      base_amount: decimal
+      target_bonus_amount: decimal
+      performance_modifier: decimal
+      final_amount: decimal
+      currency: string
+      status: string
+    consumers:
+      - People Manager notification
+      - BC-10 Audit & Observability
+    retention_days: 365
+    ordering_key: worker_id
+
+  - name: BonusApproved
+    version: "1.0"
+    event_id: E-VP-004
+    bounded_context: BC-03
+    kafka_topic: tr.bonus-approved.v1
+    trigger: People Manager / Budget Approver approves bonus statement
+    payload:
+      statement_id: uuid
+      worker_id: uuid
+      plan_id: uuid
+      final_amount: decimal
+      currency: string
+      approved_by: uuid
+      approved_at: datetime
+      idempotency_key: string
+    consumers:
+      - BC-08 Taxable Bridge (creates TaxableItem if taxable)
+      - Payroll Module
+      - BC-10 Audit & Observability
+    retention_days: 365
+    ordering_key: worker_id
+
+  - name: CommissionPlanConfigured
+    version: "1.0"
+    event_id: E-VP-005
+    bounded_context: BC-03
+    kafka_topic: tr.commission-plan-configured.v1
+    trigger: Sales Ops configures commission plan with tiers and quota
+    payload:
+      plan_id: uuid
+      name: string
+      plan_year: integer
+      tier_type: string
+      quota_amount: decimal
+      quota_currency: string
+      tier_count: integer
+      created_by: uuid
+    consumers:
+      - BC-10 Audit & Observability
+    retention_days: 365
+    ordering_key: plan_id
+
+  - name: SalesTransactionSynced
+    version: "1.0"
+    event_id: E-VP-006
+    bounded_context: BC-03
+    kafka_topic: tr.sales-transactions.v1
+    trigger: Sales Ops imports CRM transactions or real-time CRM Kafka event
+    description: |
+      Idempotent: duplicate crm_transaction_id is ignored (BR-V03).
+      Real-time path: Kafka event from CRM → triggers RealTimeCommissionCalculated.
+    payload:
+      batch_import_id: uuid_nullable
+      transaction_count: integer
+      duplicates_ignored: integer
+      worker_ids: array
+      period: string
+    consumers:
+      - BC-03 Commission Engine (triggers recalculation)
+      - BC-10 Audit & Observability
+    retention_days: 90
+    ordering_key: batch_import_id
+
+  - name: CommissionRecalculated
+    version: "1.0"
+    event_id: E-VP-007
+    bounded_context: BC-03
+    kafka_topic: tr.commission-recalculated.v1
+    trigger: System processes transactions via CalculateCommission command
+    description: |
+      Real-time path: < 5 seconds from SalesTransaction import (USP — BR-V01).
+      Batch path: month-end full recalculation.
+    payload:
+      statement_id: uuid
+      worker_id: uuid
+      plan_id: uuid
+      period: string
+      actual_sales: decimal
+      quota_target: decimal
+      attainment_pct: decimal
+      commission_amount: decimal
+      currency: string
+      is_real_time: boolean
+      recalculated_at: datetime
+    consumers:
+      - Commission Dashboard (real-time <5s for is_real_time=true)
+      - BC-10 Audit & Observability
+    retention_days: 90
+    ordering_key: worker_id
+
+  - name: QuotaAttainmentUpdated
+    version: "1.0"
+    event_id: E-VP-008
+    bounded_context: BC-03
+    kafka_topic: tr.quota-attainment-updated.v1
+    trigger: Real-time Kafka streaming — new SalesTransaction processed (USP)
+    payload:
+      worker_id: uuid
+      plan_id: uuid
+      period: string
+      new_attainment_pct: decimal
+      previous_attainment_pct: decimal
+      new_commission_amount: decimal
+      latency_ms: integer
+      updated_at: datetime
+    consumers:
+      - Commission Dashboard (WebSocket push)
+    retention_days: 30
+    ordering_key: worker_id
+
+  - name: CommissionDisputeSubmitted
+    version: "1.0"
+    event_id: E-VP-009
+    bounded_context: BC-03
+    kafka_topic: tr.commission-dispute-submitted.v1
+    trigger: Sales Rep submits SubmitCommissionDispute command
+    payload:
+      dispute_id: uuid
+      statement_id: uuid
+      worker_id: uuid
+      disputed_amount: decimal
+      dispute_reason: string
+      submitted_at: datetime
+    consumers:
+      - Sales Ops notification
+      - BC-10 Audit & Observability
+    retention_days: 365
+    ordering_key: worker_id
+
+  - name: CommissionDisputeResolved
+    version: "1.0"
+    event_id: E-VP-010
+    bounded_context: BC-03
+    kafka_topic: tr.commission-dispute-resolved.v1
+    trigger: Sales Ops resolves dispute via ResolveCommissionDispute
+    payload:
+      dispute_id: uuid
+      statement_id: uuid
+      worker_id: uuid
+      resolution: string
+      resolved_amount: decimal
+      resolved_by: uuid
+      resolved_at: datetime
+    consumers:
+      - BC-08 Taxable Bridge
+      - Payroll Module
+      - BC-10 Audit & Observability
+    retention_days: 365
+    ordering_key: worker_id
+
+  - name: EquityGranted
+    version: "1.0"
+    event_id: E-VP-011
+    bounded_context: BC-03
+    kafka_topic: tr.equity-granted.v1
+    trigger: Manager grants LTI via GrantLTI command
+    payload:
+      lti_id: uuid
+      worker_id: uuid
+      lti_type: string
+      grant_date: date
+      total_grant_amount: decimal
+      currency: string
+      vesting_type: string
+      cliff_months: integer
+      total_vesting_months: integer
+      vesting_event_count: integer
+      granted_by: uuid
+    consumers:
+      - Worker notification
+      - BC-10 Audit & Observability
+    retention_days: 365
+    ordering_key: worker_id
+
+  - name: EquityVested
+    version: "1.0"
+    event_id: E-VP-012
+    bounded_context: BC-03
+    kafka_topic: tr.equity-vested.v1
+    trigger: Vesting date reached — system auto-processes VestingEvent
+    payload:
+      vesting_event_id: uuid
+      lti_id: uuid
+      worker_id: uuid
+      vested_date: date
+      vested_amount: decimal
+      currency: string
+      grant_percent: decimal
+      lti_type: string
+    consumers:
+      - BC-08 Taxable Bridge (creates TaxableItem automatically — no manual step)
+      - Worker notification
+      - BC-10 Audit & Observability
+    retention_days: 365
+    ordering_key: worker_id
+
+  # ============================================================
+  # BC-04: Benefits Administration
+  # ============================================================
+
+  - name: OpenEnrollmentStarted
+    version: "1.0"
+    event_id: E-BA-002
+    bounded_context: BC-04
+    kafka_topic: tr.open-enrollment-started.v1
+    trigger: HR Admin executes OpenEnrollmentWindow command
+    payload:
+      plan_id: uuid
+      enrollment_window_start: date
+      enrollment_window_end: date
+      effective_date: date
+      eligible_worker_count: integer
+      opened_by: uuid
+    consumers:
+      - Notification Service (worker alerts)
+      - BC-10 Audit & Observability
+    retention_days: 365
+    ordering_key: plan_id
+
+  - name: BenefitEnrolled
+    version: "1.0"
+    event_id: E-BA-003
+    bounded_context: BC-04
+    kafka_topic: tr.benefit-enrolled.v1
+    trigger: Worker elects benefit via ElectBenefit; finalized on window close
+    payload:
+      enrollment_id: uuid
+      worker_id: uuid
+      plan_id: uuid
+      plan_name: string
+      election_type: string
+      coverage_tier: string
+      effective_date: date
+      deduction_amount: decimal
+      deduction_currency: string
+    consumers:
+      - BC-08 Taxable Bridge (if taxable benefit-in-kind)
+      - BC-01 Compensation (creates DeductionRecord)
+      - Carrier Sync Service
+      - BC-10 Audit & Observability
+    retention_days: 365
+    ordering_key: worker_id
+
+  - name: DependentAdded
+    version: "1.0"
+    event_id: E-BA-006
+    bounded_context: BC-04
+    kafka_topic: tr.dependent-added.v1
+    trigger: Worker executes AddDependent command
+    payload:
+      dependent_id: uuid
+      enrollment_id: uuid
+      worker_id: uuid
+      relationship: string
+      verification_status: string
+      document_deadline: date
+    consumers:
+      - Carrier Sync Service (EDI 834 update)
+      - BC-10 Audit & Observability
+    retention_days: 365
+    ordering_key: worker_id
+
+  - name: CarrierSyncCompleted
+    version: "1.0"
+    event_id: E-BA-004
+    bounded_context: BC-04
+    kafka_topic: tr.carrier-sync-completed.v1
+    trigger: EDI 834 sync succeeds (webhook or polling)
+    payload:
+      sync_id: uuid
+      carrier_id: uuid
+      plan_id: uuid
+      enrollments_synced: integer
+      synced_at: datetime
+    consumers:
+      - BC-10 Audit & Observability
+    retention_days: 90
+    ordering_key: sync_id
+
+  - name: CarrierSyncFailed
+    version: "1.0"
+    event_id: E-BA-005
+    bounded_context: BC-04
+    kafka_topic: tr.carrier-sync-failed.v1
+    trigger: EDI 834 sync fails after 3 retries
+    payload:
+      sync_id: uuid
+      carrier_id: uuid
+      failure_reason: string
+      retry_count: integer
+      failed_at: datetime
+    consumers:
+      - HR Admin notification
+      - BC-10 Audit & Observability
+    retention_days: 90
+    ordering_key: sync_id
+
+  - name: OpenEnrollmentClosed
+    version: "1.0"
+    event_id: E-BA-008
+    bounded_context: BC-04
+    kafka_topic: tr.open-enrollment-closed.v1
+    trigger: HR Admin or system closes enrollment window
+    payload:
+      plan_id: uuid
+      closed_at: datetime
+      finalized_enrollments: integer
+      cancelled_enrollments: integer
+    consumers:
+      - Carrier Sync Service (batch EDI 834)
+      - BC-10 Audit & Observability
+    retention_days: 365
+    ordering_key: plan_id
+
+  # ============================================================
+  # BC-05: Recognition & Engagement
+  # ============================================================
+
+  - name: PointsEarned
+    version: "1.0"
+    event_id: E-REC-002
+    bounded_context: BC-05
+    kafka_topic: tr.points-earned.v1
+    trigger: Worker sends peer recognition or milestone auto-award
+    payload:
+      transaction_id: uuid
+      recipient_worker_id: uuid
+      from_worker_id: uuid_nullable
+      points: integer
+      balance_after: integer
+      expiry_date: date
+      transaction_type: string
+      program_id: uuid
+    consumers:
+      - BC-10 Audit & Observability
+    retention_days: 365
+    ordering_key: recipient_worker_id
+
+  - name: PointsRedeemed
+    version: "1.0"
+    event_id: E-REC-004
+    bounded_context: BC-05
+    kafka_topic: tr.points-redeemed.v1
+    trigger: Worker redeems points for perk from catalog
+    payload:
+      transaction_id: uuid
+      worker_id: uuid
+      points_redeemed: integer
+      balance_after: integer
+      perk_catalog_id: uuid
+      perk_value: decimal
+      perk_currency: string
+      program_id: uuid
+    consumers:
+      - BC-08 Taxable Bridge (if perk has monetary value)
+      - Perk Fulfillment Service
+      - BC-10 Audit & Observability
+    retention_days: 365
+    ordering_key: worker_id
+
+  - name: TaxableRecognitionCreated
+    version: "1.0"
+    event_id: E-REC-008
+    bounded_context: BC-05
+    kafka_topic: tr.taxable-recognition-created.v1
+    trigger: Perk redemption with monetary/taxable value
+    payload:
+      transaction_id: uuid
+      worker_id: uuid
+      perk_catalog_id: uuid
+      taxable_amount: decimal
+      currency: string
+      period: string
+    consumers:
+      - BC-08 Taxable Bridge
+      - BC-10 Audit & Observability
+    retention_days: 365
+    ordering_key: worker_id
+
+  - name: MilestoneDetected
+    version: "1.0"
+    event_id: E-REC-006
+    bounded_context: BC-05
+    kafka_topic: tr.milestone-detected.v1
+    trigger: System detects work anniversary or birthday from CO events
+    payload:
+      worker_id: uuid
+      milestone_type: string
+      milestone_date: date
+      auto_recognition_triggered: boolean
+    consumers:
+      - BC-05 Recognition Engine (auto-award)
+      - BC-10 Audit & Observability
+    retention_days: 90
+    ordering_key: worker_id
+
+  # ============================================================
+  # BC-06: Offer Management
+  # ============================================================
+
+  - name: OfferCreated
+    version: "1.0"
+    event_id: E-OM-001
+    bounded_context: BC-06
+    kafka_topic: tr.offer-created.v1
+    trigger: Hiring Manager creates offer; min wage validation triggered
+    payload:
+      offer_id: uuid
+      candidate_id: string
+      legal_entity_id: uuid
+      position_title: string
+      proposed_salary: decimal
+      salary_currency: string
+      created_by: uuid
+      min_wage_check_passed: boolean
+    consumers:
+      - BC-10 Audit & Observability
+    retention_days: 365
+    ordering_key: offer_id
+
+  - name: OfferApproved
+    version: "1.0"
+    event_id: E-OM-003
+    bounded_context: BC-06
+    kafka_topic: tr.offer-approved.v1
+    trigger: Budget Approver approves offer
+    payload:
+      offer_id: uuid
+      approved_by: uuid
+      approved_at: datetime
+      proposed_salary: decimal
+      salary_currency: string
+    consumers:
+      - PDF Generation Service
+      - BC-10 Audit & Observability
+    retention_days: 365
+    ordering_key: offer_id
+
+  - name: OfferAccepted
+    version: "1.0"
+    event_id: E-OM-006
+    bounded_context: BC-06
+    kafka_topic: tr.offer-accepted.v1
+    trigger: Candidate e-signs or polling confirms acceptance
+    payload:
+      offer_id: uuid
+      candidate_id: string
+      candidate_email: string
+      legal_entity_id: uuid
+      position_title: string
+      proposed_salary: decimal
+      salary_currency: string
+      accepted_at: datetime
+      e_sign_provider: string
+    consumers:
+      - CO Module (triggers onboarding workflow)
+      - BC-10 Audit & Observability
+    retention_days: 365
+    ordering_key: offer_id
+
+  - name: OfferExpired
+    version: "1.0"
+    event_id: E-OM-007
+    bounded_context: BC-06
+    kafka_topic: tr.offer-expired.v1
+    trigger: Offer expiry_date reached without candidate response
+    payload:
+      offer_id: uuid
+      candidate_id: string
+      expiry_date: date
+      expired_at: datetime
+    consumers:
+      - Hiring Manager notification
+      - BC-10 Audit & Observability
+    retention_days: 90
+    ordering_key: offer_id
+
+  # ============================================================
+  # BC-07: TR Statement
+  # ============================================================
+
+  - name: StatementsGenerated
+    version: "1.0"
+    event_id: E-ST-001
+    bounded_context: BC-07
+    kafka_topic: tr.statements-generated.v1
+    trigger: Annual batch or on-demand statement generation completes
+    payload:
+      batch_run_id: uuid
+      statement_year: integer
+      statements_generated: integer
+      generation_completed_at: datetime
+    consumers:
+      - Notification Service (worker delivery)
+      - BC-10 Audit & Observability
+    retention_days: 365
+    ordering_key: batch_run_id
+
+  - name: StatementViewed
+    version: "1.0"
+    event_id: E-ST-002
+    bounded_context: BC-07
+    kafka_topic: tr.statement-viewed.v1
+    trigger: Worker views their TR statement
+    payload:
+      statement_id: uuid
+      worker_id: uuid
+      statement_year: integer
+      viewed_at: datetime
+    consumers:
+      - BC-10 Audit & Observability
+    retention_days: 365
+    ordering_key: worker_id
+
+  # ============================================================
+  # BC-08: Taxable Bridge
+  # ============================================================
+
+  - name: TaxableItemCreated
+    version: "1.0"
+    event_id: E-TX-006
+    bounded_context: BC-08
+    kafka_topic: tr.taxable-items.v1
+    trigger: Any BC publishes taxable event (equity vest, bonus approval, benefit in-kind, perk redemption)
+    description: |
+      Idempotency guaranteed via idempotency_key.
+      Dedup window: 24 hours. ON CONFLICT → status = DUPLICATE.
+      Payroll must ack within 15 minutes.
+    payload:
+      taxable_item_id: uuid
+      worker_id: uuid
+      working_relationship_id: uuid_nullable
+      source_type: string
+      source_ref_id: uuid_nullable
+      amount: decimal
+      currency: string
+      period: string
+      idempotency_key: string
+    consumers:
+      - Payroll Module (SLA: ack within 15 min)
+      - BC-09 Tax & Compliance
+      - BC-10 Audit & Observability
+    retention_days: 90
+    ordering_key: worker_id
+
+  - name: PayrollBridgeProcessed
+    version: "1.0"
+    event_id: E-TX-007
+    bounded_context: BC-08
+    kafka_topic: tr.payroll-bridge-processed.v1
+    trigger: TaxableItem + PayComponents + Deductions finalized for period
+    payload:
+      worker_id: uuid
+      period: string
+      taxable_items_count: integer
+      total_taxable_amount: decimal
+      currency: string
+      payroll_run_id: uuid_nullable
+      processed_at: datetime
+    consumers:
+      - Payroll Module
+      - BC-10 Audit & Observability
+    retention_days: 90
+    ordering_key: worker_id
+
+  - name: PayrollBridgeDelayed
+    version: "1.0"
+    event_id: E-TX-008
+    bounded_context: BC-08
+    kafka_topic: tr.payroll-bridge-delayed.v1
+    trigger: No Payroll ack received within 15 minutes of TaxableItemCreated
+    payload:
+      taxable_item_id: uuid
+      worker_id: uuid
+      period: string
+      minutes_elapsed: integer
+      retry_count: integer
+    consumers:
+      - Payroll Admin notification
+      - HR Admin notification
+      - BC-10 Audit & Observability
+    retention_days: 30
+    ordering_key: worker_id
+
+  # ============================================================
+  # BC-09: Tax & Compliance
+  # ============================================================
+
+  - name: TaxBracketConfigured
+    version: "1.0"
+    event_id: E-TX-001
+    bounded_context: BC-09
+    kafka_topic: tr.tax-bracket-configured.v1
+    trigger: Tax Admin creates new TaxBracket version (SCD Type 2)
+    payload:
+      country_code: string
+      effective_start_date: date
+      brackets_count: integer
+      configured_by: uuid
+      regulatory_ref: string
+    consumers:
+      - BC-10 Audit & Observability
+    retention_days: 365
+    ordering_key: country_code
+
+  - name: TaxCalculated
+    version: "1.0"
+    event_id: E-TX-002
+    bounded_context: BC-09
+    kafka_topic: tr.tax-calculated.v1
+    trigger: Payroll run — taxable income finalized; CalculateTax command executed
+    payload:
+      worker_id: uuid
+      period: string
+      taxable_income: decimal
+      tax_withheld: decimal
+      currency: string
+      bracket_applied: string
+      calculation_rule_id: uuid
+    consumers:
+      - Payroll Module
+      - BC-10 Audit & Observability
+    retention_days: 90
+    ordering_key: worker_id
+
+  - name: TaxFilingSubmitted
+    version: "1.0"
+    event_id: E-TX-004
+    bounded_context: BC-09
+    kafka_topic: tr.tax-filing-submitted.v1
+    trigger: Tax Admin submits FileTaxReturn command
+    description: |
+      Dual-path: both API and file paths prepared simultaneously.
+      API path is primary; file path always ready as fallback.
+    payload:
+      filing_id: uuid
+      country_code: string
+      legal_entity_id: uuid
+      period: string
+      filing_type: string
+      submission_path: string
+      submitted_by: uuid
+      submitted_at: datetime
+      total_withheld: decimal
+      currency: string
+    consumers:
+      - BC-10 Audit & Observability
+    retention_days: 365
+    ordering_key: filing_id
+
+  - name: TaxFilingAcknowledged
+    version: "1.0"
+    event_id: E-TX-004b
+    bounded_context: BC-09
+    kafka_topic: tr.tax-filing-acknowledged.v1
+    trigger: Tax Authority API returns acknowledgment reference number
+    payload:
+      filing_id: uuid
+      authority_ref_number: string
+      acknowledged_at: datetime
+      country_code: string
+    consumers:
+      - BC-10 Audit & Observability
+    retention_days: 365
+    ordering_key: filing_id
+
+  - name: TaxDeclarationUpdated
+    version: "1.0"
+    event_id: E-TX-003
+    bounded_context: BC-09
+    kafka_topic: tr.tax-declaration-updated.v1
+    trigger: Worker updates self-service tax profile
+    payload:
+      worker_id: uuid
+      country_code: string
+      effective_date: date
+      previous_dependent_count: integer
+      new_dependent_count: integer
+      updated_at: datetime
+    consumers:
+      - BC-09 Tax Engine (affects next period calc)
+      - BC-10 Audit & Observability
+    retention_days: 365
+    ordering_key: worker_id
+
+  # ============================================================
+  # BC-10: Audit & Observability
+  # ============================================================
+
+  - name: AuditRecordCreated
+    version: "1.0"
+    event_id: E-AUD-001
+    bounded_context: BC-10
+    kafka_topic: tr.audit-records.v1
+    trigger: Any TR entity change from any BC — captured via event subscription
+    description: |
+      Immutable append-only. Cannot be modified or deleted after creation.
+      7-year retention minimum; indefinite for executive compensation records.
+    payload:
+      audit_id: uuid
+      entity_type: string
+      entity_id: uuid
+      action: string
+      actor_id: uuid
+      actor_role: string
+      before_state: object_nullable
+      after_state: object_nullable
+      bc_source: string
+      created_at: datetime
+    consumers:
+      - Audit Storage (write-once)
+      - Compliance Reporting Service
+    retention_days: 2555
+    ordering_key: entity_id
+
+  - name: AnomalyDetected
+    version: "1.0"
+    event_id: E-AUD-002
+    bounded_context: BC-10
+    kafka_topic: tr.anomaly-detected.v1
+    trigger: Daily scan detects salary/compensation change exceeding threshold
+    payload:
+      anomaly_id: uuid
+      entity_type: string
+      entity_id: uuid
+      anomaly_type: string
+      threshold_exceeded: decimal
+      actual_value: decimal
+      detected_at: datetime
+    consumers:
+      - Compliance Officer notification
+      - Security Team notification
+    retention_days: 365
+    ordering_key: entity_id
+
+  - name: ComplianceReportGenerated
+    version: "1.0"
+    event_id: E-AUD-003
+    bounded_context: BC-10
+    kafka_topic: tr.compliance-report-generated.v1
+    trigger: Compliance Officer requests or scheduled generation
+    payload:
+      report_id: uuid
+      report_type: string
+      scope_legal_entity_id: uuid_nullable
+      period_from: date
+      period_to: date
+      generated_by: uuid
+      report_url: string
+      generated_at: datetime
+    consumers:
+      - Notification Service
+    retention_days: 365
+    ordering_key: report_id
+
+  - name: UnauthorizedAccessAttempted
+    version: "1.0"
+    event_id: E-AUD-004
+    bounded_context: BC-10
+    kafka_topic: tr.unauthorized-access-attempted.v1
+    trigger: User attempts to modify audit record or access beyond their scope
+    payload:
+      attempt_id: uuid
+      actor_id: uuid
+      actor_role: string
+      attempted_action: string
+      resource_type: string
+      resource_id: uuid
+      ip_address: string
+      attempted_at: datetime
+    consumers:
+      - Compliance Officer immediate alert
+      - Security Team notification
+    retention_days: 2555
+    ordering_key: actor_id
+
+# ============================================================
+# Event Statistics
+# ============================================================
+
+summary:
+  total_events: 51
+  by_bounded_context:
+    BC-01: 13
+    BC-02: 7
+    BC-03: 12
+    BC-04: 6
+    BC-05: 4
+    BC-06: 5
+    BC-07: 2
+    BC-08: 3
+    BC-09: 5
+    BC-10: 4
+  usp_events:
+    - QuotaAttainmentUpdated (BC-03, real-time <5s commission dashboard)
+    - PayEquityGapDetected (BC-01, pay equity analysis)
+  kafka_topics_count: 51
+  retention_tiers:
+    30_days: [tr.payroll-bridge-delayed.v1, tr.quota-attainment-updated.v1, tr.milestone-detected.v1]
+    90_days: [salary, calculation, commission, carrier sync topics]
+    365_days: [compensation cycles, benefits, offers, tax, audit]
+    2555_days: [tr.audit-records.v1, tr.unauthorized-access-attempted.v1]
