@@ -1616,6 +1616,139 @@ Table total_rewards.employee_reward_summary {
   '''
 }
 
+// as request by a Trân 27/3/2026
+// =============================================================
+//  SCHEMA: compensation – Compensation Basis (CompensationBasis Ontology)
+// =============================================================
+// changed 06feb2026: NEW schema for CompensationBasis entity with flexible component lines
+
+Table compensation.basis {                     // mức lương hiệu lực (header)
+  id                      uuid        [pk, default: `gen_random_uuid()`]
+  work_relationship_id    uuid        [ref: > employment.work_relationship.id, not null]  // link to WorkRelationship
+  assignment_id           uuid        [ref: > employment.assignment.id, null]              // changed 26Mar2026: G1 - link to specific assignment (nullable for backward compat)
+  
+  // Effective Dating (SCD Type-2)
+  effective_start_date    date        [not null]                        // ngày bắt đầu hiệu lực
+  effective_end_date      date        [null]                            // ngày kết thúc (null = current)
+  is_current_flag         boolean     [default: false]                  // cờ bản ghi hiện tại
+  
+  // Core Salary Basis
+  basis_amount            decimal(15,2) [not null]                      // lương cơ bản (operational)
+  currency_code           char(3)     [default: 'VND']                  // mã tiền tệ (ISO 4217)
+  frequency_code          varchar(20) [default: 'MONTHLY']              // MONTHLY, HOURLY, ANNUALLY, DAILY, PER_UNIT  // changed 26Mar2026: G2 - thêm PER_UNIT cho piece-rate
+  annualization_factor    decimal(6,2) [null]                           // factor quy năm
+  annual_equivalent       decimal(15,2) [null]                          // lương quy năm (calculated)
+  
+  // changed 26Mar2026: G2 - Piece-Rate / Output-Based Pay Support
+  output_unit_code        varchar(30) [null]                            // đơn vị sản phẩm: PIECE, ARTICLE, TEACHING_HOUR, GARMENT (common.code_list(OUTPUT_UNIT))
+  unit_rate_amount        decimal(15,4) [null]                          // rate per unit (VD: 50,000 VND/piece)
+  guaranteed_minimum      decimal(15,2) [null]                          // lương tối thiểu đảm bảo khi output-based < minimum
+  
+  // Classification
+  basis_type_code         varchar(30) [not null, default: 'OPERATIONAL_BASE']  // LEGAL_BASE, OPERATIONAL_BASE, MARKET_ADJUSTED
+  source_code             varchar(30) [not null, default: 'CONTRACT']         // CONTRACT, MANUAL_ADJUST, PROMOTION, COMP_CYCLE
+  reason_code             varchar(30) [null]                                  // HIRE, PROBATION_END, ANNUAL_REVIEW, PROMOTION
+  
+  // Adjustment Tracking
+  adjustment_amount       decimal(15,2) [null]                          // delta từ record trước
+  adjustment_percentage   decimal(5,2) [null]                           // % thay đổi
+  previous_basis_id       uuid        [ref: > compensation.basis.id, null]  // SCD chain (self-ref)
+  
+  // References
+  contract_id             uuid        [ref: > employment.contract.id, null]  // source contract (for LEGAL_BASE)
+  salary_basis_id         uuid        [null]                                 // link to comp_core.salary_basis config
+  
+  // Approval Workflow
+  approval_status         varchar(20) [null]                            // PENDING, APPROVED, REJECTED
+  approved_by             uuid        [ref: > person.worker.id, null]   // approver
+  approval_date           timestamp   [null]
+  next_review_date        date        [null]
+  
+  // VN Specific
+  social_insurance_basis  decimal(15,2) [null]                          // mức đóng BHXH (nếu khác basis_amount)
+  regional_min_wage_zone  varchar(10) [null]                            // ZONE_I, ZONE_II, ZONE_III, ZONE_IV
+  
+  // Flexible Component Lines (aggregated)
+  has_component_lines     boolean     [default: false]                  // có detail lines không?
+  total_allowance_amount  decimal(15,2) [default: 0]                    // tổng phụ cấp cố định (SUM of lines)
+  total_gross_amount      decimal(15,2) [null]                          // basis_amount + total_allowance_amount
+  component_line_count    int         [default: 0]                      // số dòng phụ cấp
+  
+  // Notes & Status
+  notes                   text        [null]
+  status_code             varchar(30) [not null, default: 'DRAFT']      // DRAFT, PENDING_APPROVAL, ACTIVE, FUTURE, SUPERSEDED, CANCELLED
+  
+  // Audit
+  created_at              timestamp   [default: `now()`]
+  updated_at              timestamp   [null]
+  created_by              uuid        [ref: > person.worker.id, null]
+  updated_by              uuid        [ref: > person.worker.id, null]
+  
+  Indexes {
+    (work_relationship_id, effective_start_date) [unique]               // unique per relationship + date
+    (work_relationship_id, is_current_flag) [name: 'idx_basis_current', note: 'WHERE is_current_flag = true']
+    (status_code, is_current_flag)
+    (previous_basis_id)                                                 // SCD chain lookup
+  }
+  
+  Note: '''
+    changed 06feb2026: NEW - CompensationBasis entity from ontology.
+    Header table for operational salary. Supports SCD Type-2 (date-effective with previousBasisId chain).
+    Flexible allowances stored in compensation.basis_line (detail lines).
+    Aggregated fields: total_allowance_amount, total_gross_amount, component_line_count.
+    
+    changed 26Mar2026: G1 - Added assignment_id (nullable FK) to support multi-assignment per employee within same LE.
+    changed 26Mar2026: G2 - Added piece-rate/output-based pay fields:
+      - frequency_code extended with PER_UNIT value
+      - output_unit_code: unit of output (PIECE, ARTICLE, TEACHING_HOUR, GARMENT)
+      - unit_rate_amount: rate per unit of output
+      - guaranteed_minimum: minimum guaranteed pay when output-based < threshold
+      Use case: Lương khoán sản phẩm, lương theo bài giảng, etc.
+  '''
+}
+
+Table compensation.basis_line {                // chi tiết phụ cấp cố định (flexible lines)
+  id                      uuid        [pk, default: `gen_random_uuid()`]
+  basis_id                uuid        [ref: > compensation.basis.id, not null]  // header
+  
+  // Component Type
+  component_type_code     varchar(50) [not null]                        // MEAL, HOUSING, TRANSPORTATION, RESPONSIBILITY, SENIORITY, TOXICITY, PHONE, OTHER
+                                                                        // Lookup: common.code_list(COMP_COMPONENT_TYPE)
+  component_name          varchar(100) [null]                           // tên phụ cấp (nếu type = OTHER)
+  
+  // Amount
+  amount                  decimal(15,2) [not null]                      // số tiền phụ cấp
+  currency_code           char(3)     [default: 'VND']
+  
+  // Source
+  source_code             varchar(30) [not null, default: 'FIXED']      // FIXED = chốt cứng riêng, OVERRIDE = override từ plan
+                                                                        // (Phụ cấp tính từ plan sẽ KHÔNG ở đây, do Compensation Plan xử lý)
+  reason_code             varchar(50) [null]                            // lý do phụ cấp (HIRE, ROLE_CHANGE, SPECIAL, etc.)
+  
+  // Effective Dating
+  effective_start_date    date        [not null]                        // ngày bắt đầu có hiệu lực
+  effective_end_date      date        [null]                            // ngày kết thúc (null = ongoing)
+  is_current_flag         boolean     [default: true]
+  
+  // Reference
+  reference_id            uuid        [null]                            // optional reference (e.g., job_id, position_id if based on role)
+  reference_type          varchar(30) [null]                            // JOB, POSITION, LOCATION, etc.
+  
+  // Notes & Audit
+  notes                   text        [null]
+  metadata                jsonb       [null]                            // additional info
+  created_at              timestamp   [default: `now()`]
+  updated_at              timestamp   [null]
+  created_by              uuid        [ref: > person.worker.id, null]
+  updated_by              uuid        [ref: > person.worker.id, null]
+  
+  Indexes {
+    (basis_id, component_type_code, effective_start_date) [unique]      // unique per basis + type + date
+    (basis_id, is_current_flag)                                         // current lines per basis
+    (component_type_code, is_current_flag)                              // reporting by type
+  }
+  
+
 
 //***************************************************
 // * 11. RELATIONSHIPS & ADDITIONAL NOTES
