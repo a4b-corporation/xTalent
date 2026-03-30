@@ -973,7 +973,12 @@ Table absence.leave_type {
   support_scope     varchar(50)                 // 'VN:LE,SG:BU'
   
   // [v5.1] ELIGIBILITY - changed 12dec2025
-  default_eligibility_profile_id uuid [null, ref: > eligibility.eligibility_profile.id]  // changed 26Mar2026: F1 - corrected schema name from core → eligibility
+  // DEPRECATED 30Mar2026 (Change 11): Eligibility centralized at leave_class level only.
+  // Removed default_eligibility_profile_id — Core eligibility engine is single source of truth for WHO.
+  // Was: default_eligibility_profile_id uuid [null, ref: > eligibility.eligibility_profile.id]
+  
+  // 30Mar2026 NEW (Change 11): Explicit cancellation deadline — BRD BR-ABS-008, H-P0-001
+  cancellation_deadline_days int [default:1]   // Business days before leave start; self-cancel blocked after. Configurable per type/BU.
   
   metadata          jsonb
   is_active         boolean [default:true]
@@ -983,7 +988,7 @@ Table absence.leave_type {
   created_at        timestamptz [default:`now()`] // 2025-12-01 NEW
   updated_at        timestamptz [null]            // 2025-12-01 NEW
   
-  Note: 'changed 12dec2025: Added default_eligibility_profile_id for hybrid eligibility model. VLC refs: Art. 113 (annual 12d), Art. 114 (sick 30-180d), Art. 139 (maternity 6m), Art. 115 (unpaid by agreement). See Enum leave_category.'
+  Note: 'changed 12dec2025, 30Mar2026. 30Mar2026 (Change 11): Removed eligibility_profile_id (centralized at leave_class). Added cancellation_deadline_days (H-P0-001, BR-ABS-008). VLC refs: Art. 113 (annual 12d), Art. 114 (sick 30-180d), Art. 139 (maternity 6m), Art. 115 (unpaid by agreement).'
 }
 
 // 2025-12-01 KEEP: Giữ nguyên thiết kế v4
@@ -1041,11 +1046,17 @@ Table absence.leave_policy {
   name              varchar(100)
   
   // [v5.1] ELIGIBILITY - changed 12dec2025
-  default_eligibility_profile_id uuid [null, ref: > eligibility.eligibility_profile.id]  // changed 26Mar2026: F1 - corrected schema name from core → eligibility
+  // DEPRECATED 30Mar2026 (Change 12): Eligibility centralized at leave_class level only.
+  // Removed — Core eligibility engine is single source of truth.
+  // Was: default_eligibility_profile_id uuid [null, ref: > eligibility.eligibility_profile.id]
   
-  // Rule JSONs (keep for flexibility - complex business logic)
-  accrual_rule_json jsonb  [null]
-  carry_rule_json   jsonb  [null]
+  // 30Mar2026 NEW (Change 12): FK to leave_class — code hiện tại link class qua policy vẫn hoạt động
+  class_id          uuid [null, ref: > absence.leave_class.id]
+  
+  // Rule JSONs — DEPRECATED 30Mar2026 (Change 12): Sẽ migrate sang absence.absence_rule + class_rule_assignment.
+  // GIỮ columns để tránh lỗi development. Code mới đọc từ absence_rule, code cũ vẫn đọc JSONB.
+  accrual_rule_json jsonb  [null]     // DEPRECATED 30Mar2026 → absence_rule(ACCRUAL)
+  carry_rule_json   jsonb  [null]     // DEPRECATED 30Mar2026 → absence_rule(CARRY)
   overdraft_allowed boolean [default:false]
   overdraft_limit_hours decimal(6,2) [null]
   metadata          jsonb
@@ -1056,25 +1067,28 @@ Table absence.leave_policy {
   effective_end     date [null]
   
   // [v5.1] Additional rules - changed 12dec2025
-  limit_rule_json   jsonb  [null]
-  validation_json   jsonb  [null]
-  rounding_json     jsonb  [null]
-  proration_json    jsonb  [null]
+  limit_rule_json   jsonb  [null]     // DEPRECATED 30Mar2026 → absence_rule(LIMIT)
+  validation_json   jsonb  [null]     // DEPRECATED 30Mar2026 → absence_rule(VALIDATION)
+  rounding_json     jsonb  [null]     // DEPRECATED 30Mar2026 → absence_rule(ROUNDING)
+  proration_json    jsonb  [null]     // DEPRECATED 30Mar2026 → absence_rule(PRORATION)
   
-  Note: 'changed 12dec2025: Created with default_eligibility_profile_id for organizational scope. Rule JSONs kept for complex business logic flexibility'
+  Note: 'changed 12dec2025, 30Mar2026. 30Mar2026 (Change 12): Removed eligibility_profile_id (centralized at leave_class). Added class_id FK. JSONB rule columns DEPRECATED — will migrate to absence_rule + class_rule_assignment. Columns kept for backward compatibility.'
 }
 
 // [v5.1] NEW TABLE - changed 12dec2025: Policy assignment
-Table absence.policy_assignment {
-  id                uuid [pk]
-  policy_id         uuid [ref: > absence.leave_policy.id]
-  assignment_type   varchar(20)                 // EMPLOYEE, BU, LE, GRADE
-  assignment_id     uuid                        // id thực thể
-  effective_start   date
-  effective_end     date [null]
-  
-  Note: 'changed 12dec2025: Merged from 3.Absence.v4.dbml'
-}
+// DEPRECATED 30Mar2026 (Change 13): Replaced by Core eligibility engine (eligibility.eligibility_profile).
+// WHO is eligible for leave is determined by eligibility_profile_id on leave_class.
+// This table is redundant — Core module provides centralized O(1) eligibility membership checks.
+// Table absence.policy_assignment {
+//   id                uuid [pk]
+//   policy_id         uuid [ref: > absence.leave_policy.id]
+//   assignment_type   varchar(20)                 // EMPLOYEE, BU, LE, GRADE
+//   assignment_id     uuid                        // id thực thể
+//   effective_start   date
+//   effective_end     date [null]
+//   
+//   Note: 'changed 12dec2025: Merged from 3.Absence.v4.dbml'
+// }
 
 
 /*----------- 3. Leave Instant (Giữ nguyên v4) -----------------*/
@@ -1245,6 +1259,32 @@ Table absence.leave_reservation {
   expires_at     timestamptz [null]
   
   created_at     timestamptz [default:`now()`]    // 2025-12-01 NEW
+}
+
+
+/*----------- 6.1 Leave Reservation Line (NEW 30Mar2026, Change 16) */
+// FEFO reservation line sub-table — links each reservation to specific leave_instant_detail lots.
+// Ensures First-Expired-First-Out consumption tracking with FK integrity.
+Table absence.leave_reservation_line {
+  id                uuid [pk]
+  
+  reservation_id    uuid [not null, ref: > absence.leave_reservation.request_id]
+  
+  // FEFO source tracking — link đến lot/grant cụ thể trong leave_instant_detail
+  source_lot_id     uuid [not null, ref: > absence.leave_instant_detail.id]
+  
+  reserved_amount   decimal(10,2) [not null]
+  expiry_date       date [null]                 // copied from lot for quick query
+  
+  created_at        timestamptz [default:`now()`]
+  
+  Indexes {
+    (reservation_id)
+    (source_lot_id)
+    (expiry_date)
+  }
+  
+  Note: 'NEW 30Mar2026 (Change 16). FEFO-ordered reservation lines linking to leave_instant_detail lots. Example: Employee has Lot A (3d, expires 2026-03-31) + Lot B (7d, expires 2026-12-31). Reservation for 4d creates: Line 1 → Lot A (3d), Line 2 → Lot B (1d). Benefits: FK integrity, SQL-queryable FEFO, immutable ledger consistency.'
 }
 
 // 2025-12-01 KEEP: Giữ nguyên thiết kế v4
@@ -1444,7 +1484,176 @@ Table absence.termination_balance_record {
 
 
 //===============================================================
-//  BOUNDED CONTEXT — TableGroups (27Mar2026, Change 3)
+//  NEW TABLES — 30Mar2026 (Changes 14, 15, 17)
+//  Option C: Centralized Rule Engine + N:N Mapping + Accrual Batch
+//===============================================================
+
+/*----------- Absence Rule (NEW 30Mar2026, Change 14) -----------*/
+// Centralized rule repository for ALL absence business rules.
+// 9 Policy Entities from bounded-contexts.md § 11 → 9 rule_types.
+// Phase 1 (Absence): ACCRUAL | CARRY | LIMIT | VALIDATION | PRORATION | ROUNDING | SENIORITY
+// Phase 2 (Full TA): + COMP_TIME | OVERTIME | SHIFT_SWAP | BIOMETRIC | HOLIDAY | TERMINATION | APPROVAL
+Table absence.absence_rule {
+  id                uuid [pk]
+  tenant_id         uuid [null]
+  
+  // ── DISCRIMINATOR ──
+  rule_type         varchar(30) [not null]     // Phase 1: ACCRUAL|CARRY|LIMIT|VALIDATION|PRORATION|ROUNDING|SENIORITY
+  
+  // ── IDENTITY ──
+  code              varchar(50) [not null]     // unique per tenant + rule_type
+  name              varchar(255) [not null]
+  description       text [null]
+  
+  // ── VERSION & LIFECYCLE ──
+  version           int [not null, default: 1] // auto-increment on update
+  status_code       varchar(20) [default: 'ACTIVE']  // ACTIVE | INACTIVE | DRAFT
+  
+  // ── SCOPE (optional filtering) ──
+  country_code      varchar(10) [null]         // null = all countries
+  legal_entity_id   uuid [null]                // null = all LEs
+  
+  // ── RULE PAYLOAD ──
+  // Centralized config in JSONB — schema validated per rule_type at application layer.
+  // ACCRUAL:    {method, amount_per_period, frequency, unit, max_balance, tenure_tiers[]}
+  // CARRY:      {allow_carry, max_carry_qty, carry_unit, expiry_months_after_year_end, expiry_action}
+  // SENIORITY:  {tiers[{min_years, max_years, entitlement_days}], vlc_reference}
+  // LIMIT:      {max_per_request, max_per_month, max_per_year, min_notice_days}
+  // VALIDATION: {rules[{type, params}]}
+  // PRORATION:  {method, basis}
+  // ROUNDING:   {method, precision}
+  config_json       jsonb [not null]
+  
+  // ── AUDIT ──
+  effective_start   date [not null]
+  effective_end     date [null]
+  is_current_flag   boolean [default: true]    // SCD Type 2 — false = historical version
+  
+  metadata          jsonb
+  created_at        timestamptz [default:`now()`]
+  updated_at        timestamptz [null]
+  created_by        uuid [not null]
+  updated_by        uuid [null]
+  
+  Indexes {
+    (tenant_id, rule_type, code, is_current_flag) [unique, name: 'uq_absence_rule_tenant_type_code']
+    (tenant_id, rule_type, status_code)
+    (rule_type, country_code)
+  }
+  
+  Note: '''
+  NEW 30Mar2026 (Change 14). Centralized rule repository — Option C: Rule Engine.
+  
+  Maps 9 Policy Entities (bounded-contexts.md § 11) to rule_type discriminator:
+  1. LeavePolicy → ACCRUAL, CARRY, LIMIT, VALIDATION, PRORATION, ROUNDING, SENIORITY
+  2. CompTimePolicy → COMP_TIME (Phase 2)
+  3. SickLeavePolicy → SICK_LEAVE (Phase 2)
+  4. OvertimePolicy → OVERTIME (Phase 2)
+  5. ShiftSwapPolicy → SHIFT_SWAP (Phase 2)
+  6. BiometricPolicy → BIOMETRIC (Phase 2)
+  7. HolidayPolicy → HOLIDAY (Phase 2)
+  8. TerminationPolicy → TERMINATION (Phase 2)
+  9. ApprovalChain → APPROVAL (Phase 2)
+  
+  Benefits vs JSONB-in-policy:
+  1. SQL-level batch filtering: WHERE rule_type = 'ACCRUAL' (indexed)
+  2. Reusable: 1 rule → N classes via class_rule_assignment (N:N)
+  3. Auditable: SCD Type 2 versioning (is_current_flag)
+  4. Flexible: config_json keeps JSONB payload per rule_type
+  5. Scopable: optional country_code/legal_entity_id filtering
+  '''
+}
+
+
+/*----------- Class Rule Assignment (NEW 30Mar2026, Change 15) --*/
+// N:N mapping between leave_class and absence_rule.
+// leave_class is NOT modified — rules connected via this independent table.
+Table absence.class_rule_assignment {
+  id                uuid [pk]
+  tenant_id         uuid [null]
+  
+  class_id          uuid [not null, ref: > absence.leave_class.id]
+  rule_id           uuid [not null, ref: > absence.absence_rule.id]
+  
+  // ── ASSIGNMENT METADATA ──
+  priority          int [default: 10]          // evaluation order (lower = first)
+  is_override       boolean [default: false]   // true = overrides inherited rule
+  notes             text [null]                // admin notes
+  
+  // ── LIFECYCLE ──
+  effective_start   date [not null]
+  effective_end     date [null]
+  is_current_flag   boolean [default: true]
+  
+  created_at        timestamptz [default:`now()`]
+  updated_at        timestamptz [null]
+  created_by        uuid [not null]
+  
+  Indexes {
+    (tenant_id, class_id, rule_id, is_current_flag) [unique, name: 'uq_class_rule_assignment']
+    (class_id, is_current_flag)
+    (rule_id)
+  }
+  
+  Note: '''
+  NEW 30Mar2026 (Change 15). N:N mapping: leave_class ↔ absence_rule.
+  
+  Design:
+  1. leave_class NOT modified — rules connect through this table independently
+  2. One class → multiple rules of different types (ACCRUAL + CARRY + LIMIT + SENIORITY)
+  3. One rule → multiple classes (reuse)
+  4. priority for evaluation ordering
+  5. is_override for BU/LE-specific overrides without changing base rule
+  6. SCD Type 2 history via is_current_flag
+  
+  Example:
+    ANNUAL_STANDARD → [ACCRUAL_MONTHLY, CARRY_5DAYS, LIMIT_STD, SENIORITY_VLC113]
+    ANNUAL_SENIOR   → [ACCRUAL_MONTHLY, CARRY_10DAYS, LIMIT_SENIOR, SENIORITY_VLC113]
+    (ACCRUAL_MONTHLY and SENIORITY_VLC113 reused across both classes)
+  '''
+}
+
+
+/*----------- Leave Accrual Run (NEW 30Mar2026, Change 17) ------*/
+// Accrual batch run tracking with idempotency constraint.
+// ADR-TA-002: Idempotent monthly accrual. One COMPLETED run per plan per period.
+Table absence.leave_accrual_run {
+  id                uuid [pk]
+  tenant_id         uuid [null]
+  
+  // ── BATCH IDENTITY ──
+  plan_rule_id      uuid [not null, ref: > absence.absence_rule.id]  // ACCRUAL rule that triggered this run
+  period_start      date [not null]
+  period_end        date [not null]
+  
+  // ── EXECUTION STATUS ──
+  status_code       varchar(20) [not null, default: 'RUNNING']  // RUNNING | COMPLETED | FAILED | SKIPPED
+  
+  employee_count    int [default: 0]
+  movements_created int [default: 0]
+  
+  started_at        timestamptz [not null]
+  completed_at      timestamptz [null]
+  failed_at         timestamptz [null]
+  failure_reason    text [null]
+  
+  metadata          jsonb
+  created_at        timestamptz [default:`now()`]
+  updated_at        timestamptz [null]
+  created_by        uuid [not null]
+  
+  Indexes {
+    (tenant_id, plan_rule_id, period_start) [unique, name: 'uq_accrual_run_idempotency']
+    (tenant_id, status_code)
+    (plan_rule_id)
+  }
+  
+  Note: 'NEW 30Mar2026 (Change 17). ADR-TA-002: Idempotent accrual batch. Unique constraint (plan_rule_id, period_start) prevents duplicate runs. SKIPPED status returned when re-run attempted for same period. Replaces implicit run tracking in leave_movement.run_id.'
+}
+
+
+//===============================================================
+//  BOUNDED CONTEXT — TableGroups (27Mar2026, Change 3; updated 30Mar2026)
 //  Phân rõ 5 bounded contexts cho TA module
 //===============================================================
 
@@ -1476,16 +1685,20 @@ TableGroup ta_absence {
   absence.leave_type
   absence.leave_class
   absence.leave_policy
-  absence.policy_assignment
+  // absence.policy_assignment              // DEPRECATED 30Mar2026 (Change 13)
   absence.leave_instant
   absence.leave_instant_detail
   absence.leave_movement
   absence.leave_request
   absence.leave_reservation
+  absence.leave_reservation_line            // NEW 30Mar2026 (Change 16)
   absence.leave_event_def
   absence.holiday_calendar
   absence.holiday_date
   absence.termination_balance_record
+  absence.absence_rule                      // NEW 30Mar2026 (Change 14)
+  absence.class_rule_assignment             // NEW 30Mar2026 (Change 15)
+  absence.leave_accrual_run                 // NEW 30Mar2026 (Change 17)
 }
 
 TableGroup ta_operational {

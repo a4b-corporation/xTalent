@@ -1,6 +1,100 @@
 # xTalent Database Design – Changelog
 
 
+## [30Mar2026] – Option C: Centralized Rule Engine (Absence)
+
+> Context: Normalize all absence business rules from JSONB columns into a centralized `absence_rule` table with `rule_type` discriminator. Decouple rules from leave_policy/class via N:N mapping. Centralize eligibility to `leave_class` only. Remove redundant `policy_assignment`.
+> Architecture Decision: Option C — Centralized Rule Engine with independent N:N mapping.
+> Cross-reference: [bounded-contexts.md § 11](../01-modules/TA/03.domain/bounded-contexts.md), [glossary.md](../01-modules/TA/03.domain/absence/glossary.md), [BRD](../01-modules/TA/02.reality/brd.md)
+
+### TA-database-design-v5.dbml
+
+**Change 11 – `absence.leave_type`: Eligibility removed + cancellation deadline**
+
+| Action | Field | Detail |
+|--------|-------|--------|
+| REMOVE | `default_eligibility_profile_id` | Eligibility centralized at `leave_class` level only. Core eligibility engine is single source of truth for WHO. |
+| ADD | `cancellation_deadline_days` int [default:1] | Explicit cancellation deadline — BRD BR-ABS-008, H-P0-001. Business days before leave start; self-cancel blocked after. Configurable per type/BU. |
+
+**Change 12 – `absence.leave_policy`: Eligibility removed + class FK + JSONB DEPRECATED**
+
+| Action | Field | Detail |
+|--------|-------|--------|
+| REMOVE | `default_eligibility_profile_id` | Same rationale as Change 11. |
+| ADD | `class_id` uuid [FK → leave_class] | Code hiện tại link class qua policy vẫn hoạt động. |
+| DEPRECATE (keep) | `accrual_rule_json` | → migrate sang `absence_rule(ACCRUAL)` |
+| DEPRECATE (keep) | `carry_rule_json` | → migrate sang `absence_rule(CARRY)` |
+| DEPRECATE (keep) | `limit_rule_json` | → migrate sang `absence_rule(LIMIT)` |
+| DEPRECATE (keep) | `validation_json` | → migrate sang `absence_rule(VALIDATION)` |
+| DEPRECATE (keep) | `rounding_json` | → migrate sang `absence_rule(ROUNDING)` |
+| DEPRECATE (keep) | `proration_json` | → migrate sang `absence_rule(PRORATION)` |
+
+> Note: JSONB columns are KEPT to avoid development errors. Marked DEPRECATED via comments. Code mới đọc từ `absence_rule`, code cũ vẫn đọc JSONB.
+
+**Change 13 – `absence.policy_assignment` DEPRECATED (commented out)**
+- Replaced by Core eligibility engine (`eligibility.eligibility_profile`).
+- WHO is eligible → determined by `eligibility_profile_id` on `leave_class`.
+- Core module provides centralized O(1) eligibility membership checks.
+
+**Change 14 – NEW `absence.absence_rule` (Centralized Rule Engine)**
+- Centralized rule repository for ALL absence business rules.
+- `rule_type` discriminator maps to 9 Policy Entities from bounded-contexts.md § 11:
+
+| Phase | rule_type | Source Policy Entity | Hot Spot |
+|-------|-----------|---------------------|----------|
+| Phase 1 | `ACCRUAL` | LeavePolicy | — |
+| Phase 1 | `CARRY` | LeavePolicy | — |
+| Phase 1 | `LIMIT` | LeavePolicy | — |
+| Phase 1 | `VALIDATION` | LeavePolicy | — |
+| Phase 1 | `PRORATION` | LeavePolicy | — |
+| Phase 1 | `ROUNDING` | LeavePolicy | — |
+| Phase 1 | `SENIORITY` | LeavePolicy | VLC Art. 113 |
+| Phase 2 | `COMP_TIME` | CompTimePolicy | H-P0-002 |
+| Phase 2 | `OVERTIME` | OvertimePolicy | H-P1-006 |
+| Phase 2 | `SHIFT_SWAP` | ShiftSwapPolicy | H-P1-002 |
+| Phase 2 | `BIOMETRIC` | BiometricPolicy | H-P1-003 |
+| Phase 2 | `HOLIDAY` | HolidayPolicy | H-P1-007 |
+| Phase 2 | `TERMINATION` | TerminationPolicy | H-P0-004 |
+| Phase 2 | `APPROVAL` | ApprovalChain | H-P0-003 |
+
+- `config_json` JSONB payload — schema validated per `rule_type` at application layer
+- SCD Type 2 versioning (`is_current_flag`, `version`)
+- Scopable: optional `country_code`, `legal_entity_id`
+- Unique: `(tenant_id, rule_type, code, is_current_flag)`
+
+**Change 15 – NEW `absence.class_rule_assignment` (N:N Mapping)**
+- N:N mapping between `leave_class` and `absence_rule`.
+- `leave_class` is NOT modified — rules connected via this independent table.
+- Fields: `class_id`, `rule_id`, `priority` (eval order), `is_override`, `effective_start/end`, `is_current_flag`
+- Unique: `(tenant_id, class_id, rule_id, is_current_flag)`
+- Enables rule reuse (1 rule → N classes) and independent lifecycle management
+
+**Change 16 – NEW `absence.leave_reservation_line` (FEFO Sub-table)**
+- FEFO-ordered reservation lines linking to `leave_instant_detail` lots.
+- Fields: `reservation_id` (FK → leave_reservation), `source_lot_id` (FK → leave_instant_detail), `reserved_amount`, `expiry_date`
+- Enables FK integrity for FEFO tracking + SQL-queryable reservation breakdown
+
+**Change 17 – NEW `absence.leave_accrual_run` (Idempotent Batch)**
+- Accrual batch run tracking with idempotency constraint (ADR-TA-002).
+- Fields: `plan_rule_id` (FK → absence_rule), `period_start`, `period_end`, `status_code`, `employee_count`, `movements_created`
+- Unique: `(tenant_id, plan_rule_id, period_start)` — prevents duplicate runs
+- Status: RUNNING | COMPLETED | FAILED | SKIPPED
+
+**TableGroup `ta_absence` updated:**
+- Removed: `absence.policy_assignment` (Change 13)
+- Added: `absence.leave_reservation_line` (Change 16), `absence.absence_rule` (Change 14), `absence.class_rule_assignment` (Change 15), `absence.leave_accrual_run` (Change 17)
+
+### Summary: Schema Change Impact
+
+| Type | Tables | Impact |
+|------|--------|--------|
+| NEW tables | `absence_rule`, `class_rule_assignment`, `leave_reservation_line`, `leave_accrual_run` | 4 new tables, no existing code impact |
+| MODIFIED tables | `leave_type` (-1/+1 field), `leave_policy` (-1/+1 field, 6 DEPRECATED) | Minimal — eligibility removed, JSONB kept |
+| DEPRECATED tables | `policy_assignment` (commented out) | 1 table removed |
+| Total new columns | 3 new tables × ~15 cols + 2 added columns | ~50 new columns |
+
+---
+
 ## [27Mar2026-i] – TA v5.1: Schema Quality & Compliance Update
 
 > Context: Cherry-pick best practices from brainstormed `db.dbml` into production `TA-database-design-v5.dbml`. Preserves 6-level scheduling hierarchy and all cross-module integrations.

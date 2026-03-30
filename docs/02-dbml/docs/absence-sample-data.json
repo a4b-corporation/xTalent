@@ -1,0 +1,553 @@
+{
+  "_meta": {
+    "description": "Sample data graph for Absence sub-module: type → class → rule → instant → request",
+    "schema_version": "TA-database-design-v5 (30Mar2026)",
+    "note": "Mỗi object chứa các field tiêu biểu, bỏ qua metadata/audit fields. Dùng với JSON Crack để visualize quan hệ.",
+    "entities": ["leave_type", "leave_class", "absence_rule", "class_rule_assignment", "leave_policy", "employee", "leave_instant", "leave_instant_detail", "leave_request", "leave_reservation", "leave_reservation_line", "leave_movement"]
+  },
+
+  "leave_type": [
+    {
+      "code": "ANNUAL",
+      "name": "Nghỉ phép năm",
+      "is_paid": true,
+      "is_quota_based": true,
+      "requires_approval": true,
+      "unit_code": "DAY",
+      "allows_half_day": true,
+      "holiday_handling": "EXCLUDE_HOLIDAYS",
+      "cancellation_deadline_days": 2,
+      "_vlc": "Art.113 - minimum 14 days/year"
+    },
+    {
+      "code": "SICK",
+      "name": "Nghỉ bệnh",
+      "is_paid": true,
+      "is_quota_based": true,
+      "requires_approval": false,
+      "unit_code": "DAY",
+      "allows_half_day": false,
+      "holiday_handling": "INCLUDE_HOLIDAYS",
+      "cancellation_deadline_days": 0,
+      "_vlc": "Art.114 - up to 30 days/year (standard)"
+    }
+  ],
+
+  "leave_class": [
+    {
+      "id": "cls-annual-fte-001",
+      "type_code": "ANNUAL",
+      "code": "ANNUAL_FTE",
+      "name": "Nghỉ phép năm - FTE",
+      "status_code": "ACTIVE",
+      "mode_code": "ACCOUNT",
+      "unit_code": "DAY",
+      "scope_owner": "EMP",
+      "default_eligibility_profile_id": "elig-fte-vn-001",
+      "effective_start": "2026-01-01",
+      "_note": "Dành cho nhân viên toàn thời gian Việt Nam"
+    },
+    {
+      "id": "cls-sick-std-001",
+      "type_code": "SICK",
+      "code": "SICK_STD",
+      "name": "Nghỉ bệnh tiêu chuẩn",
+      "status_code": "ACTIVE",
+      "mode_code": "LIMIT",
+      "unit_code": "DAY",
+      "scope_owner": "EMP",
+      "default_eligibility_profile_id": "elig-all-vn-001",
+      "effective_start": "2026-01-01",
+      "_note": "Dành cho tất cả nhân viên Việt Nam"
+    }
+  ],
+
+  "absence_rule": [
+    {
+      "id": "rule-accrual-monthly-std",
+      "rule_type": "ACCRUAL",
+      "code": "ACCRUAL_MONTHLY_14DAYS",
+      "name": "Tích lũy hàng tháng - 14 ngày/năm",
+      "version": 1,
+      "status_code": "ACTIVE",
+      "country_code": "VN",
+      "is_current_flag": true,
+      "effective_start": "2026-01-01",
+      "config_json": {
+        "method": "MONTHLY_PRO_RATA",
+        "frequency": "MONTHLY",
+        "unit": "DAY",
+        "amount_per_period": 1.167,
+        "max_balance": 30,
+        "tenure_tiers": [
+          { "min_years": 0,  "max_years": 5,  "entitlement_days": 14 },
+          { "min_years": 5,  "max_years": 10, "entitlement_days": 15 },
+          { "min_years": 10, "max_years": 15, "entitlement_days": 16 },
+          { "min_years": 15, "max_years": null, "formula": "16 + floor((years-15)/5)" }
+        ]
+      },
+      "_vlc": "Art.113 VLC 2019"
+    },
+    {
+      "id": "rule-carry-5days",
+      "rule_type": "CARRY",
+      "code": "CARRY_5DAYS_MAR",
+      "name": "Carry-over tối đa 5 ngày, hết hạn 31/03",
+      "version": 1,
+      "status_code": "ACTIVE",
+      "country_code": "VN",
+      "is_current_flag": true,
+      "effective_start": "2026-01-01",
+      "config_json": {
+        "allow_carry": true,
+        "max_carry_qty": 5,
+        "carry_unit": "DAY",
+        "expiry_months_after_year_end": 3,
+        "expiry_action": "FORFEITURE"
+      }
+    },
+    {
+      "id": "rule-limit-annual-std",
+      "rule_type": "LIMIT",
+      "code": "LIMIT_ANNUAL_STD",
+      "name": "Giới hạn tiêu chuẩn nghỉ phép năm",
+      "version": 1,
+      "status_code": "ACTIVE",
+      "is_current_flag": true,
+      "effective_start": "2026-01-01",
+      "config_json": {
+        "max_per_request": 14,
+        "max_per_year": null,
+        "min_notice_days": 2,
+        "max_consecutive_days": 14
+      }
+    },
+    {
+      "id": "rule-limit-sick-std",
+      "rule_type": "LIMIT",
+      "code": "LIMIT_SICK_STD",
+      "name": "Giới hạn tiêu chuẩn nghỉ bệnh",
+      "version": 1,
+      "status_code": "ACTIVE",
+      "is_current_flag": true,
+      "effective_start": "2026-01-01",
+      "config_json": {
+        "max_per_year": 30,
+        "max_per_request": 30,
+        "min_notice_days": 0,
+        "require_evidence_after_days": 2
+      }
+    }
+  ],
+
+  "class_rule_assignment": [
+    {
+      "id": "cra-001",
+      "class_id": "cls-annual-fte-001",
+      "rule_id": "rule-accrual-monthly-std",
+      "priority": 10,
+      "is_current_flag": true,
+      "effective_start": "2026-01-01"
+    },
+    {
+      "id": "cra-002",
+      "class_id": "cls-annual-fte-001",
+      "rule_id": "rule-carry-5days",
+      "priority": 20,
+      "is_current_flag": true,
+      "effective_start": "2026-01-01"
+    },
+    {
+      "id": "cra-003",
+      "class_id": "cls-annual-fte-001",
+      "rule_id": "rule-limit-annual-std",
+      "priority": 30,
+      "is_current_flag": true,
+      "effective_start": "2026-01-01"
+    },
+    {
+      "id": "cra-004",
+      "class_id": "cls-sick-std-001",
+      "rule_id": "rule-limit-sick-std",
+      "priority": 10,
+      "is_current_flag": true,
+      "effective_start": "2026-01-01"
+    }
+  ],
+
+  "leave_policy": [
+    {
+      "id": "pol-annual-vn-001",
+      "type_code": "ANNUAL",
+      "class_id": "cls-annual-fte-001",
+      "code": "POL_ANNUAL_VN_FTE",
+      "name": "Chính sách nghỉ phép năm - FTE Việt Nam",
+      "overdraft_allowed": false,
+      "check_limit_line": true,
+      "effective_start": "2026-01-01",
+      "accrual_rule_json": null,
+      "carry_rule_json": null,
+      "_note": "JSONB rules = null sau khi migrate sang absence_rule. Đọc từ class_rule_assignment."
+    }
+  ],
+
+  "employee": [
+    {
+      "id": "emp-001",
+      "name": "Nguyễn Văn An",
+      "hire_date": "2020-03-15",
+      "department": "Engineering",
+      "grade": "SENIOR",
+      "_tenure_years": 6,
+      "_eligible_classes": ["cls-annual-fte-001", "cls-sick-std-001"]
+    },
+    {
+      "id": "emp-002",
+      "name": "Trần Thị Bình",
+      "hire_date": "2024-06-01",
+      "department": "Marketing",
+      "grade": "JUNIOR",
+      "_tenure_years": 1.8,
+      "_eligible_classes": ["cls-annual-fte-001", "cls-sick-std-001"]
+    },
+    {
+      "id": "emp-003",
+      "name": "Lê Văn Cường",
+      "hire_date": "2015-01-10",
+      "department": "HR",
+      "grade": "PRINCIPAL",
+      "_tenure_years": 11,
+      "_eligible_classes": ["cls-annual-fte-001", "cls-sick-std-001"]
+    },
+    {
+      "id": "emp-004",
+      "name": "Phạm Thị Dung",
+      "hire_date": "2022-09-20",
+      "department": "Finance",
+      "grade": "MID",
+      "_tenure_years": 3.5,
+      "_eligible_classes": ["cls-annual-fte-001", "cls-sick-std-001"]
+    }
+  ],
+
+  "leave_instant": [
+    {
+      "id": "instant-emp001-annual",
+      "employee_id": "emp-001",
+      "class_id": "cls-annual-fte-001",
+      "state_code": "ACTIVE",
+      "current_qty": 15.0,
+      "hold_qty": 3.0,
+      "available_qty": 12.0,
+      "used_ytd": 0.0,
+      "effective_start": "2026-01-01",
+      "_computed": "available = current(15) - hold(3)"
+    },
+    {
+      "id": "instant-emp002-annual",
+      "employee_id": "emp-002",
+      "class_id": "cls-annual-fte-001",
+      "state_code": "ACTIVE",
+      "current_qty": 4.0,
+      "hold_qty": 0.0,
+      "available_qty": 4.0,
+      "used_ytd": 1.167,
+      "effective_start": "2026-01-01",
+      "_note": "Mới tích lũy 4 tháng × 1.0 day/month (round down)"
+    },
+    {
+      "id": "instant-emp003-annual",
+      "employee_id": "emp-003",
+      "class_id": "cls-annual-fte-001",
+      "state_code": "ACTIVE",
+      "current_qty": 18.0,
+      "hold_qty": 0.0,
+      "available_qty": 18.0,
+      "used_ytd": 0.0,
+      "effective_start": "2026-01-01",
+      "_note": "11 năm → 16 ngày/năm + carry-over 2 ngày từ 2025"
+    },
+    {
+      "id": "instant-emp004-annual",
+      "employee_id": "emp-004",
+      "class_id": "cls-annual-fte-001",
+      "state_code": "ACTIVE",
+      "current_qty": 6.0,
+      "hold_qty": 0.0,
+      "available_qty": 6.0,
+      "used_ytd": 8.0,
+      "effective_start": "2026-01-01",
+      "_note": "Đã nghỉ 8 ngày đầu năm, còn 6 ngày"
+    },
+    {
+      "id": "instant-emp001-sick",
+      "employee_id": "emp-001",
+      "class_id": "cls-sick-std-001",
+      "state_code": "ACTIVE",
+      "current_qty": 30.0,
+      "hold_qty": 0.0,
+      "available_qty": 30.0,
+      "used_ytd": 0.0,
+      "effective_start": "2026-01-01"
+    }
+  ],
+
+  "leave_instant_detail": [
+    {
+      "id": "lot-emp001-carry",
+      "instant_id": "instant-emp001-annual",
+      "lot_kind": "CARRY",
+      "eff_date": "2026-01-01",
+      "expire_date": "2026-03-31",
+      "lot_qty": 3.0,
+      "used_qty": 0.0,
+      "priority": 1,
+      "_note": "Carry-over từ 2025, hết hạn 31/03/2026"
+    },
+    {
+      "id": "lot-emp001-grant",
+      "instant_id": "instant-emp001-annual",
+      "lot_kind": "GRANT",
+      "eff_date": "2026-01-01",
+      "expire_date": "2026-12-31",
+      "lot_qty": 12.0,
+      "used_qty": 0.0,
+      "priority": 2,
+      "_note": "Grant 2026 (bao gồm cả accrual đến tháng 3). 6 năm thâm niên → 15 ngày/năm"
+    },
+    {
+      "id": "lot-emp003-carry",
+      "instant_id": "instant-emp003-annual",
+      "lot_kind": "CARRY",
+      "eff_date": "2026-01-01",
+      "expire_date": "2026-03-31",
+      "lot_qty": 2.0,
+      "used_qty": 0.0,
+      "priority": 1
+    },
+    {
+      "id": "lot-emp003-grant",
+      "instant_id": "instant-emp003-annual",
+      "lot_kind": "GRANT",
+      "eff_date": "2026-01-01",
+      "expire_date": "2026-12-31",
+      "lot_qty": 16.0,
+      "used_qty": 0.0,
+      "priority": 2,
+      "_note": "11 năm thâm niên → 16 ngày/năm"
+    }
+  ],
+
+  "leave_request": [
+    {
+      "id": "req-001",
+      "employee_id": "emp-001",
+      "class_id": "cls-annual-fte-001",
+      "start_dt": "2026-04-01",
+      "end_dt": "2026-04-03",
+      "total_days": 3.0,
+      "is_half_day": false,
+      "status_code": "PENDING",
+      "reason": "Du lịch gia đình",
+      "instant_id": "instant-emp001-annual",
+      "submitted_at": "2026-03-25T09:00:00+07:00",
+      "_validation": {
+        "rule_path_used": "RULE_ENGINE",
+        "notice_days_check": "PASS (6 days notice > min 2 days)",
+        "balance_check": "PASS (available=12 >= requested=3)",
+        "holiday_check": "PASS (no public holidays 01-03 Apr)"
+      }
+    },
+    {
+      "id": "req-002",
+      "employee_id": "emp-002",
+      "class_id": "cls-annual-fte-001",
+      "start_dt": "2026-04-07",
+      "end_dt": "2026-04-07",
+      "total_days": 0.5,
+      "is_half_day": true,
+      "half_day_period": "MORNING",
+      "status_code": "APPROVED",
+      "reason": "Khám bệnh",
+      "instant_id": "instant-emp002-annual",
+      "submitted_at": "2026-04-05T08:30:00+07:00",
+      "approved_by": "emp-003",
+      "approved_at": "2026-04-05T11:00:00+07:00"
+    },
+    {
+      "id": "req-003",
+      "employee_id": "emp-003",
+      "class_id": "cls-annual-fte-001",
+      "start_dt": "2026-04-14",
+      "end_dt": "2026-04-18",
+      "total_days": 5.0,
+      "is_half_day": false,
+      "status_code": "APPROVED",
+      "reason": "Nghỉ giỗ tổ",
+      "instant_id": "instant-emp003-annual",
+      "submitted_at": "2026-04-01T10:00:00+07:00",
+      "approved_by": "emp-001",
+      "approved_at": "2026-04-02T09:00:00+07:00"
+    },
+    {
+      "id": "req-004",
+      "employee_id": "emp-001",
+      "class_id": "cls-sick-std-001",
+      "start_dt": "2026-03-28",
+      "end_dt": "2026-03-29",
+      "total_days": 2.0,
+      "is_half_day": false,
+      "status_code": "APPROVED",
+      "reason": "Cảm cúm",
+      "instant_id": "instant-emp001-sick",
+      "submitted_at": "2026-03-28T07:30:00+07:00",
+      "approved_by": "emp-003",
+      "approved_at": "2026-03-28T09:00:00+07:00",
+      "_note": "Sick leave không cần notice, auto-approve với evidence trong 2 ngày"
+    },
+    {
+      "id": "req-005",
+      "employee_id": "emp-004",
+      "class_id": "cls-annual-fte-001",
+      "start_dt": "2026-04-21",
+      "end_dt": "2026-04-22",
+      "total_days": 2.0,
+      "is_half_day": false,
+      "status_code": "REJECTED",
+      "reason": "Việc cá nhân",
+      "instant_id": "instant-emp004-annual",
+      "submitted_at": "2026-04-15T14:00:00+07:00",
+      "rejection_reason": "Không đủ nhân sự dịp lễ 30/4"
+    }
+  ],
+
+  "leave_reservation": [
+    {
+      "request_id": "req-001",
+      "instant_id": "instant-emp001-annual",
+      "reserved_qty": 3.0,
+      "expires_at": "2026-04-04T00:00:00+07:00",
+      "created_at": "2026-03-25T09:01:00+07:00",
+      "_status": "ACTIVE (pending approval)"
+    }
+  ],
+
+  "leave_reservation_line": [
+    {
+      "id": "resv-line-001",
+      "reservation_id": "req-001",
+      "source_lot_id": "lot-emp001-carry",
+      "reserved_amount": 3.0,
+      "expiry_date": "2026-03-31",
+      "_note": "WARNING: Lot carry-over hết hạn TRƯỚC ngày nghỉ (01/04). Cần business logic handle: carry lot đã expire → fallback sang lot grant"
+    },
+    {
+      "id": "resv-line-002",
+      "reservation_id": "req-001",
+      "source_lot_id": "lot-emp001-grant",
+      "reserved_amount": 0.0,
+      "expiry_date": "2026-12-31",
+      "_note": "Lot grant dự phòng nếu carry đã expire"
+    }
+  ],
+
+  "leave_movement": [
+    {
+      "id": "mov-001",
+      "instant_id": "instant-emp001-annual",
+      "class_id": "cls-annual-fte-001",
+      "event_code": "CARRY",
+      "qty": 3.0,
+      "unit_code": "DAY",
+      "effective_date": "2026-01-01",
+      "lot_id": "lot-emp001-carry",
+      "_note": "Carry-over đầu năm từ 2025"
+    },
+    {
+      "id": "mov-002",
+      "instant_id": "instant-emp001-annual",
+      "class_id": "cls-annual-fte-001",
+      "event_code": "ACCRUAL",
+      "qty": 1.25,
+      "unit_code": "DAY",
+      "effective_date": "2026-01-31",
+      "run_id": "accrual-run-jan-2026",
+      "lot_id": "lot-emp001-grant"
+    },
+    {
+      "id": "mov-003",
+      "instant_id": "instant-emp001-annual",
+      "class_id": "cls-annual-fte-001",
+      "event_code": "BOOK_HOLD",
+      "qty": -3.0,
+      "unit_code": "DAY",
+      "effective_date": "2026-03-25",
+      "request_id": "req-001",
+      "_note": "Hold khi request pending"
+    },
+    {
+      "id": "mov-004",
+      "instant_id": "instant-emp002-annual",
+      "class_id": "cls-annual-fte-001",
+      "event_code": "START_POST",
+      "qty": -0.5,
+      "unit_code": "DAY",
+      "effective_date": "2026-04-07",
+      "request_id": "req-002",
+      "_note": "Commit sau khi APPROVED (half day)"
+    },
+    {
+      "id": "mov-005",
+      "instant_id": "instant-emp001-sick",
+      "class_id": "cls-sick-std-001",
+      "event_code": "START_POST",
+      "qty": -2.0,
+      "unit_code": "DAY",
+      "effective_date": "2026-03-28",
+      "request_id": "req-004"
+    }
+  ],
+
+  "leave_accrual_run": [
+    {
+      "id": "accrual-run-jan-2026",
+      "plan_rule_id": "rule-accrual-monthly-std",
+      "period_start": "2026-01-01",
+      "period_end": "2026-01-31",
+      "status_code": "COMPLETED",
+      "employee_count": 4,
+      "movements_created": 4,
+      "started_at": "2026-02-01T02:00:00Z",
+      "completed_at": "2026-02-01T02:05:30Z",
+      "_idempotency": "unique(plan_rule_id, period_start) prevents re-run"
+    }
+  ],
+
+  "_relationship_map": {
+    "description": "Dùng JSON Crack để visualize. Các ID reference connect entities với nhau:",
+    "connections": [
+      "leave_class.type_code → leave_type.code",
+      "leave_class.default_eligibility_profile_id → eligibility_profile.id (Core module)",
+      "class_rule_assignment.class_id → leave_class.id",
+      "class_rule_assignment.rule_id → absence_rule.id",
+      "leave_policy.type_code → leave_type.code",
+      "leave_policy.class_id → leave_class.id",
+      "leave_instant.employee_id → employee.id",
+      "leave_instant.class_id → leave_class.id",
+      "leave_instant_detail.instant_id → leave_instant.id",
+      "leave_request.employee_id → employee.id",
+      "leave_request.class_id → leave_class.id",
+      "leave_request.instant_id → leave_instant.id",
+      "leave_reservation.request_id → leave_request.id",
+      "leave_reservation.instant_id → leave_instant.id",
+      "leave_reservation_line.reservation_id → leave_reservation.request_id",
+      "leave_reservation_line.source_lot_id → leave_instant_detail.id",
+      "leave_movement.instant_id → leave_instant.id",
+      "leave_movement.class_id → leave_class.id",
+      "leave_movement.request_id → leave_request.id (nullable)",
+      "leave_movement.lot_id → leave_instant_detail.id (nullable)",
+      "leave_movement.run_id → leave_accrual_run.id (nullable)",
+      "leave_accrual_run.plan_rule_id → absence_rule.id"
+    ]
+  }
+}
