@@ -1,0 +1,1134 @@
+/////////////////////////////////////////////////////////////
+//  PAYROLL V4  –  Engine Separation + Management Layer
+//  CHANGED 27Mar2026: Tách Payroll Engine thành sub-module độc lập
+//  Xem review-03-payroll-engine-separation.md để biết chi tiết
+//
+//  STRUCTURE:
+//  - pay_master:  Configuration / Master Data (giữ nguyên từ V3)
+//  - pay_run:     [MIGRATED] → pay_mgmt + pay_engine (xem cuối file)
+//  - pay_gateway: Integration (giữ nguyên)
+//  - pay_bank:    Payment (giữ nguyên)
+//  - pay_audit:   Audit (giữ nguyên)
+//  - pay_mgmt:    [NEW 27Mar2026] Payroll Management / Orchestration
+//  - pay_engine:  [NEW 27Mar2026] Payroll Calculation Engine
+/////////////////////////////////////////////////////////////
+
+//---------------- pay_master  ----------------
+Table pay_master.pay_frequency {
+  code        varchar(20) [pk]           // MONTHLY, BIWEEKLY…
+  name        varchar(50)
+  period_days smallint
+}
+
+// =============================================================
+// 1️⃣  BẢNG LỊCH LƯƠNG – bổ sung default_currency
+//     (Tên gốc trong thiết kế: pay_master.pay_calendar)
+// =============================================================
+Table pay_master.pay_calendar {                  // CHANGED JUL 2025
+  id                   uuid          [pk, note: 'Không đổi']
+  legal_entity_id      uuid          [ref: > org_legal.entity.id]
+  market_id            uuid          [ref: > common.talent_market.id]
+  code                 varchar(50)   [unique]
+  name                 varchar(255)
+  description          text          [null]
+  frequency_code       varchar(20)   [ref: > pay_master.pay_frequency.code]
+  calendar_json        jsonb         // pattern cut‑off / pay date
+  metadata             jsonb
+
+  // --- SCD‑2 ---
+  effective_start_date date
+  effective_end_date   date          [null]
+  is_current_flag      boolean       [default: true]
+
+  // --- NEW FIELD ---
+  default_currency     char(3)       // NEW JUL 2025 – tiền tệ gốc của lịch lương
+
+  created_at           timestamp     [default: `now()`]
+  updated_at           timestamp     [null]
+}
+
+Table pay_master.pay_group {
+  id              uuid [pk]
+  code            varchar(50) [unique]
+  name            varchar(100)
+  legal_entity_id uuid [ref: > org_legal.entity.id]
+  market_id uuid [ref: > common.talent_market.id] // CHANGED JUL 2025
+  calendar_id     uuid [ref: > pay_master.pay_calendar.id]
+  currency_code   char(3)
+  bank_account_id uuid [ref: > pay_bank.bank_account.id, null]
+  metadata        jsonb
+  effective_start_date date    // SCD2
+  effective_end_date date [null] // SCD2
+  is_current_flag boolean [default: true] // SCD2
+}
+
+Table pay_master.pay_element {
+  id              uuid [pk]
+  code            varchar(50) [unique]
+  name            varchar(100)
+  classification  varchar(35)      // EARNING | DEDUCTION | TAX
+  unit            varchar(10)      // AMOUNT | HOURS
+  description     text [null]
+  input_required  boolean [default:false]
+  formula_json    jsonb [null]
+  priority_order  smallint [null]
+  taxable_flag    boolean [default:true]
+  pre_tax_flag    boolean [default:true]
+  statutory_rule_id uuid [ref: > pay_master.statutory_rule.id, null] // CHANGED JUL 2025
+  eligibility_profile_id uuid [null, ref: > eligibility.eligibility_profile.id]  // changed 26Mar2026: G7+F2 - FK to centralized eligibility.eligibility_profile
+  
+  // changed 26Mar2026: Multi-country scoping (Option 1 + 2)
+  // PHASE 1: country_code filters elements per country. NULL = global element.
+  country_code    char(2) [null]                     // changed 26Mar2026: ISO country. NULL = global (all countries)
+  // PHASE 2: config_scope_id for advanced scope hierarchy
+  config_scope_id uuid [null]                        // changed 26Mar2026: FK to comp_core.config_scope (cross-module ref)
+  // Note: legal_entity_id omitted — elements are country-level, LE-specifics via pay_group
+  
+  gl_account_code varchar(50) [null] // CHANGED JUL 2025
+  metadata        jsonb
+  effective_start_date date    // SCD2 // CHANGED JUL 2025
+  effective_end_date date [null] // SCD2 // CHANGED JUL 2025
+  is_current_flag boolean [default: true] // SCD2 // CHANGED JUL 2025
+  
+  Indexes {
+    (code)
+    (code, country_code)                           // changed 26Mar2026: country-scoped lookup
+    (country_code)                                 // changed 26Mar2026: country filter
+    (config_scope_id)                              // changed 26Mar2026: scope group lookup
+  }
+}
+
+Table pay_master.balance_def {
+  id              uuid [pk]
+  code            varchar(50) [unique]      // GROSS, NET, YTD_INC
+  name            varchar(100)
+  balance_type    varchar(20)               // RUN | QTD | YTD | LTD
+  formula_json    jsonb   [null]
+  reset_freq_code varchar(20) [ref: > pay_master.pay_frequency.code, null]
+  metadata        jsonb
+  effective_start_date date    // SCD2 // CHANGED JUL 2025
+  effective_end_date date [null] // SCD2 // CHANGED JUL 2025
+  is_current_flag boolean [default: true] // SCD2 // CHANGED JUL 2025
+}
+
+Table pay_master.costing_rule {
+  id              uuid [pk]
+  code            varchar(50) [unique]
+  name            varchar(100)
+  level_scope     varchar(20)               // LE | BU | EMP | ELEMENT
+  mapping_json    jsonb
+  metadata        jsonb
+  effective_start_date date    // SCD2 // CHANGED JUL 2025
+  effective_end_date date [null] // SCD2 // CHANGED JUL 2025
+  is_current_flag boolean [default: true] // SCD2 // CHANGED JUL 2025
+}
+
+// =============================================================
+// ⚠️  MIGRATED 27Mar2026: pay_run schema đã được tách thành:
+//     - pay_mgmt (Payroll Management) → quản lý batch, period, approval
+//     - pay_engine (Payroll Engine) → calculation, results, balances
+//     Các table dưới đây giữ nguyên vị trí cũ với ghi chú migration.
+//     Xem section "NEW SCHEMAS" ở cuối file để biết chi tiết.
+// =============================================================
+
+//---------------- pay_run  (Engine) ----------------
+// changed 27Mar2026: MIGRATED → pay_mgmt.batch
+// Table cũ giữ lại để tham chiếu. Table mới: pay_mgmt.batch (cuối file)
+// Thay đổi chính:
+//   + RESTORED pay_group_id (was deprecated)
+//   + NEW period_id FK → pay_mgmt.pay_period
+//   + NEW engine_request_id FK → pay_engine.run_request  
+//   + NEW batch_type thêm QUICKPAY
+//   + NEW status_code mở rộng: DRAFT|SELECTING|SUBMITTED|ENGINE_PROCESSING|REVIEW|APPROVED|CONFIRMED|CLOSED
+//   + NEW submitted_at, calc_completed_at timestamps
+// Table pay_run.batch {
+//   id              uuid [pk]
+//   //pay_group_id    uuid [ref: > pay_master.pay_group.id] // depricated
+//   calendar_id     uuid [ref: > pay_master.pay_calendar.id]
+//   period_start    date
+//   period_end      date
+//   //calendar_seq    int   // depricated
+//   batch_type      varchar(20)               // REGULAR | SUPPLEMENTAL | RETRO
+//   run_label       varchar(100)
+//   status_code     varchar(20)               // INIT | CALC | REVIEW | CONFIRM | CLOSED
+//   original_run_id         uuid        [ref: > pay_run.batch.id, null]
+//   reversed_by_run_id      uuid        [ref: > pay_run.batch.id, null]
+//   executed_at             timestamp   [null]
+//   finalized_at            timestamp   [null]
+//   costed_flag             bool        [default: false]
+//   metadata        jsonb
+//   created_at              timestamp
+//   created_by              varchar(100)
+//   updated_at              timestamp
+//   updated_by              varchar(100)
+// }
+
+// changed 27Mar2026: MIGRATED → pay_engine.run_employee
+// Table cũ giữ lại để tham chiếu. Table mới: pay_engine.run_employee (cuối file)
+// Thay đổi chính:
+//   + NEW request_id FK → pay_engine.run_request
+//   + NEW assignment_id FK → employment.assignment (multi-assignment support)
+//   + NEW pay_group_id FK → pay_master.pay_group
+//   + NEW prev_gross_amount, prev_net_amount, variance_amount, variance_flag (comparison)
+//   + NEW error_message text
+//   + EXPANDED status_code: SELECTED|CALC_OK|WARNINGS|ERROR|EXCLUDED
+// Table pay_run.employee {
+//   id              uuid [pk]
+//   batch_id        uuid [ref: > pay_run.batch.id]
+//   employee_id     uuid [ref: > employment.employee.id]
+//   status_code     varchar(20)               // SELECTED | CALC_OK | ERROR
+//   gross_amount    decimal(18,2) [null]
+//   net_amount      decimal(18,2) [null]
+//   currency_code   char(3)
+//   metadata        jsonb
+// }
+
+// changed 27Mar2026: MIGRATED → pay_engine.input_value (giữ nguyên structure)
+// Table pay_run.input_value {
+//   id            uuid [pk]
+//   emp_run_id    uuid [ref: > pay_run.employee.id]
+//   element_id    uuid [ref: > pay_master.pay_element.id]
+//   input_code    varchar(50)
+//   input_value   numeric(18,2)
+//   source_ref    varchar(50) [null]
+//   source_type   varchar(30)
+//   unit          varchar(10) [null]
+//   metadata      jsonb
+// }
+
+// changed 27Mar2026: MIGRATED → pay_engine.result (giữ nguyên structure)
+// Table pay_run.result {
+//   id            uuid [pk]
+//   emp_run_id    uuid [ref: > pay_run.employee.id]
+//   element_id    uuid [ref: > pay_master.pay_element.id]
+//   result_amount decimal(18,2)
+//   currency_code char(3)
+//   classification varchar(20)
+//   metadata      jsonb
+// }
+
+// changed 27Mar2026: MIGRATED → pay_engine.balance (giữ nguyên structure)
+// Table pay_run.balance {
+//   id            uuid [pk]
+//   emp_run_id    uuid [ref: > pay_run.employee.id]
+//   balance_id    uuid [ref: > pay_master.balance_def.id]
+//   balance_value decimal(18,2)
+// }
+
+// changed 27Mar2026: MIGRATED → pay_engine.retro_delta (giữ nguyên structure)
+// Table pay_run.retro_delta {
+//   id            uuid [pk]
+//   emp_run_id    uuid [ref: > pay_run.employee.id]
+//   orig_batch_id uuid [ref: > pay_run.batch.id]
+//   element_id    uuid [ref: > pay_master.pay_element.id]
+//   delta_amount  decimal(18,2)
+//   currency_code char(3)
+//   metadata      jsonb
+// }
+
+// changed 27Mar2026: MIGRATED → pay_engine.calc_log (giữ nguyên structure)
+// Table pay_run.calc_log {
+//   id            uuid [pk]
+//   emp_run_id    uuid [ref: > pay_run.employee.id]
+//   step_label    varchar(50)
+//   message       text
+//   payload_json  jsonb [null]
+//   logged_at     timestamp [default:`now()`]
+// }
+
+// changed 27Mar2026: MIGRATED → pay_engine.costing (giữ nguyên structure)
+// Table pay_run.costing {
+//   id            uuid [pk]
+//   result_id     uuid [ref: > pay_run.result.id]
+//   account_code  varchar(50)
+//   dr_cr         char(1)
+//   amount        decimal(18,2)
+//   currency_code char(3)
+//   segment_json  jsonb
+// }
+
+// changed 27Mar2026: MIGRATED → pay_mgmt.manual_adjust (giữ nguyên structure)
+// Table cũ giữ lại để tham chiếu. Table mới: pay_mgmt.manual_adjust (cuối file)
+// Thay đổi: FK batch refs chuyển sang pay_mgmt.batch
+// Table pay_run.manual_adjust {
+//   id                 uuid        [pk]
+//   employee_id        uuid        [ref: > employment.employee.id]
+//   period_start       date
+//   period_end         date         [null]
+//   element_id         uuid         [ref: > pay_master.pay_element.id]
+//   amount             decimal(18,2)
+//   reason             text
+//   status_code        varchar(20)
+//   payroll_run_id     uuid         [ref: > pay_run.batch.id, null]
+//   applied_in_run_id  uuid         [ref: > pay_run.batch.id, null]
+//   metadata           jsonb        [null]
+//   created_by         uuid         [ref: > employment.employee.id]
+//   created_at         timestamp    [default: `now()`]
+//   updated_at         timestamp    [null]
+// }
+
+//---------------- pay_gateway  (integration) ----------------
+Table pay_gateway.iface_def {
+  id            uuid [pk]
+  code          varchar(50) [unique]
+  name          varchar(100)
+  direction     varchar(10)           // IN | OUT
+  file_type     varchar(10)           // CSV | JSON | API
+  mapping_json  jsonb
+  schedule_json jsonb [null]
+  is_active     boolean [default:true]
+}
+
+Table pay_gateway.iface_job {
+  id            uuid [pk]
+  iface_id      uuid [ref: > pay_gateway.iface_def.id]
+  run_time      timestamp [default:`now()`]
+  status_code   varchar(20)           // STARTED | DONE | ERROR
+  metadata      jsonb
+}
+
+Table pay_gateway.iface_file {
+  id            uuid [pk]
+  job_id        uuid [ref: > pay_gateway.iface_job.id]
+  file_name     varchar(255)
+  file_dt       timestamp
+  status_code   varchar(20)           // RECEIVED | PARSED | SENT | ERROR
+  processed_at  timestamp [null]
+  metadata      jsonb
+}
+
+Table pay_gateway.iface_line {
+  id            uuid [pk]
+  file_id       uuid [ref: > pay_gateway.iface_file.id]
+  line_num      int
+  payload_json  jsonb
+  status_code   varchar(20)           // OK | ERROR
+  error_msg     text [null]
+}
+
+//---------------- pay_bank  ----------------
+Table pay_bank.bank_account {
+  id              uuid [pk]
+  legal_entity_id uuid [ref: > org_legal.entity.id]
+  bank_name       varchar(100)
+  account_no      varchar(50)
+  currency_code   char(3)
+  metadata        jsonb
+}
+
+Table pay_bank.payment_batch {
+  id              uuid [pk]
+  //run_batch_id    uuid [ref: > pay_run.batch.id]           // changed 27Mar2026: DEPRECATED — dùng pay_mgmt.batch
+  run_batch_id    uuid [ref: > pay_mgmt.batch.id]            // changed 27Mar2026: FK chuyển sang pay_mgmt.batch
+  bank_account_id uuid [ref: > pay_bank.bank_account.id]
+  file_status     varchar(20)         // PENDING | SENT | CONFIRMED
+  submitted_at    timestamp [null]
+  file_url        varchar(255) [null]
+  metadata        jsonb
+}
+
+Table pay_bank.payment_line {
+  id              uuid [pk]
+  payment_batch_id uuid [ref: > pay_bank.payment_batch.id]
+  employee_id     uuid [ref: > employment.employee.id]
+  net_amount      decimal(18,2)
+  bank_routing    varchar(20) [null]
+  account_number  varchar(30) [null]
+  status_code     varchar(20)         // READY | SENT | FAIL
+  metadata        jsonb
+}
+
+// --------------------- CHANGED JUL 2025: NEW TABLES (BỔ SUNG) ---------------------
+
+Table pay_master.statutory_rule { // CHANGED JUL 2025
+  id uuid [pk, default: `gen_random_uuid()`]
+  code varchar(50) [unique]
+  name varchar(255)
+  market_id uuid [ref: > common.talent_market.id]
+  description text [null]
+  formula_json jsonb [null]
+  valid_from date
+  valid_to date [null]
+  is_active boolean [default: true]
+  effective_start_date date    // SCD2 // CHANGED JUL 2025
+  effective_end_date date [null] // SCD2 // CHANGED JUL 2025
+  is_current_flag boolean [default: true] // SCD2 // CHANGED JUL 2025
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [null]
+  Note: 'CHANGED JUL 2025. Rule pháp lý payroll, gán vào pay_element.'
+}
+
+Table pay_master.gl_mapping { // CHANGED JUL 2025
+  id uuid [pk, default: `gen_random_uuid()`]
+  element_id uuid [ref: > pay_master.pay_element.id]
+  gl_account_code varchar(105)
+  effective_start_date date
+  effective_end_date date [null]
+  is_current_flag boolean [default: true]
+  is_active boolean [default: true]
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [null]
+  Note: 'CHANGED JUL 2025. Mapping element với tài khoản kế toán (GL).'
+}
+
+Table pay_master.validation_rule { // CHANGED JUL 2025
+  id uuid [pk, default: `gen_random_uuid()`]
+  rule_code varchar(50) [unique]
+  rule_name varchar(255)
+  target_table varchar(50)
+  field_name varchar(50)
+  rule_expression text
+  error_message varchar(255)
+  effective_start_date date    // SCD2 // CHANGED JUL 2025
+  effective_end_date date [null] // SCD2 // CHANGED JUL 2025
+  is_current_flag boolean [default: true] // SCD2 // CHANGED JUL 2025
+  is_active boolean [default: true]
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [null]
+  Note: 'CHANGED JUL 2025. Rule kiểm tra validate dữ liệu payroll.'
+}
+
+Table pay_master.payslip_template { // CHANGED JUL 2025
+  id uuid [pk, default: `gen_random_uuid()`]
+  code varchar(50) [unique]
+  name varchar(255)
+  locale_code varchar(10) [null]
+  template_json jsonb [null]
+  description text [null]
+  is_default boolean [default: false]
+  is_active boolean [default: true]
+  effective_start_date date    // SCD2 // CHANGED JUL 2025
+  effective_end_date date [null] // SCD2 // CHANGED JUL 2025
+  is_current_flag boolean [default: true] // SCD2 // CHANGED JUL 2025
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [null]
+  Note: 'CHANGED JUL 2025. Mẫu phiếu lương tuỳ chỉnh.'
+}
+
+Table pay_master.pay_formula { // CHANGED JUL 2025
+  id uuid [pk, default: `gen_random_uuid()`]
+  code varchar(50) [unique]
+  name varchar(255)
+  script text
+  description text [null]
+  version_no int [default: 1]
+  is_active boolean [default: true]
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [null]
+  Note: 'CHANGED JUL 2025. Kho công thức tính toán payroll dùng chung.'
+}
+
+
+Table pay_master.pay_profile { // CHANGED JUL 2025 - NEW, chuẩn hóa theo best practice quốc tế
+  id              uuid [pk, default: `gen_random_uuid()`]
+  code            varchar(50) [unique]
+  name            varchar(100)
+  legal_entity_id uuid [ref: > org_legal.entity.id, null]
+  market_id       uuid [ref: > common.talent_market.id, null] // optional
+  description     text [null]
+  status_code     varchar(20) [default: 'ACTIVE']
+  metadata        jsonb [null]
+  effective_start_date date
+  effective_end_date   date [null]
+  is_current_flag      boolean [default: true]
+  created_at          timestamp [default: `now()`]
+  updated_at          timestamp [null]
+  Note: 'CHANGED JUL 2025. Payroll Profile cho phép gắn các rule, element, policy thành 1 bundle/profile. Dùng cho phân quyền chính sách trả lương động.'
+}
+
+Table pay_master.pay_profile_map { // NEW, option
+  id              uuid [pk, default: `gen_random_uuid()`]
+  pay_profile_id  uuid [ref: > pay_master.pay_profile.id]
+  pay_group_id    uuid [ref: > pay_master.pay_group.id, null]
+  employee_id     uuid [ref: > employment.employee.id, null]
+  period_start    date
+  period_end      date [null]
+  effective_start_date date    // SCD2 // CHANGED JUL 2025
+  effective_end_date date [null] // SCD2 // CHANGED JUL 2025
+  is_current_flag boolean [default: true] // SCD2 // CHANGED JUL 2025
+  metadata        jsonb [null]
+  created_at      timestamp [default: `now()`]
+  updated_at      timestamp [null]
+  Note: 'Mapping profile với pay group/employee nếu cần. Optional – mở rộng future.'
+}
+
+
+// Lý do điều chỉnh lương (Adjustment Reason)
+Table pay_master.pay_adjust_reason { // CHANGED JUL 2025
+  id              uuid [pk, default: `gen_random_uuid()`]
+  code            varchar(50) [unique]
+  name            varchar(100)
+  description     text [null]
+  is_active       boolean [default: true]
+  created_at      timestamp [default: `now()`]
+  updated_at      timestamp [null]
+  Note: 'CHANGED JUL 2025. Master lý do điều chỉnh lương (adjustment reason).'
+}
+
+// Chính sách deduction (Deduction Policy)
+Table pay_master.pay_deduction_policy { // CHANGED JUL 2025
+  id              uuid [pk, default: `gen_random_uuid()`]
+  code            varchar(50) [unique]
+  name            varchar(100)
+  description     text [null]
+  deduction_json  jsonb [null] // Quy tắc deduction (làm theo country/market/policy)
+  is_active       boolean [default: true]
+  created_at      timestamp [default: `now()`]
+  updated_at      timestamp [null]
+  Note: 'CHANGED JUL 2025. Chính sách deduction, quản lý deduction logic cho payroll.'
+}
+
+// Mapping element ↔ benefit/allowance (for advanced/linked policy)
+Table pay_master.pay_benefit_link { // CHANGED JUL 2025
+  id              uuid [pk, default: `gen_random_uuid()`]
+  pay_element_id  uuid [ref: > pay_master.pay_element.id]
+  benefit_policy_code varchar(50)
+  benefit_type    varchar(50)      // ALLOWANCE | BENEFIT | BONUS
+  valid_from      date
+  valid_to        date [null]
+  metadata        jsonb [null]
+  created_at      timestamp [default: `now()`]
+  updated_at      timestamp [null]
+  Note: 'CHANGED JUL 2025. Mapping element với policy benefit/allowance, cho phép linked policy.'
+}
+
+
+// =============================================================
+// 3️⃣  BẢNG LOG KIỂM TOÁN – mới hoàn toàn
+//     (nếu bạn đã có bảng audit khác thì chỉ cần bổ sung field employee_id & payroll_run_id)
+// =============================================================
+Table pay_audit.audit_log {                      // NEW JUL 2025
+  id                uuid        [pk, default: `gen_random_uuid()`]
+  log_time          timestamp   [default: `now()`]          // thời điểm ghi log
+  user_name         varchar(100)                            // ai tác động
+  category          varchar(20)                             // CONFIG | PROFILE | INPUT | RUN…
+  action            varchar(30)                             // CREATE | UPDATE | DELETE | CALCULATE…
+  detail            text                                    // mô tả chi tiết
+
+  reference_id      uuid          [null]     // id đối tượng chính (có thể là batch / element / config…)
+  employee_id       uuid          [null]     // NEW JUL 2025 – log gắn nhân viên
+  payroll_run_id    uuid          [null]     // NEW JUL 2025 – log gắn batch
+
+  Indexes {
+    (category, log_time)
+    (employee_id)
+    (payroll_run_id)
+  }
+}
+// ================================================================
+//  IMPORT JOB  – theo dõi upload file CSV thủ công
+// ================================================================
+Table import_job {                     // NEW JUL 2025
+  id                      uuid        [pk]
+  file_name               varchar(255)
+  pay_group_code          varchar(50)   [null]
+  period_start            date          [null]
+  period_end              date          [null]
+  total_records           int
+  success_count           int
+  fail_count              int
+  status                  varchar(20)   // PROCESSING | COMPLETED | ERROR
+  submitted_by            varchar(100)
+  submitted_at            timestamp
+  completed_at            timestamp     [null]
+}
+
+// ================================================================
+//  GENERATED FILE  – quản lý file đầu ra (payslip, bank, tax…)
+// ================================================================
+Table generated_file {                 // NEW JUL 2025
+  id                      uuid        [pk]
+  type                    varchar(20)   // PAYMENT | TAX_REPORT | PAYSLIP
+  //payroll_run_id          uuid         [ref: > pay_run.batch.id]           // changed 27Mar2026: DEPRECATED — FK cũ sang pay_run.batch
+  payroll_run_id          uuid         [ref: > pay_mgmt.batch.id]            // changed 27Mar2026: FK chuyển sang pay_mgmt.batch
+  employee_id             uuid         [null]    // chỉ dùng cho PAYSLIP
+  file_name               varchar(255)
+  file_path               varchar(512)
+  generated_at            timestamp
+  expires_at              timestamp    [null]
+  status                  varchar(35)        
+}
+
+// ================================================================
+//  BANK TEMPLATE  – mẫu file ngân hàng (nếu muốn cấu hình động)
+// ================================================================
+Table bank_template {                  // NEW JUL 2025
+  code                    varchar(20)  [pk]      // VCB, VIETIN, CITI...
+  name                    varchar(100)
+  format                  varchar(10)            // CSV | TXT
+  delimiter               varchar(5)    [null]
+  columns_json            jsonb                 // mô tả cột & thứ tự
+  effective_start_date    date
+  effective_end_date      date
+  current_flag            bool
+}
+
+// ================================================================
+//  TAX REPORT TEMPLATE  – mẫu báo cáo thuế (tuỳ chọn)
+// ================================================================
+Table tax_report_template {            // NEW JUL 2025
+  code                    varchar(20)  [pk]      // 05QTT_TNCN, 02KK...
+  country_code            varchar(3)
+  format                  varchar(10)            // PDF | XML
+  template_blob           bytea
+  effective_start_date    date
+  effective_end_date      date
+  current_flag            bool
+}
+
+// ================================================================
+//  INDEX / RELATIONSHIP GHI CHÚ TỔNG QUÁT
+// ================================================================
+//  • Mọi FK đều cascade on update / restrict on delete (tùy RDBMS).
+//  • Các bảng master (calendar, element, formula, template) đều có
+//    SCD‑2 effective_start_date / effective_end_date / current_flag.
+//  • Các bảng transaction (run, result, input…) không cần SCD‑2.
+//
+
+
+// #################################################################
+// #################################################################
+//
+//  ██████╗ ██████╗ ██████╗ ███╗   ██╗██████╗ ██████╗ ██████╗████╗
+//  ██╔═══╝ ██╔═══╝ ██╔══██╗████╗  ██║██╔══██╗██╔══██╗██╔═══╝██╔═╝
+//  █████╗  █████╗  ██████╔╝██╔██╗ ██║██║  ██║██████╔╝█████╗ ████╗
+//  ██╔══╝  ██╔══╝  ██╔═══╝ ██║╚██╗██║██║  ██║██╔══██╗██╔══╝ ██╔═╝
+//  ██║     ██║     ██║     ██║ ╚████║██████╔╝██║  ██║██████╗████║
+//  ╚═╝     ╚═╝     ╚═╝     ╚═╝  ╚═══╝╚═════╝ ╚═╝  ╚═╝╚═════╝╚═══╝
+//
+//  NEW 27Mar2026 – PAYROLL ENGINE SEPARATION
+//  Tách pay_run (V3) thành 2 schema độc lập:
+//    - pay_mgmt:   Payroll Management (orchestration, batch, period, approval)
+//    - pay_engine:  Payroll Calculation Engine (execution, results, balances)
+//
+//  Xem review-03-payroll-engine-separation.md để biết chi tiết thiết kế
+//
+//  Migration Map:
+//    pay_run.batch         → pay_mgmt.batch (enhanced)
+//    pay_run.manual_adjust → pay_mgmt.manual_adjust (FK updated)
+//    pay_run.employee      → pay_engine.run_employee (enhanced)
+//    pay_run.input_value   → pay_engine.input_value (giữ nguyên)
+//    pay_run.result        → pay_engine.result (giữ nguyên)
+//    pay_run.balance       → pay_engine.balance (giữ nguyên)
+//    pay_run.retro_delta   → pay_engine.retro_delta (giữ nguyên)
+//    pay_run.calc_log      → pay_engine.calc_log (giữ nguyên)
+//    pay_run.costing       → pay_engine.costing (giữ nguyên)
+//
+//  New Tables:
+//    pay_mgmt.pay_period, pay_mgmt.batch_approval
+//    pay_engine.run_request, pay_engine.calculation_step,
+//    pay_engine.run_step, pay_engine.cumulative_balance,
+//    pay_engine.element_dependency, pay_engine.input_source_config
+//
+// #################################################################
+// #################################################################
+
+
+// =============================================================
+//  SCHEMA: pay_mgmt – Payroll Management (Orchestration Layer)
+//  NEW 27Mar2026
+//  Trách nhiệm: Quản lý period, batch, approval, manual adjustments
+//  KHÔNG xử lý calculation – delegate sang pay_engine
+// =============================================================
+
+// changed 27Mar2026: NEW — Explicit pay period records
+// Thay thế calendar_json implicit periods bằng explicit records
+// để track period lifecycle (FUTURE → OPEN → PROCESSING → CLOSED)
+Table pay_mgmt.pay_period {
+  id              uuid        [pk, default: `gen_random_uuid()`]
+  calendar_id     uuid        [ref: > pay_master.pay_calendar.id, not null]
+  period_seq      int         [not null]                     // thứ tự kỳ trong năm (1, 2, …, 12 hoặc 24/26)
+  period_year     smallint    [not null]                     // năm
+  period_start    date        [not null]                     // ngày bắt đầu kỳ
+  period_end      date        [not null]                     // ngày kết thúc kỳ
+  pay_date        date        [not null]                     // ngày trả lương
+  cut_off_date    date        [null]                         // ngày chốt data (input deadline)
+  status_code     varchar(20) [not null, default: 'FUTURE']  // FUTURE | OPEN | PROCESSING | CLOSED | ADJUSTED
+  closed_at       timestamp   [null]
+  closed_by       uuid        [ref: > employment.employee.id, null]
+  metadata        jsonb       [null]
+  created_at      timestamp   [default: `now()`]
+  updated_at      timestamp   [null]
+
+  Indexes {
+    (calendar_id, period_year, period_seq) [unique]
+    (calendar_id, status_code)
+    (period_start, period_end)
+    (status_code)
+  }
+
+  Note: '''
+    NEW 27Mar2026: Explicit pay period tracking.
+    Thay thế calendar_json implicit period bằng materialized records.
+    Allows tracking period lifecycle (FUTURE → OPEN → PROCESSING → CLOSED).
+    ADJUSTED = period đã close nhưng có supplemental/retro run.
+  '''
+}
+
+// changed 27Mar2026: MIGRATED from pay_run.batch → pay_mgmt.batch
+// Enhanced với: period_id, pay_group_id (restored), engine_request_id,
+// expanded status_code, thêm submitted_at/calc_completed_at
+Table pay_mgmt.batch {
+  id              uuid        [pk, default: `gen_random_uuid()`]
+  calendar_id     uuid        [ref: > pay_master.pay_calendar.id, not null]
+  period_id       uuid        [ref: > pay_mgmt.pay_period.id, null]          // NEW 27Mar2026 — link explicit period
+  pay_group_id    uuid        [ref: > pay_master.pay_group.id, null]          // NEW 27Mar2026 — RESTORED (was deprecated in V3). Pay group cho batch
+  period_start    date        [not null]
+  period_end      date        [not null]
+  batch_type      varchar(20) [not null]               // REGULAR | SUPPLEMENTAL | RETRO | QUICKPAY  // changed 27Mar2026: thêm QUICKPAY
+  run_label       varchar(100)
+
+  // changed 27Mar2026: expanded status for separated orchestration vs engine
+  // V3: INIT | CALC | REVIEW | CONFIRM | CLOSED
+  // V4: DRAFT | SELECTING | SUBMITTED | ENGINE_PROCESSING | REVIEW | APPROVED | CONFIRMED | CLOSED
+  status_code     varchar(20) [not null, default: 'DRAFT']
+
+  // NEW 27Mar2026: Engine interface
+  engine_request_id uuid     [ref: > pay_engine.run_request.id, null]        // NEW 27Mar2026 — FK to engine request
+
+  // Retro / Reversal (giữ nguyên từ V3, chuyển FK)
+  original_run_id         uuid        [ref: > pay_mgmt.batch.id, null]       // dùng cho retro/reversal
+  reversed_by_run_id      uuid        [ref: > pay_mgmt.batch.id, null]
+
+  // Lifecycle timestamps
+  //executed_at             timestamp   [null]                                // changed 27Mar2026: RENAMED → see below
+  submitted_at            timestamp   [null]                                  // NEW 27Mar2026 — khi submit sang engine
+  executed_at             timestamp   [null]                                  // giữ từ V3 — khi engine bắt đầu chạy
+  calc_completed_at       timestamp   [null]                                  // NEW 27Mar2026 — khi engine hoàn thành
+  finalized_at            timestamp   [null]                                  // giữ từ V3
+  costed_flag             bool        [default: false]
+
+  metadata        jsonb       [null]
+  //------------------------------------
+  created_at              timestamp   [default: `now()`]
+  created_by              varchar(100)
+  updated_at              timestamp   [null]
+  updated_by              varchar(100)
+
+  Indexes {
+    (calendar_id, period_start, batch_type)
+    (period_id)
+    (pay_group_id)
+    (status_code)
+    (engine_request_id)
+  }
+
+  Note: '''
+    changed 27Mar2026: MIGRATED from pay_run.batch.
+    Enhanced for Engine separation:
+    - RESTORED pay_group_id (was deprecated in V3)
+    - NEW period_id → pay_mgmt.pay_period
+    - NEW engine_request_id → pay_engine.run_request
+    - EXPANDED status_code for separate orchestration lifecycle
+    - NEW submitted_at, calc_completed_at timestamps
+    - batch_type += QUICKPAY
+  '''
+}
+
+// changed 27Mar2026: MIGRATED from pay_run.manual_adjust → pay_mgmt.manual_adjust
+// FK refs updated: pay_run.batch → pay_mgmt.batch
+Table pay_mgmt.manual_adjust {                    // CHANGED JUL 2025, MIGRATED 27Mar2026
+  id                 uuid        [pk, default: `gen_random_uuid()`]
+  employee_id        uuid        [ref: > employment.employee.id, not null]
+
+  // Bạn vẫn có thể giữ period_start / period_end để tham chiếu
+  period_start       date
+  period_end         date         [null]
+
+  element_id         uuid         [ref: > pay_master.pay_element.id, not null]
+  amount             decimal(18,2)
+  reason             text
+  status_code        varchar(20)               // PENDING | APPLIED
+
+  // FK updated: pay_run.batch → pay_mgmt.batch
+  //payroll_run_id     uuid         [ref: > pay_run.batch.id, null]            // changed 27Mar2026: DEPRECATED FK cũ
+  payroll_run_id     uuid         [ref: > pay_mgmt.batch.id, null]             // changed 27Mar2026: FK chuyển sang pay_mgmt.batch
+  //applied_in_run_id  uuid         [ref: > pay_run.batch.id, null]           // changed 27Mar2026: DEPRECATED FK cũ
+  applied_in_run_id  uuid         [ref: > pay_mgmt.batch.id, null]            // changed 27Mar2026: FK chuyển sang pay_mgmt.batch
+
+  metadata           jsonb        [null]
+  created_by         uuid         [ref: > employment.employee.id]
+  created_at         timestamp    [default: `now()`]
+  updated_at         timestamp    [null]
+
+  Indexes {
+    (employee_id, status_code)
+  }
+
+  Note: 'changed 27Mar2026: MIGRATED from pay_run.manual_adjust. FK refs updated to pay_mgmt.batch.'
+}
+
+// changed 27Mar2026: NEW — Batch approval workflow
+// Governance cho payroll run: multi-level approval trước khi confirm
+Table pay_mgmt.batch_approval {
+  id              uuid        [pk, default: `gen_random_uuid()`]
+  batch_id        uuid        [ref: > pay_mgmt.batch.id, not null]
+  approval_level  smallint    [not null, default: 1]          // 1, 2, 3…
+  approver_id     uuid        [ref: > employment.employee.id, not null]
+  status_code     varchar(20) [not null, default: 'PENDING']  // PENDING | APPROVED | REJECTED | DELEGATED
+  approved_at     timestamp   [null]
+  comments        text        [null]
+  delegated_to_id uuid        [ref: > employment.employee.id, null]  // nếu ủy quyền
+  metadata        jsonb       [null]
+  created_at      timestamp   [default: `now()`]
+
+  Indexes {
+    (batch_id, approval_level) [unique]
+    (approver_id, status_code)
+    (batch_id, status_code)
+  }
+
+  Note: '''
+    NEW 27Mar2026: Multi-level approval workflow cho payroll batch.
+    Batch phải qua tất cả approval levels (status = APPROVED) trước khi CONFIRMED.
+    Supports delegation (delegated_to_id).
+  '''
+}
+
+
+// =============================================================
+//  SCHEMA: pay_engine – Payroll Calculation Engine
+//  NEW 27Mar2026
+//  Trách nhiệm: Nhận request từ pay_mgmt, execute calculation,
+//  ghi results, balances, calc_log, costing
+//  KHÔNG quản lý orchestration – chỉ tính toán
+// =============================================================
+
+// changed 27Mar2026: NEW — Engine Interface Contract
+// Bảng giao tiếp chính giữa Payroll Management và Engine
+// Management tạo request → Engine xử lý → trả kết quả
+Table pay_engine.run_request {
+  id              uuid        [pk, default: `gen_random_uuid()`]
+  batch_id        uuid        [ref: > pay_mgmt.batch.id, not null]      // batch nào yêu cầu
+  request_type    varchar(20) [not null]                     // CALCULATE | VALIDATE | COSTING | RETRO | QUICKPAY | REVERSAL
+
+  // Status tracking (Engine-side)
+  status_code     varchar(20) [not null, default: 'QUEUED']  // QUEUED | PROCESSING | COMPLETED | FAILED | CANCELLED
+  priority        smallint    [default: 5]                   // 1 (high) → 10 (low)
+
+  // Parameters
+  parameters_json jsonb       [null]                         // override settings, filters, etc.
+  employee_count  int         [null]                         // số employee cần xử lý
+
+  // Execution tracking
+  engine_version  varchar(20) [null]                         // version engine thực thi
+  requested_by    uuid        [not null]
+  requested_at    timestamp   [not null, default: `now()`]
+  started_at      timestamp   [null]
+  completed_at    timestamp   [null]
+
+  // Error tracking
+  error_count     int         [default: 0]
+  warning_count   int         [default: 0]
+  error_summary   text        [null]
+
+  metadata        jsonb       [null]
+
+  Indexes {
+    (batch_id)
+    (status_code, priority)
+    (requested_at)
+    (request_type, status_code)
+  }
+
+  Note: '''
+    NEW 27Mar2026: Engine Interface Contract.
+    Bảng giao tiếp chính giữa Payroll Management và Engine.
+    Lifecycle: QUEUED → PROCESSING → COMPLETED | FAILED
+    Management tạo request, Engine xử lý và cập nhật status.
+  '''
+}
+
+// changed 27Mar2026: NEW — Calculation Step Configuration
+// Định nghĩa các bước tính lương và thứ tự thực thi
+Table pay_engine.calculation_step {
+  code            varchar(30) [pk]                            // INPUT_COLLECTION | PRE_CALC | EARNINGS | STATUTORY_DEDUCTIONS | VOLUNTARY_DEDUCTIONS | TAX | NET_PAY | POST_CALC | BALANCING | COSTING
+  name            varchar(100) [not null]
+  sequence        smallint    [not null]                      // thứ tự thực thi
+  description     text        [null]
+  is_active       boolean     [default: true]
+  is_mandatory    boolean     [default: true]                 // bước bắt buộc?
+
+  Indexes {
+    (sequence)
+    (is_active)
+  }
+
+  Note: 'NEW 27Mar2026: Configuration table cho các bước tính lương. Thứ tự xử lý theo sequence.'
+}
+
+// changed 27Mar2026: NEW — Per-Run Step Execution Tracking
+// Theo dõi tiến trình từng bước trong mỗi run
+Table pay_engine.run_step {
+  id              uuid        [pk, default: `gen_random_uuid()`]
+  request_id      uuid        [ref: > pay_engine.run_request.id, not null]
+  step_code       varchar(30) [ref: > pay_engine.calculation_step.code, not null]
+  status_code     varchar(20) [not null, default: 'PENDING']  // PENDING | RUNNING | COMPLETED | FAILED | SKIPPED
+  started_at      timestamp   [null]
+  completed_at    timestamp   [null]
+  record_count    int         [default: 0]
+  error_count     int         [default: 0]
+  duration_ms     bigint      [null]                          // thời gian xử lý (ms)
+  error_detail    text        [null]
+
+  Indexes {
+    (request_id, step_code) [unique]
+    (request_id, status_code)
+  }
+
+  Note: 'NEW 27Mar2026: Tracking tiến trình từng bước calculation trong mỗi engine run.'
+}
+
+// changed 27Mar2026: MIGRATED from pay_run.employee → pay_engine.run_employee
+// Enhanced: +request_id, +assignment_id, +pay_group_id, +comparison fields, +error_message
+Table pay_engine.run_employee {
+  id              uuid        [pk, default: `gen_random_uuid()`]
+  request_id      uuid        [ref: > pay_engine.run_request.id, null]       // NEW 27Mar2026 — link tới engine request
+  batch_id        uuid        [ref: > pay_mgmt.batch.id, not null]           // giữ từ V3 (FK updated: pay_run.batch → pay_mgmt.batch)
+  employee_id     uuid        [ref: > employment.employee.id, not null]
+  assignment_id   uuid        [ref: > employment.assignment.id, null]         // NEW 27Mar2026 — multi-assignment payroll support
+  pay_group_id    uuid        [ref: > pay_master.pay_group.id, null]          // NEW 27Mar2026 — employee thuộc group nào
+
+  // changed 27Mar2026: EXPANDED status_code (V3: SELECTED|CALC_OK|ERROR → V4: +WARNINGS|EXCLUDED)
+  status_code     varchar(20) [not null]               // SELECTED | CALC_OK | WARNINGS | ERROR | EXCLUDED
+  gross_amount    decimal(18,2) [null]
+  net_amount      decimal(18,2) [null]
+  currency_code   char(3)     [not null]
+
+  // NEW 27Mar2026: Comparison with previous period
+  prev_gross_amount decimal(18,2) [null]                       // gross kỳ trước
+  prev_net_amount   decimal(18,2) [null]                       // net kỳ trước
+  variance_amount   decimal(18,2) [null]                       // chênh lệch (current - prev)
+  variance_flag     boolean     [default: false]               // cờ bất thường (variance > threshold)
+
+  error_message   text        [null]                           // NEW 27Mar2026 — chi tiết lỗi nếu status = ERROR
+  metadata        jsonb       [null]
+
+  Indexes {
+    (request_id, employee_id) [unique]
+    (batch_id, employee_id)
+    (status_code)
+    (assignment_id)
+    (variance_flag) [where: "variance_flag = true"]
+  }
+
+  Note: '''
+    changed 27Mar2026: MIGRATED from pay_run.employee.
+    Enhanced for Engine separation:
+    - NEW request_id → pay_engine.run_request
+    - NEW assignment_id → employment.assignment (multi-assignment)
+    - NEW pay_group_id → pay_master.pay_group
+    - NEW prev_gross/net_amount, variance_amount, variance_flag (period comparison)
+    - NEW error_message for detailed error tracking
+    - EXPANDED status_code: +WARNINGS, +EXCLUDED
+  '''
+}
+
+// changed 27Mar2026: MIGRATED from pay_run.input_value → pay_engine.input_value
+// Structure giữ nguyên, FK updated
+Table pay_engine.input_value {
+  id            uuid        [pk, default: `gen_random_uuid()`]
+  emp_run_id    uuid        [ref: > pay_engine.run_employee.id, not null]    // changed 27Mar2026: FK updated: pay_run.employee → pay_engine.run_employee
+  element_id    uuid        [ref: > pay_master.pay_element.id, not null]
+  input_code    varchar(50) [not null]                 // RATE | HOURS | AMOUNT
+  input_value   numeric(18,2) [not null]
+  source_ref    varchar(50) [null]          // TA_123, MAN_ADJ_9
+  source_type   varchar(30) [not null]     // TimeAttendance, Absence…
+  unit          varchar(10) [null]
+  metadata      jsonb       [null]
+
+  Indexes {
+    (emp_run_id, element_id)
+    (source_type)
+  }
+
+  Note: 'changed 27Mar2026: MIGRATED from pay_run.input_value. Structure giữ nguyên, FK updated to pay_engine.run_employee.'
+}
+
+// changed 27Mar2026: MIGRATED from pay_run.result → pay_engine.result
+// Structure giữ nguyên, FK updated
+Table pay_engine.result {
+  id            uuid        [pk, default: `gen_random_uuid()`]
+  emp_run_id    uuid        [ref: > pay_engine.run_employee.id, not null]    // changed 27Mar2026: FK updated
+  element_id    uuid        [ref: > pay_master.pay_element.id, not null]
+  result_amount decimal(18,2) [not null]
+  currency_code char(3)     [not null]
+  classification varchar(20) [not null]
+  metadata      jsonb       [null]
+
+  Indexes {
+    (emp_run_id, element_id)
+    (classification)
+  }
+
+  Note: 'changed 27Mar2026: MIGRATED from pay_run.result. Structure giữ nguyên, FK updated.'
+}
+
+// changed 27Mar2026: MIGRATED from pay_run.balance → pay_engine.balance
+// Structure giữ nguyên, FK updated
+Table pay_engine.balance {
+  id            uuid        [pk, default: `gen_random_uuid()`]
+  emp_run_id    uuid        [ref: > pay_engine.run_employee.id, not null]    // changed 27Mar2026: FK updated
+  balance_id    uuid        [ref: > pay_master.balance_def.id, not null]
+  balance_value decimal(18,2) [not null]
+
+  Indexes {
+    (emp_run_id, balance_id)
+  }
+
+  Note: 'changed 27Mar2026: MIGRATED from pay_run.balance. Structure giữ nguyên, FK updated.'
+}
+
+// changed 27Mar2026: MIGRATED from pay_run.retro_delta → pay_engine.retro_delta
+// Structure giữ nguyên, FK updated
+Table pay_engine.retro_delta {
+  id            uuid        [pk, default: `gen_random_uuid()`]
+  emp_run_id    uuid        [ref: > pay_engine.run_employee.id, not null]    // changed 27Mar2026: FK updated
+  //orig_batch_id uuid [ref: > pay_run.batch.id]                              // changed 27Mar2026: DEPRECATED FK cũ
+  orig_batch_id uuid        [ref: > pay_mgmt.batch.id, not null]             // changed 27Mar2026: FK updated to pay_mgmt.batch
+  element_id    uuid        [ref: > pay_master.pay_element.id, not null]
+  delta_amount  decimal(18,2) [not null]
+  currency_code char(3)     [not null]
+  metadata      jsonb       [null]
+
+  Indexes {
+    (emp_run_id, element_id)
+    (orig_batch_id)
+  }
+
+  Note: 'changed 27Mar2026: MIGRATED from pay_run.retro_delta. Structure giữ nguyên, FK updated.'
+}
+
+// changed 27Mar2026: MIGRATED from pay_run.calc_log → pay_engine.calc_log
+// Structure giữ nguyên, FK updated
+Table pay_engine.calc_log {
+  id            uuid        [pk, default: `gen_random_uuid()`]
+  emp_run_id    uuid        [ref: > pay_engine.run_employee.id, not null]    // changed 27Mar2026: FK updated
+  step_label    varchar(50) [not null]          // PRE_BAL, OT_RULE, TAX
+  message       text        [not null]
+  payload_json  jsonb       [null]
+  logged_at     timestamp   [default:`now()`]
+
+  Indexes {
+    (emp_run_id, step_label)
+    (logged_at)
+  }
+
+  Note: 'changed 27Mar2026: MIGRATED from pay_run.calc_log. Structure giữ nguyên, FK updated.'
+}
+
+// changed 27Mar2026: MIGRATED from pay_run.costing → pay_engine.costing
+// Structure giữ nguyên, FK updated
+Table pay_engine.costing {
+  id            uuid        [pk, default: `gen_random_uuid()`]
+  //result_id     uuid [ref: > pay_run.result.id]                             // changed 27Mar2026: DEPRECATED FK cũ
+  result_id     uuid        [ref: > pay_engine.result.id, not null]           // changed 27Mar2026: FK updated to pay_engine.result
+  account_code  varchar(50) [not null]
+  dr_cr         char(1)     [not null]               // D / C
+  amount        decimal(18,2) [not null]
+  currency_code char(3)     [not null]
+  segment_json  jsonb       [null]
+
+  Indexes {
+    (result_id)
+    (account_code)
+  }
+
+  Note: 'changed 27Mar2026: MIGRATED from pay_run.costing. Structure giữ nguyên, FK updated.'
+}
+
+// changed 27Mar2026: NEW — YTD/QTD Cumulative Balance Tracking
+// Persist aggregate balances across periods (thay vì re-aggregate mỗi lần)
+Table pay_engine.cumulative_balance {
+  id              uuid        [pk, default: `gen_random_uuid()`]
+  employee_id     uuid        [ref: > employment.employee.id, not null]
+  balance_def_id  uuid        [ref: > pay_master.balance_def.id, not null]
+  balance_type    varchar(10) [not null]                  // QTD | YTD | LTD
+  period_year     smallint    [not null]                  // năm
+  period_quarter  smallint    [null]                      // quý (cho QTD), NULL cho YTD/LTD
+  balance_value   decimal(18,2) [not null, default: 0]
+  currency_code   char(3)     [not null]
+  last_updated_by_run_id uuid [ref: > pay_engine.run_request.id, null]  // run cuối cùng cập nhật
+  last_updated_at timestamp   [null]
+
+  Indexes {
+    (employee_id, balance_def_id, balance_type, period_year) [unique]
+    (employee_id, period_year)
+    (balance_type, period_year)
+  }
+
+  Note: '''
+    NEW 27Mar2026: Persistent cumulative balances (YTD/QTD/LTD).
+    Thay vì re-aggregate từ pay_engine.balance mỗi lần,
+    bảng này lưu aggregated values và cập nhật sau mỗi run.
+    last_updated_by_run_id tracks run cuối cùng đã cập nhật balance.
+  '''
+}
+
+// changed 27Mar2026: NEW — Element Dependency Graph
+// Đảm bảo thứ tự tính toán đúng giữa các elements
+Table pay_engine.element_dependency {
+  id                    uuid        [pk, default: `gen_random_uuid()`]
+  element_id            uuid        [ref: > pay_master.pay_element.id, not null]
+  depends_on_element_id uuid        [ref: > pay_master.pay_element.id, not null]
+  dependency_type       varchar(20) [not null]     // REQUIRES_OUTPUT | USES_BALANCE | SEQUENCED_AFTER
+  description           text        [null]
+  is_active             boolean     [default: true]
+
+  Indexes {
+    (element_id, depends_on_element_id) [unique]
+    (depends_on_element_id)
+    (dependency_type)
+  }
+
+  Note: '''
+    NEW 27Mar2026: Element dependency graph cho calculation ordering.
+    Engine dùng bảng này để build DAG (Directed Acyclic Graph)
+    xác định thứ tự tính toán element.
+    REQUIRES_OUTPUT: element A cần output của element B trước.
+    USES_BALANCE: element A cần balance value từ element B.
+    SEQUENCED_AFTER: element A phải chạy sau element B.
+  '''
+}
+
+// changed 27Mar2026: NEW — Input Source Configuration
+// Config automated input collection từ các module khác
+Table pay_engine.input_source_config {
+  id              uuid        [pk, default: `gen_random_uuid()`]
+  source_module   varchar(30) [not null]                  // TIME_ATTENDANCE | ABSENCE | COMPENSATION | BENEFITS | MANUAL
+  source_type     varchar(50) [not null]                  // TIMESHEET | LEAVE_DEDUCTION | COMP_BASIS_CHANGE | BENEFIT_PREMIUM …
+  target_element_id uuid     [ref: > pay_master.pay_element.id, not null]  // element nhận giá trị
+  mapping_json    jsonb       [null]                      // mapping rules (source field → input_code)
+  is_active       boolean     [default: true]
+  priority        smallint    [default: 0]                // nếu có nhiều source cho cùng element
+  description     text        [null]
+  metadata        jsonb       [null]
+  created_at      timestamp   [default: `now()`]
+  updated_at      timestamp   [null]
+
+  Indexes {
+    (source_module, source_type, target_element_id) [unique]
+    (target_element_id)
+    (source_module, is_active)
+  }
+
+  Note: '''
+    NEW 27Mar2026: Configuration cho automated input collection.
+    Engine đọc bảng này để biết collect input từ đâu cho mỗi element.
+    Ví dụ: TIME_ATTENDANCE.TIMESHEET → OT_HOURS element
+            ABSENCE.LEAVE_DEDUCTION → UNPAID_LEAVE element
+            COMPENSATION.COMP_BASIS_CHANGE → BASE_SALARY element
+    mapping_json chứa rules map source data → input_code/input_value.
+  '''
+}
+
+// =============================================================
+//  END OF NEW SCHEMAS
+//  Tổng kết V4 changes:
+//    - pay_run schema → MIGRATED: 2 tables sang pay_mgmt, 7 tables sang pay_engine
+//    - 2 NEW tables in pay_mgmt: pay_period, batch_approval
+//    - 3 NEW tables in pay_engine: run_request, calculation_step, run_step,
+//      cumulative_balance, element_dependency, input_source_config
+//    - pay_bank.payment_batch, generated_file: FK updated pay_run.batch → pay_mgmt.batch
+//    - Tổng: 8 new tables, 9 migrated tables, 2 FK updates
+// =============================================================
