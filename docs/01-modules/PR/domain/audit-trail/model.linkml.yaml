@@ -1,0 +1,271 @@
+# LinkML Schema - Audit Trail Bounded Context
+
+id: https://xtalent.example.com/pr/audit-trail
+name: audit_trail
+title: Audit Trail Domain Model
+description: Domain model for Audit Trail bounded context including AuditLog, AuditEntry, and AuditReport
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  pr: https://xtalent.example.com/pr/
+  xsd: http://www.w3.org/2001/XMLSchema#
+
+default_prefix: pr
+default_range: string
+
+imports:
+  - linkml:types
+
+# ============================================
+# ENUMERATIONS
+# ============================================
+
+enums:
+  OperationType:
+    permissible_values:
+      CREATE:
+        description: New entity created
+      UPDATE:
+        description: Entity modified
+      DELETE:
+        description: Entity soft-deleted
+      ASSIGN:
+        description: Assignment created
+      UNASSIGN:
+        description: Assignment removed
+      VERSION_CREATE:
+        description: New SCD-2 version created
+      VALIDATE:
+        description: Validation performed
+      EXPORT:
+        description: Data exported
+
+  EntityType:
+    permissible_values:
+      PayElement:
+        description: Pay element entity
+      PayProfile:
+        description: Pay profile entity
+      PayFormula:
+        description: Pay formula entity
+      StatutoryRule:
+        description: Statutory rule entity
+      PayCalendar:
+        description: Pay calendar entity
+      PayGroup:
+        description: Pay group entity
+      GLMappingPolicy:
+        description: GL mapping policy entity
+      BankTemplate:
+        description: Bank template entity
+      PayElementAssignment:
+        description: Element assignment
+      PayGroupAssignment:
+        description: Group assignment
+
+  ReportType:
+    permissible_values:
+      SUMMARY:
+        description: Summary statistics
+      DETAIL:
+        description: Full detail of all entries
+      COMPARISON:
+        description: Before/after comparison view
+      COMPLIANCE:
+        description: Compliance-focused report
+
+  ExportFormat:
+    permissible_values:
+      CSV:
+        description: CSV file format
+      PDF:
+        description: PDF document format
+      JSON:
+        description: JSON data format
+
+  ScopeType:
+    permissible_values:
+      TENANT:
+        description: Tenant-level audit log
+      LEGAL_ENTITY:
+        description: Legal entity-level audit log
+      MODULE:
+        description: Module-level audit log
+
+# ============================================
+# CLASSES
+# ============================================
+
+classes:
+  AuditLog:
+    title: Audit Log
+    description: Container for audit entries for a specific scope
+    attributes:
+      logId:
+        title: Log ID
+        description: Unique identifier for the audit log
+        range: string
+        required: true
+        identifier: true
+      scopeType:
+        title: Scope Type
+        description: Scope of the log
+        range: ScopeType
+        required: true
+      scopeId:
+        title: Scope ID
+        description: Identifier of the scope
+        range: string
+        required: true
+      createdAt:
+        title: Created At
+        description: Timestamp when log was created
+        range: datetime
+        required: true
+      entries:
+        title: Entries
+        description: Audit entries in this log
+        range: AuditEntry
+        multivalued: true
+        inlined: true
+
+  AuditEntry:
+    title: Audit Entry
+    description: Individual immutable audit record capturing a configuration change
+    attributes:
+      entryId:
+        title: Entry ID
+        description: Unique identifier for the audit entry
+        range: string
+        required: true
+        identifier: true
+      entityType:
+        title: Entity Type
+        description: Type of entity changed
+        range: EntityType
+        required: true
+      entityId:
+        title: Entity ID
+        description: Identifier of entity changed
+        range: string
+        required: true
+      entityName:
+        title: Entity Name
+        description: Human-readable name of entity
+        range: string
+        max_length: 100
+      operation:
+        title: Operation
+        description: Operation type
+        range: OperationType
+        required: true
+      changedBy:
+        title: Changed By
+        description: User who performed the change
+        range: string
+        required: true
+      changedByName:
+        title: Changed By Name
+        description: Human-readable name of user
+        range: string
+        max_length: 100
+      changedAt:
+        title: Changed At
+        description: Timestamp when change occurred
+        range: datetime
+        required: true
+      oldValue:
+        title: Old Value
+        description: Previous state as JSON
+        range: string
+      newValue:
+        title: New Value
+        description: New state as JSON
+        range: string
+      changedFields:
+        title: Changed Fields
+        description: List of fields that changed
+        range: string
+        multivalued: true
+      changeReason:
+        title: Change Reason
+        description: Reason for change
+        range: string
+        max_length: 500
+      versionId:
+        title: Version ID
+        description: Reference to SCD-2 version
+        range: string
+      sessionId:
+        title: Session ID
+        description: Session ID for correlation
+        range: string
+      ipAddress:
+        title: IP Address
+        description: IP address of user
+        range: string
+      notes:
+        title: Notes
+        description: Additional notes or comments
+        range: string
+        max_length: 500
+
+  AuditReport:
+    title: Audit Report
+    description: Generated report from audit log query
+    attributes:
+      reportId:
+        title: Report ID
+        description: Unique identifier for the report
+        range: string
+        required: true
+        identifier: true
+      reportName:
+        title: Report Name
+        description: Human-readable name for the report
+        range: string
+        required: true
+        max_length: 100
+      reportType:
+        title: Report Type
+        description: Type of report
+        range: ReportType
+        required: true
+      generatedAt:
+        title: Generated At
+        description: Timestamp when report was generated
+        range: datetime
+        required: true
+      generatedBy:
+        title: Generated By
+        description: User who requested the report
+        range: string
+        required: true
+      dateRangeStart:
+        title: Date Range Start
+        description: Start date of entries included
+        range: date
+        required: true
+      dateRangeEnd:
+        title: Date Range End
+        description: End date of entries included
+        range: date
+        required: true
+      entityTypes:
+        title: Entity Types
+        description: Entity types included (optional filter)
+        range: EntityType
+        multivalued: true
+      format:
+        title: Format
+        description: Output format
+        range: ExportFormat
+        required: true
+      entryCount:
+        title: Entry Count
+        description: Number of entries in report
+        range: integer
+      filePath:
+        title: File Path
+        description: Path to generated file
+        range: string

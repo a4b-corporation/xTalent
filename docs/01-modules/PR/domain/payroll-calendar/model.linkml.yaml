@@ -1,0 +1,169 @@
+# LinkML Schema - Payroll Calendar Bounded Context
+
+id: https://xtalent.example.com/pr/payroll-calendar
+name: payroll_calendar
+title: Payroll Calendar Domain Model
+description: Domain model for Payroll Calendar bounded context including PayCalendar and PayPeriod
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  pr: https://xtalent.example.com/pr/
+  xsd: http://www.w3.org/2001/XMLSchema#
+
+default_prefix: pr
+default_range: string
+
+imports:
+  - linkml:types
+
+# ============================================
+# ENUMERATIONS
+# ============================================
+
+enums:
+  PayFrequency:
+    permissible_values:
+      WEEKLY:
+        description: Weekly payroll (52 periods per year)
+      BI_WEEKLY:
+        description: Every two weeks (26 periods per year)
+      SEMI_MONTHLY:
+        description: Twice per month (24 periods per year)
+      MONTHLY:
+        description: Once per month (12 periods per year)
+
+  PeriodStatus:
+    permissible_values:
+      OPEN:
+        description: Period is open for data entry
+      CLOSED:
+        description: Cut-off passed, data locked
+      PAID:
+        description: Payment processed
+      REOPENED:
+        description: Temporarily reopened for corrections
+
+# ============================================
+# CLASSES - Aggregate Roots
+# ============================================
+
+classes:
+  PayCalendar:
+    title: Pay Calendar
+    description: Time-based payroll period definition for a legal entity and fiscal year
+    attributes:
+      calendarCode:
+        title: Calendar Code
+        description: Unique identifier for the pay calendar
+        range: string
+        required: true
+        identifier: true
+        pattern: "^[A-Z][A-Z0-9_]{1,49}$"
+      calendarName:
+        title: Calendar Name
+        description: Human-readable name for the calendar
+        range: string
+        required: true
+        max_length: 100
+      legalEntityId:
+        title: Legal Entity ID
+        description: Reference to LegalEntity from Core HR (CO) module
+        range: string
+        required: true
+      payFrequencyId:
+        title: Pay Frequency ID
+        description: Reference to PayFrequency
+        range: string
+        required: true
+      fiscalYear:
+        title: Fiscal Year
+        description: Calendar year for payroll periods
+        range: integer
+        required: true
+        minimum_value: 2000
+        maximum_value: 2100
+      startDate:
+        title: Start Date
+        description: First day of fiscal year payroll
+        range: date
+        required: true
+      endDate:
+        title: End Date
+        description: Last day of fiscal year payroll
+        range: date
+        required: true
+      isActive:
+        title: Is Active
+        description: Flag indicating calendar is available for assignment
+        range: boolean
+        required: true
+      createdBy:
+        title: Created By
+        description: User who created the calendar
+        range: string
+      createdAt:
+        title: Created At
+        description: Timestamp when calendar was created
+        range: datetime
+      periods:
+        title: Periods
+        description: Pay periods within this calendar
+        range: PayPeriod
+        multivalued: true
+        inlined: true
+
+# ============================================
+# CLASSES - Entities within Aggregates
+# ============================================
+
+  PayPeriod:
+    title: Pay Period
+    description: Individual payroll period within a calendar
+    attributes:
+      periodId:
+        title: Period ID
+        description: Unique identifier for the pay period
+        range: string
+        required: true
+        identifier: true
+      periodNumber:
+        title: Period Number
+        description: Sequential number within calendar
+        range: integer
+        required: true
+        minimum_value: 1
+      periodName:
+        title: Period Name
+        description: Human-readable name like "January 2026"
+        range: string
+        max_length: 50
+      periodStartDate:
+        title: Period Start Date
+        description: First day of work included in this period
+        range: date
+        required: true
+      periodEndDate:
+        title: Period End Date
+        description: Last day of work included in this period
+        range: date
+        required: true
+      cutOffDate:
+        title: Cut-off Date
+        description: Deadline for payroll data submission
+        range: date
+        required: true
+      payDate:
+        title: Pay Date
+        description: Date when employees receive payment
+        range: date
+        required: true
+      status:
+        title: Status
+        description: Period status
+        range: PeriodStatus
+        required: true
+      adjustmentReason:
+        title: Adjustment Reason
+        description: Reason for manual date adjustment
+        range: string
+        max_length: 200

@@ -1,0 +1,149 @@
+# LinkML Schema - Payroll Assignment Bounded Context
+
+id: https://xtalent.example.com/pr/payroll-assignment
+name: payroll_assignment
+title: Payroll Assignment Domain Model
+description: Domain model for Payroll Assignment bounded context including PayGroup and PayGroupAssignment
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  pr: https://xtalent.example.com/pr/
+  xsd: http://www.w3.org/2001/XMLSchema#
+
+default_prefix: pr
+default_range: string
+
+imports:
+  - linkml:types
+
+# ============================================
+# ENUMERATIONS
+# ============================================
+
+enums:
+  AssignmentReason:
+    permissible_values:
+      NEW_HIRE:
+        description: Employee newly hired
+      TRANSFER:
+        description: Employee transferred between groups
+      PROMOTION:
+        description: Employee promoted to different profile
+      REORGANIZATION:
+        description: Organizational restructuring
+      PROFILE_CHANGE:
+        description: Profile change for same group
+      OTHER:
+        description: Other reason
+
+  RemovalReason:
+    permissible_values:
+      TRANSFER:
+        description: Transferred to another pay group
+      TERMINATION:
+        description: Employee terminated
+      PROMOTION:
+        description: Promoted to different group
+      REORGANIZATION:
+        description: Organizational restructuring
+      OTHER:
+        description: Other reason
+
+# ============================================
+# CLASSES - Aggregate Roots
+# ============================================
+
+classes:
+  PayGroup:
+    title: Pay Group
+    description: Group of employees assigned to the same PayProfile and PayCalendar
+    attributes:
+      groupCode:
+        title: Group Code
+        description: Unique identifier for the pay group
+        range: string
+        required: true
+        identifier: true
+        pattern: "^[A-Z][A-Z0-9_]{1,49}$"
+      groupName:
+        title: Group Name
+        description: Human-readable name for the pay group
+        range: string
+        required: true
+        max_length: 100
+      payProfileId:
+        title: Pay Profile ID
+        description: Reference to PayProfile from Payroll Configuration BC
+        range: string
+        required: true
+      payCalendarId:
+        title: Pay Calendar ID
+        description: Reference to PayCalendar from Payroll Calendar BC
+        range: string
+        required: true
+      description:
+        title: Description
+        description: Optional description of group purpose
+        range: string
+        max_length: 500
+      isActive:
+        title: Is Active
+        description: Flag indicating group is available for assignment
+        range: boolean
+        required: true
+      createdBy:
+        title: Created By
+        description: User who created the group
+        range: string
+      createdAt:
+        title: Created At
+        description: Timestamp when group was created
+        range: datetime
+      assignments:
+        title: Assignments
+        description: Employee assignments to this group
+        range: PayGroupAssignment
+        multivalued: true
+        inlined: true
+
+# ============================================
+# CLASSES - Entities within Aggregates
+# ============================================
+
+  PayGroupAssignment:
+    title: Pay Group Assignment
+    description: Assignment of an employee (Worker) to a PayGroup
+    attributes:
+      assignmentId:
+        title: Assignment ID
+        description: Unique identifier for the assignment
+        range: string
+        required: true
+        identifier: true
+      employeeId:
+        title: Employee ID
+        description: Reference to Worker from Core HR (CO) module
+        range: string
+        required: true
+      assignmentDate:
+        title: Assignment Date
+        description: Date when employee was assigned to the group
+        range: date
+        required: true
+      removalDate:
+        title: Removal Date
+        description: Date when employee was removed from the group
+        range: date
+      assignmentReason:
+        title: Assignment Reason
+        description: Reason for assignment
+        range: AssignmentReason
+      removalReason:
+        title: Removal Reason
+        description: Reason for removal
+        range: RemovalReason
+      isCurrent:
+        title: Is Current
+        description: Flag indicating this is the current active assignment
+        range: boolean
+        required: true

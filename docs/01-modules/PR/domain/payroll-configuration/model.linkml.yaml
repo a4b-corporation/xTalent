@@ -1,0 +1,330 @@
+# LinkML Schema - Payroll Configuration Bounded Context
+
+id: https://xtalent.example.com/pr/payroll-configuration
+name: payroll_configuration
+title: Payroll Configuration Domain Model
+description: Domain model for Payroll Configuration bounded context including PayElement, PayProfile, and PayFormula
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  pr: https://xtalent.example.com/pr/
+  xsd: http://www.w3.org/2001/XMLSchema#
+
+default_prefix: pr
+default_range: string
+
+imports:
+  - linkml:types
+
+# ============================================
+# ENUMERATIONS
+# ============================================
+
+enums:
+  ElementClassification:
+    permissible_values:
+      EARNING:
+        description: Component that increases employee gross and net pay
+      DEDUCTION:
+        description: Component that decreases employee gross and net pay
+      TAX:
+        description: Tax component decreasing net pay only
+      EMPLOYER_CONTRIBUTION:
+        description: Employer cost, no employee impact
+
+  CalculationType:
+    permissible_values:
+      FIXED:
+        description: Fixed amount defined on element
+      FORMULA:
+        description: Calculated via formula expression
+      RATE_BASED:
+        description: Percentage of base amount
+      HOURS_BASED:
+        description: Hours multiplied by rate
+
+# ============================================
+# CLASSES - Aggregate Roots
+# ============================================
+
+classes:
+  PayElement:
+    title: Pay Element
+    description: Fundamental payroll component representing an earning, deduction, or tax
+    attributes:
+      elementCode:
+        title: Element Code
+        description: Unique identifier for the pay element within a legal entity
+        range: string
+        required: true
+        identifier: true
+        pattern: "^[A-Z][A-Z0-9_]{1,49}$"
+      elementName:
+        title: Element Name
+        description: Human-readable name for the pay element
+        range: string
+        required: true
+        max_length: 100
+      legalEntityId:
+        title: Legal Entity ID
+        description: Reference to LegalEntity from Core HR (CO) module
+        range: string
+        required: true
+      classification:
+        title: Classification
+        description: Category determining gross/net impact
+        range: ElementClassification
+        required: true
+      calculationType:
+        title: Calculation Type
+        description: How the element value is determined
+        range: CalculationType
+        required: true
+      statutoryFlag:
+        title: Statutory Flag
+        description: Indicates if element represents statutory contribution
+        range: boolean
+        required: true
+      taxableFlag:
+        title: Taxable Flag
+        description: Indicates if element is subject to PIT calculation
+        range: boolean
+        required: true
+      formulaId:
+        title: Formula ID
+        description: Reference to PayFormula for FORMULA calculation type
+        range: string
+      rate:
+        title: Rate
+        description: Fixed rate percentage for RATE_BASED calculation
+        range: decimal
+        minimum_value: 0
+        maximum_value: 1
+      amount:
+        title: Amount
+        description: Fixed amount for FIXED calculation type
+        range: decimal
+        minimum_value: 0
+      isActive:
+        title: Is Active
+        description: Flag indicating element is available for assignment
+        range: boolean
+        required: true
+      effectiveStartDate:
+        title: Effective Start Date
+        description: Date when this version becomes effective (SCD-2)
+        range: date
+        required: true
+      effectiveEndDate:
+        title: Effective End Date
+        description: Date when this version ends (SCD-2)
+        range: date
+      isCurrentFlag:
+        title: Is Current Flag
+        description: Indicates this is the current active version
+        range: boolean
+        required: true
+      versionReason:
+        title: Version Reason
+        description: Reason for creating new version
+        range: string
+      createdBy:
+        title: Created By
+        description: User who created this version
+        range: string
+      createdAt:
+        title: Created At
+        description: Timestamp when this version was created
+        range: datetime
+    unique_keys:
+      unique_code_legal_entity:
+        unique_key_slots:
+          - elementCode
+          - legalEntityId
+
+  PayProfile:
+    title: Pay Profile
+    description: Configuration bundle containing pay elements and statutory rules for employee group
+    attributes:
+      profileCode:
+        title: Profile Code
+        description: Unique identifier for the pay profile within a legal entity
+        range: string
+        required: true
+        identifier: true
+        pattern: "^[A-Z][A-Z0-9_]{1,49}$"
+      profileName:
+        title: Profile Name
+        description: Human-readable name for the pay profile
+        range: string
+        required: true
+        max_length: 100
+      legalEntityId:
+        title: Legal Entity ID
+        description: Reference to LegalEntity from Core HR (CO) module
+        range: string
+        required: true
+      payFrequencyId:
+        title: Pay Frequency ID
+        description: Reference to PayFrequency (WEEKLY, BI_WEEKLY, SEMI_MONTHLY, MONTHLY)
+        range: string
+        required: true
+      description:
+        title: Description
+        description: Optional description of the profile purpose
+        range: string
+        max_length: 500
+      isActive:
+        title: Is Active
+        description: Flag indicating profile is available for assignment
+        range: boolean
+        required: true
+      effectiveStartDate:
+        title: Effective Start Date
+        description: Date when this version becomes effective (SCD-2)
+        range: date
+        required: true
+      effectiveEndDate:
+        title: Effective End Date
+        description: Date when this version ends (SCD-2)
+        range: date
+      isCurrentFlag:
+        title: Is Current Flag
+        description: Indicates this is the current active version
+        range: boolean
+        required: true
+      versionReason:
+        title: Version Reason
+        description: Reason for creating new version
+        range: string
+      createdBy:
+        title: Created By
+        description: User who created this version
+        range: string
+      createdAt:
+        title: Created At
+        description: Timestamp when this version was created
+        range: datetime
+      elementAssignments:
+        title: Element Assignments
+        description: Pay elements assigned to this profile
+        range: PayElementAssignment
+        multivalued: true
+        inlined: true
+      statutoryRuleAssignments:
+        title: Statutory Rule Assignments
+        description: Statutory rules assigned to this profile
+        range: StatutoryRuleAssignment
+        multivalued: true
+        inlined: true
+    unique_keys:
+      unique_profile_legal_entity:
+        unique_key_slots:
+          - profileCode
+          - legalEntityId
+
+  PayFormula:
+    title: Pay Formula
+    description: Calculation formula defining how a pay element value is computed
+    attributes:
+      formulaId:
+        title: Formula ID
+        description: Unique identifier for the formula
+        range: string
+        required: true
+        identifier: true
+      formulaName:
+        title: Formula Name
+        description: Human-readable name for the formula
+        range: string
+        required: true
+        max_length: 100
+      expression:
+        title: Expression
+        description: Formula expression
+        range: string
+        required: true
+        max_length: 1000
+      description:
+        title: Description
+        description: Optional description of formula purpose
+        range: string
+        max_length: 500
+      isActive:
+        title: Is Active
+        description: Flag indicating formula is available for use
+        range: boolean
+        required: true
+      createdBy:
+        title: Created By
+        description: User who created the formula
+        range: string
+      createdAt:
+        title: Created At
+        description: Timestamp when formula was created
+        range: datetime
+
+# ============================================
+# CLASSES - Entities within Aggregates
+# ============================================
+
+  PayElementAssignment:
+    title: Pay Element Assignment
+    description: Assignment of a PayElement to a PayProfile with optional overrides
+    attributes:
+      payElementId:
+        title: Pay Element ID
+        description: Reference to the PayElement being assigned
+        range: string
+        required: true
+      priority:
+        title: Priority
+        description: Calculation sequence order (1-99)
+        range: integer
+        required: true
+        minimum_value: 1
+        maximum_value: 99
+      formulaOverride:
+        title: Formula Override
+        description: Optional formula expression overriding element's default formula
+        range: string
+        max_length: 1000
+      rateOverride:
+        title: Rate Override
+        description: Optional rate overriding element's default rate
+        range: decimal
+        minimum_value: 0
+        maximum_value: 1
+      amountOverride:
+        title: Amount Override
+        description: Optional fixed amount overriding element's default amount
+        range: decimal
+        minimum_value: 0
+      effectiveStartDate:
+        title: Effective Start Date
+        description: Date when assignment becomes effective
+        range: date
+        required: true
+      effectiveEndDate:
+        title: Effective End Date
+        description: Date when assignment ends
+        range: date
+
+  StatutoryRuleAssignment:
+    title: Statutory Rule Assignment
+    description: Assignment of a StatutoryRule to a PayProfile
+    attributes:
+      statutoryRuleId:
+        title: Statutory Rule ID
+        description: Reference to the StatutoryRule being assigned
+        range: string
+        required: true
+      effectiveStartDate:
+        title: Effective Start Date
+        description: Date when assignment becomes effective
+        range: date
+        required: true
+      effectiveEndDate:
+        title: Effective End Date
+        description: Date when assignment ends
+        range: date

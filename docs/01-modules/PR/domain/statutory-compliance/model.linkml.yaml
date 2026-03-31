@@ -1,0 +1,188 @@
+# LinkML Schema - Statutory Compliance Bounded Context
+
+id: https://xtalent.example.com/pr/statutory-compliance
+name: statutory_compliance
+title: Statutory Compliance Domain Model
+description: Domain model for Statutory Compliance bounded context including StatutoryRule and TaxBracket
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  pr: https://xtalent.example.com/pr/
+  xsd: http://www.w3.org/2001/XMLSchema#
+
+default_prefix: pr
+default_range: string
+
+imports:
+  - linkml:types
+
+# ============================================
+# ENUMERATIONS
+# ============================================
+
+enums:
+  StatutoryType:
+    permissible_values:
+      BHXH:
+        description: Social Insurance (Bao Hiem Xa Hoi)
+      BHYT:
+        description: Health Insurance (Bao Hiem Y Te)
+      BHTN:
+        description: Unemployment Insurance (Bao Hiem That Nghiep)
+      PIT:
+        description: Personal Income Tax (Thue TNCN)
+
+  PartyType:
+    permissible_values:
+      EMPLOYEE:
+        description: Employee contribution (deducted from salary)
+      EMPLOYER:
+        description: Employer contribution (employer cost)
+
+  RateType:
+    permissible_values:
+      FIXED_RATE:
+        description: Single percentage rate applied to wage base
+      PROGRESSIVE:
+        description: Multiple brackets with different rates
+      LOOKUP_BASED:
+        description: Rate determined by lookup table
+
+# ============================================
+# CLASSES - Aggregate Roots
+# ============================================
+
+classes:
+  StatutoryRule:
+    title: Statutory Rule
+    description: Government-mandated payroll rule for social insurance, health insurance, unemployment insurance, or personal income tax
+    attributes:
+      ruleCode:
+        title: Rule Code
+        description: Unique identifier for the statutory rule
+        range: string
+        required: true
+        identifier: true
+        pattern: "^[A-Z][A-Z0-9_]{1,49}$"
+      ruleName:
+        title: Rule Name
+        description: Human-readable name for the statutory rule
+        range: string
+        required: true
+        max_length: 100
+      statutoryType:
+        title: Statutory Type
+        description: Type of statutory rule
+        range: StatutoryType
+        required: true
+      partyType:
+        title: Party Type
+        description: Who pays the contribution
+        range: PartyType
+        required: true
+      rateType:
+        title: Rate Type
+        description: How rate is applied
+        range: RateType
+        required: true
+      rate:
+        title: Rate
+        description: Fixed percentage rate for FIXED_RATE type
+        range: decimal
+        minimum_value: 0
+        maximum_value: 1
+      ceilingAmount:
+        title: Ceiling Amount
+        description: Maximum wage base for contribution calculation
+        range: decimal
+        minimum_value: 0
+      floorAmount:
+        title: Floor Amount
+        description: Minimum wage base for contribution
+        range: decimal
+        minimum_value: 0
+      personalExemption:
+        title: Personal Exemption
+        description: Personal deduction amount for PIT
+        range: decimal
+        minimum_value: 0
+      dependentExemption:
+        title: Dependent Exemption
+        description: Deduction per dependent for PIT
+        range: decimal
+        minimum_value: 0
+      isActive:
+        title: Is Active
+        description: Flag indicating rule is available for assignment
+        range: boolean
+        required: true
+      effectiveStartDate:
+        title: Effective Start Date
+        description: Date when this version becomes effective (SCD-2)
+        range: date
+        required: true
+      effectiveEndDate:
+        title: Effective End Date
+        description: Date when this version ends (SCD-2)
+        range: date
+      isCurrentFlag:
+        title: Is Current Flag
+        description: Indicates this is the current active version
+        range: boolean
+        required: true
+      versionReason:
+        title: Version Reason
+        description: Reason for creating new version
+        range: string
+      createdBy:
+        title: Created By
+        description: User who created this version
+        range: string
+      createdAt:
+        title: Created At
+        description: Timestamp when this version was created
+        range: datetime
+      taxBrackets:
+        title: Tax Brackets
+        description: Progressive tax brackets for PIT
+        range: TaxBracket
+        multivalued: true
+        inlined: true
+
+# ============================================
+# CLASSES - Value Objects within Aggregates
+# ============================================
+
+  TaxBracket:
+    title: Tax Bracket
+    description: Progressive tax bracket defining income range and applicable tax rate
+    attributes:
+      bracketNumber:
+        title: Bracket Number
+        description: Sequential bracket number
+        range: integer
+        required: true
+        minimum_value: 1
+      minAmount:
+        title: Min Amount
+        description: Minimum taxable income for this bracket
+        range: decimal
+        required: true
+        minimum_value: 0
+      maxAmount:
+        title: Max Amount
+        description: Maximum taxable income for this bracket
+        range: decimal
+        minimum_value: 0
+      rate:
+        title: Rate
+        description: Tax rate for this bracket
+        range: decimal
+        required: true
+        minimum_value: 0
+        maximum_value: 1
+      taxAmount:
+        title: Tax Amount
+        description: Cumulative tax from previous brackets
+        range: decimal
+        minimum_value: 0

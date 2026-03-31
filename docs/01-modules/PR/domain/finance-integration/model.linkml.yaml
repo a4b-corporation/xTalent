@@ -1,0 +1,277 @@
+# LinkML Schema - Finance Integration Bounded Context
+
+id: https://xtalent.example.com/pr/finance-integration
+name: finance_integration
+title: Finance Integration Domain Model
+description: Domain model for Finance Integration bounded context including GLMappingPolicy, GLMapping, BankTemplate, and FieldMapping
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  pr: https://xtalent.example.com/pr/
+  xsd: http://www.w3.org/2001/XMLSchema#
+
+default_prefix: pr
+default_range: string
+
+imports:
+  - linkml:types
+
+# ============================================
+# ENUMERATIONS
+# ============================================
+
+enums:
+  FileFormat:
+    permissible_values:
+      CSV:
+        description: Comma-separated values
+      FIXED:
+        description: Fixed-width columns
+      XML:
+        description: XML structure
+      JSON:
+        description: JSON structure
+
+  DebitCredit:
+    permissible_values:
+      DEBIT:
+        description: Increases expense account
+      CREDIT:
+        description: Increases liability account
+
+# ============================================
+# CLASSES - Aggregate Roots
+# ============================================
+
+classes:
+  GLMappingPolicy:
+    title: GL Mapping Policy
+    description: Policy defining how a pay element's cost is allocated to General Ledger accounts
+    attributes:
+      policyCode:
+        title: Policy Code
+        description: Unique identifier for the policy
+        range: string
+        required: true
+        identifier: true
+        pattern: "^[A-Z][A-Z0-9_]{1,49}$"
+      policyName:
+        title: Policy Name
+        description: Human-readable name for the policy
+        range: string
+        required: true
+        max_length: 100
+      payElementId:
+        title: Pay Element ID
+        description: Reference to PayElement from Payroll Configuration BC
+        range: string
+        required: true
+      description:
+        title: Description
+        description: Optional description of policy purpose
+        range: string
+        max_length: 500
+      isActive:
+        title: Is Active
+        description: Flag indicating policy is available for use
+        range: boolean
+        required: true
+      createdBy:
+        title: Created By
+        description: User who created the policy
+        range: string
+      createdAt:
+        title: Created At
+        description: Timestamp when policy was created
+        range: datetime
+      mappings:
+        title: Mappings
+        description: GL account mappings within this policy
+        range: GLMapping
+        multivalued: true
+        inlined: true
+
+  BankTemplate:
+    title: Bank Template
+    description: Template defining bank payment file format and field mappings
+    attributes:
+      templateCode:
+        title: Template Code
+        description: Unique identifier for the template
+        range: string
+        required: true
+        identifier: true
+        pattern: "^[A-Z][A-Z0-9_]{1,49}$"
+      templateName:
+        title: Template Name
+        description: Human-readable name for the template
+        range: string
+        required: true
+        max_length: 100
+      bankCode:
+        title: Bank Code
+        description: Bank identifier
+        range: string
+        required: true
+        max_length: 10
+      bankName:
+        title: Bank Name
+        description: Bank name for reference
+        range: string
+        max_length: 100
+      fileFormat:
+        title: File Format
+        description: Output file format
+        range: FileFormat
+        required: true
+      delimiter:
+        title: Delimiter
+        description: Delimiter for CSV format
+        range: string
+        max_length: 10
+      encoding:
+        title: Encoding
+        description: File encoding
+        range: string
+        max_length: 20
+      headerRows:
+        title: Header Rows
+        description: Number of header rows in file
+        range: integer
+        minimum_value: 0
+        maximum_value: 10
+      footerRows:
+        title: Footer Rows
+        description: Number of footer/summary rows
+        range: integer
+        minimum_value: 0
+        maximum_value: 10
+      isActive:
+        title: Is Active
+        description: Flag indicating template is available for use
+        range: boolean
+        required: true
+      createdBy:
+        title: Created By
+        description: User who created the template
+        range: string
+      createdAt:
+        title: Created At
+        description: Timestamp when template was created
+        range: datetime
+      fieldMappings:
+        title: Field Mappings
+        description: Field mappings within this template
+        range: FieldMapping
+        multivalued: true
+        inlined: true
+
+# ============================================
+# CLASSES - Entities within Aggregates
+# ============================================
+
+  GLMapping:
+    title: GL Mapping
+    description: Individual mapping entry within a GLMappingPolicy
+    attributes:
+      mappingId:
+        title: Mapping ID
+        description: Unique identifier for the mapping
+        range: string
+        required: true
+        identifier: true
+      glAccountCode:
+        title: GL Account Code
+        description: General Ledger account code
+        range: string
+        required: true
+        max_length: 20
+      glAccountName:
+        title: GL Account Name
+        description: GL account name for reference
+        range: string
+        max_length: 100
+      costCenter:
+        title: Cost Center
+        description: Cost center code for allocation
+        range: string
+        max_length: 20
+      debitCredit:
+        title: Debit/Credit
+        description: Posting direction
+        range: DebitCredit
+        required: true
+      percentage:
+        title: Percentage
+        description: Allocation percentage (0-100)
+        range: decimal
+        required: true
+        minimum_value: 0
+        maximum_value: 100
+      description:
+        title: Description
+        description: Optional description of mapping purpose
+        range: string
+        max_length: 200
+      effectiveStartDate:
+        title: Effective Start Date
+        description: Date when mapping becomes effective
+        range: date
+      effectiveEndDate:
+        title: Effective End Date
+        description: Date when mapping ends
+        range: date
+
+  FieldMapping:
+    title: Field Mapping
+    description: Mapping from payroll data field to bank file field position
+    attributes:
+      mappingId:
+        title: Mapping ID
+        description: Unique identifier for the field mapping
+        range: string
+        required: true
+        identifier: true
+      sourceField:
+        title: Source Field
+        description: Payroll data field name
+        range: string
+        required: true
+        max_length: 50
+      targetField:
+        title: Target Field
+        description: Bank file field name
+        range: string
+        required: true
+        max_length: 50
+      position:
+        title: Position
+        description: Position/column number in output file
+        range: integer
+        required: true
+        minimum_value: 1
+      format:
+        title: Format
+        description: Format specification
+        range: string
+        max_length: 50
+      length:
+        title: Length
+        description: Field length for FIXED format
+        range: integer
+        minimum_value: 1
+      padding:
+        title: Padding
+        description: Padding character for FIXED format
+        range: string
+        max_length: 20
+      defaultValue:
+        title: Default Value
+        description: Default value if source is null
+        range: string
+        max_length: 100
+      isRequired:
+        title: Is Required
+        description: Flag indicating field is required in output
+        range: boolean
+        required: true

@@ -1,0 +1,302 @@
+# LinkML Schema - Configuration Validation Bounded Context
+
+id: https://xtalent.example.com/pr/configuration-validation
+name: configuration_validation
+title: Configuration Validation Domain Model
+description: Domain model for Configuration Validation bounded context including ValidationRule, ValidationResult, and Conflict
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  pr: https://xtalent.example.com/pr/
+  xsd: http://www.w3.org/2001/XMLSchema#
+
+default_prefix: pr
+default_range: string
+
+imports:
+  - linkml:types
+
+# ============================================
+# ENUMERATIONS
+# ============================================
+
+enums:
+  ValidationType:
+    permissible_values:
+      FIELD:
+        description: Single field constraint
+      CROSS_FIELD:
+        description: Multiple field consistency
+      ENTITY:
+        description: Entity completeness
+      CROSS_ENTITY:
+        description: Reference validity
+      BUSINESS_RULE:
+        description: Domain-specific rules
+
+  Severity:
+    permissible_values:
+      ERROR:
+        description: Critical validation failure - blocks save
+      WARNING:
+        description: Non-blocking issue - allows save with warning
+      INFO:
+        description: Informational message
+
+  ConflictType:
+    permissible_values:
+      VERSION_OVERLAP:
+        description: Overlapping SCD-2 effective dates
+      DUPLICATE_ENTITY:
+        description: Duplicate entity in same scope
+      CIRCULAR_REFERENCE:
+        description: Formula circular dependency
+      REFERENCE_MISSING:
+        description: Referenced entity not found
+      IN_USE_CONFLICT:
+        description: Entity in use preventing delete
+
+  ConflictStatus:
+    permissible_values:
+      DETECTED:
+        description: Conflict newly detected
+      ACKNOWLEDGED:
+        description: User acknowledged conflict
+      RESOLVED:
+        description: Conflict resolved
+      IGNORED:
+        description: User chose to ignore
+
+  ConflictSeverity:
+    permissible_values:
+      CRITICAL:
+        description: Must be resolved before proceeding
+      HIGH:
+        description: Strong recommendation to resolve
+      MEDIUM:
+        description: Should be reviewed
+      LOW:
+        description: Minor concern
+
+  ValidationStatus:
+    permissible_values:
+      PASS:
+        description: All validations passed
+      FAIL:
+        description: At least one ERROR level failure
+      PARTIAL:
+        description: Passes with warnings
+
+  ResolutionType:
+    permissible_values:
+      AUTO:
+        description: Automatically resolved by system
+      MANUAL_OVERRIDE:
+        description: Manually overridden with acknowledgment
+      CORRECTION:
+        description: Corrected by user
+
+# ============================================
+# CLASSES
+# ============================================
+
+classes:
+  ValidationRule:
+    title: Validation Rule
+    description: Rule definition for validating configuration consistency
+    attributes:
+      ruleCode:
+        title: Rule Code
+        description: Unique identifier for the validation rule
+        range: string
+        required: true
+        identifier: true
+        pattern: "^[A-Z][A-Z0-9_]{1,49}$"
+      ruleName:
+        title: Rule Name
+        description: Human-readable name for the rule
+        range: string
+        required: true
+        max_length: 100
+      validationType:
+        title: Validation Type
+        description: Type of validation
+        range: ValidationType
+        required: true
+      targetEntity:
+        title: Target Entity
+        description: Entity being validated
+        range: string
+        required: true
+      targetField:
+        title: Target Field
+        description: Field being validated (for FIELD type)
+        range: string
+      severity:
+        title: Severity
+        description: Severity level
+        range: Severity
+        required: true
+      messageTemplate:
+        title: Message Template
+        description: Message template with placeholders
+        range: string
+        required: true
+        max_length: 500
+      isActive:
+        title: Is Active
+        description: Flag indicating rule is active
+        range: boolean
+        required: true
+
+  ValidationResult:
+    title: Validation Result
+    description: Result of a validation operation
+    attributes:
+      validationId:
+        title: Validation ID
+        description: Unique identifier for the validation run
+        range: string
+        required: true
+        identifier: true
+      validatedAt:
+        title: Validated At
+        description: Timestamp when validation was performed
+        range: datetime
+        required: true
+      entityType:
+        title: Entity Type
+        description: Type of entity validated
+        range: string
+        required: true
+      entityId:
+        title: Entity ID
+        description: Identifier of entity validated
+        range: string
+        required: true
+      status:
+        title: Status
+        description: Overall status
+        range: ValidationStatus
+        required: true
+      canProceed:
+        title: Can Proceed
+        description: Flag indicating if operation can proceed
+        range: boolean
+        required: true
+      ruleResults:
+        title: Rule Results
+        description: List of individual rule results
+        range: RuleResult
+        multivalued: true
+        inlined: true
+
+  RuleResult:
+    title: Rule Result
+    description: Result of a single validation rule check
+    attributes:
+      ruleCode:
+        title: Rule Code
+        description: Reference to ValidationRule
+        range: string
+        required: true
+      ruleName:
+        title: Rule Name
+        description: Name of the rule
+        range: string
+        required: true
+      severity:
+        title: Severity
+        description: Severity level of the rule
+        range: Severity
+        required: true
+      passed:
+        title: Passed
+        description: Flag indicating rule passed
+        range: boolean
+        required: true
+      message:
+        title: Message
+        description: Actual message with values substituted
+        range: string
+        required: true
+      fieldPath:
+        title: Field Path
+        description: Field path that failed
+        range: string
+      suggestedFix:
+        title: Suggested Fix
+        description: Suggested fix for the issue
+        range: string
+
+  Conflict:
+    title: Conflict
+    description: Detected configuration conflict between entities or versions
+    attributes:
+      conflictId:
+        title: Conflict ID
+        description: Unique identifier for the conflict
+        range: string
+        required: true
+        identifier: true
+      conflictType:
+        title: Conflict Type
+        description: Type of conflict
+        range: ConflictType
+        required: true
+      entityType1:
+        title: Entity Type 1
+        description: First entity involved
+        range: string
+        required: true
+      entityId1:
+        title: Entity ID 1
+        description: Identifier of first entity
+        range: string
+        required: true
+      entityType2:
+        title: Entity Type 2
+        description: Second entity involved
+        range: string
+      entityId2:
+        title: Entity ID 2
+        description: Identifier of second entity
+        range: string
+      description:
+        title: Description
+        description: Human-readable conflict description
+        range: string
+        required: true
+        max_length: 500
+      severity:
+        title: Severity
+        description: Conflict severity
+        range: ConflictSeverity
+        required: true
+      status:
+        title: Status
+        description: Conflict status
+        range: ConflictStatus
+        required: true
+      detectedAt:
+        title: Detected At
+        description: Timestamp when conflict was detected
+        range: datetime
+        required: true
+      resolvedAt:
+        title: Resolved At
+        description: Timestamp when conflict was resolved
+        range: datetime
+      resolutionType:
+        title: Resolution Type
+        description: How resolved
+        range: ResolutionType
+      resolutionBy:
+        title: Resolution By
+        description: User who resolved the conflict
+        range: string
+      resolutionNote:
+        title: Resolution Note
+        description: Note explaining resolution
+        range: string
+        max_length: 500
