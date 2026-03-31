@@ -1,0 +1,1315 @@
+# Event Repository - Payroll Module (PR)
+# Module: Payroll Configuration
+# Version: 1.0
+# Date: 2026-03-31
+# Description: Centralized Business Event Repository aggregating all domain events
+# Sources: Event Storming (Step 2), Use Case Flows (Step 3), BC Interactions (Step 4)
+
+metadata:
+  module: PR
+  module_name: Payroll Configuration
+  version: 1.0.0
+  created: 2026-03-31
+  event_count: 53
+  categories:
+    - configuration
+    - validation
+    - audit
+    - integration_inbound
+    - integration_outbound
+
+# ============================================
+# EVENT CATEGORIES
+# ============================================
+
+categories:
+  configuration:
+    description: Domain events for configuration entity lifecycle
+    bounded_contexts:
+      - payroll-configuration
+      - statutory-compliance
+      - payroll-calendar
+      - payroll-assignment
+      - finance-integration
+    count: 32
+
+  validation:
+    description: Events for configuration validation and conflict detection
+    bounded_contexts:
+      - configuration-validation
+    count: 6
+
+  audit:
+    description: Audit trail and compliance events
+    bounded_contexts:
+      - audit-trail
+    count: 3
+
+  integration_inbound:
+    description: Events received from upstream modules (CO, TA, TR)
+    bounded_contexts:
+      - payroll-configuration
+      - payroll-assignment
+    count: 9
+
+  integration_outbound:
+    description: Events sent to downstream systems (CalcEngine, Finance, Banking)
+    bounded_contexts:
+      - payroll-configuration
+      - finance-integration
+    count: 3
+
+# ============================================
+# CONFIGURATION EVENTS
+# ============================================
+
+events:
+  # Pay Element Events (BC-001: Payroll Configuration)
+  PayElementCreated:
+    id: E001
+    category: configuration
+    bounded_context: payroll-configuration
+    aggregate: PayElement
+    description: A new pay element was created
+    producer: Payroll Configuration BC
+    consumers:
+      - Audit Trail BC
+      - Validation BC
+    payload:
+      elementCode: string
+      elementName: string
+      legalEntityId: string
+      classification: enum
+      calculationType: enum
+      statutoryFlag: boolean
+      taxableFlag: boolean
+      effectiveStartDate: date
+      createdBy: string
+      createdAt: timestamp
+    triggers:
+      - CreateAuditEntry (Policy P001)
+    versioning: false
+
+  PayElementUpdated:
+    id: E002
+    category: configuration
+    bounded_context: payroll-configuration
+    aggregate: PayElement
+    description: A pay element was modified
+    producer: Payroll Configuration BC
+    consumers:
+      - Audit Trail BC
+      - Validation BC
+    payload:
+      elementCode: string
+      legalEntityId: string
+      changedFields: array
+      oldValue: object
+      newValue: object
+      updatedBy: string
+      updatedAt: timestamp
+    triggers:
+      - CreateAuditEntry (Policy P002)
+      - CreateNewVersion (Policy P003)
+    versioning: true
+
+  PayElementDeleted:
+    id: E003
+    category: configuration
+    bounded_context: payroll-configuration
+    aggregate: PayElement
+    description: A pay element was soft-deleted
+    producer: Payroll Configuration BC
+    consumers:
+      - Audit Trail BC
+      - Validation BC
+    payload:
+      elementCode: string
+      legalEntityId: string
+      deletedBy: string
+      deletedAt: timestamp
+      deletionReason: string
+    triggers:
+      - CreateAuditEntry
+    versioning: false
+
+  PayElementVersionCreated:
+    id: E004
+    category: configuration
+    bounded_context: payroll-configuration
+    aggregate: PayElement
+    description: A new version of pay element was created (SCD-2)
+    producer: Payroll Configuration BC
+    consumers:
+      - Audit Trail BC
+    payload:
+      elementCode: string
+      legalEntityId: string
+      versionId: uuid
+      versionNumber: integer
+      effectiveStartDate: date
+      effectiveEndDate: date
+      versionReason: string
+      createdBy: string
+      createdAt: timestamp
+    triggers:
+      - CreateAuditEntry
+    versioning: true
+
+  PayProfileCreated:
+    id: E005
+    category: configuration
+    bounded_context: payroll-configuration
+    aggregate: PayProfile
+    description: A new pay profile was created
+    producer: Payroll Configuration BC
+    consumers:
+      - Audit Trail BC
+      - Payroll Assignment BC
+    payload:
+      profileCode: string
+      profileName: string
+      legalEntityId: string
+      payFrequencyId: string
+      effectiveStartDate: date
+      createdBy: string
+      createdAt: timestamp
+    triggers:
+      - CreateAuditEntry
+    versioning: false
+
+  PayProfileUpdated:
+    id: E006
+    category: configuration
+    bounded_context: payroll-configuration
+    aggregate: PayProfile
+    description: A pay profile was modified
+    producer: Payroll Configuration BC
+    consumers:
+      - Audit Trail BC
+      - Payroll Assignment BC
+    payload:
+      profileCode: string
+      legalEntityId: string
+      changedFields: array
+      oldValue: object
+      newValue: object
+      updatedBy: string
+      updatedAt: timestamp
+    triggers:
+      - CreateAuditEntry
+      - CreateNewVersion
+    versioning: true
+
+  PayProfileDeleted:
+    id: E007
+    category: configuration
+    bounded_context: payroll-configuration
+    aggregate: PayProfile
+    description: A pay profile was soft-deleted
+    producer: Payroll Configuration BC
+    consumers:
+      - Audit Trail BC
+      - Payroll Assignment BC
+    payload:
+      profileCode: string
+      legalEntityId: string
+      deletedBy: string
+      deletedAt: timestamp
+      deletionReason: string
+    triggers:
+      - CreateAuditEntry
+      - ValidateProfileUsage (Policy P014)
+    versioning: false
+
+  PayProfileVersionCreated:
+    id: E008
+    category: configuration
+    bounded_context: payroll-configuration
+    aggregate: PayProfile
+    description: A new version of pay profile was created (SCD-2)
+    producer: Payroll Configuration BC
+    consumers:
+      - Audit Trail BC
+    payload:
+      profileCode: string
+      legalEntityId: string
+      versionId: uuid
+      versionNumber: integer
+      effectiveStartDate: date
+      effectiveEndDate: date
+      versionReason: string
+      createdBy: string
+      createdAt: timestamp
+    triggers:
+      - CreateAuditEntry
+    versioning: true
+
+  PayElementAssigned:
+    id: E009
+    category: configuration
+    bounded_context: payroll-configuration
+    aggregate: PayElementAssignment
+    description: A pay element was assigned to profile
+    producer: Payroll Configuration BC
+    consumers:
+      - Audit Trail BC
+      - Validation BC
+    payload:
+      profileCode: string
+      elementCode: string
+      priority: integer
+      formulaOverride: string
+      rateOverride: decimal
+      amountOverride: decimal
+      assignedBy: string
+      assignedAt: timestamp
+    triggers:
+      - ValidateConfiguration (Policy P004)
+    versioning: false
+
+  PayElementUnassigned:
+    id: E010
+    category: configuration
+    bounded_context: payroll-configuration
+    aggregate: PayElementAssignment
+    description: A pay element was removed from profile
+    producer: Payroll Configuration BC
+    consumers:
+      - Audit Trail BC
+    payload:
+      profileCode: string
+      elementCode: string
+      removedBy: string
+      removedAt: timestamp
+      removalReason: string
+    triggers:
+      - CreateAuditEntry
+    versioning: false
+
+  # Statutory Rule Events (BC-002: Statutory Compliance)
+  StatutoryRuleCreated:
+    id: E011
+    category: configuration
+    bounded_context: statutory-compliance
+    aggregate: StatutoryRule
+    description: A statutory rule was created
+    producer: Statutory Compliance BC
+    consumers:
+      - Audit Trail BC
+      - Payroll Configuration BC
+    payload:
+      ruleCode: string
+      ruleName: string
+      statutoryType: enum
+      partyType: enum
+      rateType: enum
+      rate: decimal
+      ceilingAmount: decimal
+      effectiveStartDate: date
+      createdBy: string
+      createdAt: timestamp
+    triggers:
+      - CreateAuditEntry
+    versioning: false
+
+  StatutoryRuleUpdated:
+    id: E012
+    category: configuration
+    bounded_context: statutory-compliance
+    aggregate: StatutoryRule
+    description: A statutory rule was modified
+    producer: Statutory Compliance BC
+    consumers:
+      - Audit Trail BC
+      - Payroll Configuration BC
+    payload:
+      ruleCode: string
+      statutoryType: enum
+      partyType: enum
+      changedFields: array
+      oldValue: object
+      newValue: object
+      updatedBy: string
+      updatedAt: timestamp
+    triggers:
+      - CreateAuditEntry
+      - CreateNewVersion (Policy P006)
+    versioning: true
+
+  StatutoryRuleDeleted:
+    id: E013
+    category: configuration
+    bounded_context: statutory-compliance
+    aggregate: StatutoryRule
+    description: A statutory rule was soft-deleted
+    producer: Statutory Compliance BC
+    consumers:
+      - Audit Trail BC
+    payload:
+      ruleCode: string
+      statutoryType: enum
+      partyType: enum
+      deletedBy: string
+      deletedAt: timestamp
+      deletionReason: string
+    triggers:
+      - CreateAuditEntry
+    versioning: false
+
+  StatutoryRuleVersionCreated:
+    id: E014
+    category: configuration
+    bounded_context: statutory-compliance
+    aggregate: StatutoryRule
+    description: A new version of statutory rule was created (SCD-2)
+    producer: Statutory Compliance BC
+    consumers:
+      - Audit Trail BC
+      - Payroll Configuration BC
+    payload:
+      ruleCode: string
+      statutoryType: enum
+      partyType: enum
+      versionId: uuid
+      versionNumber: integer
+      effectiveStartDate: date
+      effectiveEndDate: date
+      versionReason: string
+      createdBy: string
+      createdAt: timestamp
+    triggers:
+      - CreateAuditEntry
+    versioning: true
+
+  PITBracketConfigured:
+    id: E015
+    category: configuration
+    bounded_context: statutory-compliance
+    aggregate: StatutoryRule
+    description: PIT progressive brackets were configured
+    producer: Statutory Compliance BC
+    consumers:
+      - Audit Trail BC
+    payload:
+      ruleCode: string
+      brackets: array
+      configuredBy: string
+      configuredAt: timestamp
+    triggers:
+      - CreateAuditEntry
+    versioning: false
+
+  # Formula Events (BC-001: Payroll Configuration)
+  FormulaCreated:
+    id: E016
+    category: configuration
+    bounded_context: payroll-configuration
+    aggregate: PayFormula
+    description: A formula was created
+    producer: Payroll Configuration BC
+    consumers:
+      - Audit Trail BC
+      - Validation BC
+    payload:
+      formulaId: string
+      formulaName: string
+      expression: string
+      createdBy: string
+      createdAt: timestamp
+    triggers:
+      - ValidateFormula (Policy P007)
+    versioning: false
+
+  FormulaUpdated:
+    id: E017
+    category: configuration
+    bounded_context: payroll-configuration
+    aggregate: PayFormula
+    description: A formula was modified
+    producer: Payroll Configuration BC
+    consumers:
+      - Audit Trail BC
+      - Validation BC
+    payload:
+      formulaId: string
+      changedFields: array
+      oldValue: object
+      newValue: object
+      updatedBy: string
+      updatedAt: timestamp
+    triggers:
+      - ValidateFormula (Policy P007)
+      - CheckCircularRef (Policy P008)
+    versioning: false
+
+  FormulaValidated:
+    id: E018
+    category: validation
+    bounded_context: payroll-configuration
+    aggregate: PayFormula
+    description: A formula validation completed successfully
+    producer: Payroll Configuration BC
+    consumers:
+      - Payroll Admin (UI notification)
+    payload:
+      formulaId: string
+      validationResultId: string
+      status: enum
+      validatedAt: timestamp
+    triggers: []
+    versioning: false
+
+  FormulaValidationFailed:
+    id: E019
+    category: validation
+    bounded_context: payroll-configuration
+    aggregate: PayFormula
+    description: A formula validation failed
+    producer: Payroll Configuration BC
+    consumers:
+      - Payroll Admin (UI notification)
+    payload:
+      formulaId: string
+      validationResultId: string
+      status: enum
+      errors: array
+      validatedAt: timestamp
+    triggers: []
+    versioning: false
+
+  # Pay Calendar Events (BC-003: Payroll Calendar)
+  PayCalendarCreated:
+    id: E020
+    category: configuration
+    bounded_context: payroll-calendar
+    aggregate: PayCalendar
+    description: A pay calendar was created
+    producer: Payroll Calendar BC
+    consumers:
+      - Audit Trail BC
+      - Payroll Assignment BC
+    payload:
+      calendarCode: string
+      calendarName: string
+      legalEntityId: string
+      payFrequencyId: string
+      fiscalYear: integer
+      createdBy: string
+      createdAt: timestamp
+    triggers:
+      - GeneratePayPeriods (Policy P009)
+    versioning: false
+
+  PayCalendarUpdated:
+    id: E021
+    category: configuration
+    bounded_context: payroll-calendar
+    aggregate: PayCalendar
+    description: A pay calendar was modified
+    producer: Payroll Calendar BC
+    consumers:
+      - Audit Trail BC
+      - Payroll Assignment BC
+    payload:
+      calendarCode: string
+      legalEntityId: string
+      changedFields: array
+      oldValue: object
+      newValue: object
+      updatedBy: string
+      updatedAt: timestamp
+    triggers:
+      - CreateAuditEntry
+    versioning: false
+
+  PayPeriodGenerated:
+    id: E022
+    category: configuration
+    bounded_context: payroll-calendar
+    aggregate: PayCalendar
+    description: Pay periods were auto-generated
+    producer: Payroll Calendar BC
+    consumers:
+      - Audit Trail BC
+    payload:
+      calendarCode: string
+      periodCount: integer
+      periodIds: array
+      generatedBy: string
+      generatedAt: timestamp
+    triggers:
+      - CreateAuditEntry
+    versioning: false
+
+  PayPeriodAdjusted:
+    id: E023
+    category: configuration
+    bounded_context: payroll-calendar
+    aggregate: PayCalendar
+    description: A pay period was manually adjusted
+    producer: Payroll Calendar BC
+    consumers:
+      - Audit Trail BC
+    payload:
+      calendarCode: string
+      periodId: string
+      adjustmentType: string
+      oldValue: object
+      newValue: object
+      adjustmentReason: string
+      adjustedBy: string
+      adjustedAt: timestamp
+    triggers:
+      - CreateAuditEntry
+    versioning: false
+
+  # Pay Group Events (BC-004: Payroll Assignment)
+  PayGroupCreated:
+    id: E024
+    category: configuration
+    bounded_context: payroll-assignment
+    aggregate: PayGroup
+    description: A pay group was created
+    producer: Payroll Assignment BC
+    consumers:
+      - Audit Trail BC
+      - Calculation Engine
+    payload:
+      groupCode: string
+      groupName: string
+      payProfileId: string
+      payCalendarId: string
+      createdBy: string
+      createdAt: timestamp
+    triggers:
+      - CreateAuditEntry
+    versioning: false
+
+  PayGroupUpdated:
+    id: E025
+    category: configuration
+    bounded_context: payroll-assignment
+    aggregate: PayGroup
+    description: A pay group was modified
+    producer: Payroll Assignment BC
+    consumers:
+      - Audit Trail BC
+    payload:
+      groupCode: string
+      changedFields: array
+      oldValue: object
+      newValue: object
+      updatedBy: string
+      updatedAt: timestamp
+    triggers:
+      - CreateAuditEntry
+    versioning: false
+
+  PayGroupDeleted:
+    id: E026
+    category: configuration
+    bounded_context: payroll-assignment
+    aggregate: PayGroup
+    description: A pay group was soft-deleted
+    producer: Payroll Assignment BC
+    consumers:
+      - Audit Trail BC
+    payload:
+      groupCode: string
+      deletedBy: string
+      deletedAt: timestamp
+      deletionReason: string
+    triggers:
+      - CreateAuditEntry
+    versioning: false
+
+  EmployeeAssignedToGroup:
+    id: E027
+    category: configuration
+    bounded_context: payroll-assignment
+    aggregate: PayGroupAssignment
+    description: An employee was assigned to pay group
+    producer: Payroll Assignment BC
+    consumers:
+      - Audit Trail BC
+      - Calculation Engine
+      - Validation BC
+    payload:
+      groupCode: string
+      employeeId: string
+      assignmentId: string
+      assignmentDate: date
+      assignmentReason: enum
+      assignedBy: string
+      assignedAt: timestamp
+    triggers:
+      - ValidateEmployeeAssignment (Policy P010)
+      - CreateAuditEntry
+    versioning: false
+
+  EmployeeRemovedFromGroup:
+    id: E028
+    category: configuration
+    bounded_context: payroll-assignment
+    aggregate: PayGroupAssignment
+    description: An employee was removed from pay group
+    producer: Payroll Assignment BC
+    consumers:
+      - Audit Trail BC
+      - Calculation Engine
+    payload:
+      groupCode: string
+      employeeId: string
+      removalDate: date
+      removalReason: enum
+      removedBy: string
+      removedAt: timestamp
+    triggers:
+      - CreateAuditEntry
+    versioning: false
+
+  # GL Mapping Events (BC-005: Finance Integration)
+  GLMappingCreated:
+    id: E029
+    category: configuration
+    bounded_context: finance-integration
+    aggregate: GLMappingPolicy
+    description: A GL account mapping was created
+    producer: Finance Integration BC
+    consumers:
+      - Audit Trail BC
+      - Finance System
+    payload:
+      policyCode: string
+      payElementId: string
+      glAccountCode: string
+      debitCredit: enum
+      percentage: decimal
+      createdBy: string
+      createdAt: timestamp
+    triggers:
+      - CreateAuditEntry
+    versioning: false
+
+  GLMappingUpdated:
+    id: E030
+    category: configuration
+    bounded_context: finance-integration
+    aggregate: GLMappingPolicy
+    description: A GL account mapping was modified
+    producer: Finance Integration BC
+    consumers:
+      - Audit Trail BC
+      - Finance System
+    payload:
+      policyCode: string
+      changedFields: array
+      oldValue: object
+      newValue: object
+      updatedBy: string
+      updatedAt: timestamp
+    triggers:
+      - CreateAuditEntry
+    versioning: false
+
+  # Bank Template Events (BC-005: Finance Integration)
+  BankTemplateCreated:
+    id: E031
+    category: configuration
+    bounded_context: finance-integration
+    aggregate: BankTemplate
+    description: A bank file template was created
+    producer: Finance Integration BC
+    consumers:
+      - Audit Trail BC
+      - Banking System
+    payload:
+      templateCode: string
+      templateName: string
+      bankCode: string
+      fileFormat: enum
+      createdBy: string
+      createdAt: timestamp
+    triggers:
+      - CreateAuditEntry
+    versioning: false
+
+  BankTemplateUpdated:
+    id: E032
+    category: configuration
+    bounded_context: finance-integration
+    aggregate: BankTemplate
+    description: A bank file template was modified
+    producer: Finance Integration BC
+    consumers:
+      - Audit Trail BC
+    payload:
+      templateCode: string
+      changedFields: array
+      oldValue: object
+      newValue: object
+      updatedBy: string
+      updatedAt: timestamp
+    triggers:
+      - CreateAuditEntry
+    versioning: false
+
+# ============================================
+# VALIDATION EVENTS
+# ============================================
+
+  ConfigurationValidated:
+    id: E033
+    category: validation
+    bounded_context: configuration-validation
+    aggregate: ValidationRule
+    description: Configuration validation passed
+    producer: Validation BC
+    consumers:
+      - Requesting BC (confirmation)
+    payload:
+      validationId: string
+      entityType: string
+      entityId: string
+      status: enum
+      validatedAt: timestamp
+      ruleResults: array
+    triggers: []
+    versioning: false
+
+  ConfigurationValidationFailed:
+    id: E034
+    category: validation
+    bounded_context: configuration-validation
+    aggregate: ValidationRule
+    description: Configuration validation failed
+    producer: Validation BC
+    consumers:
+      - Payroll Admin (UI notification)
+      - Requesting BC (block operation)
+    payload:
+      validationId: string
+      entityType: string
+      entityId: string
+      status: enum
+      errors: array
+      validatedAt: timestamp
+    triggers:
+      - AlertAdmin (Policy P011)
+    versioning: false
+
+  ConflictDetected:
+    id: E035
+    category: validation
+    bounded_context: configuration-validation
+    aggregate: ValidationRule
+    description: A configuration conflict was detected
+    producer: Validation BC
+    consumers:
+      - Payroll Admin (UI notification)
+    payload:
+      conflictId: string
+      conflictType: enum
+      entityType1: string
+      entityId1: string
+      entityType2: string
+      entityId2: string
+      description: string
+      severity: enum
+      detectedAt: timestamp
+    triggers:
+      - AlertAdmin (Policy P011)
+    versioning: false
+
+  ConflictResolved:
+    id: E036
+    category: validation
+    bounded_context: configuration-validation
+    aggregate: ValidationRule
+    description: A configuration conflict was resolved
+    producer: Validation BC
+    consumers:
+      - Audit Trail BC
+    payload:
+      conflictId: string
+      resolutionType: enum
+      resolvedBy: string
+      resolvedAt: timestamp
+      resolutionNote: string
+    triggers:
+      - CreateAuditEntry
+    versioning: false
+
+  CircularReferenceDetected:
+    id: E037
+    category: validation
+    bounded_context: configuration-validation
+    aggregate: PayFormula
+    description: Circular reference in formula detected
+    producer: Validation BC
+    consumers:
+      - Payroll Admin (UI notification)
+      - Payroll Configuration BC (block formula)
+    payload:
+      formulaId: string
+      referenceChain: array
+      detectedAt: timestamp
+    triggers: []
+    versioning: false
+
+  VersionConflictDetected:
+    id: E038
+    category: validation
+    bounded_context: configuration-validation
+    aggregate: PayElement
+    description: Overlapping version dates detected
+    producer: Validation BC
+    consumers:
+      - Payroll Admin (UI notification)
+    payload:
+      entityType: string
+      entityId: string
+      version1: object
+      version2: object
+      overlapPeriod: object
+      detectedAt: timestamp
+    triggers: []
+    versioning: false
+
+# ============================================
+# AUDIT EVENTS
+# ============================================
+
+  AuditLogCreated:
+    id: E039
+    category: audit
+    bounded_context: audit-trail
+    aggregate: AuditLog
+    description: An audit log entry was created
+    producer: Audit Trail BC
+    consumers:
+      - Compliance Officer (query)
+    payload:
+      logId: string
+      scopeType: enum
+      scopeId: string
+      createdAt: timestamp
+    triggers: []
+    versioning: false
+
+  AuditLogQueried:
+    id: E040
+    category: audit
+    bounded_context: audit-trail
+    aggregate: AuditLog
+    description: Audit log was queried by user
+    producer: Audit Trail BC
+    consumers: []
+    payload:
+      logId: string
+      queriedBy: string
+      queryParameters: object
+      resultCount: integer
+      queriedAt: timestamp
+    triggers: []
+    versioning: false
+
+  AuditReportExported:
+    id: E041
+    category: audit
+    bounded_context: audit-trail
+    aggregate: AuditLog
+    description: Audit report was exported
+    producer: Audit Trail BC
+    consumers:
+      - Compliance Officer (download)
+    payload:
+      reportId: string
+      reportType: enum
+      dateRangeStart: date
+      dateRangeEnd: date
+      format: enum
+      generatedBy: string
+      generatedAt: timestamp
+      filePath: string
+    triggers: []
+    versioning: false
+
+# ============================================
+# INTEGRATION EVENTS (INBOUND)
+# ============================================
+
+  WorkerDataReceived:
+    id: E042
+    category: integration_inbound
+    bounded_context: payroll-assignment
+    aggregate: PayGroupAssignment
+    description: Worker data received from Core HR
+    producer: Core HR (CO) Module
+    consumers:
+      - Payroll Assignment BC
+      - Validation BC
+    payload:
+      workerId: string
+      workerName: string
+      legalEntityId: string
+      employmentStatus: enum
+      receivedAt: timestamp
+    triggers:
+      - ValidateReferences (Policy P012)
+    versioning: false
+
+  LegalEntityDataReceived:
+    id: E043
+    category: integration_inbound
+    bounded_context: payroll-configuration
+    aggregate: PayProfile
+    description: Legal entity data received
+    producer: Core HR (CO) Module
+    consumers:
+      - Payroll Configuration BC
+      - Payroll Calendar BC
+    payload:
+      legalEntityId: string
+      legalEntityName: string
+      countryCode: string
+      receivedAt: timestamp
+    triggers: []
+    versioning: false
+
+  AssignmentDataReceived:
+    id: E044
+    category: integration_inbound
+    bounded_context: payroll-assignment
+    aggregate: PayGroupAssignment
+    description: Assignment data received
+    producer: Core HR (CO) Module
+    consumers:
+      - Payroll Assignment BC
+    payload:
+      assignmentId: string
+      workerId: string
+      assignmentType: enum
+      receivedAt: timestamp
+    triggers: []
+    versioning: false
+
+  AttendanceDataReceived:
+    id: E045
+    category: integration_inbound
+    bounded_context: payroll-configuration
+    aggregate: PayElement
+    description: Attendance data received from TA
+    producer: Time & Absence (TA) Module
+    consumers:
+      - Payroll Configuration BC
+    payload:
+      workerId: string
+      periodId: string
+      hoursWorked: decimal
+      receivedAt: timestamp
+    triggers: []
+    versioning: false
+
+  OvertimeDataReceived:
+    id: E046
+    category: integration_inbound
+    bounded_context: payroll-configuration
+    aggregate: PayElement
+    description: Overtime data received from TA
+    producer: Time & Absence (TA) Module
+    consumers:
+      - Payroll Configuration BC
+    payload:
+      workerId: string
+      periodId: string
+      overtimeHours: decimal
+      overtimeType: enum
+      receivedAt: timestamp
+    triggers: []
+    versioning: false
+
+  LeaveDataReceived:
+    id: E047
+    category: integration_inbound
+    bounded_context: payroll-configuration
+    aggregate: PayElement
+    description: Leave data received from TA
+    producer: Time & Absence (TA) Module
+    consumers:
+      - Payroll Configuration BC
+    payload:
+      workerId: string
+      periodId: string
+      leaveHours: decimal
+      leaveType: enum
+      receivedAt: timestamp
+    triggers: []
+    versioning: false
+
+  SalaryDataReceived:
+    id: E048
+    category: integration_inbound
+    bounded_context: payroll-configuration
+    aggregate: PayElement
+    description: Salary data received from TR
+    producer: Total Rewards (TR) Module
+    consumers:
+      - Payroll Configuration BC
+    payload:
+      workerId: string
+      salaryAmount: decimal
+      salaryType: enum
+      effectiveDate: date
+      receivedAt: timestamp
+    triggers: []
+    versioning: false
+
+  AllowanceDataReceived:
+    id: E049
+    category: integration_inbound
+    bounded_context: payroll-configuration
+    aggregate: PayElement
+    description: Allowance data received from TR
+    producer: Total Rewards (TR) Module
+    consumers:
+      - Payroll Configuration BC
+    payload:
+      workerId: string
+      allowanceCode: string
+      allowanceAmount: decimal
+      receivedAt: timestamp
+    triggers: []
+    versioning: false
+
+  BenefitsDataReceived:
+    id: E050
+    category: integration_inbound
+    bounded_context: payroll-configuration
+    aggregate: PayElement
+    description: Benefits enrollment data received
+    producer: Total Rewards (TR) Module
+    consumers:
+      - Payroll Configuration BC
+    payload:
+      workerId: string
+      benefitCode: string
+      enrollmentStatus: enum
+      receivedAt: timestamp
+    triggers: []
+    versioning: false
+
+# ============================================
+# INTEGRATION EVENTS (OUTBOUND)
+# ============================================
+
+  ConfigurationSnapshotGenerated:
+    id: E051
+    category: integration_outbound
+    bounded_context: payroll-configuration
+    aggregate: PayProfile
+    description: Configuration snapshot for calculation engine
+    producer: Payroll Configuration BC
+    consumers:
+      - Calculation Engine
+    payload:
+      snapshotId: string
+      legalEntityId: string
+      snapshotDate: date
+      payElements: array
+      payProfiles: array
+      statutoryRules: array
+      generatedAt: timestamp
+    triggers:
+      - GenerateSnapshot (Policy P013)
+    versioning: false
+
+  GLMappingExportRequested:
+    id: E052
+    category: integration_outbound
+    bounded_context: finance-integration
+    aggregate: GLMappingPolicy
+    description: GL mapping export requested
+    producer: Finance Integration BC
+    consumers:
+      - Finance System
+    payload:
+      exportId: string
+      exportFormat: enum
+      legalEntityId: string
+      requestedBy: string
+      requestedAt: timestamp
+    triggers: []
+    versioning: false
+
+  BankTemplateExportRequested:
+    id: E053
+    category: integration_outbound
+    bounded_context: finance-integration
+    aggregate: BankTemplate
+    description: Bank template export requested
+    producer: Finance Integration BC
+    consumers:
+      - Banking System
+    payload:
+      exportId: string
+      templateCode: string
+      exportFormat: enum
+      requestedBy: string
+      requestedAt: timestamp
+    triggers: []
+    versioning: false
+
+# ============================================
+# EVENT RELATIONSHIPS
+# ============================================
+
+event_chains:
+  PayElementLifecycle:
+    description: Full lifecycle of a pay element from creation to deletion
+    sequence:
+      - PayElementCreated
+      - PayElementUpdated (optional, triggers PayElementVersionCreated)
+      - PayElementVersionCreated (if updated)
+      - PayElementDeleted (optional)
+
+  PayProfileConfiguration:
+    description: Pay profile creation with element assignments
+    sequence:
+      - PayProfileCreated
+      - PayElementAssigned (multiple)
+      - PayProfileUpdated (optional)
+      - PayProfileVersionCreated (if updated)
+
+  EmployeePayrollAssignment:
+    description: Employee assignment to pay group
+    sequence:
+      - WorkerDataReceived (from CO)
+      - PayGroupCreated
+      - EmployeeAssignedToGroup
+      - EmployeeRemovedFromGroup (optional)
+
+  ConfigurationValidation:
+    description: Validation workflow for configuration changes
+    sequence:
+      - ConfigurationValidated (success)
+      - OR ConfigurationValidationFailed (failure)
+      - OR ConflictDetected (if conflict found)
+      - ConflictResolved (manual resolution)
+
+  FormulaValidation:
+    description: Formula creation and validation workflow
+    sequence:
+      - FormulaCreated
+      - FormulaValidated (success)
+      - OR FormulaValidationFailed (failure)
+      - OR CircularReferenceDetected (if circular ref)
+
+# ============================================
+# POLICY TRIGGERS
+# ============================================
+
+policies:
+  P001_CreateAuditOnCreate:
+    trigger: PayElementCreated, PayProfileCreated, StatutoryRuleCreated, etc.
+    action: CreateAuditEntry
+    target: Audit Trail BC
+
+  P002_CreateAuditOnUpdate:
+    trigger: PayElementUpdated, PayProfileUpdated, StatutoryRuleUpdated, etc.
+    action: CreateAuditEntry
+    target: Audit Trail BC
+
+  P003_CreateVersionOnUpdate:
+    trigger: PayElementUpdated, PayProfileUpdated, StatutoryRuleUpdated
+    action: CreateNewVersion
+    target: Payroll Configuration BC
+
+  P004_ValidateOnAssignment:
+    trigger: PayElementAssigned
+    action: ValidateConfiguration
+    target: Validation BC
+
+  P005_ValidateElementActive:
+    trigger: AssignPayElement (command)
+    action: ValidateElementStatus
+    target: Validation BC
+
+  P006_CreateVersionOnStatutoryUpdate:
+    trigger: StatutoryRuleUpdated
+    action: CreateNewVersion
+    target: Statutory Compliance BC
+
+  P007_ValidateFormulaOnSave:
+    trigger: FormulaCreated, FormulaUpdated
+    action: ValidateFormula
+    target: Validation BC
+
+  P008_CheckCircularReference:
+    trigger: FormulaCreated, FormulaUpdated
+    action: DetectCircularRef
+    target: Validation BC
+
+  P009_GeneratePeriodsOnCalendarCreate:
+    trigger: PayCalendarCreated
+    action: GeneratePayPeriods
+    target: Payroll Calendar BC
+
+  P010_ValidateSingleEmployeeAssignment:
+    trigger: AssignEmployeeToGroup (command)
+    action: ValidateEmployeeAssignment
+    target: Validation BC
+
+  P011_NotifyOnConflictDetected:
+    trigger: ConflictDetected, ConfigurationValidationFailed
+    action: AlertAdmin
+    target: Payroll Admin (UI notification)
+
+  P012_ValidateIntegrationData:
+    trigger: WorkerDataReceived
+    action: ValidateReferences
+    target: Validation BC
+
+  P013_SnapshotOnRequest:
+    trigger: ConfigurationSnapshotRequested (command)
+    action: GenerateSnapshot
+    target: Payroll Configuration BC
+
+  P014_ValidateProfileBeforeDelete:
+    trigger: DeletePayProfile (command)
+    action: ValidateProfileUsage
+    target: Validation BC
+
+# ============================================
+# STATISTICS
+# ============================================
+
+statistics:
+  total_events: 53
+  by_category:
+    configuration: 32
+    validation: 6
+    audit: 3
+    integration_inbound: 9
+    integration_outbound: 3
+  by_bounded_context:
+    payroll-configuration: 14
+    statutory-compliance: 5
+    payroll-calendar: 4
+    payroll-assignment: 5
+    finance-integration: 4
+    configuration-validation: 6
+    audit-trail: 3
+  by_producer:
+    payroll-configuration-bc: 14
+    statutory-compliance-bc: 5
+    payroll-calendar-bc: 4
+    payroll-assignment-bc: 5
+    finance-integration-bc: 4
+    validation-bc: 6
+    audit-trail-bc: 3
+    core-hr-co: 3
+    time-absence-ta: 3
+    total-rewards-tr: 3
+  versioned_events: 6  # Events that trigger SCD-2 version creation

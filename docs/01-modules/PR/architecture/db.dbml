@@ -1,0 +1,813 @@
+// Database Schema - Payroll Module (PR)
+// Module: Payroll Configuration
+// Version: 1.0
+// Date: 2026-03-31
+// DBML Format for dbdiagram.io
+
+// ============================================
+// SCHEMA DEFINITION
+// ============================================
+
+// Note: This schema uses 'pr_' prefix for all tables
+// External references (CO, TA, TR modules) are ID references without FK constraints
+
+// ============================================
+// ENUMS
+// ============================================
+
+Enum element_classification {
+  EARNING           // Increases gross and net pay
+  DEDUCTION         // Decreases gross and net pay
+  TAX               // Decreases net pay only
+  EMPLOYER_CONTRIBUTION // Employer cost, no employee impact
+}
+
+Enum calculation_type {
+  FIXED             // Fixed amount defined on element
+  FORMULA           // Calculated via formula expression
+  RATE_BASED        // Percentage of base amount
+  HOURS_BASED       // Hours multiplied by rate
+}
+
+Enum statutory_type {
+  BHXH              // Social Insurance (Bao Hiem Xa Hoi)
+  BHYT              // Health Insurance (Bao Hiem Y Te)
+  BHTN              // Unemployment Insurance (Bao Hiem That Nghiep)
+  PIT               // Personal Income Tax (Thue TNCN)
+}
+
+Enum party_type {
+  EMPLOYEE          // Employee contribution (deducted from salary)
+  EMPLOYER          // Employer contribution (employer cost)
+}
+
+Enum rate_type {
+  FIXED_RATE        // Single percentage rate
+  PROGRESSIVE       // Multiple brackets with different rates
+  LOOKUP_BASED      // Rate determined by lookup table
+}
+
+Enum pay_frequency {
+  WEEKLY            // 52 periods per year
+  BI_WEEKLY         // 26 periods per year
+  SEMI_MONTHLY      // 24 periods per year
+  MONTHLY           // 12 periods per year
+}
+
+Enum period_status {
+  OPEN              // Period is open for data entry
+  CLOSED            // Cut-off passed, data locked
+  PAID              // Payment processed
+  REOPENED          // Temporarily reopened for corrections
+}
+
+Enum assignment_reason {
+  NEW_HIRE
+  TRANSFER
+  PROMOTION
+  REORGANIZATION
+  PROFILE_CHANGE
+  OTHER
+}
+
+Enum removal_reason {
+  TRANSFER
+  TERMINATION
+  PROMOTION
+  REORGANIZATION
+  OTHER
+}
+
+Enum file_format {
+  CSV
+  FIXED
+  XML
+  JSON
+}
+
+Enum debit_credit {
+  DEBIT             // Increases expense account
+  CREDIT            // Increases liability account
+}
+
+Enum validation_type {
+  FIELD
+  CROSS_FIELD
+  ENTITY
+  CROSS_ENTITY
+  BUSINESS_RULE
+}
+
+Enum severity {
+  ERROR             // Critical - blocks save
+  WARNING           // Non-blocking
+  INFO              // Informational
+}
+
+Enum conflict_type {
+  VERSION_OVERLAP
+  DUPLICATE_ENTITY
+  CIRCULAR_REFERENCE
+  REFERENCE_MISSING
+  IN_USE_CONFLICT
+}
+
+Enum conflict_status {
+  DETECTED
+  ACKNOWLEDGED
+  RESOLVED
+  IGNORED
+}
+
+Enum conflict_severity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+Enum validation_status {
+  PASS
+  FAIL
+  PARTIAL
+}
+
+Enum resolution_type {
+  AUTO
+  MANUAL_OVERRIDE
+  CORRECTION
+}
+
+Enum operation_type {
+  CREATE
+  UPDATE
+  DELETE
+  ASSIGN
+  UNASSIGN
+  VERSION_CREATE
+  VALIDATE
+  EXPORT
+}
+
+Enum entity_type {
+  PayElement
+  PayProfile
+  PayFormula
+  StatutoryRule
+  PayCalendar
+  PayGroup
+  GLMappingPolicy
+  BankTemplate
+  PayElementAssignment
+  PayGroupAssignment
+}
+
+Enum report_type {
+  SUMMARY
+  DETAIL
+  COMPARISON
+  COMPLIANCE
+}
+
+Enum export_format {
+  CSV
+  PDF
+  JSON
+}
+
+Enum scope_type {
+  TENANT
+  LEGAL_ENTITY
+  MODULE
+}
+
+// ============================================
+// TABLES - Payroll Configuration BC
+// ============================================
+
+// Pay Element - SCD-2 versioned
+Table pr_pay_element {
+  id uuid [pk, not null]
+  element_code varchar(50) [not null]
+  element_name varchar(100) [not null]
+  legal_entity_id varchar(50) [not null, note: 'Reference to CO module']
+  classification element_classification [not null]
+  calculation_type calculation_type [not null]
+  statutory_flag boolean [not null, default: false]
+  taxable_flag boolean [not null, default: true]
+  formula_id uuid [null, ref: > pr_pay_formula.id]
+  rate decimal(10,4) [null, note: '0-1 range for percentage']
+  amount decimal(18,2) [null, note: 'Fixed amount in VND']
+
+  // SCD-2 versioning columns
+  effective_start_date date [not null]
+  effective_end_date date [null]
+  is_current_flag boolean [not null, default: true]
+  version_reason varchar(500) [null]
+
+  // Audit columns
+  is_active boolean [not null, default: true]
+  created_by varchar(100) [null]
+  created_at timestamp [default: `now()`]
+  updated_by varchar(100) [null]
+  updated_at timestamp [null]
+
+  indexes {
+    (element_code, legal_entity_id, is_current_flag) [unique, name: 'idx_pe_current_lookup']
+    (element_code, legal_entity_id, effective_start_date, effective_end_date) [name: 'idx_pe_version_query']
+    (legal_entity_id, is_current_flag, is_active) [name: 'idx_pe_active_by_entity']
+    (formula_id) [name: 'idx_pe_formula_ref']
+  }
+}
+
+// Pay Formula
+Table pr_pay_formula {
+  id uuid [pk, not null]
+  formula_id varchar(50) [unique, not null]
+  formula_name varchar(100) [not null]
+  expression varchar(1000) [not null, note: 'Formula expression']
+  description varchar(500) [null]
+  is_active boolean [not null, default: true]
+  created_by varchar(100) [null]
+  created_at timestamp [default: `now()`]
+  updated_by varchar(100) [null]
+  updated_at timestamp [null]
+
+  indexes {
+    (formula_id) [unique]
+    (is_active) [name: 'idx_formula_active']
+  }
+}
+
+// Pay Profile - SCD-2 versioned
+Table pr_pay_profile {
+  id uuid [pk, not null]
+  profile_code varchar(50) [not null]
+  profile_name varchar(100) [not null]
+  legal_entity_id varchar(50) [not null, note: 'Reference to CO module']
+  pay_frequency_id varchar(50) [not null, note: 'Reference to PayFrequency']
+  description varchar(500) [null]
+
+  // SCD-2 versioning columns
+  effective_start_date date [not null]
+  effective_end_date date [null]
+  is_current_flag boolean [not null, default: true]
+  version_reason varchar(500) [null]
+
+  // Audit columns
+  is_active boolean [not null, default: true]
+  created_by varchar(100) [null]
+  created_at timestamp [default: `now()`]
+  updated_by varchar(100) [null]
+  updated_at timestamp [null]
+
+  indexes {
+    (profile_code, legal_entity_id, is_current_flag) [unique, name: 'idx_pp_current_lookup']
+    (profile_code, legal_entity_id, effective_start_date, effective_end_date) [name: 'idx_pp_version_query']
+    (legal_entity_id, is_current_flag, is_active) [name: 'idx_pp_active_by_entity']
+  }
+}
+
+// Pay Element Assignment (within PayProfile aggregate)
+Table pr_pay_element_assignment {
+  id uuid [pk, not null]
+  pay_profile_id uuid [not null, ref: > pr_pay_profile.id]
+  pay_element_id uuid [not null, ref: > pr_pay_element.id]
+  priority integer [not null, note: '1-99 calculation sequence']
+  formula_override varchar(1000) [null]
+  rate_override decimal(10,4) [null]
+  amount_override decimal(18,2) [null]
+  effective_start_date date [not null]
+  effective_end_date date [null]
+  created_at timestamp [default: `now()`]
+
+  indexes {
+    (pay_profile_id, pay_element_id) [unique, name: 'idx_pea_unique_assignment']
+    (pay_profile_id, priority) [name: 'idx_pea_priority_order']
+    (pay_element_id) [name: 'idx_pea_element_ref']
+  }
+}
+
+// Statutory Rule Assignment (within PayProfile aggregate)
+Table pr_statutory_rule_assignment {
+  id uuid [pk, not null]
+  pay_profile_id uuid [not null, ref: > pr_pay_profile.id]
+  statutory_rule_id uuid [not null, ref: > pr_statutory_rule.id]
+  effective_start_date date [not null]
+  effective_end_date date [null]
+  created_at timestamp [default: `now()`]
+
+  indexes {
+    (pay_profile_id, statutory_rule_id) [unique, name: 'idx_sra_unique_assignment']
+    (statutory_rule_id) [name: 'idx_sra_rule_ref']
+  }
+}
+
+// ============================================
+// TABLES - Statutory Compliance BC
+// ============================================
+
+// Statutory Rule - SCD-2 versioned
+Table pr_statutory_rule {
+  id uuid [pk, not null]
+  rule_code varchar(50) [not null]
+  rule_name varchar(100) [not null]
+  statutory_type statutory_type [not null]
+  party_type party_type [not null]
+  rate_type rate_type [not null]
+  rate decimal(10,4) [null, note: '0-1 range']
+  ceiling_amount decimal(18,2) [null, note: 'Maximum wage base in VND']
+  floor_amount decimal(18,2) [null]
+  personal_exemption decimal(18,2) [null, note: 'PIT personal deduction']
+  dependent_exemption decimal(18,2) [null, note: 'PIT dependent deduction']
+
+  // SCD-2 versioning columns
+  effective_start_date date [not null]
+  effective_end_date date [null]
+  is_current_flag boolean [not null, default: true]
+  version_reason varchar(500) [null]
+
+  // Audit columns
+  is_active boolean [not null, default: true]
+  created_by varchar(100) [null]
+  created_at timestamp [default: `now()`]
+  updated_by varchar(100) [null]
+  updated_at timestamp [null]
+
+  indexes {
+    (rule_code, statutory_type, party_type, is_current_flag) [unique, name: 'idx_sr_current_lookup']
+    (rule_code, statutory_type, party_type, effective_start_date, effective_end_date) [name: 'idx_sr_version_query']
+    (statutory_type, party_type, is_current_flag) [name: 'idx_sr_type_party']
+  }
+}
+
+// Tax Bracket (within StatutoryRule aggregate - PIT progressive brackets)
+Table pr_tax_bracket {
+  id uuid [pk, not null]
+  statutory_rule_id uuid [not null, ref: > pr_statutory_rule.id]
+  bracket_number integer [not null]
+  min_amount decimal(18,2) [not null, note: 'Minimum taxable income']
+  max_amount decimal(18,2) [null, note: 'Maximum taxable income, null for last bracket']
+  rate decimal(10,4) [not null, note: 'Tax rate for this bracket']
+  tax_amount decimal(18,2) [null, note: 'Cumulative tax from previous brackets']
+  created_at timestamp [default: `now()`]
+
+  indexes {
+    (statutory_rule_id, bracket_number) [unique, name: 'idx_tb_unique_bracket']
+    (statutory_rule_id) [name: 'idx_tb_rule_ref']
+  }
+}
+
+// ============================================
+// TABLES - Payroll Calendar BC
+// ============================================
+
+// Pay Calendar
+Table pr_pay_calendar {
+  id uuid [pk, not null]
+  calendar_code varchar(50) [not null]
+  calendar_name varchar(100) [not null]
+  legal_entity_id varchar(50) [not null, note: 'Reference to CO module']
+  pay_frequency_id varchar(50) [not null, note: 'Reference to PayFrequency']
+  fiscal_year integer [not null, note: 'Calendar year']
+  start_date date [not null]
+  end_date date [not null]
+  is_active boolean [not null, default: true]
+  created_by varchar(100) [null]
+  created_at timestamp [default: `now()`]
+  updated_by varchar(100) [null]
+  updated_at timestamp [null]
+
+  indexes {
+    (calendar_code, legal_entity_id) [unique]
+    (legal_entity_id, fiscal_year) [name: 'idx_cal_entity_year']
+    (is_active) [name: 'idx_cal_active']
+  }
+}
+
+// Pay Period (within PayCalendar aggregate)
+Table pr_pay_period {
+  id uuid [pk, not null]
+  period_id varchar(50) [unique, not null]
+  pay_calendar_id uuid [not null, ref: > pr_pay_calendar.id]
+  period_number integer [not null]
+  period_name varchar(50) [null]
+  period_start_date date [not null]
+  period_end_date date [not null]
+  cut_off_date date [not null]
+  pay_date date [not null]
+  status period_status [not null, default: 'OPEN']
+  adjustment_reason varchar(200) [null]
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [null]
+
+  indexes {
+    (pay_calendar_id, period_number) [unique, name: 'idx_period_unique_number']
+    (pay_calendar_id, period_start_date, period_end_date) [name: 'idx_period_date_range']
+    (status) [name: 'idx_period_status']
+  }
+}
+
+// ============================================
+// TABLES - Payroll Assignment BC
+// ============================================
+
+// Pay Group
+Table pr_pay_group {
+  id uuid [pk, not null]
+  group_code varchar(50) [not null]
+  group_name varchar(100) [not null]
+  pay_profile_id uuid [not null, ref: > pr_pay_profile.id]
+  pay_calendar_id uuid [not null, ref: > pr_pay_calendar.id]
+  description varchar(500) [null]
+  is_active boolean [not null, default: true]
+  created_by varchar(100) [null]
+  created_at timestamp [default: `now()`]
+  updated_by varchar(100) [null]
+  updated_at timestamp [null]
+
+  indexes {
+    (group_code) [unique]
+    (pay_profile_id) [name: 'idx_pg_profile_ref']
+    (pay_calendar_id) [name: 'idx_pg_calendar_ref']
+    (is_active) [name: 'idx_pg_active']
+  }
+}
+
+// Pay Group Assignment (Employee to PayGroup)
+Table pr_pay_group_assignment {
+  id uuid [pk, not null]
+  assignment_id varchar(50) [unique, not null]
+  pay_group_id uuid [not null, ref: > pr_pay_group.id]
+  employee_id varchar(50) [not null, note: 'Reference to Worker in CO module']
+  assignment_date date [not null]
+  removal_date date [null]
+  assignment_reason assignment_reason [null]
+  removal_reason removal_reason [null]
+  is_current boolean [not null, default: true]
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [null]
+
+  indexes {
+    (employee_id, is_current) [unique, name: 'idx_pga_single_assignment', note: 'Ensures one active assignment per employee']
+    (pay_group_id) [name: 'idx_pga_group_ref']
+    (employee_id) [name: 'idx_pga_employee_ref']
+  }
+}
+
+// ============================================
+// TABLES - Finance Integration BC
+// ============================================
+
+// GL Mapping Policy
+Table pr_gl_mapping_policy {
+  id uuid [pk, not null]
+  policy_code varchar(50) [not null]
+  policy_name varchar(100) [not null]
+  pay_element_id uuid [not null, ref: > pr_pay_element.id]
+  description varchar(500) [null]
+  is_active boolean [not null, default: true]
+  created_by varchar(100) [null]
+  created_at timestamp [default: `now()`]
+  updated_by varchar(100) [null]
+  updated_at timestamp [null]
+
+  indexes {
+    (policy_code) [unique]
+    (pay_element_id) [name: 'idx_glp_element_ref']
+    (is_active) [name: 'idx_glp_active']
+  }
+}
+
+// GL Mapping (within GLMappingPolicy aggregate)
+Table pr_gl_mapping {
+  id uuid [pk, not null]
+  mapping_id varchar(50) [unique, not null]
+  gl_mapping_policy_id uuid [not null, ref: > pr_gl_mapping_policy.id]
+  gl_account_code varchar(20) [not null]
+  gl_account_name varchar(100) [null]
+  cost_center varchar(20) [null]
+  debit_credit debit_credit [not null]
+  percentage decimal(10,4) [not null, note: '0-100 allocation percentage']
+  description varchar(200) [null]
+  effective_start_date date [null]
+  effective_end_date date [null]
+  created_at timestamp [default: `now()`]
+
+  indexes {
+    (gl_mapping_policy_id) [name: 'idx_glm_policy_ref']
+    (gl_account_code) [name: 'idx_glm_account']
+  }
+}
+
+// Bank Template
+Table pr_bank_template {
+  id uuid [pk, not null]
+  template_code varchar(50) [not null]
+  template_name varchar(100) [not null]
+  bank_code varchar(10) [not null]
+  bank_name varchar(100) [null]
+  file_format file_format [not null]
+  delimiter varchar(10) [null]
+  encoding varchar(20) [null]
+  header_rows integer [null, note: '0-10']
+  footer_rows integer [null, note: '0-10']
+  is_active boolean [not null, default: true]
+  created_by varchar(100) [null]
+  created_at timestamp [default: `now()`]
+  updated_by varchar(100) [null]
+  updated_at timestamp [null]
+
+  indexes {
+    (template_code) [unique]
+    (bank_code) [name: 'idx_bt_bank_code']
+    (is_active) [name: 'idx_bt_active']
+  }
+}
+
+// Field Mapping (within BankTemplate aggregate)
+Table pr_field_mapping {
+  id uuid [pk, not null]
+  mapping_id varchar(50) [unique, not null]
+  bank_template_id uuid [not null, ref: > pr_bank_template.id]
+  source_field varchar(50) [not null]
+  target_field varchar(50) [not null]
+  position integer [not null]
+  format varchar(50) [null]
+  length integer [null]
+  padding varchar(20) [null]
+  default_value varchar(100) [null]
+  is_required boolean [not null, default: true]
+  created_at timestamp [default: `now()`]
+
+  indexes {
+    (bank_template_id, position) [unique, name: 'idx_fm_unique_position']
+    (bank_template_id) [name: 'idx_fm_template_ref']
+  }
+}
+
+// ============================================
+// TABLES - Configuration Validation BC
+// ============================================
+
+// Validation Rule
+Table pr_validation_rule {
+  id uuid [pk, not null]
+  rule_code varchar(50) [not null]
+  rule_name varchar(100) [not null]
+  validation_type validation_type [not null]
+  target_entity varchar(50) [not null]
+  target_field varchar(50) [null]
+  severity severity [not null]
+  message_template varchar(500) [not null]
+  is_active boolean [not null, default: true]
+  created_at timestamp [default: `now()`]
+
+  indexes {
+    (rule_code) [unique]
+    (target_entity, validation_type) [name: 'idx_vr_entity_type']
+    (is_active) [name: 'idx_vr_active']
+  }
+}
+
+// Validation Result (transient, may be stored for audit)
+Table pr_validation_result {
+  id uuid [pk, not null]
+  validation_id varchar(50) [unique, not null]
+  validated_at timestamp [not null]
+  entity_type varchar(50) [not null]
+  entity_id varchar(50) [not null]
+  status validation_status [not null]
+  can_proceed boolean [not null]
+  created_at timestamp [default: `now()`]
+
+  indexes {
+    (validation_id) [unique]
+    (entity_type, entity_id) [name: 'idx_vres_entity']
+    (validated_at) [name: 'idx_vres_time']
+  }
+}
+
+// Rule Result (within ValidationResult)
+Table pr_rule_result {
+  id uuid [pk, not null]
+  validation_result_id uuid [not null, ref: > pr_validation_result.id]
+  rule_code varchar(50) [not null]
+  rule_name varchar(100) [not null]
+  severity severity [not null]
+  passed boolean [not null]
+  message varchar(500) [not null]
+  field_path varchar(100) [null]
+  suggested_fix varchar(200) [null]
+  created_at timestamp [default: `now()`]
+
+  indexes {
+    (validation_result_id) [name: 'idx_rr_validation_ref']
+    (rule_code) [name: 'idx_rr_rule_code']
+  }
+}
+
+// Conflict (detected conflicts)
+Table pr_conflict {
+  id uuid [pk, not null]
+  conflict_id varchar(50) [unique, not null]
+  conflict_type conflict_type [not null]
+  entity_type1 varchar(50) [not null]
+  entity_id1 varchar(50) [not null]
+  entity_type2 varchar(50) [null]
+  entity_id2 varchar(50) [null]
+  description varchar(500) [not null]
+  severity conflict_severity [not null]
+  status conflict_status [not null, default: 'DETECTED']
+  detected_at timestamp [not null, default: `now()`]
+  resolved_at timestamp [null]
+  resolution_type resolution_type [null]
+  resolution_by varchar(100) [null]
+  resolution_note varchar(500) [null]
+
+  indexes {
+    (conflict_id) [unique]
+    (entity_type1, entity_id1) [name: 'idx_conf_entity1']
+    (status) [name: 'idx_conf_status']
+    (detected_at) [name: 'idx_conf_detected']
+  }
+}
+
+// ============================================
+// TABLES - Audit Trail BC
+// ============================================
+
+// Audit Log (container for entries)
+Table pr_audit_log {
+  id uuid [pk, not null]
+  log_id varchar(50) [unique, not null]
+  scope_type scope_type [not null]
+  scope_id varchar(50) [not null]
+  created_at timestamp [default: `now()`]
+
+  indexes {
+    (log_id) [unique]
+    (scope_type, scope_id) [name: 'idx_al_scope']
+  }
+}
+
+// Audit Entry (immutable, append-only)
+Table pr_audit_entry {
+  id uuid [pk, not null]
+  entry_id varchar(50) [unique, not null]
+  audit_log_id uuid [not null, ref: > pr_audit_log.id]
+  entity_type entity_type [not null]
+  entity_id varchar(50) [not null]
+  entity_name varchar(100) [null]
+  operation operation_type [not null]
+  changed_by varchar(100) [not null]
+  changed_by_name varchar(100) [null]
+  changed_at timestamp [not null, default: `now()`]
+  old_value text [null, note: 'JSON of previous state']
+  new_value text [null, note: 'JSON of new state']
+  changed_fields varchar(100) [array, null]
+  change_reason varchar(500) [null]
+  version_id varchar(50) [null, note: 'Reference to SCD-2 version']
+  session_id varchar(50) [null]
+  ip_address varchar(50) [null]
+  notes varchar(500) [null]
+
+  indexes {
+    (entry_id) [unique]
+    (audit_log_id) [name: 'idx_ae_log_ref']
+    (entity_type, entity_id) [name: 'idx_ae_entity']
+    (changed_by) [name: 'idx_ae_user']
+    (changed_at) [name: 'idx_ae_time']
+    (operation) [name: 'idx_ae_operation']
+  }
+}
+
+// Audit Report (generated reports)
+Table pr_audit_report {
+  id uuid [pk, not null]
+  report_id varchar(50) [unique, not null]
+  report_name varchar(100) [not null]
+  report_type report_type [not null]
+  generated_at timestamp [not null, default: `now()`]
+  generated_by varchar(100) [not null]
+  date_range_start date [not null]
+  date_range_end date [not null]
+  entity_types entity_type [array, null]
+  format export_format [not null]
+  entry_count integer [null]
+  file_path varchar(200) [null]
+
+  indexes {
+    (report_id) [unique]
+    (generated_by) [name: 'idx_ar_user']
+    (generated_at) [name: 'idx_ar_time']
+  }
+}
+
+// ============================================
+// RELATIONS
+// ============================================
+
+// Pay Element references Formula
+Ref: pr_pay_element.formula_id > pr_pay_formula.id
+
+// Pay Profile has Element Assignments
+Ref: pr_pay_element_assignment.pay_profile_id > pr_pay_profile.id
+Ref: pr_pay_element_assignment.pay_element_id > pr_pay_element.id
+
+// Pay Profile has Statutory Rule Assignments
+Ref: pr_statutory_rule_assignment.pay_profile_id > pr_pay_profile.id
+Ref: pr_statutory_rule_assignment.statutory_rule_id > pr_statutory_rule.id
+
+// Statutory Rule has Tax Brackets
+Ref: pr_tax_bracket.statutory_rule_id > pr_statutory_rule.id
+
+// Pay Calendar has Pay Periods
+Ref: pr_pay_period.pay_calendar_id > pr_pay_calendar.id
+
+// Pay Group references Profile and Calendar
+Ref: pr_pay_group.pay_profile_id > pr_pay_profile.id
+Ref: pr_pay_group.pay_calendar_id > pr_pay_calendar.id
+
+// Pay Group has Assignments
+Ref: pr_pay_group_assignment.pay_group_id > pr_pay_group.id
+
+// GL Mapping Policy references Pay Element
+Ref: pr_gl_mapping_policy.pay_element_id > pr_pay_element.id
+
+// GL Mapping Policy has GL Mappings
+Ref: pr_gl_mapping.gl_mapping_policy_id > pr_gl_mapping_policy.id
+
+// Bank Template has Field Mappings
+Ref: pr_field_mapping.bank_template_id > pr_bank_template.id
+
+// Validation Result has Rule Results
+Ref: pr_rule_result.validation_result_id > pr_validation_result.id
+
+// Audit Log has Audit Entries
+Ref: pr_audit_entry.audit_log_id > pr_audit_log.id
+
+// ============================================
+// TABLE GROUPS (for visualization)
+// ============================================
+
+TableGroup payroll_configuration {
+  pr_pay_element
+  pr_pay_formula
+  pr_pay_profile
+  pr_pay_element_assignment
+  pr_statutory_rule_assignment
+}
+
+TableGroup statutory_compliance {
+  pr_statutory_rule
+  pr_tax_bracket
+}
+
+TableGroup payroll_calendar {
+  pr_pay_calendar
+  pr_pay_period
+}
+
+TableGroup payroll_assignment {
+  pr_pay_group
+  pr_pay_group_assignment
+}
+
+TableGroup finance_integration {
+  pr_gl_mapping_policy
+  pr_gl_mapping
+  pr_bank_template
+  pr_field_mapping
+}
+
+TableGroup configuration_validation {
+  pr_validation_rule
+  pr_validation_result
+  pr_rule_result
+  pr_conflict
+}
+
+TableGroup audit_trail {
+  pr_audit_log
+  pr_audit_entry
+  pr_audit_report
+}
+
+// ============================================
+// NOTES
+// ============================================
+
+Note: "SCD-2 Entities: pr_pay_element, pr_pay_profile, pr_statutory_rule have version tracking columns: effective_start_date, effective_end_date, is_current_flag, version_reason"
+
+Note: "External References: legal_entity_id, employee_id, pay_frequency_id are ID references to CO module tables. No FK constraints defined for external module tables."
+
+Note: "Vietnam Statutory Rates Reference (2026):
+- BHXH: Employee 8%, Employer 17.5%, Ceiling 36,000,000 VND
+- BHYT: Employee 1.5%, Employer 3%, Ceiling 36,000,000 VND
+- BHTN: Employee 1%, Employer 1%, Ceiling 36,000,000 VND
+- PIT: Progressive brackets (5%-35%), Personal Exemption 11,000,000 VND, Dependent 4,000,000 VND/month"
+
+Note: "Single Employee Assignment: pr_pay_group_assignment has unique index on (employee_id, is_current) ensuring one active assignment per employee"
+
+Note: "Append-Only Audit: pr_audit_entry is append-only, no updates or deletes allowed"

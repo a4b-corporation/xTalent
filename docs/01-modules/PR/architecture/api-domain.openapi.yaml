@@ -1,0 +1,2715 @@
+openapi: 3.0.3
+info:
+  title: Payroll API - Domain Driven
+  description: |
+    Domain-driven CRUD API for the Payroll Configuration module.
+    These endpoints provide standard CRUD operations per aggregate root.
+
+    **Naming Convention**: Standard REST CRUD naming (GET, POST, PUT, DELETE)
+
+    **Aggregate Roots**:
+    - PayElement (SCD-2 versioned)
+    - PayProfile (SCD-2 versioned)
+    - PayFormula
+    - StatutoryRule (SCD-2 versioned)
+    - PayCalendar
+    - PayGroup
+    - GLMappingPolicy
+    - BankTemplate
+    - ValidationRule
+    - AuditLog
+
+    **SCD-2 Operations**: Versioning endpoints separate from CRUD
+  version: 1.0.0
+  contact:
+    name: xTalent API Support
+    email: api-support@xtalent.example.com
+
+servers:
+  - url: https://api.xtalent.example.com/v1/pr
+    description: Production server
+  - url: https://api-staging.xtalent.example.com/v1/pr
+    description: Staging server
+
+tags:
+  - name: Pay Elements (CRUD)
+    description: CRUD operations for PayElement aggregate
+  - name: Pay Profiles (CRUD)
+    description: CRUD operations for PayProfile aggregate
+  - name: Pay Formulas (CRUD)
+    description: CRUD operations for PayFormula aggregate
+  - name: Statutory Rules (CRUD)
+    description: CRUD operations for StatutoryRule aggregate
+  - name: Pay Calendars (CRUD)
+    description: CRUD operations for PayCalendar aggregate
+  - name: Pay Groups (CRUD)
+    description: CRUD operations for PayGroup aggregate
+  - name: GL Mapping Policies (CRUD)
+    description: CRUD operations for GLMappingPolicy aggregate
+  - name: Bank Templates (CRUD)
+    description: CRUD operations for BankTemplate aggregate
+  - name: Validation Rules (CRUD)
+    description: CRUD operations for ValidationRule aggregate
+  - name: Audit Logs (CRUD)
+    description: CRUD operations for AuditLog aggregate
+
+paths:
+  # ============================================
+  # PAY ELEMENT CRUD
+  # ============================================
+  /pay-elements:
+    get:
+      tags:
+        - Pay Elements (CRUD)
+      summary: List pay elements
+      description: Returns list of pay elements with filtering
+      operationId: listPayElements
+      parameters:
+        - name: legalEntityId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: classification
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [EARNING, DEDUCTION, TAX, EMPLOYER_CONTRIBUTION]
+        - name: isCurrent
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: true
+        - name: isActive
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: true
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+      responses:
+        '200':
+          description: List of pay elements
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayElementListResponse'
+
+    post:
+      tags:
+        - Pay Elements (CRUD)
+      summary: Create pay element
+      description: Creates a new pay element (version 1)
+      operationId: createPayElementCrud
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PayElementCreateRequest'
+      responses:
+        '201':
+          description: Pay element created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayElementResponse'
+
+  /pay-elements/{id}:
+    get:
+      tags:
+        - Pay Elements (CRUD)
+      summary: Get pay element by ID
+      description: Returns pay element by UUID
+      operationId: getPayElementById
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Pay element details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayElementResponse'
+        '404':
+          description: Pay element not found
+
+    put:
+      tags:
+        - Pay Elements (CRUD)
+      summary: Update pay element (creates new version)
+      description: Updates pay element and creates new SCD-2 version
+      operationId: updatePayElementCrud
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PayElementUpdateRequest'
+      responses:
+        '200':
+          description: Pay element updated (new version created)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayElementResponse'
+
+    delete:
+      tags:
+        - Pay Elements (CRUD)
+      summary: Soft delete pay element
+      description: Marks pay element as inactive (soft delete)
+      operationId: deletePayElementCrud
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Pay element soft-deleted
+        '409':
+          description: Element in use, cannot delete
+
+  /pay-elements/by-code/{elementCode}:
+    get:
+      tags:
+        - Pay Elements (CRUD)
+      summary: Get pay element by code
+      description: Returns current version of pay element by business key
+      operationId: getPayElementByCode
+      parameters:
+        - name: elementCode
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: legalEntityId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Pay element details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayElementResponse'
+
+  # ============================================
+  # PAY PROFILE CRUD
+  # ============================================
+  /pay-profiles:
+    get:
+      tags:
+        - Pay Profiles (CRUD)
+      summary: List pay profiles
+      operationId: listPayProfiles
+      parameters:
+        - name: legalEntityId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: isCurrent
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: true
+        - name: isActive
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: List of pay profiles
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayProfileListResponse'
+
+    post:
+      tags:
+        - Pay Profiles (CRUD)
+      summary: Create pay profile
+      operationId: createPayProfileCrud
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PayProfileCreateRequest'
+      responses:
+        '201':
+          description: Pay profile created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayProfileResponse'
+
+  /pay-profiles/{id}:
+    get:
+      tags:
+        - Pay Profiles (CRUD)
+      summary: Get pay profile by ID
+      operationId: getPayProfileById
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Pay profile details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayProfileResponse'
+
+    put:
+      tags:
+        - Pay Profiles (CRUD)
+      summary: Update pay profile (creates new version)
+      operationId: updatePayProfileCrud
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PayProfileUpdateRequest'
+      responses:
+        '200':
+          description: Pay profile updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayProfileResponse'
+
+    delete:
+      tags:
+        - Pay Profiles (CRUD)
+      summary: Soft delete pay profile
+      operationId: deletePayProfileCrud
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Pay profile soft-deleted
+
+  /pay-profiles/{id}/element-assignments:
+    get:
+      tags:
+        - Pay Profiles (CRUD)
+      summary: List element assignments for profile
+      operationId: listProfileElementAssignments
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Element assignments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PayElementAssignmentResponse'
+
+    post:
+      tags:
+        - Pay Profiles (CRUD)
+      summary: Add element assignment to profile
+      operationId: addElementAssignment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PayElementAssignmentCreateRequest'
+      responses:
+        '201':
+          description: Element assignment added
+
+  /pay-profiles/{id}/element-assignments/{assignmentId}:
+    delete:
+      tags:
+        - Pay Profiles (CRUD)
+      summary: Remove element assignment
+      operationId: removeElementAssignment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: assignmentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Element assignment removed
+
+  # ============================================
+  # PAY FORMULA CRUD
+  # ============================================
+  /formulas:
+    get:
+      tags:
+        - Pay Formulas (CRUD)
+      summary: List pay formulas
+      operationId: listPayFormulas
+      parameters:
+        - name: isActive
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: List of formulas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayFormulaListResponse'
+
+    post:
+      tags:
+        - Pay Formulas (CRUD)
+      summary: Create pay formula
+      operationId: createPayFormulaCrud
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PayFormulaCreateRequest'
+      responses:
+        '201':
+          description: Formula created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayFormulaResponse'
+
+  /formulas/{id}:
+    get:
+      tags:
+        - Pay Formulas (CRUD)
+      summary: Get formula by ID
+      operationId: getPayFormulaById
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Formula details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayFormulaResponse'
+
+    put:
+      tags:
+        - Pay Formulas (CRUD)
+      summary: Update formula
+      operationId: updatePayFormulaCrud
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PayFormulaUpdateRequest'
+      responses:
+        '200':
+          description: Formula updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayFormulaResponse'
+
+    delete:
+      tags:
+        - Pay Formulas (CRUD)
+      summary: Delete formula
+      operationId: deletePayFormulaCrud
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Formula deleted
+        '409':
+          description: Formula in use
+
+  # ============================================
+  # STATUTORY RULE CRUD
+  # ============================================
+  /statutory-rules:
+    get:
+      tags:
+        - Statutory Rules (CRUD)
+      summary: List statutory rules
+      operationId: listStatutoryRules
+      parameters:
+        - name: statutoryType
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [BHXH, BHYT, BHTN, PIT]
+        - name: partyType
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [EMPLOYEE, EMPLOYER]
+        - name: isCurrent
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: List of statutory rules
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatutoryRuleListResponse'
+
+    post:
+      tags:
+        - Statutory Rules (CRUD)
+      summary: Create statutory rule
+      operationId: createStatutoryRuleCrud
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StatutoryRuleCreateRequest'
+      responses:
+        '201':
+          description: Statutory rule created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatutoryRuleResponse'
+
+  /statutory-rules/{id}:
+    get:
+      tags:
+        - Statutory Rules (CRUD)
+      summary: Get statutory rule by ID
+      operationId: getStatutoryRuleById
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Statutory rule details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatutoryRuleResponse'
+
+    put:
+      tags:
+        - Statutory Rules (CRUD)
+      summary: Update statutory rule (creates new version)
+      operationId: updateStatutoryRuleCrud
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StatutoryRuleUpdateRequest'
+      responses:
+        '200':
+          description: Statutory rule updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatutoryRuleResponse'
+
+    delete:
+      tags:
+        - Statutory Rules (CRUD)
+      summary: Soft delete statutory rule
+      operationId: deleteStatutoryRuleCrud
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Statutory rule soft-deleted
+
+  /statutory-rules/{id}/tax-brackets:
+    get:
+      tags:
+        - Statutory Rules (CRUD)
+      summary: List tax brackets for rule
+      operationId: listTaxBrackets
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Tax brackets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TaxBracketResponse'
+
+    put:
+      tags:
+        - Statutory Rules (CRUD)
+      summary: Update tax brackets (PIT)
+      operationId: updateTaxBrackets
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/TaxBracketCreateRequest'
+      responses:
+        '200':
+          description: Tax brackets updated
+
+  # ============================================
+  # PAY CALENDAR CRUD
+  # ============================================
+  /pay-calendars:
+    get:
+      tags:
+        - Pay Calendars (CRUD)
+      summary: List pay calendars
+      operationId: listPayCalendars
+      parameters:
+        - name: legalEntityId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: fiscalYear
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: isActive
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: List of calendars
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayCalendarListResponse'
+
+    post:
+      tags:
+        - Pay Calendars (CRUD)
+      summary: Create pay calendar
+      operationId: createPayCalendarCrud
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PayCalendarCreateRequest'
+      responses:
+        '201':
+          description: Calendar created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayCalendarResponse'
+
+  /pay-calendars/{id}:
+    get:
+      tags:
+        - Pay Calendars (CRUD)
+      summary: Get calendar by ID
+      operationId: getPayCalendarById
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Calendar details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayCalendarResponse'
+
+    put:
+      tags:
+        - Pay Calendars (CRUD)
+      summary: Update calendar
+      operationId: updatePayCalendarCrud
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PayCalendarUpdateRequest'
+      responses:
+        '200':
+          description: Calendar updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayCalendarResponse'
+
+    delete:
+      tags:
+        - Pay Calendars (CRUD)
+      summary: Soft delete calendar
+      operationId: deletePayCalendarCrud
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Calendar soft-deleted
+
+  /pay-calendars/{id}/periods:
+    get:
+      tags:
+        - Pay Calendars (CRUD)
+      summary: List periods for calendar
+      operationId: listPayPeriods
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [OPEN, CLOSED, PAID, REOPENED]
+      responses:
+        '200':
+          description: Periods list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PayPeriodResponse'
+
+  /pay-calendars/{id}/periods/{periodId}:
+    get:
+      tags:
+        - Pay Calendars (CRUD)
+      summary: Get period by ID
+      operationId: getPayPeriodById
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: periodId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Period details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayPeriodResponse'
+
+    put:
+      tags:
+        - Pay Calendars (CRUD)
+      summary: Adjust period dates
+      operationId: adjustPayPeriod
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: periodId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PayPeriodAdjustRequest'
+      responses:
+        '200':
+          description: Period adjusted
+
+  # ============================================
+  # PAY GROUP CRUD
+  # ============================================
+  /pay-groups:
+    get:
+      tags:
+        - Pay Groups (CRUD)
+      summary: List pay groups
+      operationId: listPayGroups
+      parameters:
+        - name: isActive
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: List of groups
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayGroupListResponse'
+
+    post:
+      tags:
+        - Pay Groups (CRUD)
+      summary: Create pay group
+      operationId: createPayGroupCrud
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PayGroupCreateRequest'
+      responses:
+        '201':
+          description: Group created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayGroupResponse'
+
+  /pay-groups/{id}:
+    get:
+      tags:
+        - Pay Groups (CRUD)
+      summary: Get group by ID
+      operationId: getPayGroupById
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Group details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayGroupResponse'
+
+    put:
+      tags:
+        - Pay Groups (CRUD)
+      summary: Update group
+      operationId: updatePayGroupCrud
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PayGroupUpdateRequest'
+      responses:
+        '200':
+          description: Group updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayGroupResponse'
+
+    delete:
+      tags:
+        - Pay Groups (CRUD)
+      summary: Soft delete group
+      operationId: deletePayGroupCrud
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Group soft-deleted
+
+  /pay-groups/{id}/assignments:
+    get:
+      tags:
+        - Pay Groups (CRUD)
+      summary: List assignments for group
+      operationId: listGroupAssignments
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: isCurrent
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: Assignments list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PayGroupAssignmentResponse'
+
+    post:
+      tags:
+        - Pay Groups (CRUD)
+      summary: Add employee assignment
+      operationId: addGroupAssignment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PayGroupAssignmentCreateRequest'
+      responses:
+        '201':
+          description: Assignment added
+
+  /pay-groups/{id}/assignments/{assignmentId}:
+    delete:
+      tags:
+        - Pay Groups (CRUD)
+      summary: Remove employee assignment
+      operationId: removeGroupAssignment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: assignmentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Assignment removed
+
+  # ============================================
+  # GL MAPPING POLICY CRUD
+  # ============================================
+  /gl-mapping-policies:
+    get:
+      tags:
+        - GL Mapping Policies (CRUD)
+      summary: List GL mapping policies
+      operationId: listGLMappingPolicies
+      responses:
+        '200':
+          description: List of policies
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GLMappingPolicyListResponse'
+
+    post:
+      tags:
+        - GL Mapping Policies (CRUD)
+      summary: Create GL mapping policy
+      operationId: createGLMappingPolicyCrud
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GLMappingPolicyCreateRequest'
+      responses:
+        '201':
+          description: Policy created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GLMappingPolicyResponse'
+
+  /gl-mapping-policies/{id}:
+    get:
+      tags:
+        - GL Mapping Policies (CRUD)
+      summary: Get policy by ID
+      operationId: getGLMappingPolicyById
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Policy details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GLMappingPolicyResponse'
+
+    put:
+      tags:
+        - GL Mapping Policies (CRUD)
+      summary: Update policy
+      operationId: updateGLMappingPolicyCrud
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GLMappingPolicyUpdateRequest'
+      responses:
+        '200':
+          description: Policy updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GLMappingPolicyResponse'
+
+    delete:
+      tags:
+        - GL Mapping Policies (CRUD)
+      summary: Delete policy
+      operationId: deleteGLMappingPolicyCrud
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Policy deleted
+
+  /gl-mapping-policies/{id}/mappings:
+    get:
+      tags:
+        - GL Mapping Policies (CRUD)
+      summary: List GL mappings for policy
+      operationId: listGLMappings
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: GL mappings
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GLMappingResponse'
+
+    post:
+      tags:
+        - GL Mapping Policies (CRUD)
+      summary: Add GL mapping
+      operationId: addGLMapping
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GLMappingCreateRequest'
+      responses:
+        '201':
+          description: GL mapping added
+
+  # ============================================
+  # BANK TEMPLATE CRUD
+  # ============================================
+  /bank-templates:
+    get:
+      tags:
+        - Bank Templates (CRUD)
+      summary: List bank templates
+      operationId: listBankTemplates
+      responses:
+        '200':
+          description: List of templates
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BankTemplateListResponse'
+
+    post:
+      tags:
+        - Bank Templates (CRUD)
+      summary: Create bank template
+      operationId: createBankTemplateCrud
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BankTemplateCreateRequest'
+      responses:
+        '201':
+          description: Template created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BankTemplateResponse'
+
+  /bank-templates/{id}:
+    get:
+      tags:
+        - Bank Templates (CRUD)
+      summary: Get template by ID
+      operationId: getBankTemplateById
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Template details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BankTemplateResponse'
+
+    put:
+      tags:
+        - Bank Templates (CRUD)
+      summary: Update template
+      operationId: updateBankTemplateCrud
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BankTemplateUpdateRequest'
+      responses:
+        '200':
+          description: Template updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BankTemplateResponse'
+
+    delete:
+      tags:
+        - Bank Templates (CRUD)
+      summary: Delete template
+      operationId: deleteBankTemplateCrud
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Template deleted
+
+  /bank-templates/{id}/field-mappings:
+    get:
+      tags:
+        - Bank Templates (CRUD)
+      summary: List field mappings for template
+      operationId: listFieldMappings
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Field mappings
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FieldMappingResponse'
+
+    post:
+      tags:
+        - Bank Templates (CRUD)
+      summary: Add field mapping
+      operationId: addFieldMapping
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FieldMappingCreateRequest'
+      responses:
+        '201':
+          description: Field mapping added
+
+  # ============================================
+  # VALIDATION RULE CRUD
+  # ============================================
+  /validation-rules:
+    get:
+      tags:
+        - Validation Rules (CRUD)
+      summary: List validation rules
+      operationId: listValidationRules
+      parameters:
+        - name: targetEntity
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: validationType
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [FIELD, CROSS_FIELD, ENTITY, CROSS_ENTITY, BUSINESS_RULE]
+      responses:
+        '200':
+          description: List of rules
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationRuleListResponse'
+
+    post:
+      tags:
+        - Validation Rules (CRUD)
+      summary: Create validation rule
+      operationId: createValidationRuleCrud
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidationRuleCreateRequest'
+      responses:
+        '201':
+          description: Rule created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationRuleResponse'
+
+  /validation-rules/{id}:
+    get:
+      tags:
+        - Validation Rules (CRUD)
+      summary: Get rule by ID
+      operationId: getValidationRuleById
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Rule details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationRuleResponse'
+
+    put:
+      tags:
+        - Validation Rules (CRUD)
+      summary: Update rule
+      operationId: updateValidationRuleCrud
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidationRuleUpdateRequest'
+      responses:
+        '200':
+          description: Rule updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationRuleResponse'
+
+  # ============================================
+  # AUDIT LOG CRUD (Query only - append-only)
+  # ============================================
+  /audit-logs:
+    get:
+      tags:
+        - Audit Logs (CRUD)
+      summary: List audit logs
+      operationId: listAuditLogs
+      parameters:
+        - name: scopeType
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [TENANT, LEGAL_ENTITY, MODULE]
+        - name: scopeId
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of audit logs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditLogListResponse'
+
+  /audit-logs/{id}:
+    get:
+      tags:
+        - Audit Logs (CRUD)
+      summary: Get audit log by ID
+      operationId: getAuditLogById
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Audit log details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditLogResponse'
+
+  /audit-logs/{id}/entries:
+    get:
+      tags:
+        - Audit Logs (CRUD)
+      summary: List entries for audit log
+      operationId: listAuditEntries
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: entityType
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: operation
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: changedBy
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: fromDate
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: toDate
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Audit entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AuditEntryResponse'
+
+components:
+  schemas:
+    # ============================================
+    # LIST RESPONSES
+    # ============================================
+    PayElementListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PayElementResponse'
+        pagination:
+          $ref: '#/components/schemas/PaginationResponse'
+
+    PayProfileListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PayProfileResponse'
+        pagination:
+          $ref: '#/components/schemas/PaginationResponse'
+
+    PayFormulaListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PayFormulaResponse'
+
+    StatutoryRuleListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/StatutoryRuleResponse'
+
+    PayCalendarListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PayCalendarResponse'
+
+    PayGroupListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PayGroupResponse'
+
+    GLMappingPolicyListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/GLMappingPolicyResponse'
+
+    BankTemplateListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/BankTemplateResponse'
+
+    ValidationRuleListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ValidationRuleResponse'
+
+    AuditLogListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditLogResponse'
+
+    PaginationResponse:
+      type: object
+      properties:
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+        hasMore:
+          type: boolean
+
+    # ============================================
+    # ENTITY RESPONSES (from use-case API)
+    # ============================================
+    PayElementResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        elementCode:
+          type: string
+        elementName:
+          type: string
+        legalEntityId:
+          type: string
+        classification:
+          type: string
+          enum: [EARNING, DEDUCTION, TAX, EMPLOYER_CONTRIBUTION]
+        calculationType:
+          type: string
+          enum: [FIXED, FORMULA, RATE_BASED, HOURS_BASED]
+        statutoryFlag:
+          type: boolean
+        taxableFlag:
+          type: boolean
+        formulaId:
+          type: string
+        rate:
+          type: number
+        amount:
+          type: number
+        isActive:
+          type: boolean
+        effectiveStartDate:
+          type: string
+          format: date
+        effectiveEndDate:
+          type: string
+          format: date
+          nullable: true
+        isCurrentFlag:
+          type: boolean
+        versionReason:
+          type: string
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    PayProfileResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        profileCode:
+          type: string
+        profileName:
+          type: string
+        legalEntityId:
+          type: string
+        payFrequencyId:
+          type: string
+        description:
+          type: string
+        isActive:
+          type: boolean
+        effectiveStartDate:
+          type: string
+          format: date
+        effectiveEndDate:
+          type: string
+          format: date
+          nullable: true
+        isCurrentFlag:
+          type: boolean
+        elementAssignments:
+          type: array
+          items:
+            $ref: '#/components/schemas/PayElementAssignmentResponse'
+        statutoryRuleAssignments:
+          type: array
+          items:
+            $ref: '#/components/schemas/StatutoryRuleAssignmentResponse'
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    PayElementAssignmentResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        payElementId:
+          type: string
+        payElementName:
+          type: string
+        priority:
+          type: integer
+        formulaOverride:
+          type: string
+        rateOverride:
+          type: number
+        amountOverride:
+          type: number
+        effectiveStartDate:
+          type: string
+          format: date
+        effectiveEndDate:
+          type: string
+          format: date
+
+    StatutoryRuleAssignmentResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        statutoryRuleId:
+          type: string
+        statutoryRuleName:
+          type: string
+        effectiveStartDate:
+          type: string
+          format: date
+        effectiveEndDate:
+          type: string
+          format: date
+
+    PayFormulaResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        formulaId:
+          type: string
+        formulaName:
+          type: string
+        expression:
+          type: string
+        description:
+          type: string
+        isActive:
+          type: boolean
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    StatutoryRuleResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        ruleCode:
+          type: string
+        ruleName:
+          type: string
+        statutoryType:
+          type: string
+          enum: [BHXH, BHYT, BHTN, PIT]
+        partyType:
+          type: string
+          enum: [EMPLOYEE, EMPLOYER]
+        rateType:
+          type: string
+          enum: [FIXED_RATE, PROGRESSIVE, LOOKUP_BASED]
+        rate:
+          type: number
+        ceilingAmount:
+          type: number
+        floorAmount:
+          type: number
+        personalExemption:
+          type: number
+        dependentExemption:
+          type: number
+        isActive:
+          type: boolean
+        effectiveStartDate:
+          type: string
+          format: date
+        effectiveEndDate:
+          type: string
+          format: date
+          nullable: true
+        isCurrentFlag:
+          type: boolean
+        taxBrackets:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaxBracketResponse'
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    TaxBracketResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        bracketNumber:
+          type: integer
+        minAmount:
+          type: number
+        maxAmount:
+          type: number
+          nullable: true
+        rate:
+          type: number
+        taxAmount:
+          type: number
+
+    PayCalendarResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        calendarCode:
+          type: string
+        calendarName:
+          type: string
+        legalEntityId:
+          type: string
+        payFrequencyId:
+          type: string
+        fiscalYear:
+          type: integer
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        isActive:
+          type: boolean
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    PayPeriodResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        periodId:
+          type: string
+        periodNumber:
+          type: integer
+        periodName:
+          type: string
+        periodStartDate:
+          type: string
+          format: date
+        periodEndDate:
+          type: string
+          format: date
+        cutOffDate:
+          type: string
+          format: date
+        payDate:
+          type: string
+          format: date
+        status:
+          type: string
+          enum: [OPEN, CLOSED, PAID, REOPENED]
+        adjustmentReason:
+          type: string
+
+    PayGroupResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        groupCode:
+          type: string
+        groupName:
+          type: string
+        payProfileId:
+          type: string
+        payCalendarId:
+          type: string
+        description:
+          type: string
+        isActive:
+          type: boolean
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    PayGroupAssignmentResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        assignmentId:
+          type: string
+        employeeId:
+          type: string
+        assignmentDate:
+          type: string
+          format: date
+        removalDate:
+          type: string
+          format: date
+          nullable: true
+        assignmentReason:
+          type: string
+          enum: [NEW_HIRE, TRANSFER, PROMOTION, REORGANIZATION, PROFILE_CHANGE, OTHER]
+        removalReason:
+          type: string
+          enum: [TRANSFER, TERMINATION, PROMOTION, REORGANIZATION, OTHER]
+        isCurrent:
+          type: boolean
+
+    GLMappingPolicyResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        policyCode:
+          type: string
+        policyName:
+          type: string
+        payElementId:
+          type: string
+        description:
+          type: string
+        isActive:
+          type: boolean
+        mappings:
+          type: array
+          items:
+            $ref: '#/components/schemas/GLMappingResponse'
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    GLMappingResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        mappingId:
+          type: string
+        glAccountCode:
+          type: string
+        glAccountName:
+          type: string
+        costCenter:
+          type: string
+        debitCredit:
+          type: string
+          enum: [DEBIT, CREDIT]
+        percentage:
+          type: number
+        description:
+          type: string
+        effectiveStartDate:
+          type: string
+          format: date
+        effectiveEndDate:
+          type: string
+          format: date
+
+    BankTemplateResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        templateCode:
+          type: string
+        templateName:
+          type: string
+        bankCode:
+          type: string
+        bankName:
+          type: string
+        fileFormat:
+          type: string
+          enum: [CSV, FIXED, XML, JSON]
+        delimiter:
+          type: string
+        encoding:
+          type: string
+        headerRows:
+          type: integer
+        footerRows:
+          type: integer
+        isActive:
+          type: boolean
+        fieldMappings:
+          type: array
+          items:
+            $ref: '#/components/schemas/FieldMappingResponse'
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    FieldMappingResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        mappingId:
+          type: string
+        sourceField:
+          type: string
+        targetField:
+          type: string
+        position:
+          type: integer
+        format:
+          type: string
+        length:
+          type: integer
+        padding:
+          type: string
+        defaultValue:
+          type: string
+        isRequired:
+          type: boolean
+
+    ValidationRuleResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        ruleCode:
+          type: string
+        ruleName:
+          type: string
+        validationType:
+          type: string
+          enum: [FIELD, CROSS_FIELD, ENTITY, CROSS_ENTITY, BUSINESS_RULE]
+        targetEntity:
+          type: string
+        targetField:
+          type: string
+        severity:
+          type: string
+          enum: [ERROR, WARNING, INFO]
+        messageTemplate:
+          type: string
+        isActive:
+          type: boolean
+
+    AuditLogResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        logId:
+          type: string
+        scopeType:
+          type: string
+          enum: [TENANT, LEGAL_ENTITY, MODULE]
+        scopeId:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    AuditEntryResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        entryId:
+          type: string
+        entityType:
+          type: string
+          enum: [PayElement, PayProfile, PayFormula, StatutoryRule, PayCalendar, PayGroup, GLMappingPolicy, BankTemplate, PayElementAssignment, PayGroupAssignment]
+        entityId:
+          type: string
+        entityName:
+          type: string
+        operation:
+          type: string
+          enum: [CREATE, UPDATE, DELETE, ASSIGN, UNASSIGN, VERSION_CREATE, VALIDATE, EXPORT]
+        changedBy:
+          type: string
+        changedByName:
+          type: string
+        changedAt:
+          type: string
+          format: date-time
+        oldValue:
+          type: object
+        newValue:
+          type: object
+        changedFields:
+          type: array
+          items:
+            type: string
+        changeReason:
+          type: string
+        versionId:
+          type: string
+        sessionId:
+          type: string
+        ipAddress:
+          type: string
+        notes:
+          type: string
+
+    # ============================================
+    # CREATE REQUESTS
+    # ============================================
+    PayElementCreateRequest:
+      type: object
+      required:
+        - elementCode
+        - elementName
+        - legalEntityId
+        - classification
+        - calculationType
+        - statutoryFlag
+        - taxableFlag
+        - effectiveStartDate
+      properties:
+        elementCode:
+          type: string
+          maxLength: 50
+        elementName:
+          type: string
+          maxLength: 100
+        legalEntityId:
+          type: string
+        classification:
+          type: string
+          enum: [EARNING, DEDUCTION, TAX, EMPLOYER_CONTRIBUTION]
+        calculationType:
+          type: string
+          enum: [FIXED, FORMULA, RATE_BASED, HOURS_BASED]
+        statutoryFlag:
+          type: boolean
+        taxableFlag:
+          type: boolean
+        formulaId:
+          type: string
+        rate:
+          type: number
+        amount:
+          type: number
+        effectiveStartDate:
+          type: string
+          format: date
+
+    PayElementUpdateRequest:
+      type: object
+      required:
+        - effectiveStartDate
+        - versionReason
+      properties:
+        elementName:
+          type: string
+        formulaId:
+          type: string
+        rate:
+          type: number
+        amount:
+          type: number
+        taxableFlag:
+          type: boolean
+        effectiveStartDate:
+          type: string
+          format: date
+        versionReason:
+          type: string
+          maxLength: 500
+
+    PayProfileCreateRequest:
+      type: object
+      required:
+        - profileCode
+        - profileName
+        - legalEntityId
+        - payFrequencyId
+      properties:
+        profileCode:
+          type: string
+          maxLength: 50
+        profileName:
+          type: string
+          maxLength: 100
+        legalEntityId:
+          type: string
+        payFrequencyId:
+          type: string
+        description:
+          type: string
+          maxLength: 500
+        effectiveStartDate:
+          type: string
+          format: date
+
+    PayProfileUpdateRequest:
+      type: object
+      required:
+        - effectiveStartDate
+        - versionReason
+      properties:
+        profileName:
+          type: string
+        payFrequencyId:
+          type: string
+        description:
+          type: string
+        effectiveStartDate:
+          type: string
+          format: date
+        versionReason:
+          type: string
+          maxLength: 500
+
+    PayElementAssignmentCreateRequest:
+      type: object
+      required:
+        - payElementId
+        - priority
+        - effectiveStartDate
+      properties:
+        payElementId:
+          type: string
+        priority:
+          type: integer
+          minimum: 1
+          maximum: 99
+        formulaOverride:
+          type: string
+          maxLength: 1000
+        rateOverride:
+          type: number
+        amountOverride:
+          type: number
+        effectiveStartDate:
+          type: string
+          format: date
+
+    PayFormulaCreateRequest:
+      type: object
+      required:
+        - formulaId
+        - formulaName
+        - expression
+      properties:
+        formulaId:
+          type: string
+          maxLength: 50
+        formulaName:
+          type: string
+          maxLength: 100
+        expression:
+          type: string
+          maxLength: 1000
+        description:
+          type: string
+          maxLength: 500
+
+    PayFormulaUpdateRequest:
+      type: object
+      properties:
+        formulaName:
+          type: string
+        expression:
+          type: string
+          maxLength: 1000
+        description:
+          type: string
+        isActive:
+          type: boolean
+
+    StatutoryRuleCreateRequest:
+      type: object
+      required:
+        - ruleCode
+        - ruleName
+        - statutoryType
+        - partyType
+        - rateType
+        - effectiveStartDate
+      properties:
+        ruleCode:
+          type: string
+          maxLength: 50
+        ruleName:
+          type: string
+          maxLength: 100
+        statutoryType:
+          type: string
+          enum: [BHXH, BHYT, BHTN, PIT]
+        partyType:
+          type: string
+          enum: [EMPLOYEE, EMPLOYER]
+        rateType:
+          type: string
+          enum: [FIXED_RATE, PROGRESSIVE, LOOKUP_BASED]
+        rate:
+          type: number
+        ceilingAmount:
+          type: number
+        personalExemption:
+          type: number
+        dependentExemption:
+          type: number
+        effectiveStartDate:
+          type: string
+          format: date
+
+    StatutoryRuleUpdateRequest:
+      type: object
+      required:
+        - effectiveStartDate
+        - versionReason
+      properties:
+        ruleName:
+          type: string
+        rate:
+          type: number
+        ceilingAmount:
+          type: number
+        personalExemption:
+          type: number
+        dependentExemption:
+          type: number
+        effectiveStartDate:
+          type: string
+          format: date
+        versionReason:
+          type: string
+
+    TaxBracketCreateRequest:
+      type: object
+      required:
+        - bracketNumber
+        - minAmount
+        - rate
+      properties:
+        bracketNumber:
+          type: integer
+        minAmount:
+          type: number
+        maxAmount:
+          type: number
+          nullable: true
+        rate:
+          type: number
+
+    PayCalendarCreateRequest:
+      type: object
+      required:
+        - calendarCode
+        - calendarName
+        - legalEntityId
+        - payFrequencyId
+        - fiscalYear
+        - startDate
+        - endDate
+      properties:
+        calendarCode:
+          type: string
+          maxLength: 50
+        calendarName:
+          type: string
+          maxLength: 100
+        legalEntityId:
+          type: string
+        payFrequencyId:
+          type: string
+        fiscalYear:
+          type: integer
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+
+    PayCalendarUpdateRequest:
+      type: object
+      properties:
+        calendarName:
+          type: string
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+
+    PayPeriodAdjustRequest:
+      type: object
+      properties:
+        periodStartDate:
+          type: string
+          format: date
+        periodEndDate:
+          type: string
+          format: date
+        cutOffDate:
+          type: string
+          format: date
+        payDate:
+          type: string
+          format: date
+        adjustmentReason:
+          type: string
+          maxLength: 200
+
+    PayGroupCreateRequest:
+      type: object
+      required:
+        - groupCode
+        - groupName
+        - payProfileId
+        - payCalendarId
+      properties:
+        groupCode:
+          type: string
+          maxLength: 50
+        groupName:
+          type: string
+          maxLength: 100
+        payProfileId:
+          type: string
+        payCalendarId:
+          type: string
+        description:
+          type: string
+
+    PayGroupUpdateRequest:
+      type: object
+      properties:
+        groupName:
+          type: string
+        payProfileId:
+          type: string
+        payCalendarId:
+          type: string
+        description:
+          type: string
+        isActive:
+          type: boolean
+
+    PayGroupAssignmentCreateRequest:
+      type: object
+      required:
+        - employeeId
+        - assignmentDate
+      properties:
+        employeeId:
+          type: string
+        assignmentDate:
+          type: string
+          format: date
+        assignmentReason:
+          type: string
+          enum: [NEW_HIRE, TRANSFER, PROMOTION, REORGANIZATION, PROFILE_CHANGE, OTHER]
+
+    GLMappingPolicyCreateRequest:
+      type: object
+      required:
+        - policyCode
+        - policyName
+        - payElementId
+      properties:
+        policyCode:
+          type: string
+        policyName:
+          type: string
+        payElementId:
+          type: string
+        description:
+          type: string
+
+    GLMappingPolicyUpdateRequest:
+      type: object
+      properties:
+        policyName:
+          type: string
+        description:
+          type: string
+        isActive:
+          type: boolean
+
+    GLMappingCreateRequest:
+      type: object
+      required:
+        - glAccountCode
+        - debitCredit
+        - percentage
+      properties:
+        glAccountCode:
+          type: string
+          maxLength: 20
+        glAccountName:
+          type: string
+        costCenter:
+          type: string
+        debitCredit:
+          type: string
+          enum: [DEBIT, CREDIT]
+        percentage:
+          type: number
+          minimum: 0
+          maximum: 100
+        description:
+          type: string
+
+    BankTemplateCreateRequest:
+      type: object
+      required:
+        - templateCode
+        - templateName
+        - bankCode
+        - fileFormat
+      properties:
+        templateCode:
+          type: string
+        templateName:
+          type: string
+        bankCode:
+          type: string
+        bankName:
+          type: string
+        fileFormat:
+          type: string
+          enum: [CSV, FIXED, XML, JSON]
+        delimiter:
+          type: string
+        encoding:
+          type: string
+        headerRows:
+          type: integer
+        footerRows:
+          type: integer
+
+    BankTemplateUpdateRequest:
+      type: object
+      properties:
+        templateName:
+          type: string
+        bankName:
+          type: string
+        fileFormat:
+          type: string
+        delimiter:
+          type: string
+        encoding:
+          type: string
+        headerRows:
+          type: integer
+        footerRows:
+          type: integer
+        isActive:
+          type: boolean
+
+    FieldMappingCreateRequest:
+      type: object
+      required:
+        - sourceField
+        - targetField
+        - position
+        - isRequired
+      properties:
+        sourceField:
+          type: string
+        targetField:
+          type: string
+        position:
+          type: integer
+        format:
+          type: string
+        length:
+          type: integer
+        padding:
+          type: string
+        defaultValue:
+          type: string
+        isRequired:
+          type: boolean
+
+    ValidationRuleCreateRequest:
+      type: object
+      required:
+        - ruleCode
+        - ruleName
+        - validationType
+        - targetEntity
+        - severity
+        - messageTemplate
+      properties:
+        ruleCode:
+          type: string
+        ruleName:
+          type: string
+        validationType:
+          type: string
+          enum: [FIELD, CROSS_FIELD, ENTITY, CROSS_ENTITY, BUSINESS_RULE]
+        targetEntity:
+          type: string
+        targetField:
+          type: string
+        severity:
+          type: string
+          enum: [ERROR, WARNING, INFO]
+        messageTemplate:
+          type: string
+
+    ValidationRuleUpdateRequest:
+      type: object
+      properties:
+        ruleName:
+          type: string
+        messageTemplate:
+          type: string
+        isActive:
+          type: boolean
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+security:
+  - bearerAuth: []

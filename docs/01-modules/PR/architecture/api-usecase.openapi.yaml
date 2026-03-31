@@ -1,0 +1,1519 @@
+openapi: 3.0.3
+info:
+  title: Payroll API - Use Case Driven
+  description: |
+    Use-case driven API endpoints for the Payroll Configuration module.
+    These endpoints are derived from business flows and use business intent naming.
+
+    **Scope**: Configuration only - NOT runtime calculation engine
+
+    **Vietnam Focus**: All statutory rules are Vietnam-specific (BHXH, BHYT, BHTN, PIT)
+
+    **SCD-2 Versioning**: PayElement, PayProfile, StatutoryRule require version history
+  version: 1.0.0
+  contact:
+    name: xTalent API Support
+    email: api-support@xtalent.example.com
+
+servers:
+  - url: https://api.xtalent.example.com/v1/pr
+    description: Production server
+  - url: https://api-staging.xtalent.example.com/v1/pr
+    description: Staging server
+
+tags:
+  - name: Pay Elements
+    description: Pay element configuration and versioning
+  - name: Pay Profiles
+    description: Pay profile creation with element assignment
+  - name: Statutory Rules
+    description: Vietnam statutory compliance configuration
+  - name: Pay Calendars
+    description: Pay period scheduling and generation
+  - name: Pay Groups
+    description: Employee-to-payroll assignment
+  - name: Finance Integration
+    description: GL mappings and bank file templates
+  - name: Validation
+    description: Configuration validation and conflict detection
+  - name: Audit
+    description: Audit trail query and export
+
+paths:
+  # ============================================
+  # USE CASE: Create Pay Element (UC-PE-001)
+  # ============================================
+  /pay-elements:
+    post:
+      tags:
+        - Pay Elements
+      summary: Create a new pay element
+      description: |
+        Creates a new pay element with version 1 (SCD-2).
+
+        **Business Rules**:
+        - BR-PE-001: Unique element code per legal entity
+        - BR-VM-001: SCD-2 pattern enforced
+        - BR-VM-002: Single current version flag
+
+        **Use Case**: UC-PE-001 Create Pay Element
+      operationId: createPayElement
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePayElementRequest'
+            examples:
+              fixed_salary:
+                summary: Fixed salary element
+                value:
+                  elementCode: SALARY_BASIC
+                  elementName: Basic Salary
+                  legalEntityId: VN_HQ
+                  classification: EARNING
+                  calculationType: FIXED
+                  statutoryFlag: false
+                  taxableFlag: true
+                  effectiveStartDate: "2026-04-01"
+              formula_element:
+                summary: Formula-based overtime
+                value:
+                  elementCode: OT_REGULAR
+                  elementName: Regular Overtime
+                  legalEntityId: VN_HQ
+                  classification: EARNING
+                  calculationType: FORMULA
+                  statutoryFlag: false
+                  taxableFlag: true
+                  formulaId: FORM_OT_150
+                  effectiveStartDate: "2026-04-01"
+      responses:
+        '201':
+          description: Pay element created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayElementResponse'
+        '400':
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '409':
+          description: Duplicate element code
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ============================================
+  # USE CASE: Update Pay Element with Versioning (UC-PE-002)
+  # ============================================
+  /pay-elements/{elementCode}/versions:
+    post:
+      tags:
+        - Pay Elements
+      summary: Create new version of pay element
+      description: |
+        Creates a new version of pay element (SCD-2).
+        Previous version is closed by setting effective_end_date.
+
+        **Business Rules**:
+        - BR-VM-001: SCD-2 pattern enforced
+        - BR-VM-003: Change reason required
+        - BR-VM-005: Version continuity (no gaps)
+
+        **Use Case**: UC-PE-002 Update Pay Element with Versioning
+      operationId: createPayElementVersion
+      parameters:
+        - name: elementCode
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[A-Z][A-Z0-9_]{1,49}$
+          description: Pay element code
+        - name: legalEntityId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Legal entity ID for multi-element lookup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePayElementVersionRequest'
+            example:
+              rate: 0.08
+              effectiveStartDate: "2026-07-01"
+              versionReason: "Updated rate per government regulation"
+      responses:
+        '201':
+          description: New version created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayElementResponse'
+        '400':
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '404':
+          description: Pay element not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      tags:
+        - Pay Elements
+      summary: List all versions of a pay element
+      description: |
+        Returns version history for a pay element.
+
+        **Use Case**: UC-PE-003 Query Pay Element Versions
+      operationId: listPayElementVersions
+      parameters:
+        - name: elementCode
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: legalEntityId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of versions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PayElementResponse'
+
+  # ============================================
+  # USE CASE: Query Pay Element by Effective Date
+  # ============================================
+  /pay-elements/query:
+    get:
+      tags:
+        - Pay Elements
+      summary: Query pay element effective on a date
+      description: |
+        Returns the pay element version effective on the specified date.
+
+        **Use Case**: UC-PE-004 Query Pay Element by Effective Date
+      operationId: queryPayElementByDate
+      parameters:
+        - name: legalEntityId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: effectiveDate
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: classification
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [EARNING, DEDUCTION, TAX, EMPLOYER_CONTRIBUTION]
+      responses:
+        '200':
+          description: List of elements effective on date
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PayElementResponse'
+
+  # ============================================
+  # USE CASE: Create Pay Profile with Element Assignment (UC-PP-001)
+  # ============================================
+  /pay-profiles:
+    post:
+      tags:
+        - Pay Profiles
+      summary: Create pay profile with element assignments
+      description: |
+        Creates a pay profile and assigns pay elements in one operation.
+
+        **Business Rules**:
+        - BR-PP-001: Unique profile code per legal entity
+        - BR-PP-002: Element priority (1-99)
+        - BR-PP-003: No duplicate elements in profile
+        - BR-PP-004: Only active elements assignable
+
+        **Use Case**: UC-PP-001 Create Pay Profile with Element Assignment
+      operationId: createPayProfile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePayProfileRequest'
+            example:
+              profileCode: PROFILE_STAFF
+              profileName: Staff Profile
+              legalEntityId: VN_HQ
+              payFrequencyId: MONTHLY
+              elementAssignments:
+                - payElementId: SALARY_BASIC
+                  priority: 10
+                  effectiveStartDate: "2026-04-01"
+                - payElementId: OT_REGULAR
+                  priority: 20
+                  effectiveStartDate: "2026-04-01"
+              statutoryRuleAssignments:
+                - statutoryRuleId: BHXH_EE
+                  effectiveStartDate: "2026-04-01"
+      responses:
+        '201':
+          description: Pay profile created with assignments
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayProfileResponse'
+        '400':
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+
+  # ============================================
+  # USE CASE: Assign Pay Element to Profile (UC-PP-002)
+  # ============================================
+  /pay-profiles/{profileCode}/assign-element:
+    post:
+      tags:
+        - Pay Profiles
+      summary: Assign pay element to existing profile
+      description: |
+        Assigns a pay element to an existing pay profile.
+
+        **Business Rules**:
+        - BR-PP-003: No duplicate elements
+        - BR-PP-004: Only active elements
+
+        **Use Case**: UC-PP-002 Assign Pay Element to Profile
+      operationId: assignPayElementToProfile
+      parameters:
+        - name: profileCode
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: legalEntityId
+          in: query
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssignPayElementRequest'
+            example:
+              payElementId: BONUS_ANNUAL
+              priority: 40
+              formulaOverride: "baseSalary * 0.1"
+              effectiveStartDate: "2026-04-01"
+      responses:
+        '200':
+          description: Element assigned successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayProfileResponse'
+        '400':
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+
+  # ============================================
+  # USE CASE: Configure PIT Progressive Brackets (UC-SR-001)
+  # ============================================
+  /statutory-rules/{ruleCode}/configure-pit-brackets:
+    put:
+      tags:
+        - Statutory Rules
+      summary: Configure PIT progressive tax brackets
+      description: |
+        Configures progressive tax brackets for PIT statutory rule.
+
+        **Business Rules**:
+        - BR-SR-003: Brackets must cover full income range
+        - Last bracket has null maxAmount
+
+        **Vietnam PIT Reference (2026)**:
+        - Bracket 1: 0-5M VND @ 5%
+        - Bracket 2: 5M-10M VND @ 10%
+        - Bracket 3: 10M-18M VND @ 15%
+        - Bracket 4: 18M-32M VND @ 20%
+        - Bracket 5: 32M-52M VND @ 25%
+        - Bracket 6: 52M-80M VND @ 30%
+        - Bracket 7: 80M+ @ 35%
+
+        **Use Case**: UC-SR-001 Configure PIT Progressive Brackets
+      operationId: configurePITBrackets
+      parameters:
+        - name: ruleCode
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfigurePITBracketsRequest'
+            example:
+              brackets:
+                - bracketNumber: 1
+                  minAmount: 0
+                  maxAmount: 5000000
+                  rate: 0.05
+                - bracketNumber: 2
+                  minAmount: 5000000
+                  maxAmount: 10000000
+                  rate: 0.10
+                - bracketNumber: 7
+                  minAmount: 80000000
+                  maxAmount: null
+                  rate: 0.35
+              personalExemption: 11000000
+              dependentExemption: 4400000
+      responses:
+        '200':
+          description: PIT brackets configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatutoryRuleResponse'
+        '400':
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+
+  # ============================================
+  # USE CASE: Generate Pay Periods (UC-PC-001)
+  # ============================================
+  /pay-calendars/{calendarCode}/generate-periods:
+    post:
+      tags:
+        - Pay Calendars
+      summary: Generate pay periods for calendar
+      description: |
+        Auto-generates pay periods based on frequency and fiscal year.
+
+        **Period Generation**:
+        - MONTHLY: 12 periods
+        - SEMI_MONTHLY: 24 periods
+        - BI_WEEKLY: 26 periods
+        - WEEKLY: 52 periods
+
+        **Use Case**: UC-PC-001 Generate Pay Periods
+      operationId: generatePayPeriods
+      parameters:
+        - name: calendarCode
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GeneratePeriodsRequest'
+            example:
+              startDate: "2026-01-01"
+              endDate: "2026-12-31"
+              defaultCutOffDays: -5
+              defaultPayDays: 5
+      responses:
+        '200':
+          description: Periods generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayCalendarWithPeriodsResponse'
+        '400':
+          description: Invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ============================================
+  # USE CASE: Assign Employee to Pay Group (UC-PG-001)
+  # ============================================
+  /pay-groups/{groupCode}/assign-employee:
+    post:
+      tags:
+        - Pay Groups
+      summary: Assign employee to pay group
+      description: |
+        Assigns an employee (Worker) to a pay group.
+
+        **Business Rules**:
+        - BR-PG-001: Single employee assignment (one group at a time)
+        - BR-PG-002: Active profile required
+        - BR-PG-003: Active calendar required
+
+        **Use Case**: UC-PG-001 Assign Employee to Pay Group
+      operationId: assignEmployeeToPayGroup
+      parameters:
+        - name: groupCode
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssignEmployeeRequest'
+            example:
+              employeeId: EMP001
+              assignmentDate: "2026-04-01"
+              assignmentReason: NEW_HIRE
+      responses:
+        '200':
+          description: Employee assigned successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayGroupResponse'
+        '400':
+          description: Validation failed - employee already assigned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+
+  # ============================================
+  # USE CASE: Validate Formula (UC-FM-001)
+  # ============================================
+  /formulas/validate:
+    post:
+      tags:
+        - Pay Elements
+      summary: Validate formula expression
+      description: |
+        Validates formula syntax and checks for circular references.
+
+        **Validation Checks**:
+        - Syntax validity
+        - Element references exist
+        - No circular dependencies
+        - Division safety
+
+        **Use Case**: UC-FM-001 Validate Formula
+      operationId: validateFormula
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidateFormulaRequest'
+            example:
+              expression: "hours * rate * 1.5"
+              referencedElements:
+                - OT_REGULAR
+                - SALARY_BASIC
+      responses:
+        '200':
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FormulaValidationResponse'
+
+  # ============================================
+  # USE CASE: Export Configuration Snapshot (Integration)
+  # ============================================
+  /integration/snapshot:
+    get:
+      tags:
+        - Integration
+      summary: Export configuration snapshot for Calculation Engine
+      description: |
+        Generates a complete configuration snapshot for payroll calculation.
+
+        **Snapshot Includes**:
+        - All active pay elements (current versions)
+        - All active pay profiles with assignments
+        - All active statutory rules
+        - Pay calendar periods
+
+        **Use Case**: Integration - Configuration Snapshot Export
+      operationId: getConfigurationSnapshot
+      parameters:
+        - name: legalEntityId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: effectiveDate
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: includeInactiveElements
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Configuration snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigurationSnapshotResponse'
+
+  # ============================================
+  # USE CASE: Detect Configuration Conflicts
+  # ============================================
+  /validations/detect-conflicts:
+    post:
+      tags:
+        - Validation
+      summary: Detect configuration conflicts
+      description: |
+        Detects conflicts across configuration entities.
+
+        **Conflict Types**:
+        - VERSION_OVERLAP: Overlapping SCD-2 effective dates
+        - DUPLICATE_ENTITY: Duplicate entity in same scope
+        - CIRCULAR_REFERENCE: Formula circular dependency
+        - REFERENCE_MISSING: Referenced entity not found
+        - IN_USE_CONFLICT: Entity in use preventing delete
+
+        **Use Case**: UC-VA-001 Detect Configuration Conflicts
+      operationId: detectConflicts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DetectConflictsRequest'
+            example:
+              scope: LEGAL_ENTITY
+              scopeId: VN_HQ
+              checkTypes:
+                - VERSION_OVERLAP
+                - CIRCULAR_REFERENCE
+      responses:
+        '200':
+          description: Conflict detection results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConflictDetectionResponse'
+
+  # ============================================
+  # USE CASE: Query Audit Trail (UC-AT-001)
+  # ============================================
+  /audit/query:
+    get:
+      tags:
+        - Audit
+      summary: Query audit trail entries
+      description: |
+        Queries audit entries by date range, entity, or user.
+
+        **Use Case**: UC-AT-001 Query Audit Trail
+      operationId: queryAuditTrail
+      parameters:
+        - name: dateRangeStart
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: dateRangeEnd
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: entityType
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [PayElement, PayProfile, PayFormula, StatutoryRule, PayCalendar, PayGroup, GLMappingPolicy, BankTemplate]
+        - name: entityId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: changedBy
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: operation
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [CREATE, UPDATE, DELETE, ASSIGN, UNASSIGN, VERSION_CREATE]
+      responses:
+        '200':
+          description: Audit entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AuditEntryResponse'
+
+  # ============================================
+  # USE CASE: Export Audit Report
+  # ============================================
+  /audit/export:
+    post:
+      tags:
+        - Audit
+      summary: Export audit report
+      description: |
+        Generates and exports an audit report in specified format.
+
+        **Use Case**: UC-AT-002 Export Audit Report
+      operationId: exportAuditReport
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExportAuditReportRequest'
+            example:
+              reportName: "Payroll Configuration Audit Q1 2026"
+              reportType: COMPLIANCE
+              dateRangeStart: "2026-01-01"
+              dateRangeEnd: "2026-03-31"
+              format: PDF
+      responses:
+        '200':
+          description: Report generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditReportResponse'
+
+  # ============================================
+  # USE CASE: Export GL Mappings
+  # ============================================
+  /gl-mappings/export:
+    get:
+      tags:
+        - Finance Integration
+      summary: Export GL mappings for Finance System
+      description: |
+        Exports GL account mappings in CSV or XML format.
+
+        **Use Case**: Integration - GL Mapping Export
+      operationId: exportGLMappings
+      parameters:
+        - name: legalEntityId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: format
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [CSV, XML]
+      responses:
+        '200':
+          description: GL mappings export file
+          content:
+            text/csv:
+              schema:
+                type: string
+            application/xml:
+              schema:
+                type: string
+
+components:
+  schemas:
+    # ============================================
+    # REQUEST SCHEMAS
+    # ============================================
+
+    CreatePayElementRequest:
+      type: object
+      required:
+        - elementCode
+        - elementName
+        - legalEntityId
+        - classification
+        - calculationType
+        - statutoryFlag
+        - taxableFlag
+        - effectiveStartDate
+      properties:
+        elementCode:
+          type: string
+          pattern: ^[A-Z][A-Z0-9_]{1,49}$
+          maxLength: 50
+          description: Unique identifier for pay element
+        elementName:
+          type: string
+          maxLength: 100
+        legalEntityId:
+          type: string
+          description: Reference to LegalEntity (CO module)
+        classification:
+          type: string
+          enum: [EARNING, DEDUCTION, TAX, EMPLOYER_CONTRIBUTION]
+        calculationType:
+          type: string
+          enum: [FIXED, FORMULA, RATE_BASED, HOURS_BASED]
+        statutoryFlag:
+          type: boolean
+        taxableFlag:
+          type: boolean
+        formulaId:
+          type: string
+          description: Reference to PayFormula for FORMULA type
+        rate:
+          type: number
+          format: decimal
+          minimum: 0
+          maximum: 1
+          description: Percentage rate (0-1)
+        amount:
+          type: number
+          format: decimal
+          minimum: 0
+          description: Fixed amount in VND
+        effectiveStartDate:
+          type: string
+          format: date
+
+    CreatePayElementVersionRequest:
+      type: object
+      required:
+        - effectiveStartDate
+        - versionReason
+      properties:
+        elementName:
+          type: string
+          maxLength: 100
+        formulaId:
+          type: string
+        rate:
+          type: number
+          minimum: 0
+          maximum: 1
+        amount:
+          type: number
+          minimum: 0
+        effectiveStartDate:
+          type: string
+          format: date
+        versionReason:
+          type: string
+          maxLength: 500
+
+    CreatePayProfileRequest:
+      type: object
+      required:
+        - profileCode
+        - profileName
+        - legalEntityId
+        - payFrequencyId
+      properties:
+        profileCode:
+          type: string
+          pattern: ^[A-Z][A-Z0-9_]{1,49}$
+          maxLength: 50
+        profileName:
+          type: string
+          maxLength: 100
+        legalEntityId:
+          type: string
+        payFrequencyId:
+          type: string
+        description:
+          type: string
+          maxLength: 500
+        elementAssignments:
+          type: array
+          items:
+            $ref: '#/components/schemas/PayElementAssignmentRequest'
+        statutoryRuleAssignments:
+          type: array
+          items:
+            $ref: '#/components/schemas/StatutoryRuleAssignmentRequest'
+        effectiveStartDate:
+          type: string
+          format: date
+
+    PayElementAssignmentRequest:
+      type: object
+      required:
+        - payElementId
+        - priority
+        - effectiveStartDate
+      properties:
+        payElementId:
+          type: string
+        priority:
+          type: integer
+          minimum: 1
+          maximum: 99
+        formulaOverride:
+          type: string
+          maxLength: 1000
+        rateOverride:
+          type: number
+          minimum: 0
+          maximum: 1
+        amountOverride:
+          type: number
+          minimum: 0
+        effectiveStartDate:
+          type: string
+          format: date
+
+    StatutoryRuleAssignmentRequest:
+      type: object
+      required:
+        - statutoryRuleId
+        - effectiveStartDate
+      properties:
+        statutoryRuleId:
+          type: string
+        effectiveStartDate:
+          type: string
+          format: date
+
+    AssignPayElementRequest:
+      type: object
+      required:
+        - payElementId
+        - priority
+        - effectiveStartDate
+      properties:
+        payElementId:
+          type: string
+        priority:
+          type: integer
+          minimum: 1
+          maximum: 99
+        formulaOverride:
+          type: string
+          maxLength: 1000
+        effectiveStartDate:
+          type: string
+          format: date
+
+    ConfigurePITBracketsRequest:
+      type: object
+      required:
+        - brackets
+      properties:
+        brackets:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaxBracketRequest'
+        personalExemption:
+          type: number
+          description: Personal deduction amount (VND)
+        dependentExemption:
+          type: number
+          description: Dependent deduction per person (VND)
+
+    TaxBracketRequest:
+      type: object
+      required:
+        - bracketNumber
+        - minAmount
+        - rate
+      properties:
+        bracketNumber:
+          type: integer
+          minimum: 1
+        minAmount:
+          type: number
+          minimum: 0
+        maxAmount:
+          type: number
+          nullable: true
+          description: Null for last bracket
+        rate:
+          type: number
+          minimum: 0
+          maximum: 1
+
+    GeneratePeriodsRequest:
+      type: object
+      required:
+        - startDate
+        - endDate
+      properties:
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        defaultCutOffDays:
+          type: integer
+          description: Days before period end for cut-off
+        defaultPayDays:
+          type: integer
+          description: Days after period end for pay date
+
+    AssignEmployeeRequest:
+      type: object
+      required:
+        - employeeId
+        - assignmentDate
+      properties:
+        employeeId:
+          type: string
+          description: Reference to Worker (CO module)
+        assignmentDate:
+          type: string
+          format: date
+        assignmentReason:
+          type: string
+          enum: [NEW_HIRE, TRANSFER, PROMOTION, REORGANIZATION, PROFILE_CHANGE, OTHER]
+
+    ValidateFormulaRequest:
+      type: object
+      required:
+        - expression
+      properties:
+        expression:
+          type: string
+          maxLength: 1000
+        referencedElements:
+          type: array
+          items:
+            type: string
+
+    DetectConflictsRequest:
+      type: object
+      required:
+        - scope
+        - scopeId
+      properties:
+        scope:
+          type: string
+          enum: [TENANT, LEGAL_ENTITY, MODULE]
+        scopeId:
+          type: string
+        checkTypes:
+          type: array
+          items:
+            type: string
+            enum: [VERSION_OVERLAP, DUPLICATE_ENTITY, CIRCULAR_REFERENCE, REFERENCE_MISSING, IN_USE_CONFLICT]
+
+    ExportAuditReportRequest:
+      type: object
+      required:
+        - reportName
+        - reportType
+        - dateRangeStart
+        - dateRangeEnd
+        - format
+      properties:
+        reportName:
+          type: string
+          maxLength: 100
+        reportType:
+          type: string
+          enum: [SUMMARY, DETAIL, COMPARISON, COMPLIANCE]
+        dateRangeStart:
+          type: string
+          format: date
+        dateRangeEnd:
+          type: string
+          format: date
+        entityTypes:
+          type: array
+          items:
+            type: string
+        format:
+          type: string
+          enum: [CSV, PDF, JSON]
+
+    # ============================================
+    # RESPONSE SCHEMAS
+    # ============================================
+
+    PayElementResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        elementCode:
+          type: string
+        elementName:
+          type: string
+        legalEntityId:
+          type: string
+        classification:
+          type: string
+          enum: [EARNING, DEDUCTION, TAX, EMPLOYER_CONTRIBUTION]
+        calculationType:
+          type: string
+          enum: [FIXED, FORMULA, RATE_BASED, HOURS_BASED]
+        statutoryFlag:
+          type: boolean
+        taxableFlag:
+          type: boolean
+        formulaId:
+          type: string
+        formulaName:
+          type: string
+        rate:
+          type: number
+        amount:
+          type: number
+        isActive:
+          type: boolean
+        effectiveStartDate:
+          type: string
+          format: date
+        effectiveEndDate:
+          type: string
+          format: date
+          nullable: true
+        isCurrentFlag:
+          type: boolean
+        versionReason:
+          type: string
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    PayProfileResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        profileCode:
+          type: string
+        profileName:
+          type: string
+        legalEntityId:
+          type: string
+        payFrequencyId:
+          type: string
+        description:
+          type: string
+        isActive:
+          type: boolean
+        effectiveStartDate:
+          type: string
+          format: date
+        effectiveEndDate:
+          type: string
+          format: date
+          nullable: true
+        isCurrentFlag:
+          type: boolean
+        elementAssignments:
+          type: array
+          items:
+            $ref: '#/components/schemas/PayElementAssignmentResponse'
+        statutoryRuleAssignments:
+          type: array
+          items:
+            $ref: '#/components/schemas/StatutoryRuleAssignmentResponse'
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    PayElementAssignmentResponse:
+      type: object
+      properties:
+        payElementId:
+          type: string
+        payElementName:
+          type: string
+        priority:
+          type: integer
+        formulaOverride:
+          type: string
+        effectiveStartDate:
+          type: string
+          format: date
+
+    StatutoryRuleAssignmentResponse:
+      type: object
+      properties:
+        statutoryRuleId:
+          type: string
+        statutoryRuleName:
+          type: string
+        effectiveStartDate:
+          type: string
+          format: date
+
+    StatutoryRuleResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        ruleCode:
+          type: string
+        ruleName:
+          type: string
+        statutoryType:
+          type: string
+          enum: [BHXH, BHYT, BHTN, PIT]
+        partyType:
+          type: string
+          enum: [EMPLOYEE, EMPLOYER]
+        rateType:
+          type: string
+          enum: [FIXED_RATE, PROGRESSIVE, LOOKUP_BASED]
+        rate:
+          type: number
+        ceilingAmount:
+          type: number
+        personalExemption:
+          type: number
+        dependentExemption:
+          type: number
+        taxBrackets:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaxBracketResponse'
+        effectiveStartDate:
+          type: string
+          format: date
+        effectiveEndDate:
+          type: string
+          format: date
+          nullable: true
+        isCurrentFlag:
+          type: boolean
+
+    TaxBracketResponse:
+      type: object
+      properties:
+        bracketNumber:
+          type: integer
+        minAmount:
+          type: number
+        maxAmount:
+          type: number
+          nullable: true
+        rate:
+          type: number
+
+    PayCalendarWithPeriodsResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        calendarCode:
+          type: string
+        calendarName:
+          type: string
+        legalEntityId:
+          type: string
+        payFrequencyId:
+          type: string
+        fiscalYear:
+          type: integer
+        periods:
+          type: array
+          items:
+            $ref: '#/components/schemas/PayPeriodResponse'
+
+    PayPeriodResponse:
+      type: object
+      properties:
+        periodId:
+          type: string
+        periodNumber:
+          type: integer
+        periodName:
+          type: string
+        periodStartDate:
+          type: string
+          format: date
+        periodEndDate:
+          type: string
+          format: date
+        cutOffDate:
+          type: string
+          format: date
+        payDate:
+          type: string
+          format: date
+        status:
+          type: string
+          enum: [OPEN, CLOSED, PAID, REOPENED]
+
+    PayGroupResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        groupCode:
+          type: string
+        groupName:
+          type: string
+        payProfileId:
+          type: string
+        payProfileName:
+          type: string
+        payCalendarId:
+          type: string
+        payCalendarName:
+          type: string
+        assignments:
+          type: array
+          items:
+            $ref: '#/components/schemas/PayGroupAssignmentResponse'
+
+    PayGroupAssignmentResponse:
+      type: object
+      properties:
+        assignmentId:
+          type: string
+        employeeId:
+          type: string
+        employeeName:
+          type: string
+        assignmentDate:
+          type: string
+          format: date
+        isCurrent:
+          type: boolean
+
+    FormulaValidationResponse:
+      type: object
+      properties:
+        isValid:
+          type: boolean
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              errorCode:
+                type: string
+              message:
+                type: string
+              position:
+                type: integer
+        warnings:
+          type: array
+          items:
+            type: object
+            properties:
+              warningCode:
+                type: string
+              message:
+                type: string
+
+    ConfigurationSnapshotResponse:
+      type: object
+      properties:
+        snapshotId:
+          type: string
+        legalEntityId:
+          type: string
+        effectiveDate:
+          type: string
+          format: date
+        generatedAt:
+          type: string
+          format: date-time
+        payElements:
+          type: array
+          items:
+            $ref: '#/components/schemas/PayElementResponse'
+        payProfiles:
+          type: array
+          items:
+            $ref: '#/components/schemas/PayProfileResponse'
+        statutoryRules:
+          type: array
+          items:
+            $ref: '#/components/schemas/StatutoryRuleResponse'
+
+    ConflictDetectionResponse:
+      type: object
+      properties:
+        hasConflicts:
+          type: boolean
+        conflicts:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConflictResponse'
+
+    ConflictResponse:
+      type: object
+      properties:
+        conflictId:
+          type: string
+        conflictType:
+          type: string
+          enum: [VERSION_OVERLAP, DUPLICATE_ENTITY, CIRCULAR_REFERENCE, REFERENCE_MISSING, IN_USE_CONFLICT]
+        entityType1:
+          type: string
+        entityId1:
+          type: string
+        entityType2:
+          type: string
+        entityId2:
+          type: string
+        description:
+          type: string
+        severity:
+          type: string
+          enum: [CRITICAL, HIGH, MEDIUM, LOW]
+        suggestedResolution:
+          type: string
+
+    AuditEntryResponse:
+      type: object
+      properties:
+        entryId:
+          type: string
+        entityType:
+          type: string
+        entityId:
+          type: string
+        entityName:
+          type: string
+        operation:
+          type: string
+          enum: [CREATE, UPDATE, DELETE, ASSIGN, UNASSIGN, VERSION_CREATE]
+        changedBy:
+          type: string
+        changedByName:
+          type: string
+        changedAt:
+          type: string
+          format: date-time
+        oldValue:
+          type: object
+        newValue:
+          type: object
+        changedFields:
+          type: array
+          items:
+            type: string
+        changeReason:
+          type: string
+        versionId:
+          type: string
+
+    AuditReportResponse:
+      type: object
+      properties:
+        reportId:
+          type: string
+        reportName:
+          type: string
+        reportType:
+          type: string
+        generatedAt:
+          type: string
+          format: date-time
+        entryCount:
+          type: integer
+        filePath:
+          type: string
+
+    # ============================================
+    # ERROR SCHEMAS
+    # ============================================
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+    ValidationErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: VALIDATION_FAILED
+        message:
+          type: string
+        validationResults:
+          type: array
+          items:
+            type: object
+            properties:
+              ruleCode:
+                type: string
+              severity:
+                type: string
+                enum: [ERROR, WARNING, INFO]
+              passed:
+                type: boolean
+              message:
+                type: string
+              fieldPath:
+                type: string
+              suggestedFix:
+                type: string
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+security:
+  - bearerAuth: []
