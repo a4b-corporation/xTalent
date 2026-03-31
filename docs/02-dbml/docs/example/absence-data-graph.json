@@ -1,0 +1,636 @@
+{
+  "__meta": {
+    "module": "xTalent Time & Absence — Absence Sub-module",
+    "version": "v5.1 (30Mar2026)",
+    "description": "Data graph từ Employee → Absence. Dùng JSONCrack (jsoncrack.com) để visualize.",
+    "tables_referenced": [
+      "employment.employee",
+      "eligibility.eligibility_profile",
+      "absence.leave_instant",
+      "absence.leave_instant_detail",
+      "absence.leave_class",
+      "absence.leave_type",
+      "absence.absence_rule",
+      "absence.class_rule_assignment",
+      "absence.leave_request",
+      "absence.leave_reservation",
+      "absence.leave_movement"
+    ]
+  },
+
+  "employee": {
+    "__table": "employment.employee",
+    "__note": "Nhân viên — root node của toàn bộ absence data flow",
+    "id": "emp-001",
+    "employee_code": "VNG-2021-0042",
+    "full_name": "Nguyễn Minh Tuấn",
+    "status_code": "ACTIVE",
+    "hire_date": "2021-03-15",
+    "employee_type_code": "FULL_TIME",
+    "legal_entity_id": "le-vn-hcmc-01",
+    "termination_date": null,
+
+    "eligibility_profile": {
+      "__table": "eligibility.eligibility_profile",
+      "__note": "Tổng hợp CÁC THUỘC TÍNH của employee ảnh hưởng đến quyền lợi nghỉ phép. Node này là đầu vào của Core Eligibility Engine để xác định WHO gets WHICH leave_class.",
+      "__ref": "leave_class.default_eligibility_profile_id → eligibility_profile.id",
+      "id": "ep-vn-fulltime-senior",
+      "code": "VN_FULL_SENIOR",
+      "name": "Vietnam Full-time Senior (5+ years)",
+      "description": "Áp dụng cho nhân viên toàn thời gian, VLC tại VN, thâm niên ≥ 5 năm",
+
+      "scope": {
+        "__note": "Phạm vi địa lý & pháp lý xác định bộ luật áp dụng",
+        "country_code": "VN",
+        "legal_entity_id": "le-vn-hcmc-01",
+        "legal_entity_name": "VNG Corporation (TP.HCM)",
+        "labor_law_ref": "VLC 2019"
+      },
+
+      "contract_profile": {
+        "__note": "Loại hợp đồng quyết định tư cách hưởng nghỉ phép (VLC 2019 Art. 13)",
+        "contract_type": "INDEFINITE",
+        "probation_status": "COMPLETED",
+        "probation_end_date": "2021-06-15",
+        "is_probation_period": false
+      },
+
+      "seniority_profile": {
+        "__note": "Thâm niên ảnh hưởng đến số ngày phép năm (VLC 2019 Art. 113: 12d base + 1d/5 years)",
+        "years_of_service": 5,
+        "service_start_date": "2021-03-15",
+        "seniority_band": "SENIOR_5_PLUS",
+        "extra_annual_leave_days": 1
+      },
+
+      "compensation_grade": {
+        "__note": "Bậc lương ảnh hưởng đến quyền lợi sick leave và maternity pay",
+        "grade_code": "G4",
+        "grade_name": "Senior Engineer",
+        "salary_basis": "MONTHLY"
+      },
+
+      "org_assignment": {
+        "__note": "BU/department assignment — dùng để áp dụng leave class theo org scope",
+        "department_id": "bu-tech-platform",
+        "department_name": "Platform Engineering",
+        "position_code": "SWE-SR-04"
+      },
+
+      "social_insurance": {
+        "__note": "Tham gia BHXH — điều kiện để hưởng sick leave, maternity leave (Law on Social Insurance)",
+        "enrolled": true,
+        "enrollment_date": "2021-04-01",
+        "months_contributed": 60
+      },
+
+      "resolved_eligibility_flags": {
+        "__note": "Kết quả evaluate của Core Eligibility Engine — xác định WHICH leave_classes emp này được hưởng",
+        "eligible_for_annual_leave": true,
+        "eligible_for_sick_leave": true,
+        "eligible_for_maternity_leave": false,
+        "eligible_for_unpaid_leave": true,
+        "eligible_for_comp_time": true,
+        "annual_leave_entitlement_days": 13
+      }
+    },
+
+    "leave_instants": {
+      "__table": "absence.leave_instant[]",
+      "__note": "Bản ghi số dư nghỉ phép của nhân viên. Mỗi leave_instant gắn với 1 leave_class cụ thể. Một nhân viên có thể có nhiều leave_instants cho các loại phép khác nhau.",
+      "__ref": "leave_instant.employee_id = employee.id",
+
+      "annual_leave": {
+        "__table": "absence.leave_instant",
+        "__note": "Phép năm — ANNUAL LEAVE. VLC 2019 Art. 113: 12d base + 1d/5-year seniority bonus",
+        "id": "li-emp001-annual-2026",
+        "state_code": "ACTIVE",
+        "current_qty": 13.0,
+        "hold_qty": 3.0,
+        "available_qty": 10.0,
+        "limit_yearly": 13.0,
+        "limit_per_case": null,
+        "used_ytd": 0.0,
+        "used_mtd": 0.0,
+        "effective_start": "2026-01-01",
+        "effective_end": "2026-12-31",
+        "unit_code": "DAY",
+
+        "lots": {
+          "__table": "absence.leave_instant_detail[]",
+          "__note": "Chi tiết các lot phép — FEFO (First-Expired-First-Out) tracking. Mỗi lot có ngày hết hạn riêng.",
+          "annual_base_grant_2026": {
+            "id": "lid-001",
+            "lot_kind": "GRANT",
+            "eff_date": "2026-01-01",
+            "expire_date": "2026-12-31",
+            "lot_qty": 12.0,
+            "used_qty": 0.0,
+            "priority": 1,
+            "tag": "ANNUAL_BASE_VLC113"
+          },
+          "seniority_bonus_2026": {
+            "id": "lid-002",
+            "lot_kind": "BONUS",
+            "eff_date": "2026-01-01",
+            "expire_date": "2026-12-31",
+            "lot_qty": 1.0,
+            "used_qty": 0.0,
+            "priority": 2,
+            "tag": "SENIORITY_5Y_BONUS"
+          },
+          "carried_over_from_2025": {
+            "id": "lid-003",
+            "lot_kind": "CARRY",
+            "eff_date": "2026-01-01",
+            "expire_date": "2026-03-31",
+            "lot_qty": 3.0,
+            "used_qty": 0.0,
+            "priority": 0,
+            "tag": "CARRY_2025_EXPIRES_Q1"
+          }
+        },
+
+        "leave_class": {
+          "__table": "absence.leave_class",
+          "__note": "Cấu hình tổng thể của loại phép. leave_class là cầu nối giữa leave_type (định nghĩa) và leave_instant (số dư). Mỗi leave_class gắn với 1 leave_type và nhiều absence_rules.",
+          "__ref": "leave_instant.class_id = leave_class.id",
+          "id": "lc-annual-vn-standard",
+          "code": "ANNUAL_VN_STD",
+          "name": "Phép Năm Tiêu Chuẩn VN (Full-time, 5+ năm)",
+          "status_code": "ACTIVE",
+          "scope_owner": "EMP",
+          "mode_code": "ACCOUNT",
+          "unit_code": "DAY",
+          "country_code": "VN",
+          "effective_start": "2025-01-01",
+          "effective_end": null,
+
+          "leave_type": {
+            "__table": "absence.leave_type",
+            "__note": "Định nghĩa nguyên tắc của loại phép — không gắn với cá nhân. Là master data.",
+            "__ref": "leave_class.type_code = leave_type.code",
+            "code": "ANNUAL",
+            "name": "Nghỉ Phép Năm",
+            "category": "ANNUAL",
+            "is_paid": true,
+            "is_quota_based": true,
+            "requires_approval": true,
+            "unit_code": "DAY",
+            "core_min_unit": 0.5,
+            "allows_half_day": true,
+            "holiday_handling": "EXCLUDE_HOLIDAYS",
+            "overlap_policy": "DENY",
+            "cancellation_deadline_days": 2,
+            "vlc_reference": "VLC 2019 Art. 113",
+            "support_scope": "VN"
+          },
+
+          "absence_rules": {
+            "__table": "absence.absence_rule[] (via class_rule_assignment)",
+            "__note": "Tập hợp các business rules gắn với leave_class này. Mỗi rule thuộc 1 rule_type. Kết nối qua bảng N:N class_rule_assignment.",
+            "__ref": "class_rule_assignment: leave_class.id ↔ absence_rule.id",
+
+            "accrual_rule": {
+              "__table": "absence.absence_rule",
+              "__rule_type": "ACCRUAL",
+              "__note": "Quy tắc tích lũy số ngày phép theo thời gian. Với full-time VN: 13 ngày/năm cấp 1 lần đầu năm.",
+              "id": "rule-accrual-annual-vn",
+              "code": "ACCRUAL_ANNUAL_VN_FIXED",
+              "name": "Annual Leave — Fixed Grant (VN Full-time)",
+              "rule_type": "ACCRUAL",
+              "status_code": "ACTIVE",
+              "country_code": "VN",
+              "effective_start": "2025-01-01",
+              "config_json": {
+                "method": "FIXED_GRANT",
+                "amount_per_period": 13,
+                "frequency": "ANNUAL",
+                "unit": "DAY",
+                "grant_timing": "START_OF_YEAR",
+                "max_balance": 26,
+                "proration_on_hire": true,
+                "proration_method": "CALENDAR_DAYS",
+                "tenure_tiers": [
+                  { "min_years": 0, "max_years": 4, "entitlement_days": 12 },
+                  { "min_years": 5, "max_years": 9, "entitlement_days": 13 },
+                  { "min_years": 10, "max_years": null, "entitlement_days": 14 }
+                ]
+              }
+            },
+
+            "carry_over_rule": {
+              "__table": "absence.absence_rule",
+              "__rule_type": "CARRY",
+              "__note": "Quy tắc chuyển số ngày phép dư từ năm trước sang năm mới. Max 5 ngày, hết hạn Q1 năm kế.",
+              "id": "rule-carry-annual-vn-5d",
+              "code": "CARRY_ANNUAL_VN_5DAYS",
+              "name": "Annual Leave Carry-Over — Max 5 Days (VN)",
+              "rule_type": "CARRY",
+              "status_code": "ACTIVE",
+              "country_code": "VN",
+              "effective_start": "2025-01-01",
+              "config_json": {
+                "allow_carry": true,
+                "max_carry_qty": 5,
+                "carry_unit": "DAY",
+                "expiry_months_after_year_end": 3,
+                "expiry_action": "FORFEITURE",
+                "carry_trigger": "YEAR_END_BATCH"
+              }
+            },
+
+            "seniority_rule": {
+              "__table": "absence.absence_rule",
+              "__rule_type": "SENIORITY",
+              "__note": "Quy tắc thưởng ngày phép theo thâm niên. VLC 2019 Art. 113: cứ 5 năm thêm 1 ngày.",
+              "id": "rule-seniority-vlc113",
+              "code": "SENIORITY_VLC113",
+              "name": "Seniority Bonus — VLC 2019 Art. 113",
+              "rule_type": "SENIORITY",
+              "status_code": "ACTIVE",
+              "country_code": "VN",
+              "effective_start": "2025-01-01",
+              "config_json": {
+                "tiers": [
+                  { "min_years": 0, "max_years": 4, "entitlement_days": 12, "bonus_days": 0 },
+                  { "min_years": 5, "max_years": 9, "entitlement_days": 13, "bonus_days": 1 },
+                  { "min_years": 10, "max_years": 14, "entitlement_days": 14, "bonus_days": 2 }
+                ],
+                "vlc_reference": "VLC 2019 Art. 113",
+                "calculation_basis": "COMPLETED_YEARS"
+              }
+            },
+
+            "validation_rule": {
+              "__table": "absence.absence_rule",
+              "__rule_type": "VALIDATION",
+              "__note": "Quy tắc validate khi nhân viên submit leave request. Kiểm tra number-of-days, advance notice, blackout periods.",
+              "id": "rule-validation-annual-vn",
+              "code": "VALIDATION_ANNUAL_VN_STD",
+              "name": "Annual Leave Validation — VN Standard",
+              "rule_type": "VALIDATION",
+              "status_code": "ACTIVE",
+              "country_code": "VN",
+              "effective_start": "2025-01-01",
+              "config_json": {
+                "rules": [
+                  {
+                    "type": "MIN_ADVANCE_NOTICE",
+                    "params": { "min_days": 2, "unit": "WORKING_DAY" },
+                    "error_code": "ERR_ABS_001",
+                    "message": "Phép năm cần báo trước tối thiểu 2 ngày làm việc"
+                  },
+                  {
+                    "type": "SUFFICIENT_BALANCE",
+                    "params": { "check_available_qty": true },
+                    "error_code": "ERR_ABS_002",
+                    "message": "Số ngày phép không đủ"
+                  },
+                  {
+                    "type": "NO_OVERLAP",
+                    "params": { "overlap_scope": "SELF" },
+                    "error_code": "ERR_ABS_003",
+                    "message": "Đã có đơn nghỉ phép trong khoảng thời gian này"
+                  },
+                  {
+                    "type": "MIN_REQUEST_DURATION",
+                    "params": { "min_units": 0.5, "unit": "DAY" },
+                    "error_code": "ERR_ABS_004",
+                    "message": "Số ngày tối thiểu cho 1 đơn là 0.5 ngày (nửa ngày)"
+                  }
+                ]
+              }
+            },
+
+            "limit_rule": {
+              "__table": "absence.absence_rule",
+              "__rule_type": "LIMIT",
+              "__note": "Quy tắc giới hạn số ngày/lần nghỉ trong 1 khoảng thời gian.",
+              "id": "rule-limit-annual-vn-std",
+              "code": "LIMIT_ANNUAL_VN_STD",
+              "name": "Annual Leave Limit — VN Standard",
+              "rule_type": "LIMIT",
+              "status_code": "ACTIVE",
+              "effective_start": "2025-01-01",
+              "config_json": {
+                "max_per_request": null,
+                "max_per_month": null,
+                "max_per_year": 13,
+                "min_notice_days": 2,
+                "max_consecutive_days": 14
+              }
+            }
+          },
+
+          "leave_requests": {
+            "__table": "absence.leave_request[]",
+            "__note": "Danh sách các đơn xin phép của nhân viên thuộc leave_class này. Trạng thái: SUBMITTED → UNDER_REVIEW → APPROVED/REJECTED.",
+            "__ref": "leave_request.class_id = leave_class.id AND leave_request.employee_id = employee.id",
+
+            "req_001": {
+              "__table": "absence.leave_request",
+              "id": "lr-emp001-2026-001",
+              "employee_id": "emp-001",
+              "class_id": "lc-annual-vn-standard",
+              "start_dt": "2026-04-14",
+              "end_dt": "2026-04-18",
+              "total_days": 5.0,
+              "is_half_day": false,
+              "half_day_period": null,
+              "qty_hours_req": null,
+              "status_code": "APPROVED",
+              "reason": "Du lịch gia đình dịp giỗ tổ + 30/4",
+              "submitted_at": "2026-03-28T09:00:00+07:00",
+              "approved_by": "mgr-002",
+              "approved_at": "2026-03-29T10:30:00+07:00",
+              "rejection_reason": null,
+              "instant_id": "li-emp001-annual-2026",
+              "reservation": {
+                "__table": "absence.leave_reservation",
+                "__note": "Số ngày phép được tạm hold khi submit. Được convert sang USE movement khi phép bắt đầu.",
+                "request_id": "lr-emp001-2026-001",
+                "instant_id": "li-emp001-annual-2026",
+                "reserved_qty": 5.0,
+                "expires_at": null,
+                "created_at": "2026-03-28T09:00:01+07:00"
+              }
+            },
+
+            "req_002": {
+              "__table": "absence.leave_request",
+              "id": "lr-emp001-2026-002",
+              "employee_id": "emp-001",
+              "class_id": "lc-annual-vn-standard",
+              "start_dt": "2026-06-01",
+              "end_dt": "2026-06-03",
+              "total_days": 3.0,
+              "is_half_day": false,
+              "half_day_period": null,
+              "status_code": "SUBMITTED",
+              "reason": "Việc gia đình",
+              "submitted_at": "2026-03-30T14:00:00+07:00",
+              "approved_by": null,
+              "approved_at": null,
+              "instant_id": "li-emp001-annual-2026",
+              "reservation": {
+                "__table": "absence.leave_reservation",
+                "request_id": "lr-emp001-2026-002",
+                "instant_id": "li-emp001-annual-2026",
+                "reserved_qty": 3.0,
+                "expires_at": "2026-04-06T14:00:00+07:00",
+                "created_at": "2026-03-30T14:00:01+07:00"
+              }
+            }
+          }
+        }
+      },
+
+      "sick_leave": {
+        "__table": "absence.leave_instant",
+        "__note": "Nghỉ ốm — SICK LEAVE. VLC 2019 Art. 114 + Luật BHXH. Số ngày dựa trên BHXH participation.",
+        "id": "li-emp001-sick-2026",
+        "state_code": "ACTIVE",
+        "current_qty": 30.0,
+        "hold_qty": 0.0,
+        "available_qty": 30.0,
+        "limit_yearly": 30.0,
+        "limit_per_case": 14.0,
+        "limit_rolling_days": null,
+        "used_ytd": 0.0,
+        "unit_code": "DAY",
+        "effective_start": "2026-01-01",
+        "effective_end": "2026-12-31",
+
+        "leave_class": {
+          "__table": "absence.leave_class",
+          "id": "lc-sick-vn-bhxh",
+          "code": "SICK_VN_BHXH",
+          "name": "Nghỉ Ốm Đau — BHXH (VN)",
+          "status_code": "ACTIVE",
+          "scope_owner": "EMP",
+          "mode_code": "LIMIT",
+          "unit_code": "DAY",
+          "country_code": "VN",
+          "effective_start": "2025-01-01",
+
+          "leave_type": {
+            "__table": "absence.leave_type",
+            "code": "SICK",
+            "name": "Nghỉ Ốm Đau",
+            "category": "SICK",
+            "is_paid": true,
+            "is_quota_based": true,
+            "requires_approval": true,
+            "unit_code": "DAY",
+            "core_min_unit": 1.0,
+            "allows_half_day": false,
+            "holiday_handling": "INCLUDE_HOLIDAYS",
+            "overlap_policy": "DENY",
+            "cancellation_deadline_days": 1,
+            "vlc_reference": "VLC 2019 Art. 114; Luật BHXH Art. 26",
+            "support_scope": "VN"
+          },
+
+          "absence_rules": {
+            "__table": "absence.absence_rule[] (via class_rule_assignment)",
+
+            "accrual_rule": {
+              "__rule_type": "ACCRUAL",
+              "__note": "Sick leave là giới hạn hàng năm, không phải tích lũy theo tháng. Reset đầu năm.",
+              "id": "rule-accrual-sick-vn",
+              "code": "ACCRUAL_SICK_VN_ANNUAL_RESET",
+              "name": "Sick Leave — Annual Entitlement Reset (VN BHXH)",
+              "rule_type": "ACCRUAL",
+              "config_json": {
+                "method": "FIXED_GRANT",
+                "amount_per_period": 30,
+                "frequency": "ANNUAL",
+                "grant_timing": "START_OF_YEAR",
+                "basis": "BHXH_PARTICIPATION",
+                "bhxh_min_months": 12,
+                "unit": "DAY"
+              }
+            },
+
+            "carry_over_rule": {
+              "__rule_type": "CARRY",
+              "__note": "Sick leave KHÔNG carry over sang năm sau.",
+              "id": "rule-carry-sick-no-carry",
+              "code": "CARRY_SICK_NO_CARRY",
+              "name": "Sick Leave — No Carry Over",
+              "rule_type": "CARRY",
+              "config_json": {
+                "allow_carry": false,
+                "expiry_action": "FORFEITURE",
+                "note": "VLC 2019 Art. 114: sick leave balance does not carry"
+              }
+            },
+
+            "validation_rule": {
+              "__rule_type": "VALIDATION",
+              "__note": "Sick leave cần certificate nếu > 2 ngày liên tục. VLC 2019 Art. 114.",
+              "id": "rule-validation-sick-vn",
+              "code": "VALIDATION_SICK_VN",
+              "name": "Sick Leave Validation — VN (Medical Cert Required)",
+              "rule_type": "VALIDATION",
+              "config_json": {
+                "rules": [
+                  {
+                    "type": "MEDICAL_CERT_REQUIRED",
+                    "params": { "trigger_days": 2, "cert_submission_deadline_days": 5 },
+                    "error_code": "ERR_SL_001",
+                    "message": "Nghỉ ốm > 2 ngày cần nộp giấy chứng nhận y tế trong 5 ngày"
+                  },
+                  {
+                    "type": "SUFFICIENT_BALANCE",
+                    "params": { "check_available_qty": true },
+                    "error_code": "ERR_SL_002"
+                  },
+                  {
+                    "type": "MAX_CONSECUTIVE",
+                    "params": { "max_consecutive_days": 14 },
+                    "error_code": "ERR_SL_003",
+                    "message": "Nghỉ ốm liên tục tối đa 14 ngày. Trên 14 ngày cần HR approval đặc biệt."
+                  }
+                ]
+              }
+            }
+          },
+
+          "leave_requests": {
+            "__table": "absence.leave_request[]",
+
+            "req_sick_001": {
+              "__table": "absence.leave_request",
+              "id": "lr-emp001-sick-2026-001",
+              "employee_id": "emp-001",
+              "class_id": "lc-sick-vn-bhxh",
+              "start_dt": "2026-02-10",
+              "end_dt": "2026-02-12",
+              "total_days": 3.0,
+              "status_code": "APPROVED",
+              "reason": "Sốt xuất huyết — có giấy viện",
+              "submitted_at": "2026-02-10T08:00:00+07:00",
+              "approved_by": "mgr-002",
+              "approved_at": "2026-02-10T09:00:00+07:00",
+              "medical_cert_required": true,
+              "medical_cert_submitted": true
+            }
+          }
+        }
+      },
+
+      "unpaid_leave": {
+        "__table": "absence.leave_instant",
+        "__note": "Nghỉ không lương — UNPAID LEAVE. VLC 2019 Art. 115: theo thỏa thuận với employer.",
+        "id": "li-emp001-unpaid-2026",
+        "state_code": "ACTIVE",
+        "current_qty": null,
+        "hold_qty": 0.0,
+        "available_qty": null,
+        "limit_yearly": null,
+        "unit_code": "DAY",
+        "effective_start": "2026-01-01",
+        "effective_end": null,
+
+        "leave_class": {
+          "__table": "absence.leave_class",
+          "id": "lc-unpaid-vn",
+          "code": "UNPAID_VN_AGREEMENT",
+          "name": "Nghỉ Không Lương (VN — Thỏa Thuận)",
+          "status_code": "ACTIVE",
+          "mode_code": "UNPAID",
+          "unit_code": "DAY",
+          "country_code": "VN",
+
+          "leave_type": {
+            "__table": "absence.leave_type",
+            "code": "UNPAID",
+            "name": "Nghỉ Không Lương",
+            "category": "UNPAID",
+            "is_paid": false,
+            "is_quota_based": false,
+            "requires_approval": true,
+            "allows_half_day": false,
+            "cancellation_deadline_days": 3,
+            "vlc_reference": "VLC 2019 Art. 115"
+          },
+
+          "absence_rules": {
+            "validation_rule": {
+              "__rule_type": "VALIDATION",
+              "id": "rule-validation-unpaid-vn",
+              "code": "VALIDATION_UNPAID_VN",
+              "name": "Unpaid Leave Validation — VN",
+              "rule_type": "VALIDATION",
+              "config_json": {
+                "rules": [
+                  {
+                    "type": "MANAGER_PRE_APPROVAL_REQUIRED",
+                    "params": { "min_advance_days": 7 },
+                    "message": "Nghỉ không lương cần báo trước 7 ngày và manager approve"
+                  },
+                  {
+                    "type": "ANNUAL_POLICY_LIMIT",
+                    "params": { "max_days_per_year": 30, "accumulation_scope": "ROLLING_12_MONTHS" },
+                    "message": "Tổng số ngày nghỉ không lương không quá 30 ngày/năm"
+                  }
+                ]
+              }
+            }
+          },
+
+          "leave_requests": {
+            "__table": "absence.leave_request[]",
+            "req_unpaid_001": {
+              "__table": "absence.leave_request",
+              "id": "lr-emp001-unpaid-2026-001",
+              "employee_id": "emp-001",
+              "class_id": "lc-unpaid-vn",
+              "start_dt": "2026-08-04",
+              "end_dt": "2026-08-08",
+              "total_days": 5.0,
+              "status_code": "SUBMITTED",
+              "reason": "Chăm sóc người thân đi điều trị dài ngày",
+              "submitted_at": "2026-07-15T10:00:00+07:00"
+            }
+          }
+        }
+      }
+    },
+
+    "leave_balance_summary": {
+      "__note": "Tổng hợp số dư nghỉ phép hiện tại của nhân viên — derived view từ tất cả leave_instants",
+      "__derived_from": "absence.leave_instant WHERE employee_id = 'emp-001'",
+      "as_of_date": "2026-03-31",
+      "balances": [
+        {
+          "leave_class_code": "ANNUAL_VN_STD",
+          "leave_type": "Phép Năm",
+          "current_qty": 13.0,
+          "hold_qty": 3.0,
+          "available_qty": 10.0,
+          "unit": "DAY"
+        },
+        {
+          "leave_class_code": "SICK_VN_BHXH",
+          "leave_type": "Nghỉ Ốm",
+          "current_qty": 30.0,
+          "hold_qty": 0.0,
+          "available_qty": 30.0,
+          "unit": "DAY"
+        },
+        {
+          "leave_class_code": "UNPAID_VN_AGREEMENT",
+          "leave_type": "Nghỉ Không Lương",
+          "current_qty": null,
+          "hold_qty": 0.0,
+          "available_qty": "UNLIMITED",
+          "unit": "DAY",
+          "note": "Không giới hạn, tùy thỏa thuận"
+        }
+      ]
+    }
+  }
+}
