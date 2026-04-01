@@ -261,7 +261,7 @@ flowchart LR
         T1_2["⚙️ Kiểm tra giới hạn OT\n(BR-ATT-005):\n• Daily ≤ 4h\n• Monthly ≤ 40h\n• Annual ≤ 300h"]
         T1_3{{"Vượt giới hạn?"}}
         T1_4["❌ Báo lỗi OTCapExceeded\n(hiển thị còn được thêm\ntối đa bao nhiêu giờ)"]
-        T1_5{{"Người nộp là\nQuản lý tự đăng ký\nOT cho mình?"}]
+        T1_5{{"Người nộp là\nQuản lý tự đăng ký\nOT cho mình?"}}
         T1_6["⚙️ Định tuyến chuẩn\n→ Direct Manager\n(status = SUBMITTED)"]
         T1_7{{"routing_mode?"}}
         T1_8["⚙️ SKIP_LEVEL\n→ Gửi cho\nManagercủa Manager\n(tránh self-approval)"]
@@ -337,7 +337,7 @@ flowchart LR
 
     subgraph S3["Step 3 — Leo thang"]
         direction TD
-        T3_1{{"Delegation\nactive?"}]
+        T3_1{{"Delegation\nactive?"}}
         T3_2["⚙️ AF-1: Chuyển sang\nBackup Approver\n(đang cover thay)"]
         T3_3{{"Manager OT\n(skip-level)?"}}
         T3_4["⚙️ AF-3: Chuyển thẳng lên\nSkip-Level Manager\n(bỏ qua L1)"]
@@ -351,7 +351,7 @@ flowchart LR
 
     subgraph S4["Step 4 — Safety Net HR"]
         direction TD
-        T4_1{{"Đã leo thang\nmax_escalation_levels\nlần (mặc định 3)?"}]
+        T4_1{{"Đã leo thang\nmax_escalation_levels\nlần (mặc định 3)?"}}
         T4_2["⚙️ Phát sự kiện\nHRReviewRequired\nAlerts HR Admin\n(High Priority)"]
         T4_3["👤 HR Admin\nQuyết định cuối:\nApprove / Reject / Reassign"]
         T4_1 -->|"Đã đạt max"| T4_2 --> T4_3
