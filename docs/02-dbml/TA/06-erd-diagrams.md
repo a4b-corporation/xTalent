@@ -248,10 +248,19 @@ erDiagram
     LEAVE_RESERVATION ||--o{ LEAVE_RESERVATION_LINE : "allocates lots"
     LEAVE_RESERVATION_LINE }o--|| LEAVE_INSTANT_DETAIL : "consumes from"
     
-    LEAVE_POLICY ||--o{ LEAVE_ACCRUAL_RUN : "executed by batch"
-    LEAVE_ACCRUAL_RUN ||--o{ LEAVE_MOVEMENT : "creates movements"
+    LEAVE_CLASS ||--o{ LEAVE_CLASS_EVENT : "triggers events"
+    LEAVE_EVENT_DEF ||--o{ LEAVE_CLASS_EVENT : "defined by"
+    LEAVE_EVENT_DEF ||--o{ LEAVE_EVENT_RUN : "executed in batches"
+    LEAVE_CLASS ||--o{ LEAVE_EVENT_RUN : "for class"
+    LEAVE_PERIOD ||--o{ LEAVE_EVENT_RUN : "in period"
+    LEAVE_EVENT_RUN ||--o{ LEAVE_MOVEMENT : "creates movements"
+    
+    LEAVE_PERIOD ||--o{ LEAVE_PERIOD : "parent-child hierarchy"
+    LEAVE_MOVEMENT }o--o| LEAVE_PERIOD : "period reference"
     
     LEAVE_INSTANT ||--o| TERMINATION_BALANCE_RECORD : "snapshot at termination"
+    
+    LEAVE_TYPE ||--o{ TEAM_LEAVE_LIMIT : "staffing rules"
     
     HOLIDAY_CALENDAR ||--o{ HOLIDAY_DATE : "defines dates"
     
@@ -314,6 +323,7 @@ erDiagram
         date expire_date
         uuid request_id FK
         uuid lot_id FK
+        uuid period_id FK
         string idempotency_key
     }
     
@@ -343,6 +353,61 @@ erDiagram
         decimal reserved_amount
         date expiry_date
     }
+    
+    LEAVE_EVENT_DEF {
+        uuid id PK
+        string code UK
+        string name
+        string trigger_kind
+        string schedule_expr
+        jsonb policy_refs
+    }
+    
+    LEAVE_EVENT_RUN {
+        uuid id PK
+        uuid event_def_id FK
+        uuid class_id FK
+        uuid period_id FK
+        string run_status
+        int employee_count
+        int movements_created
+        string idempotency_key UK
+    }
+    
+    LEAVE_CLASS_EVENT {
+        uuid class_id PK,FK
+        uuid event_def_id PK,FK
+        string qty_formula
+        boolean idempotent
+    }
+    
+    LEAVE_PERIOD {
+        uuid id PK
+        string code UK
+        uuid parent_id FK
+        string level_code
+        date start_date
+        date end_date
+        string status_code
+    }
+    
+    TEAM_LEAVE_LIMIT {
+        uuid id PK
+        uuid org_unit_id FK
+        string leave_type_code FK
+        decimal limit_pct
+        int limit_abs_cnt
+        int escalation_level
+    }
+    
+    TERMINATION_BALANCE_RECORD {
+        uuid id PK
+        uuid employee_id FK
+        date termination_date
+        jsonb balance_snapshots
+        string balance_action
+        boolean employee_consent_obtained
+    }
 ```
 
 ### Absence Balance Flow
@@ -360,6 +425,16 @@ LeaveInstantDetail (FEFO Lots)
 Reservation (FEFO Consumption)
     ├── Line 1: 3 days from Lot A (earliest expiry)
     └── Line 2: 1 day from Lot B
+```
+
+### Event Processing Flow
+
+```
+LeaveEventDef (Event Type)
+    └── LeaveClassEvent (Class-Event Mapping + Formula)
+        └── LeaveEventRun (Batch Execution)
+            └── LeaveMovement (Balance Change)
+                └── LeaveInstant (Updated Balance)
 ```
 
 ---

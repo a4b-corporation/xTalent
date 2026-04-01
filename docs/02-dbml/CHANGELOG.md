@@ -1,6 +1,73 @@
 # xTalent Database Design – Changelog
 
 
+## [01Apr2026-b] – v5.3: Migrate Missing v4 Tables + Replace leave_accrual_run
+
+> Context: Phân tích đối chiếu v4 vs v5 — phát hiện note "8-12. Giữ nguyên các bảng v4 khác" thực ra có 4 tables chưa được migrate. Thực tế chỉ 3 tables còn thiếu thực sự; 1 table (leave_event_run) tồn tại nhưng đã được redesign thành leave_accrual_run (Change 17) — nay thay lại bằng generalized version.
+
+### TA-database-design-v5.dbml
+
+**Change 26 – NEW `absence.leave_class_event` (migrate từ v4 table 8)**
+- N:N mapping: `leave_class` ↔ `leave_event_def`
+- Columns: `class_id`, `event_def_id`, `qty_formula` (±qty expr), `target_override`, `idempotent`
+- PK composite: `(class_id, event_def_id)`
+- Tại sao cần: `leave_event_def` không có ngữ nghĩa nếu không có bảng mapping này — không biết class nào trigger event nào
+
+**Change 27 – NEW `absence.leave_period` (migrate từ v4 table 12)**
+
+| Column | Detail |
+|---|---|
+| `code` | Unique: FY2025, FY2025Q2, FY2025M04 |
+| `parent_id` | Self-ref: YEAR → MONTH hierarchy |
+| `level_code` | YEAR \| QUARTER \| MONTH \| CUSTOM |
+| `status_code` | OPEN → CLOSED → LOCKED |
+
+- Tại sao cần: `leave_movement.period_id` và `leave_event_run.period_id` là FK "lơ lửng" — target table không tồn tại trong v5 trước change này
+
+**Change 28 – NEW `absence.team_leave_limit` (migrate từ v4 table 15)**
+- Staffing rule: giới hạn % hoặc số người nghỉ cùng lúc trong org_unit
+- `limit_pct` decimal(5,2): % người được phép nghỉ (e.g., 20% team)
+- `limit_abs_cnt` smallint: hoặc số người cố định (dùng 1 trong 2)
+- `escalation_level`: trigger phê duyệt cao hơn khi chạm limit
+- Validated tại submission time của `leave_request`
+
+**Change 29 – REPLACE `leave_accrual_run` → `leave_event_run`**
+
+| Dimension | leave_accrual_run (Change 17) | leave_event_run (Change 29) |
+|---|---|---|
+| Scope | ACCRUAL only | ALL event types (ACCRUAL, CARRY, EXPIRE, RESET) |
+| Trigger identity | `plan_policy_id` (leave_policy) | `event_def_id` (leave_event_def) + `class_id` + `period_id` |
+| Status codes | RUNNING\|COMPLETED\|FAILED\|SKIPPED | RUNNING\|COMPLETED\|FAILED\|SKIPPED\|CANCELED |
+| Idempotency | `(tenant_id, plan_policy_id, period_start)` | `idempotency_key` unique + `schedule_key` |
+| Stats | employee_count, movements_created | +`employees_skipped`, `stats_json` |
+| Timestamps | started_at, completed_at, failed_at | same (cherry-picked) |
+| created_by | required (uuid not null) | nullable (null = system scheduler) |
+
+Cherry-picks từ `leave_accrual_run` được giữ lại trong `leave_event_run`:
+- Granular status codes (COMPLETED/FAILED/SKIPPED vs v4 DONE/ERROR/CANCELED)
+- Separate `started_at` / `completed_at` / `failed_at` timestamps (vs v4 `finished_at` kiêm nhiệm)
+- `employee_count` + `movements_created` (v4 chỉ có `stats_json`)
+- `failure_reason` text field
+- Named unique index `uq_event_run_idempotency`
+
+### TableGroup ta_absence — updated
+
+| Action | Table |
+|---|---|
+| ADD | `absence.leave_class_event` (Change 26) |
+| ADD | `absence.leave_period` (Change 27) |
+| ADD | `absence.team_leave_limit` (Change 28) |
+| REPLACE | `absence.leave_accrual_run` → `absence.leave_event_run` (Change 29) |
+
+### Phân tích tables còn lại (không copy)
+
+| Table v4 | Quyết định |
+|---|---|
+| `leave_balance_history` | Bỏ — reporting concern; `leave_movement` ledger đủ để reconstruct |
+| `leave_wallet` | Bỏ — v4 note "view vật hoá tạm"; `leave_instant` trong v5 thay thế tốt hơn |
+
+---
+
 ## [01Apr2026] – v5.2: FK Fixes, absence_rule Deprecated, Payroll Export Package
 
 > Context: Review so sánh TA-database-design-v5.dbml vs archive/db.dbml — phát hiện 5 broken FK references, 2 table/index name mismatches, và các gaps về payroll dispatch tracking.

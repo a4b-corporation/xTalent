@@ -1,7 +1,8 @@
 # Absence Model - Leave Management & Balance Tracking
 
 **Bounded Context:** `ta.absence`  
-**Tables:** 15  
+**Tables:** 18  
+**Source:** TA-database-design-v5.dbml (v5.3)  
 **Last Updated:** 2026-04-01
 
 ---
@@ -12,8 +13,9 @@ Absence model quản lý toàn bộ lifecycle của leave (nghỉ phép), bao g�
 - **Leave Configuration**: Types, Classes, Policies
 - **Leave Balance**: Immutable ledger tracking với FEFO
 - **Leave Request**: Workflow từ submit đến approve/reject
-- **Accrual**: Automatic leave earning
-- **Carryover & Expiry**: Year-end balance handling
+- **Event Processing**: Generalized batch event execution
+- **Period Hierarchy**: YEAR → QUARTER → MONTH structure
+- **Staffing Rules**: Team leave limits
 
 ---
 
@@ -702,28 +704,19 @@ Request for 4 days:
 
 ---
 
-## 9. Accrual Batch Processing
-
-### Leave Accrual Run
-
-**LeaveAccrualRun** tracks monthly accrual batch execution:
-
-```json
-{
-  "id": "550e8400-e29b-41d4-a716-446655440181",
-  "tenant_id": "TENANT001",
-  "plan_policy_id": "550e8400-e29b-41d4-a716-446655440111",
-  "period_start": "2026-04-01",
-  "period_end": "2026-04-30",
-  "status_code": "COMPLETED",
-  "employee_count": 500,
-  "movements_created": 500,
-  "started_at": "2026-04-30T23:00:00Z",
-  "completed_at": "2026-04-30T23:05:00Z"
-}
-```
+## 9. Event-Driven Batch Processing
 
 ### Leave Event Definition
+
+**LeaveEventDef** defines event types that can trigger batch operations:
+
+| Event Code | Trigger | Description |
+|------------|---------|-------------|
+| `ACCRUAL` | SCHEDULED | Monthly accrual batch |
+| `CARRY` | SCHEDULED | Year-end carryover |
+| `EXPIRE` | SCHEDULED | Balance expiry processing |
+| `RESET_LIMIT` | SCHEDULED | Reset usage limits |
+| `OT_EARN` | EVENT | OT converted to comp time |
 
 ```json
 {
@@ -735,6 +728,214 @@ Request for 4 days:
   "policy_refs": ["ACCRUAL_MONTHLY_14D"],
   "is_active": true
 }
+```
+
+### Leave Event Run (Generalized Batch Tracking)
+
+**LeaveEventRun** tracks all batch event executions (ACCRUAL, CARRY, EXPIRE, etc.):
+
+**Run Status:**
+
+| Status | Description |
+|--------|-------------|
+| `RUNNING` | Batch in progress |
+| `COMPLETED` | Successfully completed |
+| `FAILED` | Execution failed |
+| `SKIPPED` | Skipped (no eligible employees) |
+| `CANCELED` | Manually canceled |
+
+**Sample Data - Monthly Accrual Run:**
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440181",
+  "event_def_id": "EVENT_DEF_ACCRUAL",
+  "class_id": "CLASS_ANNUAL_STD",
+  "period_id": "PERIOD_202604",
+  "schedule_key": "CLASS_ANNUAL_STD-202604",
+  "idempotency_key": null,
+  "run_status": "COMPLETED",
+  "started_at": "2026-04-30T23:00:00Z",
+  "completed_at": "2026-04-30T23:05:00Z",
+  "failed_at": null,
+  "failure_reason": null,
+  "employee_count": 500,
+  "movements_created": 500,
+  "employees_skipped": 25,
+  "stats_json": {
+    "processed": 525,
+    "posted": 500,
+    "skipped": 25,
+    "errors": 0
+  },
+  "created_by": null
+}
+```
+
+**Sample Data - Year-End Carryover Run:**
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440182",
+  "event_def_id": "EVENT_DEF_CARRY",
+  "class_id": null,
+  "period_id": "PERIOD_FY2025",
+  "run_status": "COMPLETED",
+  "employee_count": 450,
+  "movements_created": 680,
+  "employees_skipped": 50
+}
+```
+
+### Leave Class Event Mapping
+
+**LeaveClassEvent** defines N:N mapping between leave classes and event definitions:
+
+```json
+{
+  "class_id": "CLASS_ANNUAL_STD",
+  "event_def_id": "EVENT_DEF_ACCRUAL",
+  "qty_formula": "+seniority_calc",
+  "target_override": "INSTANT",
+  "idempotent": true
+}
+```
+
+**Qty Formula Examples:**
+
+| Formula | Description | Use Case |
+|---------|-------------|----------|
+| `+fixedRate` | Add fixed amount | Monthly accrual |
+| `-request_days` | Deduct request days | Leave taken |
+| `+seniority_calc` | Add seniority-based amount | Tenure-based entitlement |
+| `+min(carry_cap, available)` | Add up to carry cap | Year-end carryover |
+
+**Sample Data:**
+```json
+{
+  "class_id": "CLASS_ANNUAL_STD",
+  "event_def_id": "EVENT_DEF_CARRY",
+  "qty_formula": "+min(5.0, available)",
+  "idempotent": true
+}
+```
+
+---
+
+## 10. Period Hierarchy
+
+### Leave Period
+
+**LeavePeriod** defines period hierarchy (YEAR → QUARTER → MONTH):
+
+| Level | Description | Example |
+|-------|-------------|---------|
+| `YEAR` | Fiscal/Calendar year | FY2026 |
+| `QUARTER` | 3-month period | FY2026Q2 |
+| `MONTH` | Single month | FY2026M04 |
+| `CUSTOM` | Custom date range | Project period |
+
+**Period Status:**
+
+| Status | Description |
+|--------|-------------|
+| `OPEN` | Active, accepting movements |
+| `CLOSED` | Period finalized |
+| `LOCKED` | Frozen for audit |
+
+**Sample Data:**
+```json
+{
+  "id": "PERIOD_FY2026",
+  "code": "FY2026",
+  "parent_id": null,
+  "level_code": "YEAR",
+  "start_date": "2026-01-01",
+  "end_date": "2026-12-31",
+  "status_code": "OPEN",
+  "calendar_code": null
+}
+```
+
+```json
+{
+  "id": "PERIOD_FY2026Q2",
+  "code": "FY2026Q2",
+  "parent_id": "PERIOD_FY2026",
+  "level_code": "QUARTER",
+  "start_date": "2026-04-01",
+  "end_date": "2026-06-30",
+  "status_code": "OPEN"
+}
+```
+
+```json
+{
+  "id": "PERIOD_FY2026M04",
+  "code": "FY2026M04",
+  "parent_id": "PERIOD_FY2026Q2",
+  "level_code": "MONTH",
+  "start_date": "2026-04-01",
+  "end_date": "2026-04-30",
+  "status_code": "OPEN"
+}
+```
+
+---
+
+## 11. Team Leave Limit (Staffing Rules)
+
+### Business Purpose
+
+**TeamLeaveLimit** restricts how many employees can be absent simultaneously in an org unit.
+
+### Limit Types
+
+| Type | Description | Example |
+|------|-------------|---------|
+| `limit_pct` | Percentage of headcount | 20% can be on leave |
+| `limit_abs_cnt` | Fixed count | Max 3 people on leave |
+
+### Sample Data
+
+**Percentage-based limit:**
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440301",
+  "org_unit_id": "TEAM_ENGINEERING",
+  "leave_type_code": "ANNUAL",
+  "limit_pct": 20.00,
+  "limit_abs_cnt": null,
+  "escalation_level": 2,
+  "is_active": true,
+  "effective_start": "2025-01-01"
+}
+```
+
+**Fixed count limit:**
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440302",
+  "org_unit_id": "TEAM_PRODUCTION",
+  "leave_type_code": "ANNUAL",
+  "limit_pct": null,
+  "limit_abs_cnt": 5,
+  "escalation_level": 1,
+  "is_active": true,
+  "effective_start": "2025-01-01"
+}
+```
+
+**Validation Example:**
+```
+Team Engineering: 25 employees
+Limit: 20% on leave = 5 employees max
+
+Current on leave: 4 employees
+New request: 1 employee
+Result: APPROVED (within limit)
+
+Current on leave: 5 employees  
+New request: 1 employee
+Result: ESCALATED (exceeds limit, requires Level 2 approval)
 ```
 
 ---
@@ -950,17 +1151,29 @@ Result: Carried-over leave consumed first ✓
 | **Configuration** | LeaveType, LeaveClass, LeavePolicy | Define leave rules |
 | **Balance** | LeaveInstant, LeaveInstantDetail, LeaveMovement | Track balance with immutable ledger |
 | **Request** | LeaveRequest, LeaveReservation, LeaveReservationLine | Request workflow with FEFO |
-| **Accrual** | LeaveAccrualRun, LeaveEventDef | Automated earning |
+| **Event Processing** | LeaveEventDef, LeaveEventRun, LeaveClassEvent | Batch event processing |
+| **Period Hierarchy** | LeavePeriod | YEAR → QUARTER → MONTH structure |
+| **Staffing Rules** | TeamLeaveLimit | Concurrent absence limits |
 | **Termination** | TerminationBalanceRecord | Exit balance handling |
 | **Shared** | HolidayCalendar, HolidayDate | Public holidays |
+
+### Deprecated Entities
+
+| Entity | Status | Replacement |
+|--------|--------|-------------|
+| `LeaveAccrualRun` | ❌ DEPRECATED | `LeaveEventRun` (generalized) |
+| `AbsenceRule` | ❌ DEPRECATED | `LeavePolicy.config_json` |
+| `PolicyAssignment` | ❌ DEPRECATED | Core eligibility engine |
 
 ### Key Principles
 
 ✅ **Immutable Ledger** - Full audit trail via LeaveMovement  
-✅ **FEFO Reservation** - Optimize balance consumption  
-✅ **Idempotent Accrual** - Safe batch re-runs  
+✅ **FEFO Reservation** - Optimize balance consumption via LeaveReservationLine  
+✅ **Idempotent Events** - Safe batch re-runs via LeaveEventRun  
 ✅ **VLC Compliance** - Built-in Vietnam Labor Code enforcement  
-✅ **Flexible Policies** - Configurable accrual, carryover, limits
+✅ **Flexible Policies** - Configurable accrual, carryover, limits  
+✅ **Period Hierarchy** - YEAR → QUARTER → MONTH for financial reporting  
+✅ **Staffing Protection** - TeamLeaveLimit prevents understaffing
 
 ---
 

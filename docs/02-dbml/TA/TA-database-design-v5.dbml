@@ -1,9 +1,15 @@
 //===============================================================
-//  SCHEMA: Time & Attendance + Absence - Database Design v5.2
+//  SCHEMA: Time & Attendance + Absence - Database Design v5.3
 //  Revision: 2026-04-01
 //  Model: 6-Level Hierarchical Architecture + Absence Management
 //  Based on: Time_Attendance_Concept_Design.docx + 3.Absence.v4.dbml
 //===============================================================
+//
+//  CHANGES in v5.3 (2026-04-01):
+//  - (Change 26) Added absence.leave_class_event (migrated from v4 table 8)
+//  - (Change 27) Added absence.leave_period (migrated from v4 table 12) — fixes dangling period_id FK
+//  - (Change 28) Added absence.team_leave_limit (migrated from v4 table 15)
+//  - (Change 29) Replaced leave_accrual_run with leave_event_run (v4 table 13 + v5 enhancements)
 //
 //  CHANGES in v5.2 (2026-04-01):
 //  - (Change 18) Fix broken FK refs: shift_break→shift_def, attendance_record→shift_def,
@@ -1346,12 +1352,75 @@ Table absence.leave_reservation_line {
 // 2025-12-01 NEW, DEPRECATED 27Mar2026 → Temporal workflow engine
 
 
-/*----------- 8-12. Giữ nguyên các bảng v4 khác ----------------*/
-// leave_instant_detail, leave_event_def, leave_class_event,
-// leave_period, leave_event_run, leave_balance_history,
-// team_leave_limit, holiday_calendar, holiday_date, leave_wallet
+/*----------- 8. Leave Class ⇔ Event Map (v4 Table 8) -----------*/
+// N:N mapping: một leave_class có thể kích hoạt nhiều event khác nhau (ACCRUAL, EXPIRE, CARRY, RESET).
+// qty_formula dạng biểu thức chuỗi (±qty), evaluated at runtime bởi event engine.
+// 01Apr2026 (Change 26): Migrated from 3.Absence.v4.dbml table 8.
+Table absence.leave_class_event {         // v4 table 8, 6Oct2025
+  class_id          uuid [not null, ref: > absence.leave_class.id]
+  event_def_id      uuid [not null, ref: > absence.leave_event_def.id]
+  qty_formula       text [not null]       // biểu thức ±qty: '+fixedRate', '-request_days', '+seniority_calc'
+  target_override   varchar(20) [default: 'INSTANT']  // luôn post vào LeaveInstant (không thay đổi)
+  idempotent        boolean [default: true]
 
-// (Không copy lại để giữ file ngắn gọn - giữ nguyên như v4)
+  indexes {
+    (class_id, event_def_id) [pk]
+    (event_def_id)
+  }
+
+  Note: '01Apr2026 (Change 26): Migrated from 3.Absence.v4.dbml. N:N mapping leave_class ↔ leave_event_def. qty_formula evaluated by event engine at runtime. idempotent=true prevents double-posting on retry.'
+}
+
+
+/*----------- 9. Leave Period (v4 Table 12) ---------------------*/
+// Period hierarchy: YEAR → QUARTER → MONTH → CUSTOM.
+// leave_movement.period_id và leave_event_run.period_id đều ref về đây.
+// 01Apr2026 (Change 27): Migrated from 3.Absence.v4.dbml table 12.
+Table absence.leave_period {              // v4 table 12, 6Oct2025
+  id              uuid [pk]
+  code            varchar(50) [not null, unique]  // FY2025, FY2025Q2, FY2025M04
+  parent_id       uuid [null, ref: > absence.leave_period.id]  // year ↔ month hierarchy
+  level_code      varchar(10) [not null]           // YEAR | QUARTER | MONTH | CUSTOM
+  start_date      date [not null]
+  end_date        date [not null]
+  status_code     varchar(20) [not null, default: 'OPEN']  // OPEN | CLOSED | LOCKED
+  calendar_code   varchar(50) [null]               // nu null = default calendar
+
+  metadata        jsonb
+  created_at      timestamptz [default: `now()`]
+
+  Indexes {
+    (level_code, start_date) [name: 'idx_leave_period_level_start']
+    (parent_id)
+    (status_code)
+  }
+
+  Note: '01Apr2026 (Change 27): Migrated from 3.Absence.v4.dbml. Period hierarchy (YEAR→QUARTER→MONTH). Used by leave_movement.period_id and leave_event_run.period_id. status_code lifecycle: OPEN→CLOSED→LOCKED.'
+}
+
+
+/*----------- 10. Team Leave Limit (v4 Table 15) ----------------*/
+// Staffing rule: giới hạn % hoặc số người nghỉ cùng lúc trong cùng org_unit.
+// 01Apr2026 (Change 28): Migrated from 3.Absence.v4.dbml table 15.
+Table absence.team_leave_limit {          // v4 table 15, 6Oct2025
+  id                  uuid [pk]
+  org_unit_id         uuid [not null]              // BU / Team / CostCenter ID
+  leave_type_code     varchar(50) [not null, ref: > absence.leave_type.code]
+  limit_pct           decimal(5,2) [null]          // 0-100: % người được phép nghỉ cùng lúc
+  limit_abs_cnt       smallint [null]              // hoặc số người cố định (null = dùng limit_pct)
+  escalation_level    smallint [default: 1]        // mức phê duyệt nếu vượt limit
+  is_active           boolean [default: true]
+  effective_start     date [not null]
+  effective_end       date [null]
+
+  Indexes {
+    (org_unit_id, leave_type_code, effective_start) [name: 'idx_team_leave_limit_lookup']
+    (leave_type_code)
+  }
+
+  Note: '01Apr2026 (Change 28): Migrated from 3.Absence.v4.dbml. Staffing rule: limits concurrent absence in an org unit by % (limit_pct) or fixed count (limit_abs_cnt). escalation_level triggers higher approval when limit approached. Validated at leave_request submission.'
+}
+
 
 
 //===============================================================
@@ -1627,41 +1696,53 @@ Table absence.class_policy_assignment {
 }
 
 
-/*----------- Leave Accrual Run (NEW 30Mar2026, Change 17) ------*/
-// Accrual batch run tracking with idempotency constraint.
-// ADR-TA-002: Idempotent monthly accrual. One COMPLETED run per plan per period.
-Table absence.leave_accrual_run {
+/*----------- Leave Event Run (v4 Table 13 + v5 enhancement) ---*/
+// General-purpose batch event run tracking with idempotency.
+// Replaces leave_accrual_run (Change 17) — generalized to cover ALL event types,
+// not just ACCRUAL (also covers CARRY, EXPIRE, RESET_LIMIT, OT_EARN, etc.)
+// 01Apr2026 (Change 29): Replaced leave_accrual_run; cherry-picked: detailed status codes,
+//   employee_count, movements_created, started_at/completed_at/failed_at split, failure_reason.
+Table absence.leave_event_run {           // v4 table 13 + v5 cherry-picks, 01Apr2026
   id                uuid [pk]
-  tenant_id         uuid [null]
-  
-  // ── BATCH IDENTITY ──
-  plan_policy_id    uuid [not null, ref: > absence.leave_policy.id]  // 01Apr2026 FIX (Change 20): was plan_rule_id → absence_rule.id (deprecated); now refs leave_policy (ACCRUAL type)
-  period_start      date [not null]
-  period_end        date [not null]
-  
-  // ── EXECUTION STATUS ──
-  status_code       varchar(20) [not null, default: 'RUNNING']  // RUNNING | COMPLETED | FAILED | SKIPPED
-  
-  employee_count    int [default: 0]
-  movements_created int [default: 0]
-  
+
+  // ── E V E N T  I D E N T I T Y ──
+  event_def_id      uuid [not null, ref: > absence.leave_event_def.id]    // loại event được chạy
+  class_id          uuid [null, ref: > absence.leave_class.id]             // null = across all classes
+  period_id         uuid [null, ref: > absence.leave_period.id]            // kỳ kế toán (nếu có)
+
+  // ── I D E M P O T E N C Y ──
+  // Cherry-pick from leave_accrual_run: named unique constraint prevents double-run
+  schedule_key      varchar(120) [null]   // class/period combination identifier for SCHEDULED events
+  idempotency_key   varchar(120) [null]   // dedup key (client-set for manual/API triggers)
+
+  // ── E X E C U T I O N  S T A T U S ──
+  // Cherry-pick from leave_accrual_run: granular status vs v4 RUNNING|DONE|ERROR|CANCELED
+  run_status        varchar(20) [not null, default: 'RUNNING']  // RUNNING | COMPLETED | FAILED | SKIPPED | CANCELED
+
+  // Cherry-pick from leave_accrual_run: separate timestamps for granular monitoring
   started_at        timestamptz [not null]
   completed_at      timestamptz [null]
   failed_at         timestamptz [null]
   failure_reason    text [null]
-  
+
+  // Cherry-pick from leave_accrual_run: run statistics for monitoring
+  employee_count    int [default: 0]       // số employee được xử lý
+  movements_created int [default: 0]       // số leave_movement được tạo
+  employees_skipped int [default: 0]       // số employee bỏ qua (ví dụ: không đủ điều kiện)
+
+  stats_json        jsonb [null]           // raw stats: {processed, posted, skipped, errors}
   metadata          jsonb
-  created_at        timestamptz [default:`now()`]
-  updated_at        timestamptz [null]
-  created_by        uuid [not null]
-  
+  created_at        timestamptz [default: `now()`]
+  created_by        uuid [null]            // null = system/scheduler; uuid = manual trigger by user
+
   Indexes {
-    (tenant_id, plan_policy_id, period_start) [unique, name: 'uq_accrual_run_idempotency']
-    (tenant_id, status_code)
-    (plan_policy_id)
+    (event_def_id, class_id, period_id) [name: 'idx_event_run_lookup']
+    (idempotency_key) [unique, name: 'uq_event_run_idempotency']  // prevents double-run
+    (run_status)
+    (schedule_key)
   }
-  
-  Note: '01Apr2026 UPDATED (Change 20). ADR-TA-002: Idempotent accrual batch. Unique constraint (plan_policy_id, period_start) prevents duplicate runs. SKIPPED when re-run attempted for same period. plan_policy_id refs leave_policy (policy_type=ACCRUAL) — absence_rule deprecated 01Apr2026.'
+
+  Note: '01Apr2026 (Change 29). Replaces leave_accrual_run (Change 17). Generalized: covers ALL event types (ACCRUAL, CARRY, EXPIRE, RESET_LIMIT, OT_EARN). v4 base from 3.Absence.v4.dbml table 13. Cherry-picks from accrual_run: granular status (COMPLETED/FAILED/SKIPPED vs DONE/ERROR), employee_count, movements_created, started_at/completed_at/failed_at split, failure_reason. idempotency_key unique index prevents double-run.'
 }
 
 
@@ -1707,12 +1788,15 @@ TableGroup ta_absence {
   absence.leave_reservation
   absence.leave_reservation_line            // NEW 30Mar2026 (Change 16)
   absence.leave_event_def
+  absence.leave_class_event                 // NEW 01Apr2026 (Change 26)
+  absence.leave_period                      // NEW 01Apr2026 (Change 27)
+  absence.team_leave_limit                  // NEW 01Apr2026 (Change 28)
   absence.holiday_calendar
   absence.holiday_date
   absence.termination_balance_record
-  // absence.absence_rule             // DEPRECATED 01Apr2026 (Change 19): removed; rules live in leave_policy.config_json
-  absence.class_policy_assignment     // 01Apr2026 FIX (Change 22): was class_rule_assignment (name mismatch fixed)
-  absence.leave_accrual_run           // NEW 30Mar2026 (Change 17)
+  // absence.absence_rule                   // DEPRECATED 01Apr2026 (Change 19)
+  absence.class_policy_assignment           // 01Apr2026 FIX (Change 22)
+  absence.leave_event_run                   // REPLACES leave_accrual_run (Change 29)
 }
 
 TableGroup ta_operational {

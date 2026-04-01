@@ -1,6 +1,6 @@
 # Time & Absence Module - Database Design Overview
 
-**Version:** 5.2  
+**Version:** 5.3  
 **Last Updated:** 2026-04-01  
 **Source:** TA-database-design-v5.dbml
 
@@ -72,8 +72,8 @@ TA module được chia thành 4 bounded contexts:
 | Context | Tables | Responsibility | Key Entities |
 |---------|--------|----------------|--------------|
 | **ta.scheduling** | 10 | Quản lý lịch làm việc theo 6-level hierarchy | TimeSegment, Shift, DayModel, Pattern, ScheduleRule, Roster |
-| **ta.attendance** | 11 | Chấm công, timesheet, overtime, comp time | ClockEvent, AttendanceRecord, Timesheet, OvertimeRequest, CompTimeBalance |
-| **ta.absence** | 15 | Quản lý nghỉ phép, balance tracking, accrual | LeaveType, LeaveClass, LeavePolicy, LeaveInstant, LeaveMovement, LeaveRequest |
+| **ta.attendance** | 12 | Chấm công, timesheet, overtime, comp time, payroll export | ClockEvent, AttendanceRecord, Timesheet, OvertimeRequest, CompTimeBalance, PayrollExportPackage |
+| **ta.absence** | 18 | Quản lý nghỉ phép, balance tracking, event processing | LeaveType, LeaveClass, LeavePolicy, LeaveInstant, LeaveMovement, LeaveRequest, LeaveEventRun |
 | **ta.shared** | 4 | Shared services dùng chung | Period, HolidayCalendar, HolidayDate, TimeTypeElementMap |
 
 ---
@@ -305,12 +305,31 @@ Built-in enforcement:
 
 | Metric | Count |
 |--------|-------|
-| Total Tables | 40 |
+| Total Tables | 45 |
 | Enums | 19 |
-| Bounded Contexts | 4 |
+| Bounded Contexts | 5 |
 | Domain Events | 54 |
 | Business Rules | 22+ |
 | Vietnam Labor Code References | 7 articles |
+
+### New in v5.3
+
+| Entity | Description |
+|--------|-------------|
+| `leave_event_run` | Generalized batch event execution (replaces leave_accrual_run) |
+| `leave_class_event` | N:N mapping leave_class ↔ leave_event_def |
+| `leave_period` | Period hierarchy YEAR → QUARTER → MONTH |
+| `team_leave_limit` | Staffing rules for concurrent absence |
+| `leave_reservation_line` | FEFO lot allocation tracking |
+| `payroll_export_package` | Payroll dispatch tracking |
+
+### Deprecated in v5.3
+
+| Entity | Replacement |
+|--------|-------------|
+| `leave_accrual_run` | `leave_event_run` (generalized) |
+| `absence_rule` | `leave_policy.config_json` |
+| `policy_assignment` | Core eligibility engine |
 
 ---
 

@@ -771,6 +771,137 @@ Crew C: offset=14 → Week 1: Evening Shift
 
 ---
 
+### ⚡ LeaveEventRun (Generalized Batch Tracking)
+
+**Business Definition:** Tracks all batch event executions (ACCRUAL, CARRY, EXPIRE, etc.).
+
+**Database Purpose:** Replaces LeaveAccrualRun with generalized event processing.
+
+**Key Fields:**
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| `event_def_id` | uuid | FK to LeaveEventDef |
+| `class_id` | uuid | Leave class (null = all) |
+| `period_id` | uuid | FK to LeavePeriod |
+| `run_status` | varchar | RUNNING, COMPLETED, FAILED, SKIPPED, CANCELED |
+| `employee_count` | int | Employees processed |
+| `movements_created` | int | LeaveMovement records created |
+| `idempotency_key` | varchar | Prevents double-run |
+
+**Sample Data:**
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440181",
+  "event_def_id": "EVENT_DEF_ACCRUAL",
+  "class_id": "CLASS_ANNUAL_STD",
+  "period_id": "PERIOD_202604",
+  "run_status": "COMPLETED",
+  "started_at": "2026-04-30T23:00:00Z",
+  "completed_at": "2026-04-30T23:05:00Z",
+  "employee_count": 500,
+  "movements_created": 500,
+  "employees_skipped": 25
+}
+```
+
+---
+
+### 📄 LeaveClassEvent (N:N Mapping)
+
+**Business Definition:** Maps LeaveClass to LeaveEventDef with qty formula.
+
+**Database Purpose:** Event routing configuration.
+
+**Sample Data:**
+```json
+{
+  "class_id": "CLASS_ANNUAL_STD",
+  "event_def_id": "EVENT_DEF_ACCRUAL",
+  "qty_formula": "+seniority_calc",
+  "idempotent": true
+}
+```
+
+---
+
+### 📄 LeavePeriod (Period Hierarchy)
+
+**Business Definition:** Period hierarchy YEAR → QUARTER → MONTH.
+
+**Database Purpose:** Financial reporting structure for leave movements.
+
+**Sample Data:**
+```json
+{
+  "id": "PERIOD_FY2026M04",
+  "code": "FY2026M04",
+  "parent_id": "PERIOD_FY2026Q2",
+  "level_code": "MONTH",
+  "start_date": "2026-04-01",
+  "end_date": "2026-04-30",
+  "status_code": "OPEN"
+}
+```
+
+---
+
+### 📄 TeamLeaveLimit (Staffing Rules)
+
+**Business Definition:** Limits concurrent absence in org unit.
+
+**Database Purpose:** Prevents understaffing.
+
+**Sample Data:**
+```json
+{
+  "org_unit_id": "TEAM_ENGINEERING",
+  "leave_type_code": "ANNUAL",
+  "limit_pct": 20.00,
+  "escalation_level": 2
+}
+```
+
+---
+
+### ⚡ LeaveReservationLine (FEFO Lot Allocation)
+
+**Business Definition:** Maps reservation to specific LeaveInstantDetail lots.
+
+**Database Purpose:** FEFO tracking with FK integrity.
+
+**Sample Data:**
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440171",
+  "reservation_id": "RESERVATION_ID",
+  "source_lot_id": "LOT_ID",
+  "reserved_amount": 3.00,
+  "expiry_date": "2026-03-31"
+}
+```
+
+---
+
+### 📄 ClassPolicyAssignment (N:N Mapping)
+
+**Business Definition:** Maps LeaveClass to LeavePolicy with priority.
+
+**Database Purpose:** Replaces ClassRuleAssignment (absence_rule deprecated).
+
+**Sample Data:**
+```json
+{
+  "class_id": "CLASS_ANNUAL_STD",
+  "policy_id": "POLICY_ACCRUAL_ID",
+  "priority": 10,
+  "is_override": false,
+  "is_current_flag": true
+}
+```
+
+---
+
 ## ta.shared - Shared Entities
 
 ### ⚡ Period (Payroll Period)
@@ -846,16 +977,34 @@ Crew C: offset=14 → Week 1: Evening Shift
 | | TimesheetHeader | ⚡ | Period summary |
 | | OvertimeRequest | ⚡ | OT pre-approval |
 | | CompTimeBalance | 📄 | Comp time tracking |
+| | PayrollExportPackage | ⚡ | Payroll dispatch tracking |
 | **absence** | LeaveType | ⭐ | Leave configuration |
 | | LeaveClass | ⚡ | Leave grouping |
 | | LeavePolicy | ⚡ | Policy rules |
+| | ClassPolicyAssignment | 📄 | Class-Policy N:N mapping |
 | | LeaveInstant | ⭐ | Balance snapshot |
 | | LeaveMovement | ⭐ | Immutable ledger |
-| | LeaveRequest | ⚡ | Request workflow |
 | | LeaveInstantDetail | ⚡ | FEFO lots |
+| | LeaveRequest | ⚡ | Request workflow |
+| | LeaveReservation | ⚡ | Balance hold |
+| | LeaveReservationLine | ⚡ | FEFO lot allocation |
+| | LeaveEventDef | 📄 | Event type definitions |
+| | LeaveEventRun | ⚡ | Batch event execution |
+| | LeaveClassEvent | 📄 | Class-Event N:N mapping |
+| | LeavePeriod | 📄 | Period hierarchy (YEAR→QTR→MO) |
+| | TeamLeaveLimit | 📄 | Staffing rules |
+| | TerminationBalanceRecord | ⚡ | Exit balance snapshot |
 | **shared** | Period | ⚡ | Payroll period |
 | | HolidayCalendar | ⚡ | Public holidays |
 | | TimeTypeElementMap | ⚡ | TA→Payroll mapping |
+
+### Deprecated Entities
+
+| Entity | Status | Replacement |
+|--------|:------:|-------------|
+| LeaveAccrualRun | ❌ | LeaveEventRun (generalized) |
+| AbsenceRule | ❌ | LeavePolicy.config_json |
+| PolicyAssignment | ❌ | Core eligibility engine |
 
 ---
 
