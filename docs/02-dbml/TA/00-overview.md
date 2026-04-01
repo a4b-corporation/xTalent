@@ -161,7 +161,7 @@ erDiagram
 **Principle:** Batch operations phải idempotent - chạy lại không tạo duplicate.
 
 **Applies to:**
-- `LeaveAccrualRun` - One completed run per plan per period
+- `LeaveEventRun` - One completed run per event × class × period
 - `PayrollExportPackage` - One export per period
 
 ### 3. FEFO Reservation

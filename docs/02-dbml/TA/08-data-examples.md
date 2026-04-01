@@ -926,9 +926,9 @@ Employee NVAN001 resigns, last working day 2026-06-30. Has 5 days unused annual 
 |----------|-------------|---------|
 | **Onboarding** | Employee, LeaveInstant, ScheduleAssignment, GeneratedRoster | Initial setup |
 | **Punch → Timesheet** | ClockEvent, AttendanceRecord, TimesheetHeader, TimesheetLine | Daily attendance |
-| **Leave Request** | LeaveRequest, LeaveReservation, LeaveMovement, LeaveInstant | Absence workflow |
+| **Leave Request** | LeaveRequest, LeaveReservation, LeaveReservationLine, LeaveMovement, LeaveInstant | Absence workflow with FEFO |
 | **Overtime** | OvertimeRequest, CompTimeBalance | OT & comp time |
-| **Accrual** | LeaveAccrualRun, LeaveMovement, LeaveInstantDetail | Batch processing |
+| **Event Processing** | LeaveEventDef, LeaveEventRun, LeaveClassEvent, LeaveMovement | Batch processing |
 | **Roster Generation** | TimeSegment, ShiftDef, PatternTemplate, ScheduleAssignment, GeneratedRoster | Scheduling |
 | **Period Close** | Period, PayrollExportPackage | Payroll integration |
 | **Termination** | TerminationBalanceRecord, LeaveMovement | Exit processing |

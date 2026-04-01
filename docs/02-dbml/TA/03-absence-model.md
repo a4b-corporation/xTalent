@@ -77,7 +77,8 @@ graph TB
     
     subgraph Accrual
         LED[LeaveEventDef]
-        LAR[LeaveAccrualRun]
+        LER[LeaveEventRun]
+        LCE[LeaveClassEvent]
     end
     
     subgraph Termination
@@ -97,9 +98,10 @@ graph TB
     LRSV --> LRSL
     LRSL --> LID
     
-    LED --> LAR
-    LP --> LAR
-    LAR --> LM
+    LED --> LER
+    LCE --> LED
+    LC --> LCE
+    LER --> LM
     
     LI --> TBR
 ```
@@ -116,7 +118,12 @@ erDiagram
     LEAVE_CLASS ||--o{ CLASS_POLICY_ASSIGNMENT : "has policies"
     
     LEAVE_POLICY ||--o{ CLASS_POLICY_ASSIGNMENT : "assigned to"
-    LEAVE_POLICY ||--o{ LEAVE_ACCRUAL_RUN : "executed by"
+    
+    LEAVE_CLASS ||--o{ LEAVE_CLASS_EVENT : "triggers events"
+    LEAVE_EVENT_DEF ||--o{ LEAVE_CLASS_EVENT : "defined by"
+    LEAVE_EVENT_DEF ||--o{ LEAVE_EVENT_RUN : "executed in batches"
+    LEAVE_CLASS ||--o{ LEAVE_EVENT_RUN : "for class"
+    LEAVE_EVENT_RUN ||--o{ LEAVE_MOVEMENT : "creates movements"
     
     LEAVE_INSTANT ||--o{ LEAVE_INSTANT_DETAIL : "has lots"
     LEAVE_INSTANT ||--o{ LEAVE_MOVEMENT : "tracks changes"
@@ -535,7 +542,7 @@ where:
   "period_id": "PERIOD_202601",
   "effective_date": "2026-01-31",
   "expire_date": "2026-12-31",
-  "run_id": "ACCRUAL_RUN_202601",
+  "run_id": "EVENT_RUN_202601",
   "idempotency_key": "ACC-EMP001-202601"
 }
 ```
@@ -1089,26 +1096,40 @@ sequenceDiagram
     end
 ```
 
-### Workflow 3: Monthly Accrual
+### Workflow 3: Event-Driven Batch Processing
 
 ```mermaid
 sequenceDiagram
     participant S as Scheduler
-    participant AR as AccrualRun
+    participant ER as LeaveEventRun
+    participant ED as LeaveEventDef
     participant E as Employee List
     participant L as LeaveInstant
     participant M as LeaveMovement
     
-    S->>AR: Start Accrual Run
-    AR->>AR: Create record (RUNNING)
-    AR->>E: Get all eligible employees
-    loop For each employee
-        AR->>L: Get LeaveInstant
-        AR->>M: Create EARN movement (+qty)
-        AR->>L: Update current_qty (+)
+    S->>ER: Start Event Run
+    ER->>ER: Create record (RUNNING)
+    ER->>ER: Check idempotency (event_def, class, period)
+    
+    alt Duplicate Run
+        ER->>ER: Update status (SKIPPED)
+        ER->>S: Return - Already ran
+    else New Run
+        ER->>ED: Get Event Definition
+        ED-->>ER: policy_refs, qty_formula
+        
+        ER->>E: Get all eligible employees
+        
+        loop For each employee
+            ER->>L: Get LeaveInstant
+            ER->>M: Create EARN movement (+qty)
+            ER->>L: Update current_qty (+)
+            ER->>ER: Increment movements_created
+        end
+        
+        ER->>ER: Update status (COMPLETED)
+        ER->>S: Return success
     end
-    AR->>AR: Update status (COMPLETED)
-    Note over AR: Idempotent - unique(plan, period)
 ```
 
 ---

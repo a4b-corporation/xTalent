@@ -292,51 +292,66 @@ flowchart TD
 
 ---
 
-## 4. Monthly Accrual Batch
+## 4. Event-Driven Batch Processing
 
-### Accrual Run Flow
+### Leave Event Run Flow
 
 ```mermaid
 sequenceDiagram
     participant S as Scheduler
-    participant AR as LeaveAccrualRun
-    participant P as LeavePolicy
+    participant ER as LeaveEventRun
+    participant ED as LeaveEventDef
+    participant CE as LeaveClassEvent
     participant E as Employee List
     participant LI as LeaveInstant
     participant LID as LeaveInstantDetail
     participant LM as LeaveMovement
     
-    S->>AR: Start Accrual Run
-    AR->>AR: Create record (status=RUNNING)
-    AR->>AR: Check idempotency (plan_policy_id, period_start)
+    S->>ER: Start Event Run
+    ER->>ER: Create record (status=RUNNING)
+    ER->>ER: Check idempotency (event_def_id, class_id, period_id)
     
     alt Duplicate Run
-        AR->>AR: Update status (SKIPPED)
-        AR->>S: Return - Already ran
+        ER->>ER: Update status (SKIPPED)
+        ER->>S: Return - Already ran
     else New Run
-        AR->>P: Get Accrual Policy
-        P-->>AR: config_json (method, amount_per_period)
+        ER->>ED: Get Event Definition
+        ED-->>ER: trigger_kind, policy_refs
         
-        AR->>E: Get all eligible employees
+        ER->>CE: Get Class-Event Mapping
+        CE-->>ER: qty_formula
+        
+        ER->>E: Get all eligible employees
         
         loop For each employee
-            AR->>LI: Get LeaveInstant
-            AR->>LM: Check idempotency (employee, period)
+            ER->>LI: Get LeaveInstant
+            ER->>LM: Check idempotency (employee, period)
             
             alt Already processed
-                AR->>AR: Skip employee
+                ER->>ER: Skip employee
+                ER->>ER: Increment employees_skipped
             else Not processed
-                AR->>LM: Create EARN movement (+amount)
-                AR->>LID: Create/Update lot with expiry
-                AR->>LI: Update current_qty (+amount)
-                AR->>AR: Increment movements_created
+                ER->>LM: Create movement (qty from formula)
+                ER->>LID: Create/Update lot with expiry
+                ER->>LI: Update current_qty
+                ER->>ER: Increment movements_created
             end
         end
         
-        AR->>AR: Update status (COMPLETED)
-        AR->>S: Return success
+        ER->>ER: Update status (COMPLETED)
+        ER->>S: Return success
     end
 ```
+
+### Event Types
+
+| Event Code | Trigger | Description |
+|------------|---------|-------------|
+| `ACCRUAL` | SCHEDULED | Monthly accrual batch |
+| `CARRY` | SCHEDULED | Year-end carryover |
+| `EXPIRE` | SCHEDULED | Balance expiry processing |
+| `RESET_LIMIT` | SCHEDULED | Reset usage limits |
+| `OT_EARN` | EVENT | OT converted to comp time |
 
 ### Accrual Calculation Methods
 
