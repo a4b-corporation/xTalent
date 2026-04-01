@@ -1,9 +1,20 @@
 //===============================================================
-//  SCHEMA: Time & Attendance + Absence - Database Design v5.1
-//  Revision: 2025-12-12
+//  SCHEMA: Time & Attendance + Absence - Database Design v5.2
+//  Revision: 2026-04-01
 //  Model: 6-Level Hierarchical Architecture + Absence Management
 //  Based on: Time_Attendance_Concept_Design.docx + 3.Absence.v4.dbml
 //===============================================================
+//
+//  CHANGES in v5.2 (2026-04-01):
+//  - (Change 18) Fix broken FK refs: shift_break→shift_def, attendance_record→shift_def,
+//                shift_swap_request→shift_def, shift_bid→open_shift_pool
+//  - (Change 19) Deprecated absence.absence_rule; business rules stay in leave_policy.config_json
+//  - (Change 20) leave_accrual_run.plan_rule_id → plan_policy_id (refs leave_policy)
+//  - (Change 21) Fixed class_policy_assignment index (was referencing non-existent rule_id)
+//  - (Change 22) Fixed TableGroup: class_rule_assignment → class_policy_assignment; removed absence_rule
+//  - (Change 23) Added ta.payroll_export_package table (payroll dispatch tracking)
+//  - (Change 24) Added NOT NULL constraints on required fields in core tables
+//  - (Change 25) Added named index constraints on critical unique indexes
 //
 //  CHANGES in v5.1 (2025-12-12):
 //  - Merged Absence v4 tables (11 new tables)
@@ -715,16 +726,16 @@ Table org_bu.unit {
 /*----------- 2. Shift Break (NEW - tách riêng từ segment_json) */
 Table ta.shift_break {
   id                uuid [pk]
-  shift_pattern_id  uuid [ref: > ta.shift_pattern.id]
-  name              varchar(100)                // "Lunch Break", "Tea Break"
-  start_offset_hours decimal(5,2)               // 4.0 = 4 giờ sau khi bắt đầu ca
-  duration_hours    decimal(5,2)
+  shift_def_id      uuid [not null, ref: > ta.shift_def.id]  // 01Apr2026 FIX (Change 18): was shift_pattern_id → ta.shift_pattern.id (deprecated)
+  name              varchar(100) [not null]     // "Lunch Break", "Tea Break"
+  start_offset_hours decimal(5,2) [not null]    // 4.0 = 4 giờ sau khi bắt đầu ca
+  duration_hours    decimal(5,2) [not null]
   is_paid           boolean [default:false]
   is_mandatory      boolean [default:true]
   
   created_at        timestamptz [default:`now()`]
   
-  Indexes { (shift_pattern_id) }
+  Indexes { (shift_def_id) }
 }
 
 // 2025-12-01 NEW: Tách riêng breaks thành bảng để dễ quản lý và query
@@ -768,7 +779,7 @@ Table ta.schedule {
 Table ta.attendance_record {
   id                  uuid [pk]
   employee_id         uuid [ref: > employment.employee.id]
-  shift_id            uuid [ref: > ta.shift.id, null]
+  shift_id            uuid [ref: > ta.shift_def.id, null]   // 01Apr2026 FIX (Change 18): was ta.shift.id (deprecated)
   attendance_date     date
   
   clock_in_time       timestamptz [null]           // 27Mar2026: changed (Change 10)
@@ -829,8 +840,8 @@ Table ta.shift_swap_request {
   requestor_id      uuid [ref: > employment.employee.id]
   target_worker_id  uuid [ref: > employment.employee.id]
   
-  requestor_shift_id uuid [ref: > ta.shift.id]
-  target_shift_id    uuid [ref: > ta.shift.id]
+  requestor_shift_id uuid [ref: > ta.shift_def.id]  // 01Apr2026 FIX (Change 18): was ta.shift.id (deprecated)
+  target_shift_id    uuid [ref: > ta.shift_def.id]  // 01Apr2026 FIX (Change 18): was ta.shift.id (deprecated)
   
   request_date      timestamptz [default:`now()`]
   reason            text [null]
@@ -864,7 +875,7 @@ Table ta.shift_swap_request {
 Table ta.shift_bid {
   id                uuid [pk]
   worker_id         uuid [ref: > employment.employee.id]
-  shift_id          uuid [ref: > ta.shift.id]
+  open_shift_id     uuid [ref: > ta.open_shift_pool.id]  // 01Apr2026 FIX (Change 18): bid targets open_shift_pool entry, not shift_def
   
   bid_date          timestamptz [default:`now()`]
   priority          int [null]                  // worker's priority ranking
@@ -1502,90 +1513,73 @@ Table absence.termination_balance_record {
 
 
 //===============================================================
-//  NEW TABLES — 30Mar2026 (Changes 14, 15, 17)
-//  Option C: Centralized Rule Engine + N:N Mapping + Accrual Batch
+//  NEW TABLES — 30Mar2026 / 01Apr2026
+//  Changes 14–17, 23: Rule Engine, FEFO, Accrual Batch, Payroll Export
 //===============================================================
 
-/*----------- Absence Rule (NEW 30Mar2026, Change 14) -----------*/
-// Centralized rule repository for ALL absence business rules.
-// 9 Policy Entities from bounded-contexts.md § 11 → 9 rule_types.
-// Phase 1 (Absence): ACCRUAL | CARRY | LIMIT | VALIDATION | PRORATION | ROUNDING | SENIORITY
-// Phase 2 (Full TA): + COMP_TIME | OVERTIME | SHIFT_SWAP | BIOMETRIC | HOLIDAY | TERMINATION | APPROVAL
-Table absence.absence_rule {
-  id                uuid [pk]
-  tenant_id         uuid [null]
-  
-  // ── DISCRIMINATOR ──
-  rule_type         varchar(30) [not null]     // Phase 1: ACCRUAL|CARRY|LIMIT|VALIDATION|PRORATION|ROUNDING|SENIORITY
-  
-  // ── IDENTITY ──
-  code              varchar(50) [not null]     // unique per tenant + rule_type
-  name              varchar(255) [not null]
-  description       text [null]
-  
-  // ── VERSION & LIFECYCLE ──
-  version           int [not null, default: 1] // auto-increment on update
-  status_code       varchar(20) [default: 'ACTIVE']  // ACTIVE | INACTIVE | DRAFT
-  
-  // ── SCOPE (optional filtering) ──
-  country_code      varchar(10) [null]         // null = all countries
-  legal_entity_id   uuid [null]                // null = all LEs
-  
-  // ── RULE PAYLOAD ──
-  // Centralized config in JSONB — schema validated per rule_type at application layer.
-  // ACCRUAL:    {method, amount_per_period, frequency, unit, max_balance, tenure_tiers[]}
-  // CARRY:      {allow_carry, max_carry_qty, carry_unit, expiry_months_after_year_end, expiry_action}
-  // SENIORITY:  {tiers[{min_years, max_years, entitlement_days}], vlc_reference}
-  // LIMIT:      {max_per_request, max_per_month, max_per_year, min_notice_days}
-  // VALIDATION: {rules[{type, params}]}
-  // PRORATION:  {method, basis}
-  // ROUNDING:   {method, precision}
-  config_json       jsonb [not null]
-  
-  // ── AUDIT ──
-  effective_start   date [not null]
-  effective_end     date [null]
-  is_current_flag   boolean [default: true]    // SCD Type 2 — false = historical version
-  
-  metadata          jsonb
-  created_at        timestamptz [default:`now()`]
-  updated_at        timestamptz [null]
-  created_by        uuid [not null]
-  updated_by        uuid [null]
-  
+/*----------- Payroll Export Package (NEW 01Apr2026, Change 23) -*/
+// Cross-module: TA → Payroll data dispatch with integrity tracking.
+// ADR-TA-001: Append-only, idempotent per period (one export per period).
+Table ta.payroll_export_package {
+  id                    uuid [pk]
+
+  period_id             uuid [not null, ref: > ta.period.id]         // Period being closed and exported
+
+  generated_at          timestamptz [not null, default: `now()`]
+  generated_by          uuid [not null, ref: > employment.employee.id]
+
+  // Summary totals (pre-calculated for Payroll system intake)
+  employee_count        int [not null]
+  total_regular_hours   decimal(12,4) [not null]
+  total_ot_hours        decimal(12,4) [not null]
+  total_leave_days      decimal(12,4) [not null]
+  total_comp_time_hours decimal(12,4) [not null]
+
+  // Integrity verification
+  export_format         varchar(16) [not null, default:'JSON']        // JSON | CSV | XML
+  checksum              varchar(64) [not null]                        // SHA-256 of export payload
+
+  // Dispatch acknowledgement loop (TA → Payroll)
+  dispatch_status       varchar(20) [not null, default:'PENDING']     // PENDING | DISPATCHED | ACKNOWLEDGED | FAILED
+  dispatched_at         timestamptz [null]
+  payroll_system_ref    varchar(255) [null]                           // Reference ID from Payroll module on receipt
+
+  metadata              jsonb
+  created_at            timestamptz [not null, default: `now()`]
+  created_by            uuid [not null, ref: > employment.employee.id]
+
   Indexes {
-    (tenant_id, rule_type, code, is_current_flag) [unique, name: 'uq_absence_rule_tenant_type_code']
-    (tenant_id, rule_type, status_code)
-    (rule_type, country_code)
+    (period_id) [unique, name: 'uq_payroll_export_per_period']        // Idempotency: one export per period
+    (dispatch_status)
   }
-  
-  Note: '''
-  NEW 30Mar2026 (Change 14). Centralized rule repository — Option C: Rule Engine.
-  
-  Maps 9 Policy Entities (bounded-contexts.md § 11) to rule_type discriminator:
-  1. LeavePolicy → ACCRUAL, CARRY, LIMIT, VALIDATION, PRORATION, ROUNDING, SENIORITY
-  2. CompTimePolicy → COMP_TIME (Phase 2)
-  3. SickLeavePolicy → SICK_LEAVE (Phase 2)
-  4. OvertimePolicy → OVERTIME (Phase 2)
-  5. ShiftSwapPolicy → SHIFT_SWAP (Phase 2)
-  6. BiometricPolicy → BIOMETRIC (Phase 2)
-  7. HolidayPolicy → HOLIDAY (Phase 2)
-  8. TerminationPolicy → TERMINATION (Phase 2)
-  9. ApprovalChain → APPROVAL (Phase 2)
-  
-  Benefits vs JSONB-in-policy:
-  1. SQL-level batch filtering: WHERE rule_type = 'ACCRUAL' (indexed)
-  2. Reusable: 1 rule → N classes via class_rule_assignment (N:N)
-  3. Auditable: SCD Type 2 versioning (is_current_flag)
-  4. Flexible: config_json keeps JSONB payload per rule_type
-  5. Scopable: optional country_code/legal_entity_id filtering
-  '''
+
+  Note: 'NEW 01Apr2026 (Change 23). ADR-TA-001: Append-only, idempotent per period. checksum=SHA-256 integrity. dispatch_status lifecycle: PENDING→DISPATCHED→ACKNOWLEDGED (or FAILED). Sourced from archive/db.dbml payroll_export_packages pattern.'
 }
 
 
-/*----------- Class Rule Assignment (NEW 30Mar2026, Change 15) --*/
-// N:N mapping between leave_class and absence_rule.
-// leave_class is NOT modified — rules connected via this independent table.
+/*----------- Absence Rule — DEPRECATED 01Apr2026 (Change 19) --*/
+// DEPRECATED: absence_rule table removed from schema.
+// Decision: Business rules remain in absence.leave_policy.config_json (policy_type discriminator).
+// FKs that referenced absence_rule.id now reference absence.leave_policy.id.
+// See leave_accrual_run.plan_policy_id for migration example.
+// Original design notes preserved below as historical reference:
+//
+// Table absence.absence_rule {
+//   id uuid [pk]
+//   tenant_id uuid [null]
+//   rule_type varchar(30) [not null]  -- ACCRUAL|CARRY|LIMIT|VALIDATION|PRORATION|ROUNDING|SENIORITY
+//   code varchar(50) [not null]
+//   name varchar(255) [not null]
+//   config_json jsonb [not null]
+//   ... (9 Policy Entities — see bounded-contexts.md § 11)
+// }
+
+// (body omitted — table deprecated 01Apr2026, see deprecation comment above)
+
+
+/*----------- Class Policy Assignment (renamed 01Apr2026, was: Change 15) --*/
+// N:N mapping between leave_class and leave_policy.
+// RENAMED 01Apr2026: class_rule_assignment → class_policy_assignment (absence_rule deprecated).
 Table absence.class_policy_assignment {
   id                uuid [pk]
   tenant_id         uuid [null]
@@ -1608,26 +1602,27 @@ Table absence.class_policy_assignment {
   created_by        uuid [not null]
   
   Indexes {
-    (tenant_id, class_id, rule_id, is_current_flag) [unique, name: 'uq_class_rule_assignment']
+    (tenant_id, class_id, policy_id, is_current_flag) [unique, name: 'uq_class_policy_assignment']  // 01Apr2026 FIX (Change 21)
     (class_id, is_current_flag)
-    (rule_id)
+    (policy_id)
   }
   
   Note: '''
-  NEW 30Mar2026 (Change 15). N:N mapping: leave_class ↔ absence_rule.
-  
+  01Apr2026 UPDATED (Change 21). N:N mapping: leave_class ↔ leave_policy.
+  Renamed from class_rule_assignment → class_policy_assignment (absence_rule deprecated, policy used instead).
+
   Design:
-  1. leave_class NOT modified — rules connect through this table independently
-  2. One class → multiple rules of different types (ACCRUAL + CARRY + LIMIT + SENIORITY)
-  3. One rule → multiple classes (reuse)
+  1. leave_class NOT modified — policies connect through this table independently
+  2. One class → multiple policies of different policy_type (ACCRUAL + CARRY + LIMIT + SENIORITY)
+  3. One policy → multiple classes (reuse)
   4. priority for evaluation ordering
-  5. is_override for BU/LE-specific overrides without changing base rule
+  5. is_override for BU/LE-specific overrides without changing base policy
   6. SCD Type 2 history via is_current_flag
-  
+
   Example:
-    ANNUAL_STANDARD → [ACCRUAL_MONTHLY, CARRY_5DAYS, LIMIT_STD, SENIORITY_VLC113]
-    ANNUAL_SENIOR   → [ACCRUAL_MONTHLY, CARRY_10DAYS, LIMIT_SENIOR, SENIORITY_VLC113]
-    (ACCRUAL_MONTHLY and SENIORITY_VLC113 reused across both classes)
+    ANNUAL_STANDARD → [ACCRUAL_MONTHLY_POL, CARRY_5DAYS_POL, LIMIT_STD_POL, SENIORITY_VLC113_POL]
+    ANNUAL_SENIOR   → [ACCRUAL_MONTHLY_POL, CARRY_10DAYS_POL, LIMIT_SENIOR_POL, SENIORITY_VLC113_POL]
+    (ACCRUAL and SENIORITY policies reused across both classes)
   '''
 }
 
@@ -1640,7 +1635,7 @@ Table absence.leave_accrual_run {
   tenant_id         uuid [null]
   
   // ── BATCH IDENTITY ──
-  plan_rule_id      uuid [not null, ref: > absence.absence_rule.id]  // ACCRUAL rule that triggered this run
+  plan_policy_id    uuid [not null, ref: > absence.leave_policy.id]  // 01Apr2026 FIX (Change 20): was plan_rule_id → absence_rule.id (deprecated); now refs leave_policy (ACCRUAL type)
   period_start      date [not null]
   period_end        date [not null]
   
@@ -1661,12 +1656,12 @@ Table absence.leave_accrual_run {
   created_by        uuid [not null]
   
   Indexes {
-    (tenant_id, plan_rule_id, period_start) [unique, name: 'uq_accrual_run_idempotency']
+    (tenant_id, plan_policy_id, period_start) [unique, name: 'uq_accrual_run_idempotency']
     (tenant_id, status_code)
-    (plan_rule_id)
+    (plan_policy_id)
   }
   
-  Note: 'NEW 30Mar2026 (Change 17). ADR-TA-002: Idempotent accrual batch. Unique constraint (plan_rule_id, period_start) prevents duplicate runs. SKIPPED status returned when re-run attempted for same period. Replaces implicit run tracking in leave_movement.run_id.'
+  Note: '01Apr2026 UPDATED (Change 20). ADR-TA-002: Idempotent accrual batch. Unique constraint (plan_policy_id, period_start) prevents duplicate runs. SKIPPED when re-run attempted for same period. plan_policy_id refs leave_policy (policy_type=ACCRUAL) — absence_rule deprecated 01Apr2026.'
 }
 
 
@@ -1697,6 +1692,7 @@ TableGroup ta_attendance {
   ta.eval_rule
   ta.eval_result
   ta.period
+  ta.payroll_export_package            // NEW 01Apr2026 (Change 23)
 }
 
 TableGroup ta_absence {
@@ -1714,9 +1710,9 @@ TableGroup ta_absence {
   absence.holiday_calendar
   absence.holiday_date
   absence.termination_balance_record
-  absence.absence_rule                      // NEW 30Mar2026 (Change 14)
-  absence.class_rule_assignment             // NEW 30Mar2026 (Change 15)
-  absence.leave_accrual_run                 // NEW 30Mar2026 (Change 17)
+  // absence.absence_rule             // DEPRECATED 01Apr2026 (Change 19): removed; rules live in leave_policy.config_json
+  absence.class_policy_assignment     // 01Apr2026 FIX (Change 22): was class_rule_assignment (name mismatch fixed)
+  absence.leave_accrual_run           // NEW 30Mar2026 (Change 17)
 }
 
 TableGroup ta_operational {

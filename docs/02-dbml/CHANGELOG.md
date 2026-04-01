@@ -1,6 +1,82 @@
 # xTalent Database Design – Changelog
 
 
+## [01Apr2026] – v5.2: FK Fixes, absence_rule Deprecated, Payroll Export Package
+
+> Context: Review so sánh TA-database-design-v5.dbml vs archive/db.dbml — phát hiện 5 broken FK references, 2 table/index name mismatches, và các gaps về payroll dispatch tracking.
+> Architecture Decision: Giữ business rules trong `leave_policy.config_json` thay vì tách thêm `absence_rule` table. Approval workflow do Temporal engine handle. Notification do Notification Service riêng.
+
+### TA-database-design-v5.dbml
+
+**Change 18 – Fix 5 broken FK references**
+
+| Table | Column (before) | FK (before) | Column (after) | FK (after) |
+|---|---|---|---|---|
+| `ta.shift_break` | `shift_pattern_id` | `ta.shift_pattern.id` (not defined) | `shift_def_id` | `ta.shift_def.id` ✅ |
+| `ta.attendance_record` | `shift_id` | `ta.shift.id` (not defined) | `shift_id` | `ta.shift_def.id` ✅ |
+| `ta.shift_swap_request` | `requestor_shift_id` | `ta.shift.id` (not defined) | `requestor_shift_id` | `ta.shift_def.id` ✅ |
+| `ta.shift_swap_request` | `target_shift_id` | `ta.shift.id` (not defined) | `target_shift_id` | `ta.shift_def.id` ✅ |
+| `ta.shift_bid` | `shift_id` | `ta.shift.id` (not defined) | `open_shift_id` | `ta.open_shift_pool.id` ✅ |
+
+> Root cause: Các table `ta.shift_pattern` và `ta.shift` đã bị comment out là DUPLICATE (27Mar2026) nhưng tables tham chiếu chúng không được update theo.
+
+**Change 19 – DEPRECATED `absence.absence_rule`**
+- User decision: Không duy trì `absence_rule` table riêng biệt.
+- Business rules tiếp tục sống trong `absence.leave_policy.config_json` với `policy_type` discriminator.
+- Table body được xóa; deprecation comment giữ lại để reference lịch sử.
+- Approval workflow: Temporal engine handle → không cần `approval_chains` table trong TA DB.
+- Notifications: Notification Service độc lập → không cần `notifications` table trong TA DB.
+
+**Change 20 – `leave_accrual_run`: `plan_rule_id` → `plan_policy_id`**
+
+| Action | Field | Detail |
+|---|---|---|
+| RENAME + RETYPE | `plan_rule_id → plan_policy_id` | FK đổi từ `absence_rule.id` → `absence.leave_policy.id` |
+| UPDATE | Index unique | `(tenant_id, plan_rule_id, period_start)` → `(tenant_id, plan_policy_id, period_start)` |
+
+**Change 21 – `absence.class_policy_assignment`: Fix index columns**
+
+| Action | Before | After |
+|---|---|---|
+| FIX index | `(tenant_id, class_id, rule_id, is_current_flag)` | `(tenant_id, class_id, policy_id, is_current_flag)` |
+| FIX index name | `uq_class_rule_assignment` | `uq_class_policy_assignment` |
+| FIX index | `(rule_id)` | `(policy_id)` |
+
+> Root cause: Khi rename từ `class_rule_assignment` sang `class_policy_assignment`, column được đổi từ `rule_id` → `policy_id` nhưng index definitions không được cập nhật.
+
+**Change 22 – Fix TableGroup references**
+
+| Action | Before | After |
+|---|---|---|
+| REMOVE | `absence.absence_rule` | Commented out (deprecated) |
+| FIX name | `absence.class_rule_assignment` | `absence.class_policy_assignment` |
+| ADD | — | `ta.payroll_export_package` in `ta_attendance` group |
+
+**Change 23 – NEW `ta.payroll_export_package`**
+- Sourced from `archive/db.dbml` `payroll_export_packages` pattern.
+- Tracks TA → Payroll data dispatch lifecycle: PENDING → DISPATCHED → ACKNOWLEDGED | FAILED.
+- Fields: `period_id`, `generated_by`, summary totals (regular/OT/leave/comp hours), `checksum` (SHA-256), `dispatch_status`, `payroll_system_ref`
+- Idempotency: `(period_id) [unique]` — one export per period, re-run returns existing
+- ADR-TA-001: Append-only table
+
+**Changes 24–25 – NOT NULL + Named indexes (selective)**
+- `ta.shift_break`: Added NOT NULL on `shift_def_id`, `name`, `start_offset_hours`, `duration_hours`
+- `ta.payroll_export_package`: Full NOT NULL discipline on all required fields + named indexes
+- Future work: Systematic NOT NULL pass across all remaining tables (separate task)
+
+### Summary
+
+| Type | Count | Detail |
+|---|---|---|
+| FK fixed | 5 | shift_break, attendance_record, shift_swap_request (×2), shift_bid |
+| Table deprecated | 1 | `absence_rule` |
+| Table added | 1 | `ta.payroll_export_package` |
+| Index fixed | 3 | class_policy_assignment index columns + name |
+| TableGroup updated | 2 | ta_attendance (+1), ta_absence (fix name + remove deprecated) |
+| FK renamed | 1 | `leave_accrual_run.plan_rule_id` → `plan_policy_id` |
+
+---
+
 ## [30Mar2026] – Option C: Centralized Rule Engine (Absence)
 
 > Context: Normalize all absence business rules from JSONB columns into a centralized `absence_rule` table with `rule_type` discriminator. Decouple rules from leave_policy/class via N:N mapping. Centralize eligibility to `leave_class` only. Remove redundant `policy_assignment`.
