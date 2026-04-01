@@ -1016,7 +1016,7 @@ Table absence.leave_class {
   // DEPRECATED - changed 12dec2025: Use default_eligibility_profile_id instead
   eligibility_json  jsonb  [null]
   
-  rules_json        jsonb  [null] {"eligibility": "aaa", "accrual": "nnnn"}
+  rules_json        jsonb  [null]
   
   emit_expire_turnover boolean [default:false]
   
@@ -1051,8 +1051,26 @@ Table absence.leave_policy {
   // Was: default_eligibility_profile_id uuid [null, ref: > eligibility.eligibility_profile.id]
   
   // 30Mar2026 NEW (Change 12): FK to leave_class — code hiện tại link class qua policy vẫn hoạt động
-  class_id          uuid [null, ref: > absence.leave_class.id]
-  
+  //class_id          uuid [null, ref: > absence.leave_class.id] 
+
+  // ── SCOPE (optional filtering) ──
+  country_code      varchar(10) [null]         // null = all countries
+  legal_entity_id   uuid [null]                // null = all LEs
+
+  // ── DISCRIMINATOR ──
+  policy_type         varchar(50) [not null]     // Phase 1: ACCRUAL|CARRY|LIMIT|VALIDATION|PRORATION|ROUNDING|SENIORITY
+
+    // ── RULE PAYLOAD ──
+  // Centralized config in JSONB — schema validated per rule_type at application layer.
+  // ACCRUAL:    {method, amount_per_period, frequency, unit, max_balance, tenure_tiers[]}
+  // CARRY:      {allow_carry, max_carry_qty, carry_unit, expiry_months_after_year_end, expiry_action}
+  // SENIORITY:  {tiers[{min_years, max_years, entitlement_days}], vlc_reference}
+  // LIMIT:      {max_per_request, max_per_month, max_per_year, min_notice_days}
+  // VALIDATION: {rules[{type, params}]}
+  // PRORATION:  {method, basis}
+  // ROUNDING:   {method, precision}
+  config_json       jsonb [not null]
+
   // Rule JSONs — DEPRECATED 30Mar2026 (Change 12): Sẽ migrate sang absence.absence_rule + class_rule_assignment.
   // GIỮ columns để tránh lỗi development. Code mới đọc từ absence_rule, code cũ vẫn đọc JSONB.
   accrual_rule_json jsonb  [null]     // DEPRECATED 30Mar2026 → absence_rule(ACCRUAL)
@@ -1568,12 +1586,12 @@ Table absence.absence_rule {
 /*----------- Class Rule Assignment (NEW 30Mar2026, Change 15) --*/
 // N:N mapping between leave_class and absence_rule.
 // leave_class is NOT modified — rules connected via this independent table.
-Table absence.class_rule_assignment {
+Table absence.class_policy_assignment {
   id                uuid [pk]
   tenant_id         uuid [null]
   
   class_id          uuid [not null, ref: > absence.leave_class.id]
-  rule_id           uuid [not null, ref: > absence.absence_rule.id]
+  policy_id           uuid [not null, ref: > absence.leave_policy.id]
   
   // ── ASSIGNMENT METADATA ──
   priority          int [default: 10]          // evaluation order (lower = first)
