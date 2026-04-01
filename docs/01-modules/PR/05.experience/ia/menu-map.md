@@ -259,3 +259,203 @@ Reports
 | Statutory Rules | No | No | No | No | Full | No |
 | Audit | Read-own-entity | No | No | No | Full | No |
 | Integrity Report | Read-own-entity | No | No | No | Full | No |
+
+---
+
+## Restructured Unified Menu — PR Module
+
+> **Nguyên tắc phân vùng:**
+> - **Settings** — cấu hình kỹ thuật / hệ thống, dành cho Platform Admin, IT triển khai
+> - **Configs** — cấu hình nghiệp vụ do HR/IT nghiệp vụ thiết lập (master data, elements, rules…)
+> - **Operations** — tác nghiệp HR hàng ngày; chia sub-group theo vai trò
+> - **Reports** — báo cáo & phân tích
+> - **Self Services** — portal tự phục vụ, chia 2 view: Worker & Manager
+
+```
+Payroll (module root)
+│
+├── [SETTINGS]  ← Platform Admin / IT Triển khai
+│   ├── Legal Entities
+│   │   ├── Entity List
+│   │   └── Entity Configuration (payroll settings per legal entity)
+│   │
+│   ├── Statutory Rules
+│   │   ├── Rule List  (filter: TAX / SOCIAL_INSURANCE / OVERTIME / MINIMUM_WAGE)
+│   │   ├── Rule Detail  (timeline: active / upcoming / historical versions)
+│   │   └── [+ New Rule Version] / [Activate] / [Supersede]
+│   │
+│   └── Audit & Integrity
+│       ├── Audit Log  (full system, cross-entity — PLATFORM_ADMIN)
+│       │   └── [sub] Own-entity Log  (PAYROLL_ADMIN: scoped to own entity)
+│       └── Integrity Verification Dashboard
+│           └── Hash check results per locked period
+│
+├── [CONFIGS]  ← HR Nghiệp vụ / IT Nghiệp vụ (PAYROLL_ADMIN setup role)
+│   │
+│   ├── Pay Groups
+│   │   ├── Pay Group List  (filter by legal entity)
+│   │   ├── Pay Group Detail  (edit, deactivate)
+│   │   └── [+ New Pay Group]
+│   │
+│   ├── Pay Calendars
+│   │   ├── Calendar List
+│   │   ├── Calendar Detail  (periods, cut-off rules)
+│   │   └── [+ New Calendar]
+│   │
+│   ├── Pay Elements
+│   │   ├── Element Library  (filter by type / status / country)
+│   │   ├── Element Detail  (formula editor; lifecycle: Draft → Active → Deprecated)
+│   │   └── [+ New Element]
+│   │
+│   ├── Pay Profiles
+│   │   ├── Profile List  (filter by pay method)
+│   │   ├── Profile Detail  (MONTHLY / HOURLY / PIECE_RATE / GRADE_STEP variants)
+│   │   └── [+ New Profile]
+│   │
+│   └── GL Account Mapping
+│       ├── Mapping Table  (element → GL accounts)
+│       └── [+ New Mapping]
+│
+├── [OPERATIONS]  ← HR tác nghiệp hàng ngày
+│   │
+│   ├── Dashboard  ← Payroll Admin / HR Manager / Finance Manager
+│   │   ├── Current period status, pending actions, exception count, recent runs
+│   │   │   (PAYROLL_ADMIN: full; HR_MANAGER: approvals + activity; FINANCE_MANAGER: cost + final approvals)
+│   │   └── Approval Queue  (pending items by role; direct action: Approve / Reject)
+│   │
+│   ├── — Payroll Admin Group —
+│   │   │
+│   │   ├── Pay Periods
+│   │   │   ├── Period List  (filter by pay group / year)
+│   │   │   ├── Period Detail
+│   │   │   │   ├── Status + cut-off date
+│   │   │   │   ├── Linked Runs
+│   │   │   │   ├── Lock status + integrity hash status
+│   │   │   │   └── [Apply Cut-Off] / [Lock Period]
+│   │   │   └── [+ New Period]
+│   │   │
+│   │   ├── Payroll Runs
+│   │   │   ├── Run List  (filter by status / period / pay group)
+│   │   │   ├── Run Detail
+│   │   │   │   ├── Run Status  (progress indicator for async runs)
+│   │   │   │   ├── Worker Results  (paginated)
+│   │   │   │   ├── Exceptions  (OPEN / ACKNOWLEDGED)
+│   │   │   │   ├── Variance Report  (element-level period comparison)
+│   │   │   │   ├── Calculation Log  (per-worker drill-down)
+│   │   │   │   └── [Submit for Approval]  (enabled when all exceptions acknowledged)
+│   │   │   └── [+ New Run]  ← wizard: DRY_RUN / SIMULATION / PRODUCTION
+│   │   │
+│   │   ├── Off-Cycle Runs
+│   │   │   ├── Termination Pay  (search worker → initiate run)
+│   │   │   ├── Advance Payment
+│   │   │   ├── Bonus Run
+│   │   │   ├── Correction Run
+│   │   │   └── Annual PIT Settlement
+│   │   │
+│   │   └── Retroactive Adjustments
+│   │       ├── Adjustment List
+│   │       └── [+ New Adjustment]  ← worker search → period range → delta preview → confirm
+│   │
+│   ├── — HR Manager Group —
+│   │   │
+│   │   ├── Worker Assignments
+│   │   │   ├── Enrolled Workers  (view + filter; HR_MANAGER: can enroll)
+│   │   │   ├── Worker Enrollment Detail  (edit assignment, transfer pay group)
+│   │   │   └── [Enroll Worker]  ← search → assign pay group + profile
+│   │   │
+│   │   └── Off-Cycle (initiation only)
+│   │       └── Termination Pay  ← initiate; calculation performed by Payroll Admin
+│   │
+│   └── — Finance Manager Group —
+│       │
+│       ├── Period Lock
+│       │   └── Locked Periods  + [Lock Period] action  (post final approval)
+│       │
+│       └── Outputs
+│           ├── Payslips
+│           │   ├── Generate Payslips  (by period + pay group)
+│           │   ├── Payslip List  (search by worker / period)
+│           │   └── Individual Payslip  (preview + download PDF)
+│           │
+│           ├── Bank Payment Files
+│           │   ├── Generate File  (select bank: VCB / BIDV / TCB)
+│           │   └── File History  (list of generated files + download)
+│           │
+│           ├── GL Journals
+│           │   ├── Generate Journal  (by period)
+│           │   └── Journal List  (read-only + export)
+│           │
+│           └── Compliance Outputs
+│               ├── BHXH Reports
+│               │   ├── Generate D02-LT  (select period + legal entity)
+│               │   └── Report History  (download)
+│               │
+│               ├── PIT Declarations
+│               │   ├── Generate 05/KK-TNCN  (quarterly)
+│               │   ├── Generate 05/QTT-TNCN  (annual settlement)
+│               │   └── Declaration History
+│               │
+│               └── PIT Certificates
+│                   ├── Bulk Generate  (Form 03/TNCN, by year)
+│                   └── Certificate List  (download per worker)
+│
+├── [REPORTS]  ← Payroll Admin (full) / HR Manager / Finance Manager / CE Viewer
+│   ├── Payroll Register  (run-level: all workers × elements)
+│   ├── Payroll Variance  (period comparison, threshold filter)
+│   ├── Payroll Cost  (by department / cost center)
+│   ├── Worker YTD Summary
+│   └── Cross-Entity Reports  ← CE_VIEWER only
+│       ├── Cross-Entity Payroll Cost
+│       ├── Cross-Entity YTD Summary
+│       └── Cross-Entity Register  (all legal entities)
+│
+└── [SELF SERVICES]  ← Worker & Manager self-service portal
+    │
+    ├── — Worker View —  (scoped to own data only; role: WORKER)
+    │   ├── My Payslips
+    │   │   ├── Payslip History  (list by period, current + past years)
+    │   │   └── Payslip Detail  (view online + download PDF)
+    │   │
+    │   ├── My YTD Summary
+    │   │   └── YTD totals: Gross / BHXH / BHYT / BHTN / PIT / Net — month-by-month
+    │   │
+    │   └── My Tax Documents
+    │       └── PIT Withholding Certificates
+    │           ├── Certificate List  (by year)
+    │           └── Download Form 03/TNCN
+    │
+    └── — Manager View —  (line manager / HR Manager; scoped to direct reports)
+        ├── Team Payroll Overview  (read-only run status for direct reports)
+        ├── Pending Approvals  (runs awaiting Level 2 review → Approve / Reject)
+        └── Team Reports
+            ├── Team Payroll Register  (read-only)
+            ├── Team Payroll Cost  (by department)
+            └── Team YTD Summary
+```
+
+### Role → Menu Section Mapping (Consolidated)
+
+| Menu Section | PAYROLL_ADMIN | HR_MANAGER | FINANCE_MANAGER | WORKER | PLATFORM_ADMIN | CE_VIEWER |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| **Settings** → Legal Entities | No | No | No | No | Full | No |
+| **Settings** → Statutory Rules | No | No | No | No | Full | No |
+| **Settings** → Audit (cross-entity) | No | No | No | No | Full | No |
+| **Settings** → Audit (own-entity) | Read | No | No | No | Full | No |
+| **Configs** → Pay Groups | Full | No | No | No | No | No |
+| **Configs** → Pay Calendars | Full | No | No | No | No | No |
+| **Configs** → Pay Elements | Full | No | No | No | No | No |
+| **Configs** → Pay Profiles | Full | No | No | No | No | No |
+| **Configs** → GL Mapping | Full | No | No | No | No | No |
+| **Operations** → Dashboard | Full | Limited | Limited | No | No | No |
+| **Operations** → Approval Queue | No | Level 2 | Level 3 | No | No | No |
+| **Operations** → Pay Periods | Full | No | Lock only | No | No | No |
+| **Operations** → Payroll Runs | Full | Read-only | Read-only | No | No | No |
+| **Operations** → Off-Cycle Runs | Full | Initiate only | No | No | No | No |
+| **Operations** → Retro Adjustments | Full | No | No | No | No | No |
+| **Operations** → Worker Assignments | Full | Full | No | No | No | No |
+| **Operations** → Outputs & Compliance | Full | No | Full | No | No | No |
+| **Reports** → Standard Reports | Full | Read | Read | No | No | No |
+| **Reports** → Cross-Entity Reports | No | No | No | No | No | Full |
+| **Self Services** → Worker View | No | No | No | Own data | No | No |
+| **Self Services** → Manager View | No | Full | No | No | No | No |
+
