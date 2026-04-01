@@ -1,0 +1,651 @@
+id: https://xtalent.vng.com.vn/payroll/pay-master
+name: PayMaster
+description: >-
+  LinkML schema for the Pay Master bounded context (BC-01).
+  Owns PayGroup, PayProfile, PayElement, PayCalendar configuration aggregates.
+  All aggregates carry legal_entity_id for multi-tenancy isolation.
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  pr_pm: https://xtalent.vng.com.vn/payroll/pay-master/
+  xsd: http://www.w3.org/2001/XMLSchema#
+
+default_prefix: pr_pm
+default_range: string
+
+imports:
+  - linkml:types
+
+subsets:
+  aggregate_root:
+    description: Aggregate root entities — each carries legal_entity_id
+  entity:
+    description: Entities nested within an aggregate root
+  value_object:
+    description: Immutable value objects
+
+# ─────────────────────────────────────────────
+# ENUMS
+# ─────────────────────────────────────────────
+enums:
+  PayMethodEnum:
+    description: How gross pay is computed for a worker on a PayProfile
+    permissible_values:
+      MONTHLY_SALARY:
+        description: Fixed monthly salary, pro-rated for partial periods
+      HOURLY:
+        description: Hourly rate × hours worked from HourlyRateConfig table
+      PIECE_RATE:
+        description: Rate per production unit from PieceRateTable
+      GRADE_STEP:
+        description: Salary from PayScaleTable by grade and step
+      TASK_BASED:
+        description: Payment triggered by milestone completion per TaskDefinition
+
+  ProrationMethodEnum:
+    permissible_values:
+      CALENDAR_DAYS:
+        description: Pro-rate by calendar days in the period
+      WORK_DAYS:
+        description: Pro-rate by actual working days in the period
+      NONE:
+        description: Always pay full amount regardless of days worked
+
+  RoundingMethodEnum:
+    permissible_values:
+      ROUND_NEAREST_1000:
+      ROUND_UP_1000:
+      ROUND_DOWN_1000:
+      NO_ROUNDING:
+
+  PaymentMethodEnum:
+    permissible_values:
+      BANK_TRANSFER:
+      CASH:
+
+  PayElementClassificationEnum:
+    permissible_values:
+      EARNINGS:
+        description: Gross pay component paid to worker
+      DEDUCTION:
+        description: Amount deducted from gross pay
+      EMPLOYER_CONTRIBUTION:
+        description: Employer-side cost not deducted from worker net
+      INFORMATION:
+        description: Informational element — no financial impact
+
+  TaxTreatmentEnum:
+    permissible_values:
+      TAXABLE:
+        description: Included in PIT taxable income
+      TAX_EXEMPT:
+        description: Excluded from PIT taxable income
+      TAX_EXEMPT_CAPPED:
+        description: Exempt up to a cap (e.g., lunch allowance); excess is taxable
+
+  SiBasisInclusionEnum:
+    permissible_values:
+      INCLUDED:
+        description: Element amount is included in SI contribution basis
+      EXCLUDED:
+        description: Element amount is excluded from SI contribution basis
+
+  FormulaStatusEnum:
+    permissible_values:
+      DRAFT:
+      PENDING_APPROVAL:
+      APPROVED:
+      ACTIVE:
+      DEPRECATED:
+
+  PayGroupStatusEnum:
+    permissible_values:
+      ACTIVE:
+      INACTIVE:
+
+  PayProfileStatusEnum:
+    permissible_values:
+      ACTIVE:
+      INACTIVE:
+      ARCHIVED:
+
+  PayCalendarFrequencyEnum:
+    permissible_values:
+      MONTHLY:
+      BI_WEEKLY:
+      WEEKLY:
+
+  SiBasisModeEnum:
+    permissible_values:
+      STANDARD:
+        description: SI basis computed from standard SI-eligible elements
+      PIECE_RATE_HYBRID:
+        description: Piece-rate worker with declared SI basis separate from gross
+
+  PayScaleModeEnum:
+    permissible_values:
+      TABLE_LOOKUP:
+        description: Returns salary_amount_vnd directly from table
+      COEFFICIENT_FORMULA:
+        description: Multiplies coefficient by VN_LUONG_CO_SO statutory value
+
+# ─────────────────────────────────────────────
+# CLASSES
+# ─────────────────────────────────────────────
+classes:
+
+  # ── Aggregate: PayGroup ──────────────────────
+  PayGroup:
+    description: >-
+      A named collection of workers processed together in each payroll cycle.
+      Bound to a single legal entity, PayCalendar, and currency.
+    in_subset:
+      - aggregate_root
+    slots:
+      - pay_group_id
+      - legal_entity_id
+      - name
+      - pay_calendar_id
+      - currency_code
+      - standard_work_days_per_month
+      - standard_hours_per_day
+      - ot_monthly_cap_hours
+      - night_window_start
+      - night_window_end
+      - status
+      - created_at
+      - updated_at
+    slot_usage:
+      pay_group_id:
+        identifier: true
+        required: true
+      legal_entity_id:
+        required: true
+      name:
+        required: true
+      pay_calendar_id:
+        required: true
+      status:
+        range: PayGroupStatusEnum
+        required: true
+
+  WorkerPayGroupAssignment:
+    description: >-
+      Effective-dated record linking a working_relationship_id to a PayGroup.
+      A worker has one active assignment per working_relationship at any time.
+    in_subset:
+      - entity
+    slots:
+      - assignment_id
+      - pay_group_id
+      - working_relationship_id
+      - effective_date
+      - end_date
+      - assigned_by
+      - created_at
+
+  # ── Aggregate: PayCalendar ───────────────────
+  PayCalendar:
+    description: >-
+      Configured schedule of pay periods for a PayGroup within a legal entity.
+    in_subset:
+      - aggregate_root
+    slots:
+      - pay_calendar_id
+      - legal_entity_id
+      - name
+      - frequency
+      - period_start_day
+      - cut_off_day
+      - payment_day
+      - status
+      - created_at
+    slot_usage:
+      pay_calendar_id:
+        identifier: true
+        required: true
+      legal_entity_id:
+        required: true
+      frequency:
+        range: PayCalendarFrequencyEnum
+        required: true
+
+  # ── Aggregate: PayElement ────────────────────
+  PayElement:
+    description: >-
+      A single named component of a worker's pay or deduction.
+      Has a governed formula lifecycle and version history.
+    in_subset:
+      - aggregate_root
+    slots:
+      - pay_element_id
+      - legal_entity_id
+      - element_code
+      - element_name
+      - classification
+      - tax_treatment
+      - si_basis_inclusion
+      - proration_method
+      - priority_order
+      - current_status
+      - formula_versions
+      - created_at
+      - updated_at
+    slot_usage:
+      pay_element_id:
+        identifier: true
+        required: true
+      legal_entity_id:
+        required: true
+      element_code:
+        required: true
+      classification:
+        range: PayElementClassificationEnum
+        required: true
+      tax_treatment:
+        range: TaxTreatmentEnum
+        required: true
+      si_basis_inclusion:
+        range: SiBasisInclusionEnum
+        required: true
+      current_status:
+        range: FormulaStatusEnum
+        required: true
+
+  FormulaVersion:
+    description: >-
+      A versioned formula definition within a PayElement.
+      Enables formula lifecycle governance and audit traceability.
+    in_subset:
+      - entity
+    slots:
+      - formula_version_id
+      - pay_element_id
+      - version_number
+      - formula_script
+      - formula_script_hash
+      - active_from
+      - status
+      - approved_by
+      - approved_at
+      - created_at
+    slot_usage:
+      formula_version_id:
+        identifier: true
+        required: true
+      formula_script_hash:
+        description: SHA-256 of formula_script for tamper detection
+      status:
+        range: FormulaStatusEnum
+        required: true
+
+  # ── Aggregate: PayProfile ────────────────────
+  PayProfile:
+    description: >-
+      A complete payment configuration template.
+      Defines how gross pay is computed and which elements and statutory rules apply.
+    in_subset:
+      - aggregate_root
+    slots:
+      - pay_profile_id
+      - legal_entity_id
+      - profile_code
+      - profile_name
+      - pay_method
+      - proration_method
+      - rounding_method
+      - payment_method
+      - min_wage_rule_id
+      - parent_profile_id
+      - si_basis_mode
+      - effective_from
+      - effective_to
+      - piece_rate_table
+      - hourly_rate_config
+      - pay_scale_table
+      - task_definition
+      - element_bindings
+      - rule_bindings
+      - status
+      - created_at
+      - updated_at
+    slot_usage:
+      pay_profile_id:
+        identifier: true
+        required: true
+      legal_entity_id:
+        required: true
+      pay_method:
+        range: PayMethodEnum
+        required: true
+      proration_method:
+        range: ProrationMethodEnum
+        required: true
+      rounding_method:
+        range: RoundingMethodEnum
+        required: true
+      effective_from:
+        required: true
+        description: Effective-date pattern — profile is valid from this date
+      si_basis_mode:
+        range: SiBasisModeEnum
+
+  PayProfileElement:
+    description: >-
+      Binding record linking a PayElement to a PayProfile.
+    in_subset:
+      - entity
+    slots:
+      - binding_id
+      - pay_profile_id
+      - pay_element_id
+      - is_mandatory
+      - priority_order
+      - effective_date
+    slot_usage:
+      binding_id:
+        identifier: true
+        required: true
+
+  PayProfileRule:
+    description: >-
+      Binding record linking a StatutoryRule (BC-02) to a PayProfile.
+    in_subset:
+      - entity
+    slots:
+      - binding_id
+      - pay_profile_id
+      - statutory_rule_id
+      - rule_scope
+      - execution_order
+    slot_usage:
+      binding_id:
+        identifier: true
+        required: true
+
+  # ── Value Objects ────────────────────────────
+  PieceRateTableEntry:
+    description: >-
+      Single entry in the PieceRateTable value object.
+      Maps product_code × quality_grade to rate_per_unit_vnd.
+    in_subset:
+      - value_object
+    slots:
+      - product_code
+      - quality_grade
+      - rate_per_unit_vnd
+      - effective_date
+
+  HourlyRateConfigEntry:
+    description: >-
+      Single entry in the HourlyRateConfig value object.
+      Maps shift_type × grade_code to rate_per_hour_vnd.
+    in_subset:
+      - value_object
+    slots:
+      - shift_type
+      - grade_code
+      - rate_per_hour_vnd
+      - effective_date
+
+  PayScaleTableEntry:
+    description: >-
+      Single entry in the PayScaleTable value object.
+      Maps grade_code × step_code to salary or coefficient.
+    in_subset:
+      - value_object
+    slots:
+      - grade_code
+      - step_code
+      - salary_amount_vnd
+      - coefficient
+      - scale_mode
+      - effective_date
+    slot_usage:
+      scale_mode:
+        range: PayScaleModeEnum
+        required: true
+
+  TaskMilestone:
+    description: >-
+      Single milestone tranche within a TaskDefinition value object.
+    in_subset:
+      - value_object
+    slots:
+      - milestone_index
+      - task_code
+      - milestone_amount_vnd
+      - payment_trigger
+      - is_paid
+
+# ─────────────────────────────────────────────
+# SLOTS
+# ─────────────────────────────────────────────
+slots:
+  # Identity
+  pay_group_id:
+    range: string
+    description: Surrogate identifier for PayGroup
+  pay_calendar_id:
+    range: string
+  pay_element_id:
+    range: string
+  pay_profile_id:
+    range: string
+  formula_version_id:
+    range: string
+  assignment_id:
+    range: string
+  binding_id:
+    range: string
+
+  # Multi-tenancy
+  legal_entity_id:
+    range: string
+    required: true
+    description: Multi-tenancy isolation key — every aggregate root carries this
+
+  # Cross-context references
+  working_relationship_id:
+    range: string
+    description: Foreign key from CO (EXT-01) — identifies worker employment context
+  statutory_rule_id:
+    range: string
+    description: Reference to StatutoryRule in BC-02
+
+  # Common
+  name:
+    range: string
+  element_code:
+    range: string
+  element_name:
+    range: string
+  profile_code:
+    range: string
+  profile_name:
+    range: string
+  currency_code:
+    range: string
+    description: ISO 4217 currency code (e.g., VND)
+  status:
+    range: string
+  current_status:
+    range: string
+  created_at:
+    range: datetime
+  updated_at:
+    range: datetime
+  effective_date:
+    range: date
+  effective_from:
+    range: date
+    description: Effective-date pattern start
+  effective_to:
+    range: date
+    description: Effective-date pattern end (null = indefinitely valid)
+  active_from:
+    range: date
+  end_date:
+    range: date
+
+  # PayGroup-specific
+  standard_work_days_per_month:
+    range: integer
+    minimum_value: 1
+    maximum_value: 31
+  standard_hours_per_day:
+    range: float
+  ot_monthly_cap_hours:
+    range: float
+    description: Maximum OT hours allowed per month (BR-004 to BR-008)
+  night_window_start:
+    range: string
+    description: Night shift window start time (HH:MM)
+  night_window_end:
+    range: string
+    description: Night shift window end time (HH:MM)
+
+  # PayCalendar-specific
+  frequency:
+    range: string
+  period_start_day:
+    range: integer
+    description: Day of month when pay period starts
+  cut_off_day:
+    range: integer
+    description: Day of month when cut-off is triggered
+  payment_day:
+    range: integer
+    description: Day of month when payment is disbursed
+
+  # PayElement-specific
+  classification:
+    range: string
+  tax_treatment:
+    range: string
+  si_basis_inclusion:
+    range: string
+  proration_method:
+    range: string
+  priority_order:
+    range: integer
+    description: Deduction sequencing priority (lower = applied first)
+  formula_versions:
+    range: FormulaVersion
+    multivalued: true
+    inlined: true
+
+  # FormulaVersion-specific
+  pay_element_id:
+    range: string
+  version_number:
+    range: integer
+  formula_script:
+    range: string
+    description: Drools DRL expression or parameter reference
+  formula_script_hash:
+    range: string
+    description: SHA-256 of formula_script
+  approved_by:
+    range: string
+  approved_at:
+    range: datetime
+
+  # PayProfile-specific
+  pay_method:
+    range: string
+  rounding_method:
+    range: string
+  payment_method:
+    range: string
+  min_wage_rule_id:
+    range: string
+    description: Reference to StatutoryRule for regional minimum wage
+  parent_profile_id:
+    range: string
+    description: Parent profile for element inheritance hierarchy
+  si_basis_mode:
+    range: string
+  piece_rate_table:
+    range: PieceRateTableEntry
+    multivalued: true
+    inlined: true
+    description: Used when pay_method = PIECE_RATE
+  hourly_rate_config:
+    range: HourlyRateConfigEntry
+    multivalued: true
+    inlined: true
+    description: Used when pay_method = HOURLY
+  pay_scale_table:
+    range: PayScaleTableEntry
+    multivalued: true
+    inlined: true
+    description: Used when pay_method = GRADE_STEP
+  task_definition:
+    range: TaskMilestone
+    multivalued: true
+    inlined: true
+    description: Used when pay_method = TASK_BASED
+  element_bindings:
+    range: PayProfileElement
+    multivalued: true
+    inlined: true
+  rule_bindings:
+    range: PayProfileRule
+    multivalued: true
+    inlined: true
+
+  # PayProfileElement-specific
+  is_mandatory:
+    range: boolean
+
+  # PayProfileRule-specific
+  rule_scope:
+    range: string
+    description: Which element types this rule applies to
+  execution_order:
+    range: integer
+
+  # Value object slots — PieceRateTable
+  product_code:
+    range: string
+  quality_grade:
+    range: string
+  rate_per_unit_vnd:
+    range: float
+
+  # Value object slots — HourlyRateConfig
+  shift_type:
+    range: string
+    description: REGULAR, NIGHT, OT_WEEKDAY, OT_WEEKEND, OT_HOLIDAY
+  grade_code:
+    range: string
+  rate_per_hour_vnd:
+    range: float
+
+  # Value object slots — PayScaleTable
+  step_code:
+    range: string
+  salary_amount_vnd:
+    range: float
+  coefficient:
+    range: float
+  scale_mode:
+    range: string
+
+  # Value object slots — TaskMilestone
+  milestone_index:
+    range: integer
+  task_code:
+    range: string
+  milestone_amount_vnd:
+    range: float
+  payment_trigger:
+    range: string
+    description: Condition that triggers this milestone payment
+  is_paid:
+    range: boolean
+
+  # WorkerPayGroupAssignment
+  assigned_by:
+    range: string

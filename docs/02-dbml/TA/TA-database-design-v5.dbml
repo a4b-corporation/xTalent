@@ -1016,7 +1016,7 @@ Table absence.leave_class {
   // DEPRECATED - changed 12dec2025: Use default_eligibility_profile_id instead
   eligibility_json  jsonb  [null]
   
-  rules_json        jsonb  [null]
+  rules_json        jsonb  [null] {"eligibility": "aaa", "accrual": "nnnn"}
   
   emit_expire_turnover boolean [default:false]
   

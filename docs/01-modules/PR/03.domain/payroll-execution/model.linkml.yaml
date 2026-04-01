@@ -1,0 +1,644 @@
+id: https://xtalent.vng.com.vn/payroll/payroll-execution
+name: PayrollExecution
+description: >-
+  LinkML schema for the Payroll Execution bounded context (BC-03).
+  Owns PayPeriod, PayrollRun, PayrollResult, CompensationSnapshot.
+  This is the computation core — gross-to-net calculation with full audit lineage.
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  pr_pe: https://xtalent.vng.com.vn/payroll/payroll-execution/
+  xsd: http://www.w3.org/2001/XMLSchema#
+
+default_prefix: pr_pe
+default_range: string
+
+imports:
+  - linkml:types
+
+subsets:
+  aggregate_root:
+    description: Aggregate root entities
+  entity:
+    description: Entities nested within aggregates
+  value_object:
+    description: Immutable value objects
+  immutable:
+    description: Records that are never updated after creation
+
+# ─────────────────────────────────────────────
+# ENUMS
+# ─────────────────────────────────────────────
+enums:
+  PayPeriodStatusEnum:
+    permissible_values:
+      OPEN:
+        description: Period accepting configuration changes
+      CUT_OFF:
+        description: Cut-off reached; snapshots triggered; data frozen
+      RUNNING:
+        description: PayrollRun in progress
+      PENDING_APPROVAL:
+        description: Run completed; awaiting approval
+      APPROVED:
+        description: All approval levels granted
+      LOCKED:
+        description: Period locked; results immutable; integrity hashes generated
+
+  PayrollRunStatusEnum:
+    permissible_values:
+      QUEUED:
+        description: Run created; waiting for engine slot
+      PRE_VALIDATING:
+        description: Pre-flight data validation in progress
+      RUNNING:
+        description: Calculation engine processing workers
+      COMPLETED:
+        description: All worker results computed; ready for approval submission
+      PENDING_APPROVAL:
+        description: Submitted for approval
+      APPROVED:
+        description: All approval levels granted; triggers PayPeriod lock
+      FAILED:
+        description: Run failed; rolled back; re-run required
+
+  RunModeEnum:
+    permissible_values:
+      DRY_RUN:
+        description: Validation only — no PayrollResult records created
+      SIMULATION:
+        description: Full calculation — results visible but not approved
+      PRODUCTION:
+        description: Official run — results become final on period lock
+
+  RunTypeEnum:
+    permissible_values:
+      REGULAR:
+        description: Standard monthly payroll
+      TERMINATION:
+        description: Final pay for terminated worker
+      ADVANCE:
+        description: Salary advance disbursement
+      CORRECTION:
+        description: Correction run for prior errors
+      BONUS_RUN:
+        description: Off-cycle bonus payment
+      ANNUAL_SETTLEMENT:
+        description: Year-end PIT settlement
+      TASK_PAYMENT:
+        description: Task-based milestone payment
+
+  PayrollResultStatusEnum:
+    permissible_values:
+      DRAFT:
+        description: In-progress during PRODUCTION run
+      FINAL:
+        description: Immutable after PayPeriod reaches LOCKED state
+
+  ExceptionTypeEnum:
+    permissible_values:
+      NEGATIVE_NET:
+        description: Net salary computed as negative
+      MIN_WAGE_VIOLATION:
+        description: Computed pay below regional minimum wage
+      ZERO_BHXH_SI_ELIGIBLE:
+        description: SI-eligible worker has zero SI basis
+      OT_CAP_EXCEEDED:
+        description: OT hours exceed monthly cap
+
+  ExceptionStatusEnum:
+    permissible_values:
+      OPEN:
+        description: Exception flagged; blocking approval
+      ACKNOWLEDGED:
+        description: Acknowledged by Payroll Admin with reason; no longer blocking
+
+  ApprovalActionEnum:
+    permissible_values:
+      APPROVED:
+      REJECTED:
+
+  ApprovalLevelEnum:
+    permissible_values:
+      LEVEL_2_HR_MANAGER:
+        description: First approval level
+      LEVEL_3_FINANCE_MANAGER:
+        description: Final approval level
+
+  TaxResidencyStatusEnum:
+    permissible_values:
+      RESIDENT:
+        description: >=183 days in Vietnam in calendar year — progressive PIT applies
+      NON_RESIDENT:
+        description: <183 days — 20% flat PIT rate applies
+
+  RetroSourceTypeEnum:
+    permissible_values:
+      SALARY_CHANGE:
+      ALLOWANCE_CHANGE:
+      GRADE_STEP_CHANGE:
+      BONUS_CORRECTION:
+
+# ─────────────────────────────────────────────
+# CLASSES
+# ─────────────────────────────────────────────
+classes:
+
+  # ── Aggregate: PayPeriod ─────────────────────
+  PayPeriod:
+    description: >-
+      A single payroll processing period for a PayGroup.
+      Progresses through a state machine from OPEN to LOCKED.
+      Once LOCKED, no changes to results within this period are permitted.
+    in_subset:
+      - aggregate_root
+    slots:
+      - period_id
+      - pay_group_id
+      - legal_entity_id
+      - period_start
+      - period_end
+      - cut_off_date
+      - payment_date
+      - period_status
+      - created_at
+      - updated_at
+    slot_usage:
+      period_id:
+        identifier: true
+        required: true
+      legal_entity_id:
+        required: true
+      period_status:
+        range: PayPeriodStatusEnum
+        required: true
+
+  # ── Aggregate: PayrollRun ────────────────────
+  PayrollRun:
+    description: >-
+      A single execution of the payroll calculation engine.
+      Processed in parallel partitioned batches (Drools KieSessions).
+      Only one PRODUCTION run can reach APPROVED per PayPeriod.
+    in_subset:
+      - aggregate_root
+    slots:
+      - run_id
+      - pay_group_id
+      - period_id
+      - legal_entity_id
+      - run_mode
+      - run_type
+      - run_status
+      - worker_count
+      - processed_count
+      - exception_count
+      - statutory_rule_effective_date
+      - initiated_by
+      - initiated_at
+      - completed_at
+      - approval_records
+      - created_at
+      - updated_at
+    slot_usage:
+      run_id:
+        identifier: true
+        required: true
+      legal_entity_id:
+        required: true
+      run_mode:
+        range: RunModeEnum
+        required: true
+      run_type:
+        range: RunTypeEnum
+        required: true
+      run_status:
+        range: PayrollRunStatusEnum
+        required: true
+      statutory_rule_effective_date:
+        description: >-
+          The cut-off date used for all StatutoryRule lookups in this run.
+          Ensures consistent rates across the entire batch.
+
+  ApprovalRecord:
+    description: >-
+      Records a single approval or rejection action on a PayrollRun.
+    in_subset:
+      - entity
+    slots:
+      - approval_record_id
+      - run_id
+      - approval_level
+      - action
+      - actor_id
+      - actor_role
+      - timestamp
+      - notes
+      - reason_code
+    slot_usage:
+      approval_record_id:
+        identifier: true
+        required: true
+      approval_level:
+        range: ApprovalLevelEnum
+        required: true
+      action:
+        range: ApprovalActionEnum
+        required: true
+
+  # ── Aggregate: PayrollResult ─────────────────
+  PayrollResult:
+    description: >-
+      Immutable per-worker per-period calculation result.
+      Created once when a PRODUCTION run completes; never updated.
+      Retro adjustments create new records; they do NOT modify this record.
+    in_subset:
+      - aggregate_root
+      - immutable
+    slots:
+      - result_id
+      - run_id
+      - working_relationship_id
+      - period_id
+      - legal_entity_id
+      - gross_amount
+      - si_employee_bhxh
+      - si_employee_bhyt
+      - si_employee_bhtn
+      - si_employee_total
+      - pit_amount
+      - total_deductions
+      - net_amount
+      - element_amounts_json
+      - calc_log
+      - exception_flags
+      - integrity_hash
+      - result_status
+      - created_at
+    slot_usage:
+      result_id:
+        identifier: true
+        required: true
+      legal_entity_id:
+        required: true
+      result_status:
+        range: PayrollResultStatusEnum
+        required: true
+      integrity_hash:
+        description: SHA-256 hash set at PayPeriod LOCK; null until then
+      gross_amount:
+        required: true
+        minimum_value: 0
+      net_amount:
+        description: May be zero; NEGATIVE_NET exception flagged if computed negative
+
+  PayrollException:
+    description: >-
+      Flagged anomaly for a specific worker in a specific run.
+      All exceptions must be ACKNOWLEDGED before PayrollRun can proceed to PENDING_APPROVAL.
+    in_subset:
+      - entity
+    slots:
+      - exception_id
+      - result_id
+      - exception_type
+      - details
+      - exception_status
+      - acknowledged_by
+      - acknowledged_at
+      - reason_code
+    slot_usage:
+      exception_id:
+        identifier: true
+        required: true
+      exception_type:
+        range: ExceptionTypeEnum
+        required: true
+      exception_status:
+        range: ExceptionStatusEnum
+        required: true
+
+  RetroactiveAdjustment:
+    description: >-
+      Records a backdated compensation change and its delta impact.
+      The delta is surfaced as a RETRO_ADJUSTMENT PayElement in the TARGET period's result.
+      Original locked PayrollResult records are NOT modified.
+    in_subset:
+      - entity
+    slots:
+      - adjustment_id
+      - working_relationship_id
+      - legal_entity_id
+      - source_change_type
+      - retroactive_from_period
+      - retroactive_to_period
+      - delta_amount
+      - applied_to_period_id
+      - created_at
+    slot_usage:
+      adjustment_id:
+        identifier: true
+        required: true
+      source_change_type:
+        range: RetroSourceTypeEnum
+        required: true
+
+  # ── Aggregate: CompensationSnapshot ─────────
+  CompensationSnapshot:
+    description: >-
+      Immutable point-in-time record of all compensation-relevant data at cut-off.
+      Created once per working_relationship per period; never updated after creation.
+      This immutability enables payroll result reproducibility.
+    in_subset:
+      - aggregate_root
+      - immutable
+    slots:
+      - snapshot_id
+      - working_relationship_id
+      - period_id
+      - legal_entity_id
+      - snapshot_at
+      - base_salary
+      - allowances_json
+      - contract_type
+      - dependent_count
+      - tax_residency_status
+      - nationality_code
+      - cost_center_id
+      - bank_account_id
+      - pay_profile_id
+      - hourly_rate_multiplier
+      - grade_code
+      - step_code
+      - created_at
+    slot_usage:
+      snapshot_id:
+        identifier: true
+        required: true
+      legal_entity_id:
+        required: true
+      snapshot_at:
+        required: true
+        description: Timestamp of cut-off when this snapshot was taken
+      base_salary:
+        minimum_value: 0
+      tax_residency_status:
+        range: TaxResidencyStatusEnum
+      # All slots are effectively readonly after creation
+      base_salary:
+        readonly: true
+      allowances_json:
+        readonly: true
+      contract_type:
+        readonly: true
+      dependent_count:
+        readonly: true
+
+  # ── Value Objects ────────────────────────────
+  CalcLogEntry:
+    description: >-
+      Single step in the calculation log.
+      The complete ordered list (CalcLog) enables full reproducibility of any PayrollResult.
+    in_subset:
+      - value_object
+    slots:
+      - step_order
+      - element_code
+      - element_name
+      - formula_version
+      - input_variables_json
+      - output_value
+      - currency
+      - notes
+
+  GrossToNetSummary:
+    description: >-
+      Derived summary of the gross-to-net pipeline within a PayrollResult.
+      Not a calculation input — computed from CalcLog for display.
+    in_subset:
+      - value_object
+    slots:
+      - gross_amount
+      - si_employee_bhxh
+      - si_employee_bhyt
+      - si_employee_bhtn
+      - si_employee_total
+      - pit_amount
+      - total_deductions
+      - net_amount
+
+# ─────────────────────────────────────────────
+# SLOTS
+# ─────────────────────────────────────────────
+slots:
+  # Identity
+  period_id:
+    range: string
+  run_id:
+    range: string
+  result_id:
+    range: string
+  snapshot_id:
+    range: string
+  adjustment_id:
+    range: string
+  exception_id:
+    range: string
+  approval_record_id:
+    range: string
+
+  # Multi-tenancy
+  legal_entity_id:
+    range: string
+    required: true
+
+  # Cross-context references
+  pay_group_id:
+    range: string
+  working_relationship_id:
+    range: string
+    description: FK from CO — worker employment context identifier
+  pay_profile_id:
+    range: string
+    description: FK from BC-01 — configuration template for this worker
+
+  # PayPeriod slots
+  period_start:
+    range: date
+  period_end:
+    range: date
+  cut_off_date:
+    range: date
+    description: Date when CompensationSnapshots are taken and data is frozen
+  payment_date:
+    range: date
+  period_status:
+    range: string
+
+  # PayrollRun slots
+  run_mode:
+    range: string
+  run_type:
+    range: string
+  run_status:
+    range: string
+  worker_count:
+    range: integer
+  processed_count:
+    range: integer
+  exception_count:
+    range: integer
+  statutory_rule_effective_date:
+    range: date
+  initiated_by:
+    range: string
+  initiated_at:
+    range: datetime
+  completed_at:
+    range: datetime
+  approval_records:
+    range: ApprovalRecord
+    multivalued: true
+    inlined: true
+
+  # ApprovalRecord slots
+  approval_level:
+    range: string
+  action:
+    range: string
+  actor_id:
+    range: string
+  actor_role:
+    range: string
+  timestamp:
+    range: datetime
+  notes:
+    range: string
+  reason_code:
+    range: string
+
+  # PayrollResult slots — financial
+  gross_amount:
+    range: float
+    description: Total gross pay before deductions
+  si_employee_bhxh:
+    range: float
+  si_employee_bhyt:
+    range: float
+  si_employee_bhtn:
+    range: float
+  si_employee_total:
+    range: float
+  pit_amount:
+    range: float
+  total_deductions:
+    range: float
+  net_amount:
+    range: float
+    description: Net = Gross - SI - PIT - Other Deductions (BR-061)
+
+  # PayrollResult structured fields
+  element_amounts_json:
+    range: string
+    description: JSON map of element_code → computed_amount for all elements in this result
+  calc_log:
+    range: CalcLogEntry
+    multivalued: true
+    inlined: true
+    description: Ordered calculation steps for full reproducibility audit
+  exception_flags:
+    range: PayrollException
+    multivalued: true
+    inlined: true
+  integrity_hash:
+    range: string
+    description: SHA-256 hash of the serialized PayrollResult; set at PayPeriod LOCK
+  result_status:
+    range: string
+
+  # CalcLogEntry slots
+  step_order:
+    range: integer
+  element_code:
+    range: string
+  element_name:
+    range: string
+  formula_version:
+    range: string
+  input_variables_json:
+    range: string
+    description: JSON map of variable_name → value used as inputs to this formula step
+  output_value:
+    range: float
+  currency:
+    range: string
+  # notes already declared above
+
+  # PayrollException slots
+  exception_type:
+    range: string
+  details:
+    range: string
+  exception_status:
+    range: string
+  acknowledged_by:
+    range: string
+  acknowledged_at:
+    range: datetime
+
+  # RetroactiveAdjustment slots
+  source_change_type:
+    range: string
+  retroactive_from_period:
+    range: string
+  retroactive_to_period:
+    range: string
+  delta_amount:
+    range: float
+  applied_to_period_id:
+    range: string
+
+  # CompensationSnapshot slots
+  snapshot_at:
+    range: datetime
+    description: Exact timestamp of cut-off event
+  base_salary:
+    range: float
+    readonly: true
+  allowances_json:
+    range: string
+    readonly: true
+    description: JSON array of [{element_code, amount}] — pulled from TR via ACL
+  contract_type:
+    range: string
+    readonly: true
+  dependent_count:
+    range: integer
+    readonly: true
+  tax_residency_status:
+    range: string
+    readonly: true
+  nationality_code:
+    range: string
+    readonly: true
+  cost_center_id:
+    range: string
+    readonly: true
+  bank_account_id:
+    range: string
+    readonly: true
+    description: FK from CO — bank account for payment disbursement
+  hourly_rate_multiplier:
+    range: float
+    readonly: true
+  grade_code:
+    range: string
+    readonly: true
+  step_code:
+    range: string
+    readonly: true
+
+  # Common
+  created_at:
+    range: datetime
+  updated_at:
+    range: datetime

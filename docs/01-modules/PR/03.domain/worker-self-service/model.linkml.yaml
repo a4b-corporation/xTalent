@@ -1,0 +1,223 @@
+id: https://xtalent.vng.com.vn/payroll/worker-self-service
+name: WorkerSelfService
+description: >-
+  LinkML schema for the Worker Self-Service bounded context (BC-06).
+  Owns PayslipView, YtdSummary, PitCertificateRequest.
+  Read-only portal for workers to access their own payroll information.
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  pr_wss: https://xtalent.vng.com.vn/payroll/worker-self-service/
+  xsd: http://www.w3.org/2001/XMLSchema#
+
+default_prefix: pr_wss
+default_range: string
+
+imports:
+  - linkml:types
+
+subsets:
+  aggregate_root:
+    description: Aggregate root entities
+
+# ─────────────────────────────────────────────
+# ENUMS
+# ─────────────────────────────────────────────
+enums:
+  PayslipViewStatusEnum:
+    permissible_values:
+      AVAILABLE:
+        description: Payslip accessible; not yet viewed
+      VIEWED:
+        description: Worker has opened the payslip
+      DOWNLOADED:
+        description: Worker has downloaded the PDF
+
+  PitCertificateRequestStatusEnum:
+    permissible_values:
+      PENDING:
+        description: Request submitted; awaiting certificate generation
+      FULFILLED:
+        description: Certificate available; request satisfied
+      UNAVAILABLE:
+        description: No payroll data exists for requested year
+
+  AccessChannelEnum:
+    permissible_values:
+      WEB:
+        description: Web browser portal
+      MOBILE:
+        description: Mobile application
+
+# ─────────────────────────────────────────────
+# CLASSES
+# ─────────────────────────────────────────────
+classes:
+
+  # ── Aggregate: PayslipView ───────────────────
+  PayslipView:
+    description: >-
+      Worker's read-session record for accessing a specific payslip.
+      Workers may only access payslips for their own working_relationship_id.
+      Access is only available after the PayPeriod reaches LOCKED state (BR-WSS-02).
+    in_subset:
+      - aggregate_root
+    slots:
+      - view_id
+      - working_relationship_id
+      - legal_entity_id
+      - period_id
+      - payslip_document_id
+      - accessed_at
+      - ip_address
+      - channel
+      - view_status
+    slot_usage:
+      view_id:
+        identifier: true
+        required: true
+      legal_entity_id:
+        required: true
+      payslip_document_id:
+        required: true
+        description: FK to PayslipDocument in BC-04
+      view_status:
+        range: PayslipViewStatusEnum
+        required: true
+      channel:
+        range: AccessChannelEnum
+
+  # ── Aggregate: YtdSummary ────────────────────
+  YtdSummary:
+    description: >-
+      Worker's year-to-date salary and deduction summary.
+      Computed on demand from FINAL PayrollResult records; not a stored balance.
+      Recalculated each request; reflects latest retro adjustments automatically.
+    in_subset:
+      - aggregate_root
+    slots:
+      - summary_id
+      - working_relationship_id
+      - legal_entity_id
+      - year
+      - ytd_gross
+      - ytd_si_employee_bhxh
+      - ytd_si_employee_bhyt
+      - ytd_si_employee_bhtn
+      - ytd_pit
+      - ytd_net
+      - period_count
+      - last_computed_at
+    slot_usage:
+      summary_id:
+        identifier: true
+        required: true
+      legal_entity_id:
+        required: true
+      year:
+        required: true
+      ytd_gross:
+        minimum_value: 0
+      ytd_pit:
+        minimum_value: 0
+
+  # ── Aggregate: PitCertificateRequest ─────────
+  PitCertificateRequest:
+    description: >-
+      Worker-initiated request for a PIT withholding certificate.
+      If certificate already exists in BC-05, fulfilled immediately.
+      Otherwise, notifies Payroll Admin to generate via BC-05.
+    in_subset:
+      - aggregate_root
+    slots:
+      - request_id
+      - working_relationship_id
+      - legal_entity_id
+      - year
+      - requested_at
+      - fulfilled_at
+      - pit_certificate_id
+      - request_status
+    slot_usage:
+      request_id:
+        identifier: true
+        required: true
+      legal_entity_id:
+        required: true
+      year:
+        required: true
+      request_status:
+        range: PitCertificateRequestStatusEnum
+        required: true
+      pit_certificate_id:
+        description: FK to PitCertificate in BC-05; populated on fulfillment
+
+# ─────────────────────────────────────────────
+# SLOTS
+# ─────────────────────────────────────────────
+slots:
+  # Identity
+  view_id:
+    range: string
+  summary_id:
+    range: string
+  request_id:
+    range: string
+
+  # Multi-tenancy
+  legal_entity_id:
+    range: string
+    required: true
+
+  # Cross-context references
+  working_relationship_id:
+    range: string
+    description: FK from CO (EXT-01) — self-service access boundary enforced on this field
+  period_id:
+    range: string
+    description: FK from BC-03 PayPeriod
+  payslip_document_id:
+    range: string
+    description: FK from BC-04 PayslipDocument
+  pit_certificate_id:
+    range: string
+    description: FK from BC-05 PitCertificate
+
+  # PayslipView slots
+  accessed_at:
+    range: datetime
+  ip_address:
+    range: string
+  channel:
+    range: string
+  view_status:
+    range: string
+
+  # YtdSummary slots
+  year:
+    range: integer
+  ytd_gross:
+    range: float
+  ytd_si_employee_bhxh:
+    range: float
+  ytd_si_employee_bhyt:
+    range: float
+  ytd_si_employee_bhtn:
+    range: float
+  ytd_pit:
+    range: float
+  ytd_net:
+    range: float
+  period_count:
+    range: integer
+    description: Number of FINAL PayrollResult periods included in this YTD
+  last_computed_at:
+    range: datetime
+
+  # PitCertificateRequest slots
+  requested_at:
+    range: datetime
+  fulfilled_at:
+    range: datetime
+  request_status:
+    range: string

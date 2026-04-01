@@ -1,0 +1,347 @@
+id: https://xtalent.vng.com.vn/payroll/statutory-rules
+name: StatutoryRules
+description: >-
+  LinkML schema for the Statutory Rules bounded context (BC-02).
+  Owns StatutoryRule and SiEligibilityMatrix — the single source of truth
+  for all versioned regulatory rates, brackets, ceilings, and eligibility matrices.
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  pr_sr: https://xtalent.vng.com.vn/payroll/statutory-rules/
+  xsd: http://www.w3.org/2001/XMLSchema#
+
+default_prefix: pr_sr
+default_range: string
+
+imports:
+  - linkml:types
+
+subsets:
+  aggregate_root:
+    description: Aggregate root entities
+  value_object:
+    description: Immutable value objects embedded within aggregates
+
+# ─────────────────────────────────────────────
+# ENUMS
+# ─────────────────────────────────────────────
+enums:
+  RuleStatusEnum:
+    permissible_values:
+      DRAFT:
+        description: Entered but not yet active
+      ACTIVE:
+        description: Currently in effect — used by payroll engine
+      SUPERSEDED:
+        description: Replaced by a newer rule version
+
+  RuleCategoryEnum:
+    permissible_values:
+      PIT:
+        description: Personal Income Tax rates and brackets
+      SOCIAL_INSURANCE:
+        description: BHXH, BHYT, BHTN rates and ceilings
+      OVERTIME:
+        description: OT premium multipliers and night shift supplement
+      MINIMUM_WAGE:
+        description: Regional minimum wage floors
+      TAX:
+        description: Withholding thresholds and exempt caps (lunch, freelance)
+      UNEMPLOYMENT_INSURANCE:
+        description: BHTN annual cap
+
+  InsuranceTypeEnum:
+    permissible_values:
+      BHXH:
+        description: Bao hiem xa hoi — Social Insurance
+      BHYT:
+        description: Bao hiem y te — Health Insurance
+      BHTN:
+        description: Bao hiem that nghiep — Unemployment Insurance
+
+  ContributionPartyEnum:
+    permissible_values:
+      EMPLOYEE:
+      EMPLOYER:
+
+  RegionCodeEnum:
+    permissible_values:
+      REGION_1:
+        description: Urban areas (Hanoi, HCMC) — highest minimum wage
+      REGION_2:
+        description: Provincial cities
+      REGION_3:
+        description: Rural districts of major provinces
+      REGION_4:
+        description: Remote/highland areas — lowest minimum wage
+
+  ContractTypeEnum:
+    description: Worker contract types for SI eligibility matrix
+    permissible_values:
+      UNLIMITED_TERM:
+        description: Hop dong khong xac dinh thoi han
+      FIXED_TERM_12_36:
+        description: Hop dong co thoi han 12–36 thang
+      FIXED_TERM_LT_12:
+        description: Hop dong duoi 12 thang
+      PROBATION:
+        description: Thu viec — max 60 days
+      SERVICE_CONTRACT:
+        description: Hop dong dich vu / khoan viec
+      FREELANCE:
+        description: Cong tac vien
+      INTERN:
+        description: Thuc tap sinh
+
+# ─────────────────────────────────────────────
+# CLASSES
+# ─────────────────────────────────────────────
+classes:
+
+  # ── Aggregate: StatutoryRule ─────────────────
+  StatutoryRule:
+    description: >-
+      Versioned regulatory parameter or rule set with effective-date pattern.
+      New decree → new record with new valid_from; old record's valid_to is set.
+      Payroll engine always looks up the rule valid at the period's cut-off date.
+    in_subset:
+      - aggregate_root
+    slots:
+      - rule_id
+      - legal_entity_id
+      - rule_code
+      - rule_category
+      - rule_type
+      - country_code
+      - valid_from
+      - valid_to
+      - value_numeric
+      - unit
+      - formula_json
+      - description
+      - decree_reference
+      - is_active
+      - status
+      - created_by
+      - created_at
+      - activated_at
+    slot_usage:
+      rule_id:
+        identifier: true
+        required: true
+      rule_code:
+        required: true
+        description: Stable identifier e.g. VN_PIT_BRACKETS_2020, VN_BHXH_EMP_RATE
+      rule_category:
+        range: RuleCategoryEnum
+        required: true
+      country_code:
+        required: true
+        description: ISO 3166-1 alpha-2 (VN for Vietnam)
+      valid_from:
+        required: true
+        description: Effective-date pattern — rule is valid from this date
+      status:
+        range: RuleStatusEnum
+        required: true
+      legal_entity_id:
+        description: >-
+          NULL for global statutory rules; set for legal-entity-specific overrides.
+          Most statutory rules are global (legal_entity_id = NULL).
+
+  # ── Aggregate: SiEligibilityMatrix ──────────
+  SiEligibilityMatrix:
+    description: >-
+      Configurable lookup table mapping contract_type × insurance_type to eligibility.
+      Stored as data, not code. Updated by Platform Admin on regulatory change.
+    in_subset:
+      - aggregate_root
+    slots:
+      - matrix_id
+      - legal_entity_id
+      - country_code
+      - valid_from
+      - valid_to
+      - entries
+      - created_by
+      - created_at
+    slot_usage:
+      matrix_id:
+        identifier: true
+        required: true
+      valid_from:
+        required: true
+
+  SiEligibilityEntry:
+    description: >-
+      Single row in the SiEligibilityMatrix: contract_type × insurance_type → is_eligible.
+    in_subset:
+      - value_object
+    slots:
+      - contract_type
+      - insurance_type
+      - is_eligible
+    slot_usage:
+      contract_type:
+        range: ContractTypeEnum
+        required: true
+      insurance_type:
+        range: InsuranceTypeEnum
+        required: true
+      is_eligible:
+        required: true
+
+  # ── Value Objects ────────────────────────────
+  PitBracket:
+    description: >-
+      Single bracket in the progressive PIT schedule (7 brackets).
+      Stored as a JSON array within StatutoryRule.formula_json.
+    in_subset:
+      - value_object
+    slots:
+      - bracket_index
+      - lower_bound_vnd
+      - upper_bound_vnd
+      - rate_percent
+    slot_usage:
+      bracket_index:
+        required: true
+        minimum_value: 1
+        maximum_value: 7
+
+  SiContributionRate:
+    description: >-
+      Social insurance contribution rate: BHXH/BHYT/BHTN × EMPLOYEE/EMPLOYER → rate_percent.
+    in_subset:
+      - value_object
+    slots:
+      - insurance_type
+      - contribution_party
+      - rate_percent
+    slot_usage:
+      insurance_type:
+        range: InsuranceTypeEnum
+        required: true
+      contribution_party:
+        range: ContributionPartyEnum
+        required: true
+
+  RegionalMinimumWage:
+    description: >-
+      Minimum wage floor per region, effective-dated.
+    in_subset:
+      - value_object
+    slots:
+      - region_code
+      - amount_vnd
+    slot_usage:
+      region_code:
+        range: RegionCodeEnum
+        required: true
+
+# ─────────────────────────────────────────────
+# SLOTS
+# ─────────────────────────────────────────────
+slots:
+  # Identity
+  rule_id:
+    range: string
+    description: Surrogate identifier for StatutoryRule
+  matrix_id:
+    range: string
+
+  # Multi-tenancy
+  legal_entity_id:
+    range: string
+    description: >-
+      NULL for global rules; set for legal-entity-specific overrides.
+      Every aggregate root carries this for multi-tenancy query filtering.
+
+  # Rule identity
+  rule_code:
+    range: string
+    description: Stable code e.g. VN_PIT_BRACKETS_2020
+  rule_category:
+    range: string
+  rule_type:
+    range: string
+    description: Sub-classification e.g. PROGRESSIVE (for PIT), FLAT_RATE, CEILING_MULTIPLIER
+  country_code:
+    range: string
+    description: ISO 3166-1 alpha-2
+  description:
+    range: string
+  decree_reference:
+    range: string
+    description: Regulatory decree reference e.g. Circular 08/2013/TT-BTC
+
+  # Effective date (statutory rule pattern)
+  valid_from:
+    range: date
+    required: true
+    description: Date from which this rule is effective
+  valid_to:
+    range: date
+    description: Date after which this rule is superseded (null = currently valid)
+
+  # Rule value
+  value_numeric:
+    range: float
+    description: For scalar rules — a single rate, threshold, or multiplier
+  unit:
+    range: string
+    description: RATE_PERCENT, VND_AMOUNT, MULTIPLIER, DAYS
+  formula_json:
+    range: string
+    description: >-
+      JSON-encoded rule data for complex structures (PIT brackets, SI eligibility).
+      Typed JSON structure validated at application layer.
+
+  # Status
+  is_active:
+    range: boolean
+  status:
+    range: string
+  created_by:
+    range: string
+  created_at:
+    range: datetime
+  activated_at:
+    range: datetime
+
+  # SiEligibilityMatrix
+  entries:
+    range: SiEligibilityEntry
+    multivalued: true
+    inlined: true
+
+  # SiEligibilityEntry
+  contract_type:
+    range: string
+  insurance_type:
+    range: string
+  is_eligible:
+    range: boolean
+
+  # PitBracket
+  bracket_index:
+    range: integer
+  lower_bound_vnd:
+    range: float
+    description: Lower bound (inclusive) of this tax bracket in VND
+  upper_bound_vnd:
+    range: float
+    description: Upper bound of this bracket; null for the top bracket
+  rate_percent:
+    range: float
+    description: Applicable tax rate for this bracket
+
+  # SiContributionRate
+  contribution_party:
+    range: string
+
+  # RegionalMinimumWage
+  region_code:
+    range: string
+  amount_vnd:
+    range: float

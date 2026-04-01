@@ -1,0 +1,237 @@
+id: https://xtalent.vng.com.vn/payroll/audit-trail
+name: AuditTrail
+description: >-
+  LinkML schema for the Audit Trail bounded context (BC-07).
+  Owns AuditLog and IntegrityHash.
+  Insert-only immutable records with 7-year retention per Accounting Law 88/2015/QH13.
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  pr_at: https://xtalent.vng.com.vn/payroll/audit-trail/
+  xsd: http://www.w3.org/2001/XMLSchema#
+
+default_prefix: pr_at
+default_range: string
+
+imports:
+  - linkml:types
+
+subsets:
+  aggregate_root:
+    description: Aggregate root entities — insert-only
+  value_object:
+    description: Embedded value objects
+
+# ─────────────────────────────────────────────
+# ENUMS
+# ─────────────────────────────────────────────
+enums:
+  SourceContextEnum:
+    description: Which bounded context emitted the audited event
+    permissible_values:
+      BC_01_PAY_MASTER:
+      BC_02_STATUTORY_RULES:
+      BC_03_PAYROLL_EXECUTION:
+      BC_04_PAYMENT_OUTPUT:
+      BC_05_STATUTORY_REPORTING:
+      BC_06_WORKER_SELF_SERVICE:
+      SYSTEM:
+        description: Cross-cutting system events (e.g., scheduler, integration layer)
+
+  AuditChannelEnum:
+    permissible_values:
+      API:
+        description: REST API call
+      UI:
+        description: Web or mobile user interface
+      BATCH:
+        description: Scheduled batch job
+      INTEGRATION:
+        description: External system integration (CO, TA, TR)
+
+  IntegrityVerificationStatusEnum:
+    permissible_values:
+      PENDING:
+        description: Not yet verified by nightly job
+      PASSED:
+        description: Computed hash matches stored hash — no tampering detected
+      FAILED:
+        description: Hash mismatch — critical tamper alert triggered
+
+# ─────────────────────────────────────────────
+# CLASSES
+# ─────────────────────────────────────────────
+classes:
+
+  # ── Aggregate: AuditLog ──────────────────────
+  AuditLog:
+    description: >-
+      Immutable record of a single auditable domain event from any BC.
+      INSERT ONLY — no UPDATE or DELETE permitted at any layer.
+      7-year retention per Accounting Law 88/2015/QH13.
+    in_subset:
+      - aggregate_root
+    slots:
+      - log_id
+      - legal_entity_id
+      - source_context
+      - aggregate_type
+      - aggregate_id
+      - event_type
+      - actor_id
+      - actor_role
+      - event_at
+      - before_state_json
+      - after_state_json
+      - correlation_id
+      - audit_context
+    slot_usage:
+      log_id:
+        identifier: true
+        required: true
+        description: UUID — globally unique across all legal entities
+      legal_entity_id:
+        required: true
+        description: Carried from source event for compliance reporting scope
+      source_context:
+        range: SourceContextEnum
+        required: true
+      event_type:
+        required: true
+        description: e.g. PayrollRunApproved, PayElementActivated, StatutoryRuleActivated
+      actor_id:
+        required: true
+        description: User ID or SYSTEM for automated events (BR-AT-06)
+      event_at:
+        required: true
+
+  AuditContext:
+    description: >-
+      Contextual metadata captured automatically with each audit event.
+    in_subset:
+      - value_object
+    slots:
+      - session_id
+      - request_id
+      - ip_address
+      - user_agent
+      - channel
+    slot_usage:
+      channel:
+        range: AuditChannelEnum
+
+  # ── Aggregate: IntegrityHash ─────────────────
+  IntegrityHash:
+    description: >-
+      SHA-256 hash record for a single PayrollResult.
+      Created at PayPeriod LOCK within 30 seconds of lock event (BR-AT-03).
+      Nightly verification job recomputes and compares to detect tampering.
+    in_subset:
+      - aggregate_root
+    slots:
+      - hash_id
+      - legal_entity_id
+      - period_id
+      - working_relationship_id
+      - payroll_result_id
+      - hash_value
+      - hashed_at
+      - last_verified_at
+      - last_verification_status
+    slot_usage:
+      hash_id:
+        identifier: true
+        required: true
+      legal_entity_id:
+        required: true
+      hash_value:
+        required: true
+        description: SHA-256 hex string of serialized PayrollResult
+      hashed_at:
+        required: true
+      last_verification_status:
+        range: IntegrityVerificationStatusEnum
+
+# ─────────────────────────────────────────────
+# SLOTS
+# ─────────────────────────────────────────────
+slots:
+  # Identity
+  log_id:
+    range: string
+    description: UUID — globally unique audit record identifier
+  hash_id:
+    range: string
+
+  # Multi-tenancy
+  legal_entity_id:
+    range: string
+    required: true
+
+  # Cross-context references
+  period_id:
+    range: string
+    description: FK from BC-03 PayPeriod
+  working_relationship_id:
+    range: string
+    description: FK from CO (EXT-01) — present when event concerns a specific worker
+  payroll_result_id:
+    range: string
+    description: FK from BC-03 PayrollResult — subject of integrity hash
+
+  # AuditLog slots
+  source_context:
+    range: string
+  aggregate_type:
+    range: string
+    description: Class name of the aggregate that changed e.g. PayrollRun, PayElement
+  aggregate_id:
+    range: string
+    description: Identifier of the changed aggregate instance
+  event_type:
+    range: string
+    description: Domain event name e.g. PayrollRunApproved
+  actor_id:
+    range: string
+    description: User ID or SYSTEM
+  actor_role:
+    range: string
+  event_at:
+    range: datetime
+    description: UTC timestamp of the event
+  before_state_json:
+    range: string
+    description: Serialized state before the change (null for creation events)
+  after_state_json:
+    range: string
+    description: Serialized state after the change (null for deletion events — not applicable as data is never deleted)
+  correlation_id:
+    range: string
+    description: Groups related events from the same user action or batch
+  audit_context:
+    range: AuditContext
+    inlined: true
+
+  # AuditContext slots
+  session_id:
+    range: string
+  request_id:
+    range: string
+  ip_address:
+    range: string
+  user_agent:
+    range: string
+  channel:
+    range: string
+
+  # IntegrityHash slots
+  hash_value:
+    range: string
+    description: SHA-256 hex string
+  hashed_at:
+    range: datetime
+    description: Timestamp when hash was computed (at PayPeriod LOCK)
+  last_verified_at:
+    range: datetime
+  last_verification_status:
+    range: string

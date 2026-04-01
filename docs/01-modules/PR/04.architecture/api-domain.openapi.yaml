@@ -1,0 +1,2269 @@
+openapi: "3.0.3"
+info:
+  title: Payroll Domain API
+  description: >
+    Domain-driven CRUD API for the Payroll (PR) module — xTalent HCM.
+    Endpoints follow standard REST patterns for aggregate root management.
+    This API covers configuration and data access operations.
+    Use-case-driven business commands (run initiation, approval, etc.) are in api-usecase.openapi.yaml.
+    Base path: /api/v1/payroll-domain
+  version: "1.0.0"
+  contact:
+    name: xTalent Platform Team
+    email: platform@xtalent.vng.com.vn
+
+servers:
+  - url: https://api.xtalent.vng.com.vn/api/v1/payroll-domain
+    description: Production
+  - url: https://api-staging.xtalent.vng.com.vn/api/v1/payroll-domain
+    description: Staging
+
+tags:
+  - name: pay-groups
+    description: PayGroup aggregate root (BC-01)
+  - name: pay-calendars
+    description: PayCalendar aggregate root (BC-01)
+  - name: pay-elements
+    description: PayElement aggregate root with formula versions (BC-01)
+  - name: pay-profiles
+    description: PayProfile aggregate root (BC-01)
+  - name: worker-assignments
+    description: WorkerPayGroupAssignment entity (BC-01)
+  - name: statutory-rules
+    description: StatutoryRule aggregate root (BC-02)
+  - name: pay-periods
+    description: PayPeriod aggregate root (BC-03)
+  - name: payroll-runs
+    description: PayrollRun aggregate root — read access (BC-03)
+  - name: payroll-results
+    description: PayrollResult aggregate root — read access (BC-03)
+  - name: compensation-snapshots
+    description: CompensationSnapshot aggregate root — read access (BC-03)
+  - name: bank-payment-files
+    description: BankPaymentFile aggregate root — read access (BC-04)
+  - name: gl-journals
+    description: GlJournal aggregate root — read access (BC-04)
+  - name: payslip-documents
+    description: PayslipDocument aggregate root — read access (BC-04)
+  - name: bhxh-reports
+    description: BhxhReport aggregate root (BC-05)
+  - name: pit-declarations
+    description: PitDeclaration aggregate root (BC-05)
+  - name: pit-certificates
+    description: PitCertificate aggregate root (BC-05)
+  - name: ytd-summaries
+    description: YtdSummary — read access (BC-06)
+  - name: pit-certificate-requests
+    description: PitCertificateRequest (BC-06)
+
+security:
+  - BearerAuth: []
+
+paths:
+
+  # ════════════════════════════════════════════
+  # BC-01: PAY MASTER
+  # ════════════════════════════════════════════
+
+  # ── PayGroup ──────────────────────────────
+
+  /pay-groups:
+    get:
+      tags: [pay-groups]
+      operationId: listPayGroups
+      summary: List pay groups for a legal entity
+      parameters:
+        - $ref: '#/components/parameters/LegalEntityId'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [ACTIVE, INACTIVE]
+      responses:
+        '200':
+          description: Paginated list of pay groups
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedPayGroupList'
+
+    post:
+      tags: [pay-groups]
+      operationId: createPayGroup
+      summary: Create a new pay group
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePayGroupRequest'
+      responses:
+        '201':
+          description: Pay group created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayGroupDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /pay-groups/{payGroupId}:
+    get:
+      tags: [pay-groups]
+      operationId: getPayGroup
+      summary: Get a pay group by ID
+      parameters:
+        - $ref: '#/components/parameters/PayGroupId'
+      responses:
+        '200':
+          description: Pay group detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayGroupDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags: [pay-groups]
+      operationId: updatePayGroup
+      summary: Update a pay group
+      description: >
+        Updates mutable fields of a PayGroup. OT caps, standard hours, night window config.
+        Changing pay_calendar_id while periods are OPEN is blocked.
+      parameters:
+        - $ref: '#/components/parameters/PayGroupId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePayGroupRequest'
+      responses:
+        '200':
+          description: Pay group updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayGroupDetail'
+
+  # ── PayCalendar ───────────────────────────
+
+  /pay-calendars:
+    get:
+      tags: [pay-calendars]
+      operationId: listPayCalendars
+      summary: List pay calendars for a legal entity
+      parameters:
+        - $ref: '#/components/parameters/LegalEntityId'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+      responses:
+        '200':
+          description: Paginated list of pay calendars
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedPayCalendarList'
+
+    post:
+      tags: [pay-calendars]
+      operationId: createPayCalendar
+      summary: Create a new pay calendar
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePayCalendarRequest'
+      responses:
+        '201':
+          description: Pay calendar created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayCalendarDetail'
+
+  /pay-calendars/{calendarId}:
+    get:
+      tags: [pay-calendars]
+      operationId: getPayCalendar
+      summary: Get a pay calendar by ID
+      parameters:
+        - in: path
+          name: calendarId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Pay calendar detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayCalendarDetail'
+
+  # ── PayElement ────────────────────────────
+
+  /pay-elements:
+    get:
+      tags: [pay-elements]
+      operationId: listPayElements
+      summary: List pay elements for a legal entity
+      parameters:
+        - $ref: '#/components/parameters/LegalEntityId'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+        - in: query
+          name: classification
+          schema:
+            type: string
+            enum: [EARNINGS, DEDUCTION, EMPLOYER_CONTRIBUTION, INFORMATION]
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [DRAFT, PENDING_APPROVAL, APPROVED, ACTIVE, DEPRECATED]
+      responses:
+        '200':
+          description: Paginated list of pay elements
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedPayElementList'
+
+    post:
+      tags: [pay-elements]
+      operationId: createPayElement
+      summary: Create a new pay element
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePayElementRequest'
+      responses:
+        '201':
+          description: Pay element created in DRAFT status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayElementDetail'
+
+  /pay-elements/{elementId}:
+    get:
+      tags: [pay-elements]
+      operationId: getPayElement
+      summary: Get a pay element by ID
+      parameters:
+        - $ref: '#/components/parameters/ElementId'
+      responses:
+        '200':
+          description: Pay element detail with formula versions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayElementDetail'
+
+    put:
+      tags: [pay-elements]
+      operationId: updatePayElement
+      summary: Update a pay element
+      description: Only mutable fields (name, priority_order, proration_method) are updatable. Tax treatment and SI basis inclusion require deprecation and new element creation.
+      parameters:
+        - $ref: '#/components/parameters/ElementId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePayElementRequest'
+      responses:
+        '200':
+          description: Pay element updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayElementDetail'
+
+  /pay-elements/{elementId}/formula-versions:
+    get:
+      tags: [pay-elements]
+      operationId: listFormulaVersions
+      summary: List all formula versions for a pay element
+      parameters:
+        - $ref: '#/components/parameters/ElementId'
+      responses:
+        '200':
+          description: List of formula versions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FormulaVersionDetail'
+
+    post:
+      tags: [pay-elements]
+      operationId: createFormulaVersion
+      summary: Create a new formula version (DRAFT) for a pay element
+      parameters:
+        - $ref: '#/components/parameters/ElementId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateFormulaVersionRequest'
+      responses:
+        '201':
+          description: Formula version created in DRAFT status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FormulaVersionDetail'
+
+  # ── PayProfile ────────────────────────────
+
+  /pay-profiles:
+    get:
+      tags: [pay-profiles]
+      operationId: listPayProfiles
+      summary: List pay profiles for a legal entity
+      parameters:
+        - $ref: '#/components/parameters/LegalEntityId'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+        - in: query
+          name: pay_method
+          schema:
+            type: string
+            enum: [MONTHLY_SALARY, HOURLY, PIECE_RATE, GRADE_STEP, TASK_BASED]
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [ACTIVE, INACTIVE, ARCHIVED]
+      responses:
+        '200':
+          description: Paginated list of pay profiles
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedPayProfileList'
+
+    post:
+      tags: [pay-profiles]
+      operationId: createPayProfile
+      summary: Create a new pay profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePayProfileRequest'
+      responses:
+        '201':
+          description: Pay profile created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayProfileDetail'
+
+  /pay-profiles/{profileId}:
+    get:
+      tags: [pay-profiles]
+      operationId: getPayProfile
+      summary: Get a pay profile by ID
+      parameters:
+        - $ref: '#/components/parameters/ProfileId'
+      responses:
+        '200':
+          description: Pay profile detail with element and rule bindings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayProfileDetail'
+
+    put:
+      tags: [pay-profiles]
+      operationId: updatePayProfile
+      summary: Update a pay profile
+      parameters:
+        - $ref: '#/components/parameters/ProfileId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePayProfileRequest'
+      responses:
+        '200':
+          description: Pay profile updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayProfileDetail'
+
+  # ── WorkerPayGroupAssignment ───────────────
+
+  /worker-assignments:
+    get:
+      tags: [worker-assignments]
+      operationId: listWorkerAssignments
+      summary: List worker pay group assignments
+      parameters:
+        - $ref: '#/components/parameters/LegalEntityId'
+        - in: query
+          name: pay_group_id
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: working_relationship_id
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+      responses:
+        '200':
+          description: Paginated list of worker assignments
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedWorkerAssignmentList'
+
+    post:
+      tags: [worker-assignments]
+      operationId: createWorkerAssignment
+      summary: Assign a worker to a pay group
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWorkerAssignmentRequest'
+      responses:
+        '201':
+          description: Worker assignment created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkerAssignmentDetail'
+
+  # ════════════════════════════════════════════
+  # BC-02: STATUTORY RULES
+  # ════════════════════════════════════════════
+
+  /statutory-rules:
+    get:
+      tags: [statutory-rules]
+      operationId: listStatutoryRules
+      summary: List statutory rules
+      parameters:
+        - in: query
+          name: rule_category
+          schema:
+            type: string
+            enum: [PIT_BRACKET, SI_RATE, SI_CEILING, OT_MULTIPLIER, MINIMUM_WAGE, BASE_SALARY_VN, FREELANCE_WITHHOLDING, LUNCH_EXEMPTION_CAP]
+        - in: query
+          name: is_active
+          schema:
+            type: boolean
+        - in: query
+          name: valid_at
+          schema:
+            type: string
+            format: date
+          description: Return rules valid on this date (effective-date lookup)
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+      responses:
+        '200':
+          description: Paginated list of statutory rules
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedStatutoryRuleList'
+
+  /statutory-rules/{ruleId}:
+    get:
+      tags: [statutory-rules]
+      operationId: getStatutoryRule
+      summary: Get a statutory rule by ID
+      parameters:
+        - in: path
+          name: ruleId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Statutory rule detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatutoryRuleDetail'
+
+  # ════════════════════════════════════════════
+  # BC-03: PAYROLL EXECUTION — READ ACCESS
+  # ════════════════════════════════════════════
+
+  /pay-periods:
+    get:
+      tags: [pay-periods]
+      operationId: listPayPeriods
+      summary: List pay periods
+      parameters:
+        - $ref: '#/components/parameters/LegalEntityId'
+        - in: query
+          name: pay_group_id
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [OPEN, CUT_OFF, RUNNING, PENDING_APPROVAL, APPROVED, LOCKED]
+        - in: query
+          name: period_year
+          schema:
+            type: integer
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+      responses:
+        '200':
+          description: Paginated list of pay periods
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedPayPeriodList'
+
+  /pay-periods/{periodId}:
+    get:
+      tags: [pay-periods]
+      operationId: getPayPeriod
+      summary: Get a pay period by ID
+      parameters:
+        - in: path
+          name: periodId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Pay period detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayPeriodDetail'
+
+  /payroll-runs:
+    get:
+      tags: [payroll-runs]
+      operationId: listPayrollRuns
+      summary: List payroll runs
+      parameters:
+        - $ref: '#/components/parameters/LegalEntityId'
+        - in: query
+          name: period_id
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: run_status
+          schema:
+            type: string
+        - in: query
+          name: run_mode
+          schema:
+            type: string
+            enum: [DRY_RUN, SIMULATION, PRODUCTION]
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+      responses:
+        '200':
+          description: Paginated list of payroll runs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedPayrollRunList'
+
+  /payroll-runs/{runId}:
+    get:
+      tags: [payroll-runs]
+      operationId: getPayrollRun
+      summary: Get a payroll run by ID
+      parameters:
+        - in: path
+          name: runId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Payroll run detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayrollRunDetail'
+
+  /payroll-results:
+    get:
+      tags: [payroll-results]
+      operationId: listPayrollResults
+      summary: List payroll results
+      parameters:
+        - $ref: '#/components/parameters/LegalEntityId'
+        - in: query
+          name: period_id
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: run_id
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: working_relationship_id
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: result_status
+          schema:
+            type: string
+            enum: [DRAFT, FINAL]
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+      responses:
+        '200':
+          description: Paginated list of payroll results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedPayrollResultList'
+
+  /payroll-results/{resultId}:
+    get:
+      tags: [payroll-results]
+      operationId: getPayrollResult
+      summary: Get a payroll result by ID (includes calc log)
+      parameters:
+        - in: path
+          name: resultId
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: include_calc_log
+          schema:
+            type: boolean
+            default: false
+          description: Include ordered calculation log entries
+      responses:
+        '200':
+          description: Payroll result detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayrollResultDetail'
+
+  /compensation-snapshots:
+    get:
+      tags: [compensation-snapshots]
+      operationId: listCompensationSnapshots
+      summary: List compensation snapshots for a period
+      parameters:
+        - $ref: '#/components/parameters/LegalEntityId'
+        - in: query
+          name: period_id
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: working_relationship_id
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+      responses:
+        '200':
+          description: Paginated list of compensation snapshots
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedCompensationSnapshotList'
+
+  /compensation-snapshots/{snapshotId}:
+    get:
+      tags: [compensation-snapshots]
+      operationId: getCompensationSnapshot
+      summary: Get a compensation snapshot by ID
+      parameters:
+        - in: path
+          name: snapshotId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Compensation snapshot detail (immutable)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompensationSnapshotDetail'
+
+  # ════════════════════════════════════════════
+  # BC-04: PAYMENT OUTPUT — READ ACCESS
+  # ════════════════════════════════════════════
+
+  /bank-payment-files:
+    get:
+      tags: [bank-payment-files]
+      operationId: listBankPaymentFiles
+      summary: List bank payment files
+      parameters:
+        - $ref: '#/components/parameters/LegalEntityId'
+        - in: query
+          name: period_id
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: bank_code
+          schema:
+            type: string
+            enum: [VCB, BIDV, TCB]
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+      responses:
+        '200':
+          description: Paginated list of bank payment files
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedBankPaymentFileList'
+
+  /bank-payment-files/{fileId}:
+    get:
+      tags: [bank-payment-files]
+      operationId: getBankPaymentFile
+      summary: Get a bank payment file by ID
+      parameters:
+        - in: path
+          name: fileId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Bank payment file detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BankPaymentFileDetail'
+
+  /gl-journals:
+    get:
+      tags: [gl-journals]
+      operationId: listGlJournals
+      summary: List GL journals
+      parameters:
+        - $ref: '#/components/parameters/LegalEntityId'
+        - in: query
+          name: period_id
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [DRAFT, POSTED, REVERSED]
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+      responses:
+        '200':
+          description: Paginated list of GL journals
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedGlJournalList'
+
+  /gl-journals/{journalId}:
+    get:
+      tags: [gl-journals]
+      operationId: getGlJournal
+      summary: Get a GL journal with line items
+      parameters:
+        - in: path
+          name: journalId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: GL journal detail with line items
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GlJournalDetail'
+
+  /payslip-documents:
+    get:
+      tags: [payslip-documents]
+      operationId: listPayslipDocuments
+      summary: List payslip documents
+      parameters:
+        - $ref: '#/components/parameters/LegalEntityId'
+        - in: query
+          name: period_id
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: working_relationship_id
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+      responses:
+        '200':
+          description: Paginated list of payslip documents
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedPayslipDocumentList'
+
+  /payslip-documents/{documentId}:
+    get:
+      tags: [payslip-documents]
+      operationId: getPayslipDocument
+      summary: Get a payslip document by ID
+      parameters:
+        - in: path
+          name: documentId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Payslip document detail with download URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayslipDocumentDetail'
+
+  # ════════════════════════════════════════════
+  # BC-05: STATUTORY REPORTING
+  # ════════════════════════════════════════════
+
+  /bhxh-reports:
+    get:
+      tags: [bhxh-reports]
+      operationId: listBhxhReports
+      summary: List BHXH reports
+      parameters:
+        - $ref: '#/components/parameters/LegalEntityId'
+        - in: query
+          name: period_id
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [DRAFT, GENERATED, SUBMITTED, ACCEPTED, REJECTED]
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+      responses:
+        '200':
+          description: Paginated list of BHXH reports
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedBhxhReportList'
+
+  /bhxh-reports/{reportId}:
+    get:
+      tags: [bhxh-reports]
+      operationId: getBhxhReport
+      summary: Get a BHXH report by ID
+      parameters:
+        - in: path
+          name: reportId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: BHXH report detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BhxhReportDetail'
+
+  /pit-declarations:
+    get:
+      tags: [pit-declarations]
+      operationId: listPitDeclarations
+      summary: List PIT declarations
+      parameters:
+        - $ref: '#/components/parameters/LegalEntityId'
+        - in: query
+          name: declaration_type
+          schema:
+            type: string
+            enum: [QUARTERLY, ANNUAL]
+        - in: query
+          name: tax_period_year
+          schema:
+            type: integer
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+      responses:
+        '200':
+          description: Paginated list of PIT declarations
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedPitDeclarationList'
+
+  /pit-declarations/{declarationId}:
+    get:
+      tags: [pit-declarations]
+      operationId: getPitDeclaration
+      summary: Get a PIT declaration by ID
+      parameters:
+        - in: path
+          name: declarationId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: PIT declaration detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PitDeclarationDetail'
+
+  /pit-certificates:
+    get:
+      tags: [pit-certificates]
+      operationId: listPitCertificates
+      summary: List PIT certificates
+      parameters:
+        - $ref: '#/components/parameters/LegalEntityId'
+        - in: query
+          name: tax_year
+          schema:
+            type: integer
+        - in: query
+          name: working_relationship_id
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+      responses:
+        '200':
+          description: Paginated list of PIT certificates
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedPitCertificateList'
+
+  /pit-certificates/{certificateId}:
+    get:
+      tags: [pit-certificates]
+      operationId: getPitCertificate
+      summary: Get a PIT certificate by ID
+      parameters:
+        - in: path
+          name: certificateId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: PIT certificate detail with download URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PitCertificateDetail'
+
+  # ════════════════════════════════════════════
+  # BC-06: WORKER SELF-SERVICE
+  # ════════════════════════════════════════════
+
+  /ytd-summaries/{workingRelationshipId}:
+    get:
+      tags: [ytd-summaries]
+      operationId: getYtdSummary
+      summary: Get year-to-date summary for a worker
+      parameters:
+        - in: path
+          name: workingRelationshipId
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: tax_year
+          required: true
+          schema:
+            type: integer
+            example: 2026
+      responses:
+        '200':
+          description: YTD summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/YtdSummaryDetail'
+
+  /pit-certificate-requests:
+    get:
+      tags: [pit-certificate-requests]
+      operationId: listPitCertificateRequests
+      summary: List PIT certificate requests for a worker
+      parameters:
+        - in: query
+          name: working_relationship_id
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [PENDING, PROCESSING, COMPLETED, FAILED]
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+      responses:
+        '200':
+          description: Paginated list of PIT certificate requests
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedPitCertificateRequestList'
+
+    post:
+      tags: [pit-certificate-requests]
+      operationId: createPitCertificateRequest
+      summary: Request a PIT withholding certificate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [working_relationship_id, legal_entity_id, tax_year]
+              properties:
+                working_relationship_id:
+                  type: string
+                  format: uuid
+                legal_entity_id:
+                  type: string
+                  format: uuid
+                tax_year:
+                  type: integer
+                  example: 2025
+      responses:
+        '202':
+          description: PIT certificate request created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PitCertificateRequestDetail'
+
+# ────────────────────────────────────────────────────────────────────────────
+# COMPONENTS
+# ────────────────────────────────────────────────────────────────────────────
+components:
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    LegalEntityId:
+      in: query
+      name: legal_entity_id
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Multi-tenancy isolation key
+
+    PageParam:
+      in: query
+      name: page
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+
+    SizeParam:
+      in: query
+      name: size
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+
+    PayGroupId:
+      in: path
+      name: payGroupId
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    ElementId:
+      in: path
+      name: elementId
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    ProfileId:
+      in: path
+      name: profileId
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    BadRequest:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+
+    # ── Pagination wrapper ─────────────────────────────────────────────────
+    PaginationMeta:
+      type: object
+      properties:
+        page:
+          type: integer
+        size:
+          type: integer
+        total_elements:
+          type: integer
+          format: int64
+        total_pages:
+          type: integer
+
+    # ── PayGroup ─────────────────────────────────────────────────────────
+    PayGroupDetail:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        legal_entity_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        pay_calendar_id:
+          type: string
+          format: uuid
+        currency_code:
+          type: string
+          example: VND
+        standard_work_days_per_month:
+          type: integer
+        standard_hours_per_day:
+          type: number
+        ot_monthly_cap_hours:
+          type: number
+        night_window_start:
+          type: string
+          example: "22:00"
+        night_window_end:
+          type: string
+          example: "06:00"
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreatePayGroupRequest:
+      type: object
+      required: [legal_entity_id, name, pay_calendar_id, currency_code, standard_work_days_per_month, standard_hours_per_day]
+      properties:
+        legal_entity_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        pay_calendar_id:
+          type: string
+          format: uuid
+        currency_code:
+          type: string
+          default: VND
+        standard_work_days_per_month:
+          type: integer
+          minimum: 1
+          maximum: 31
+        standard_hours_per_day:
+          type: number
+        ot_monthly_cap_hours:
+          type: number
+        night_window_start:
+          type: string
+        night_window_end:
+          type: string
+
+    UpdatePayGroupRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        standard_work_days_per_month:
+          type: integer
+        standard_hours_per_day:
+          type: number
+        ot_monthly_cap_hours:
+          type: number
+        night_window_start:
+          type: string
+        night_window_end:
+          type: string
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE]
+
+    PaginatedPayGroupList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PayGroupDetail'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    # ── PayCalendar ───────────────────────────────────────────────────────
+    PayCalendarDetail:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        legal_entity_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        frequency:
+          type: string
+          enum: [MONTHLY, BI_WEEKLY, WEEKLY]
+        period_start_day:
+          type: integer
+        cut_off_day:
+          type: integer
+        payment_day:
+          type: integer
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    CreatePayCalendarRequest:
+      type: object
+      required: [legal_entity_id, name, frequency, period_start_day, cut_off_day, payment_day]
+      properties:
+        legal_entity_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        frequency:
+          type: string
+          enum: [MONTHLY, BI_WEEKLY, WEEKLY]
+        period_start_day:
+          type: integer
+        cut_off_day:
+          type: integer
+        payment_day:
+          type: integer
+
+    PaginatedPayCalendarList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PayCalendarDetail'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    # ── PayElement ────────────────────────────────────────────────────────
+    PayElementDetail:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        legal_entity_id:
+          type: string
+          format: uuid
+        element_code:
+          type: string
+        element_name:
+          type: string
+        classification:
+          type: string
+          enum: [EARNINGS, DEDUCTION, EMPLOYER_CONTRIBUTION, INFORMATION]
+        tax_treatment:
+          type: string
+          enum: [TAXABLE, TAX_EXEMPT, TAX_EXEMPT_CAPPED]
+        si_basis_inclusion:
+          type: string
+          enum: [INCLUDED, EXCLUDED]
+        proration_method:
+          type: string
+        priority_order:
+          type: integer
+        current_status:
+          type: string
+          enum: [DRAFT, PENDING_APPROVAL, APPROVED, ACTIVE, DEPRECATED]
+        formula_versions:
+          type: array
+          items:
+            $ref: '#/components/schemas/FormulaVersionDetail'
+        created_at:
+          type: string
+          format: date-time
+
+    CreatePayElementRequest:
+      type: object
+      required: [legal_entity_id, element_code, element_name, classification, tax_treatment, si_basis_inclusion, proration_method]
+      properties:
+        legal_entity_id:
+          type: string
+          format: uuid
+        element_code:
+          type: string
+        element_name:
+          type: string
+        classification:
+          type: string
+          enum: [EARNINGS, DEDUCTION, EMPLOYER_CONTRIBUTION, INFORMATION]
+        tax_treatment:
+          type: string
+          enum: [TAXABLE, TAX_EXEMPT, TAX_EXEMPT_CAPPED]
+        si_basis_inclusion:
+          type: string
+          enum: [INCLUDED, EXCLUDED]
+        proration_method:
+          type: string
+          enum: [CALENDAR_DAYS, WORK_DAYS, NONE]
+        priority_order:
+          type: integer
+          default: 50
+
+    UpdatePayElementRequest:
+      type: object
+      properties:
+        element_name:
+          type: string
+        priority_order:
+          type: integer
+        proration_method:
+          type: string
+          enum: [CALENDAR_DAYS, WORK_DAYS, NONE]
+
+    FormulaVersionDetail:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        pay_element_id:
+          type: string
+          format: uuid
+        version_number:
+          type: integer
+        formula_script:
+          type: string
+        formula_script_hash:
+          type: string
+        active_from:
+          type: string
+          format: date
+        status:
+          type: string
+          enum: [DRAFT, PENDING_APPROVAL, APPROVED, ACTIVE, DEPRECATED]
+        approved_by:
+          type: string
+        approved_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+
+    CreateFormulaVersionRequest:
+      type: object
+      required: [formula_script, active_from]
+      properties:
+        formula_script:
+          type: string
+          description: Drools DRL expression or parameter reference
+        active_from:
+          type: string
+          format: date
+
+    PaginatedPayElementList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PayElementDetail'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    # ── PayProfile ────────────────────────────────────────────────────────
+    PayProfileDetail:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        legal_entity_id:
+          type: string
+          format: uuid
+        profile_code:
+          type: string
+        profile_name:
+          type: string
+        pay_method:
+          type: string
+          enum: [MONTHLY_SALARY, HOURLY, PIECE_RATE, GRADE_STEP, TASK_BASED]
+        proration_method:
+          type: string
+        rounding_method:
+          type: string
+        payment_method:
+          type: string
+        si_basis_mode:
+          type: string
+        effective_from:
+          type: string
+          format: date
+        effective_to:
+          type: string
+          format: date
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE, ARCHIVED]
+        element_bindings:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProfileElementBindingDetail'
+        created_at:
+          type: string
+          format: date-time
+
+    CreatePayProfileRequest:
+      type: object
+      required: [legal_entity_id, profile_code, profile_name, pay_method, proration_method, rounding_method, payment_method, effective_from]
+      properties:
+        legal_entity_id:
+          type: string
+          format: uuid
+        profile_code:
+          type: string
+        profile_name:
+          type: string
+        pay_method:
+          type: string
+          enum: [MONTHLY_SALARY, HOURLY, PIECE_RATE, GRADE_STEP, TASK_BASED]
+        proration_method:
+          type: string
+          enum: [CALENDAR_DAYS, WORK_DAYS, NONE]
+        rounding_method:
+          type: string
+          enum: [ROUND_NEAREST_1000, ROUND_UP_1000, ROUND_DOWN_1000, NO_ROUNDING]
+        payment_method:
+          type: string
+          enum: [BANK_TRANSFER, CASH]
+        si_basis_mode:
+          type: string
+          enum: [STANDARD, PIECE_RATE_HYBRID]
+          default: STANDARD
+        effective_from:
+          type: string
+          format: date
+        effective_to:
+          type: string
+          format: date
+        parent_profile_id:
+          type: string
+          format: uuid
+        min_wage_rule_id:
+          type: string
+          format: uuid
+
+    UpdatePayProfileRequest:
+      type: object
+      properties:
+        profile_name:
+          type: string
+        effective_to:
+          type: string
+          format: date
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE, ARCHIVED]
+
+    ProfileElementBindingDetail:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        pay_element_id:
+          type: string
+          format: uuid
+        is_mandatory:
+          type: boolean
+        priority_order:
+          type: integer
+        effective_date:
+          type: string
+          format: date
+
+    PaginatedPayProfileList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PayProfileDetail'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    # ── WorkerAssignment ──────────────────────────────────────────────────
+    WorkerAssignmentDetail:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        pay_group_id:
+          type: string
+          format: uuid
+        working_relationship_id:
+          type: string
+          format: uuid
+        legal_entity_id:
+          type: string
+          format: uuid
+        effective_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        assigned_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    CreateWorkerAssignmentRequest:
+      type: object
+      required: [pay_group_id, working_relationship_id, legal_entity_id, effective_date]
+      properties:
+        pay_group_id:
+          type: string
+          format: uuid
+        working_relationship_id:
+          type: string
+          format: uuid
+        legal_entity_id:
+          type: string
+          format: uuid
+        effective_date:
+          type: string
+          format: date
+
+    PaginatedWorkerAssignmentList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkerAssignmentDetail'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    # ── StatutoryRule ─────────────────────────────────────────────────────
+    StatutoryRuleDetail:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        rule_code:
+          type: string
+        rule_category:
+          type: string
+        country_code:
+          type: string
+        legal_entity_id:
+          type: string
+          format: uuid
+        valid_from:
+          type: string
+          format: date
+        valid_to:
+          type: string
+          format: date
+        is_active:
+          type: boolean
+        status:
+          type: string
+          enum: [DRAFT, ACTIVE, SUPERSEDED]
+        formula_json:
+          type: object
+        decree_reference:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    PaginatedStatutoryRuleList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/StatutoryRuleDetail'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    # ── PayPeriod ─────────────────────────────────────────────────────────
+    PayPeriodDetail:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        pay_group_id:
+          type: string
+          format: uuid
+        legal_entity_id:
+          type: string
+          format: uuid
+        period_start:
+          type: string
+          format: date
+        period_end:
+          type: string
+          format: date
+        cut_off_date:
+          type: string
+          format: date
+        payment_date:
+          type: string
+          format: date
+        period_status:
+          type: string
+          enum: [OPEN, CUT_OFF, RUNNING, PENDING_APPROVAL, APPROVED, LOCKED]
+        locked_at:
+          type: string
+          format: date-time
+
+    PaginatedPayPeriodList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PayPeriodDetail'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    # ── PayrollRun ────────────────────────────────────────────────────────
+    PayrollRunDetail:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        period_id:
+          type: string
+          format: uuid
+        run_mode:
+          type: string
+        run_type:
+          type: string
+        run_status:
+          type: string
+        worker_count:
+          type: integer
+        processed_count:
+          type: integer
+        exception_count:
+          type: integer
+        statutory_rule_effective_date:
+          type: string
+          format: date
+        initiated_by:
+          type: string
+        initiated_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        approval_records:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApprovalRecordDetail'
+
+    ApprovalRecordDetail:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        approval_level:
+          type: string
+        action:
+          type: string
+        actor_id:
+          type: string
+        actor_role:
+          type: string
+        action_timestamp:
+          type: string
+          format: date-time
+        notes:
+          type: string
+
+    PaginatedPayrollRunList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PayrollRunDetail'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    # ── PayrollResult ─────────────────────────────────────────────────────
+    PayrollResultDetail:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        run_id:
+          type: string
+          format: uuid
+        working_relationship_id:
+          type: string
+          format: uuid
+        period_id:
+          type: string
+          format: uuid
+        gross_amount:
+          type: number
+          format: double
+        si_employee_bhxh:
+          type: number
+          format: double
+        si_employee_bhyt:
+          type: number
+          format: double
+        si_employee_bhtn:
+          type: number
+          format: double
+        si_employee_total:
+          type: number
+          format: double
+        pit_amount:
+          type: number
+          format: double
+        total_deductions:
+          type: number
+          format: double
+        net_amount:
+          type: number
+          format: double
+        element_amounts_json:
+          type: object
+          additionalProperties:
+            type: number
+          description: Map of element_code to computed_amount
+        integrity_hash:
+          type: string
+          description: SHA-256 hash set at period lock
+        result_status:
+          type: string
+          enum: [DRAFT, FINAL]
+        calc_log:
+          type: array
+          description: Present only if include_calc_log=true
+          items:
+            $ref: '#/components/schemas/CalcLogEntryDetail'
+        created_at:
+          type: string
+          format: date-time
+
+    CalcLogEntryDetail:
+      type: object
+      properties:
+        step_order:
+          type: integer
+        element_code:
+          type: string
+        element_name:
+          type: string
+        formula_version:
+          type: string
+        input_variables_json:
+          type: object
+        output_value:
+          type: number
+          format: double
+        currency:
+          type: string
+
+    PaginatedPayrollResultList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PayrollResultDetail'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    # ── CompensationSnapshot ──────────────────────────────────────────────
+    CompensationSnapshotDetail:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        working_relationship_id:
+          type: string
+          format: uuid
+        period_id:
+          type: string
+          format: uuid
+        snapshot_at:
+          type: string
+          format: date-time
+        base_salary:
+          type: number
+          format: double
+        allowances_json:
+          type: array
+          items:
+            type: object
+            properties:
+              element_code:
+                type: string
+              amount:
+                type: number
+        contract_type:
+          type: string
+        dependent_count:
+          type: integer
+        tax_residency_status:
+          type: string
+          enum: [RESIDENT, NON_RESIDENT]
+        grade_code:
+          type: string
+        step_code:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    PaginatedCompensationSnapshotList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/CompensationSnapshotDetail'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    # ── Bank Payment File ─────────────────────────────────────────────────
+    BankPaymentFileDetail:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        period_id:
+          type: string
+          format: uuid
+        bank_code:
+          type: string
+        file_name:
+          type: string
+        file_url:
+          type: string
+        record_count:
+          type: integer
+        total_amount_vnd:
+          type: number
+          format: double
+        status:
+          type: string
+        generated_at:
+          type: string
+          format: date-time
+
+    PaginatedBankPaymentFileList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/BankPaymentFileDetail'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    # ── GL Journal ────────────────────────────────────────────────────────
+    GlJournalDetail:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        period_id:
+          type: string
+          format: uuid
+        journal_reference:
+          type: string
+        journal_date:
+          type: string
+          format: date
+        total_debit_vnd:
+          type: number
+          format: double
+        total_credit_vnd:
+          type: number
+          format: double
+        status:
+          type: string
+          enum: [DRAFT, POSTED, REVERSED]
+        line_items:
+          type: array
+          items:
+            $ref: '#/components/schemas/GlJournalLineDetail'
+
+    GlJournalLineDetail:
+      type: object
+      properties:
+        line_order:
+          type: integer
+        account_code:
+          type: string
+          example: "334"
+        account_name:
+          type: string
+        debit_amount_vnd:
+          type: number
+          format: double
+        credit_amount_vnd:
+          type: number
+          format: double
+        description:
+          type: string
+
+    PaginatedGlJournalList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/GlJournalDetail'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    # ── Payslip Document ──────────────────────────────────────────────────
+    PayslipDocumentDetail:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        working_relationship_id:
+          type: string
+          format: uuid
+        period_id:
+          type: string
+          format: uuid
+        file_name:
+          type: string
+        file_url:
+          type: string
+          description: Signed URL for PDF download
+        template_code:
+          type: string
+        generated_at:
+          type: string
+          format: date-time
+
+    PaginatedPayslipDocumentList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PayslipDocumentDetail'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    # ── BHXH Report ───────────────────────────────────────────────────────
+    BhxhReportDetail:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        period_id:
+          type: string
+          format: uuid
+        report_type:
+          type: string
+        eligible_worker_count:
+          type: integer
+        total_bhxh_employee:
+          type: number
+        total_bhxh_employer:
+          type: number
+        file_name:
+          type: string
+        file_url:
+          type: string
+        status:
+          type: string
+        generated_at:
+          type: string
+          format: date-time
+
+    PaginatedBhxhReportList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/BhxhReportDetail'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    # ── PIT Declaration ───────────────────────────────────────────────────
+    PitDeclarationDetail:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        declaration_type:
+          type: string
+          enum: [QUARTERLY, ANNUAL]
+        tax_period_year:
+          type: integer
+        tax_period_quarter:
+          type: integer
+        xml_file_name:
+          type: string
+        xml_file_url:
+          type: string
+        worker_count:
+          type: integer
+        total_pit_withheld_vnd:
+          type: number
+        status:
+          type: string
+
+    PaginatedPitDeclarationList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PitDeclarationDetail'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    # ── PIT Certificate ───────────────────────────────────────────────────
+    PitCertificateDetail:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        working_relationship_id:
+          type: string
+          format: uuid
+        tax_year:
+          type: integer
+        ytd_gross_vnd:
+          type: number
+        ytd_pit_withheld_vnd:
+          type: number
+        tax_code:
+          type: string
+        certificate_number:
+          type: string
+        file_url:
+          type: string
+        generated_at:
+          type: string
+          format: date-time
+
+    PaginatedPitCertificateList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PitCertificateDetail'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    # ── YTD Summary ───────────────────────────────────────────────────────
+    YtdSummaryDetail:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        working_relationship_id:
+          type: string
+          format: uuid
+        tax_year:
+          type: integer
+        ytd_gross_vnd:
+          type: number
+        ytd_si_bhxh_vnd:
+          type: number
+        ytd_si_bhyt_vnd:
+          type: number
+        ytd_si_bhtn_vnd:
+          type: number
+        ytd_pit_vnd:
+          type: number
+        ytd_net_vnd:
+          type: number
+        periods_included:
+          type: integer
+        last_updated_at:
+          type: string
+          format: date-time
+
+    # ── PIT Certificate Request ───────────────────────────────────────────
+    PitCertificateRequestDetail:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        working_relationship_id:
+          type: string
+          format: uuid
+        tax_year:
+          type: integer
+        requested_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [PENDING, PROCESSING, COMPLETED, FAILED]
+        pit_certificate_id:
+          type: string
+          format: uuid
+        completed_at:
+          type: string
+          format: date-time
+
+    PaginatedPitCertificateRequestList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PitCertificateRequestDetail'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    # ── Error ─────────────────────────────────────────────────────────────
+    ErrorResponse:
+      type: object
+      required: [error_code, message]
+      properties:
+        error_code:
+          type: string
+        message:
+          type: string
+        details:
+          type: array
+          items:
+            type: string
+        trace_id:
+          type: string
+          format: uuid

@@ -1,0 +1,1094 @@
+// ============================================================
+// Payroll (PR) — Full Database Schema
+// Module: xTalent HCM
+// Step: 4 — Solution Architecture
+// Date: 2026-03-31
+// Version: 1.0
+//
+// Conventions:
+//   - All IDs: uuid with gen_random_uuid() default
+//   - All aggregate roots: legal_entity_id uuid NOT NULL
+//   - Timestamps: created_at timestamptz NOT NULL default now()
+//   - Updated: updated_at timestamptz (nullable — not present on immutable tables)
+//   - NO "employee_id" — use working_relationship_id
+//   - NO "company_id" — use legal_entity_id
+//   - Immutable tables: pay_result, compensation_snapshot, audit_log — no UPDATE/DELETE
+// ============================================================
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum pay_group_status {
+  ACTIVE
+  INACTIVE
+}
+
+enum pay_calendar_frequency {
+  MONTHLY
+  BI_WEEKLY
+  WEEKLY
+}
+
+enum pay_method {
+  MONTHLY_SALARY
+  HOURLY
+  PIECE_RATE
+  GRADE_STEP
+  TASK_BASED
+}
+
+enum proration_method {
+  CALENDAR_DAYS
+  WORK_DAYS
+  NONE
+}
+
+enum rounding_method {
+  ROUND_NEAREST_1000
+  ROUND_UP_1000
+  ROUND_DOWN_1000
+  NO_ROUNDING
+}
+
+enum payment_method {
+  BANK_TRANSFER
+  CASH
+}
+
+enum pay_element_classification {
+  EARNINGS
+  DEDUCTION
+  EMPLOYER_CONTRIBUTION
+  INFORMATION
+}
+
+enum tax_treatment {
+  TAXABLE
+  TAX_EXEMPT
+  TAX_EXEMPT_CAPPED
+}
+
+enum si_basis_inclusion {
+  INCLUDED
+  EXCLUDED
+}
+
+enum formula_status {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  ACTIVE
+  DEPRECATED
+}
+
+enum pay_profile_status {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum si_basis_mode {
+  STANDARD
+  PIECE_RATE_HYBRID
+}
+
+enum pay_scale_mode {
+  TABLE_LOOKUP
+  COEFFICIENT_FORMULA
+}
+
+enum statutory_rule_category {
+  PIT_BRACKET
+  SI_RATE
+  SI_CEILING
+  OT_MULTIPLIER
+  MINIMUM_WAGE
+  BASE_SALARY_VN
+  FREELANCE_WITHHOLDING
+  LUNCH_EXEMPTION_CAP
+}
+
+enum statutory_rule_status {
+  DRAFT
+  ACTIVE
+  SUPERSEDED
+}
+
+enum pay_period_status {
+  OPEN
+  CUT_OFF
+  RUNNING
+  PENDING_APPROVAL
+  APPROVED
+  LOCKED
+}
+
+enum payroll_run_status {
+  QUEUED
+  PRE_VALIDATING
+  RUNNING
+  COMPLETED
+  PENDING_APPROVAL
+  APPROVED
+  FAILED
+}
+
+enum run_mode {
+  DRY_RUN
+  SIMULATION
+  PRODUCTION
+}
+
+enum run_type {
+  REGULAR
+  TERMINATION
+  ADVANCE
+  CORRECTION
+  BONUS_RUN
+  ANNUAL_SETTLEMENT
+  TASK_PAYMENT
+}
+
+enum payroll_result_status {
+  DRAFT
+  FINAL
+}
+
+enum exception_type {
+  NEGATIVE_NET
+  MIN_WAGE_VIOLATION
+  ZERO_BHXH_SI_ELIGIBLE
+  OT_CAP_EXCEEDED
+}
+
+enum exception_status {
+  OPEN
+  ACKNOWLEDGED
+}
+
+enum approval_action {
+  APPROVED
+  REJECTED
+}
+
+enum approval_level {
+  LEVEL_2_HR_MANAGER
+  LEVEL_3_FINANCE_MANAGER
+}
+
+enum tax_residency_status {
+  RESIDENT
+  NON_RESIDENT
+}
+
+enum retro_source_type {
+  SALARY_CHANGE
+  ALLOWANCE_CHANGE
+  GRADE_STEP_CHANGE
+  BONUS_CORRECTION
+  RESIDENCY_CHANGE
+}
+
+enum bank_payment_file_status {
+  GENERATED
+  DOWNLOADED
+  SUBMITTED
+  CONFIRMED
+  REJECTED
+}
+
+enum bank_payment_item_status {
+  PENDING
+  PROCESSED
+  FAILED
+  REVERSED
+}
+
+enum gl_journal_status {
+  DRAFT
+  POSTED
+  REVERSED
+}
+
+enum bhxh_report_status {
+  DRAFT
+  GENERATED
+  SUBMITTED
+  ACCEPTED
+  REJECTED
+}
+
+enum pit_declaration_type {
+  QUARTERLY
+  ANNUAL
+}
+
+enum pit_declaration_status {
+  DRAFT
+  GENERATED
+  SUBMITTED
+  ACCEPTED
+  REJECTED
+}
+
+enum pit_certificate_request_status {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+// ============================================================
+// BC-01: PAY MASTER
+// Schema: pay_master
+// ============================================================
+
+Table pay_group {
+  id uuid [pk, default: `gen_random_uuid()`]
+  legal_entity_id uuid [not null, note: "Multi-tenancy isolation key"]
+  name varchar(200) [not null]
+  pay_calendar_id uuid [not null, ref: > pay_calendar.id]
+  currency_code char(3) [not null, note: "ISO 4217, e.g. VND"]
+  standard_work_days_per_month smallint [not null, note: "1-31"]
+  standard_hours_per_day numeric(4,2) [not null]
+  ot_monthly_cap_hours numeric(5,2) [note: "BR-004 to BR-008"]
+  night_window_start time [note: "HH:MM start of night shift window"]
+  night_window_end time [note: "HH:MM end of night shift window"]
+  status pay_group_status [not null, default: 'ACTIVE']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+
+  indexes {
+    (legal_entity_id) [name: "idx_pay_group_legal_entity"]
+    (legal_entity_id, status) [name: "idx_pay_group_legal_entity_status"]
+  }
+}
+
+Table pay_calendar {
+  id uuid [pk, default: `gen_random_uuid()`]
+  legal_entity_id uuid [not null]
+  name varchar(200) [not null]
+  frequency pay_calendar_frequency [not null]
+  period_start_day smallint [not null, note: "Day of month (1-28)"]
+  cut_off_day smallint [not null, note: "Day of month for cut-off"]
+  payment_day smallint [not null, note: "Day of month for payment disbursement"]
+  status pay_group_status [not null, default: 'ACTIVE']
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (legal_entity_id) [name: "idx_pay_calendar_legal_entity"]
+  }
+}
+
+Table pay_period_schedule {
+  id uuid [pk, default: `gen_random_uuid()`]
+  pay_calendar_id uuid [not null, ref: > pay_calendar.id]
+  legal_entity_id uuid [not null]
+  period_year smallint [not null]
+  period_month smallint [not null, note: "1-12"]
+  period_start date [not null]
+  period_end date [not null]
+  cut_off_date date [not null]
+  payment_date date [not null]
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (pay_calendar_id, period_year, period_month) [unique, name: "idx_period_schedule_calendar_month"]
+    (legal_entity_id) [name: "idx_period_schedule_legal_entity"]
+  }
+}
+
+Table pay_element {
+  id uuid [pk, default: `gen_random_uuid()`]
+  legal_entity_id uuid [not null]
+  element_code varchar(50) [not null, note: "Unique per legal_entity_id"]
+  element_name varchar(200) [not null]
+  classification pay_element_classification [not null]
+  tax_treatment tax_treatment [not null]
+  si_basis_inclusion si_basis_inclusion [not null]
+  proration_method proration_method [not null, default: 'WORK_DAYS']
+  priority_order smallint [not null, default: 50, note: "Lower = applied first in deduction sequence (BR-060)"]
+  current_status formula_status [not null, default: 'DRAFT']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+
+  indexes {
+    (legal_entity_id) [name: "idx_pay_element_legal_entity"]
+    (legal_entity_id, element_code) [unique, name: "idx_pay_element_code_entity"]
+    (legal_entity_id, current_status) [name: "idx_pay_element_status"]
+  }
+}
+
+Table pay_element_formula_version {
+  id uuid [pk, default: `gen_random_uuid()`]
+  pay_element_id uuid [not null, ref: > pay_element.id]
+  version_number integer [not null]
+  formula_script text [not null, note: "Drools DRL expression or parameter reference"]
+  formula_script_hash char(64) [not null, note: "SHA-256 of formula_script for tamper detection"]
+  active_from date [note: "Effective-date: formula version valid from this date"]
+  status formula_status [not null, default: 'DRAFT']
+  approved_by varchar(100)
+  approved_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (pay_element_id) [name: "idx_formula_version_element"]
+    (pay_element_id, active_from) [name: "idx_formula_version_active_from", note: "Effective-date lookup"]
+    (pay_element_id, version_number) [unique, name: "idx_formula_version_number"]
+  }
+}
+
+Table pay_profile {
+  id uuid [pk, default: `gen_random_uuid()`]
+  legal_entity_id uuid [not null]
+  profile_code varchar(50) [not null, note: "Unique per legal_entity_id"]
+  profile_name varchar(200) [not null]
+  pay_method pay_method [not null]
+  proration_method proration_method [not null]
+  rounding_method rounding_method [not null, default: 'ROUND_NEAREST_1000']
+  payment_method payment_method [not null, default: 'BANK_TRANSFER']
+  min_wage_rule_id uuid [note: "FK to statutory_rule.id (BC-02) for regional minimum wage check"]
+  parent_profile_id uuid [ref: > pay_profile.id, note: "Parent profile for element inheritance hierarchy"]
+  si_basis_mode si_basis_mode [not null, default: 'STANDARD']
+  effective_from date [not null, note: "Effective-date pattern — profile valid from this date"]
+  effective_to date [note: "Null = indefinitely valid"]
+  status pay_profile_status [not null, default: 'ACTIVE']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+
+  indexes {
+    (legal_entity_id) [name: "idx_pay_profile_legal_entity"]
+    (legal_entity_id, profile_code) [unique, name: "idx_pay_profile_code_entity"]
+    (legal_entity_id, effective_from, effective_to) [name: "idx_pay_profile_effective"]
+  }
+}
+
+Table pay_profile_element_binding {
+  id uuid [pk, default: `gen_random_uuid()`]
+  pay_profile_id uuid [not null, ref: > pay_profile.id]
+  pay_element_id uuid [not null, ref: > pay_element.id]
+  is_mandatory boolean [not null, default: false]
+  priority_order smallint [not null, default: 50]
+  effective_date date [not null, note: "Effective-date: binding applies from this date"]
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (pay_profile_id) [name: "idx_profile_element_binding_profile"]
+    (pay_element_id) [name: "idx_profile_element_binding_element"]
+    (pay_profile_id, pay_element_id, effective_date) [unique, name: "idx_profile_element_binding_effective", note: "Effective-date lookup"]
+  }
+}
+
+Table pay_profile_rule_binding {
+  id uuid [pk, default: `gen_random_uuid()`]
+  pay_profile_id uuid [not null, ref: > pay_profile.id]
+  statutory_rule_id uuid [not null, note: "FK to statutory_rule.id in BC-02 schema"]
+  rule_scope varchar(100) [note: "Which element types this rule applies to"]
+  execution_order smallint [not null, default: 10]
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (pay_profile_id) [name: "idx_profile_rule_binding_profile"]
+    (statutory_rule_id) [name: "idx_profile_rule_binding_rule"]
+  }
+}
+
+Table worker_pay_group_assignment {
+  id uuid [pk, default: `gen_random_uuid()`]
+  pay_group_id uuid [not null, ref: > pay_group.id]
+  working_relationship_id uuid [not null, note: "FK from CO (EXT-01) — worker employment context"]
+  legal_entity_id uuid [not null]
+  effective_date date [not null, note: "Effective-date: assignment valid from this date"]
+  end_date date [note: "Null = still active"]
+  assigned_by varchar(100)
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (pay_group_id) [name: "idx_worker_assignment_group"]
+    (working_relationship_id, effective_date) [name: "idx_worker_assignment_effective", note: "Effective-date lookup for active assignment"]
+    (legal_entity_id) [name: "idx_worker_assignment_legal_entity"]
+  }
+}
+
+// Polymorphic pay method child tables — linked to pay_profile.id
+
+Table hourly_rate_config {
+  id uuid [pk, default: `gen_random_uuid()`]
+  pay_profile_id uuid [not null, ref: > pay_profile.id, note: "Only when pay_profile.pay_method = HOURLY"]
+  legal_entity_id uuid [not null]
+  shift_type varchar(50) [not null, note: "REGULAR, NIGHT, OT_WEEKDAY, OT_WEEKEND, OT_HOLIDAY"]
+  grade_code varchar(50)
+  rate_per_hour_vnd numeric(15,2) [not null]
+  effective_date date [not null]
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (pay_profile_id) [name: "idx_hourly_rate_profile"]
+    (pay_profile_id, effective_date) [name: "idx_hourly_rate_effective"]
+  }
+}
+
+Table piece_rate_table {
+  id uuid [pk, default: `gen_random_uuid()`]
+  pay_profile_id uuid [not null, ref: > pay_profile.id, note: "Only when pay_profile.pay_method = PIECE_RATE"]
+  legal_entity_id uuid [not null]
+  table_name varchar(200) [not null]
+  effective_date date [not null]
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (pay_profile_id) [name: "idx_piece_rate_table_profile"]
+    (pay_profile_id, effective_date) [name: "idx_piece_rate_table_effective"]
+  }
+}
+
+Table piece_rate_table_entry {
+  id uuid [pk, default: `gen_random_uuid()`]
+  piece_rate_table_id uuid [not null, ref: > piece_rate_table.id]
+  product_code varchar(100) [not null]
+  quality_grade varchar(50)
+  rate_per_unit_vnd numeric(15,2) [not null]
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (piece_rate_table_id) [name: "idx_piece_rate_entry_table"]
+    (piece_rate_table_id, product_code, quality_grade) [unique, name: "idx_piece_rate_entry_product"]
+  }
+}
+
+Table pay_scale_table {
+  id uuid [pk, default: `gen_random_uuid()`]
+  pay_profile_id uuid [not null, ref: > pay_profile.id, note: "Only when pay_profile.pay_method = GRADE_STEP"]
+  legal_entity_id uuid [not null]
+  table_name varchar(200) [not null]
+  scale_mode pay_scale_mode [not null]
+  effective_date date [not null]
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (pay_profile_id) [name: "idx_pay_scale_table_profile"]
+    (pay_profile_id, effective_date) [name: "idx_pay_scale_table_effective"]
+  }
+}
+
+Table pay_scale_table_entry {
+  id uuid [pk, default: `gen_random_uuid()`]
+  pay_scale_table_id uuid [not null, ref: > pay_scale_table.id]
+  grade_code varchar(50) [not null]
+  step_code varchar(50) [not null]
+  salary_amount_vnd numeric(15,2) [note: "Used when scale_mode = TABLE_LOOKUP"]
+  coefficient numeric(8,4) [note: "Used when scale_mode = COEFFICIENT_FORMULA — multiplied by VN_LUONG_CO_SO"]
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (pay_scale_table_id) [name: "idx_pay_scale_entry_table"]
+    (pay_scale_table_id, grade_code, step_code) [unique, name: "idx_pay_scale_entry_grade_step"]
+  }
+}
+
+// ============================================================
+// BC-02: STATUTORY RULES
+// Schema: statutory_rules
+// ============================================================
+
+Table statutory_rule {
+  id uuid [pk, default: `gen_random_uuid()`]
+  legal_entity_id uuid [note: "NULL = global rule applies to all entities; non-null = entity override"]
+  rule_code varchar(100) [not null, note: "e.g. VN_PIT_BRACKETS_2024, VN_SI_BHXH_RATE, VN_MIN_WAGE_REGION_1"]
+  rule_category statutory_rule_category [not null]
+  country_code char(2) [not null, default: 'VN']
+  valid_from date [not null, note: "Effective-date: rule applies from this date"]
+  valid_to date [note: "Null = currently active. Must not overlap for same rule_code."]
+  formula_json jsonb [not null, note: "Rate/bracket/threshold values as JSON"]
+  is_active boolean [not null, default: false]
+  status statutory_rule_status [not null, default: 'DRAFT']
+  decree_reference varchar(200) [note: "e.g. Circular 08/2013/TT-BTC"]
+  created_by varchar(100)
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+
+  indexes {
+    (rule_code, valid_from, valid_to) [name: "idx_statutory_rule_effective", note: "Effective-date lookup — primary query pattern"]
+    (legal_entity_id, rule_code, valid_from) [name: "idx_statutory_rule_entity_effective"]
+    (rule_category, is_active) [name: "idx_statutory_rule_category_active"]
+  }
+}
+
+Table si_eligibility_matrix {
+  id uuid [pk, default: `gen_random_uuid()`]
+  legal_entity_id uuid [note: "NULL = global; non-null = entity override"]
+  contract_type varchar(100) [not null, note: "Contract type from CO (e.g. INDEFINITE, DEFINITE_12M, SEASONAL)"]
+  bhxh_eligible boolean [not null, default: false]
+  bhyt_eligible boolean [not null, default: false]
+  bhtn_eligible boolean [not null, default: false]
+  valid_from date [not null]
+  valid_to date
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (contract_type, valid_from) [name: "idx_si_eligibility_contract"]
+    (legal_entity_id, contract_type, valid_from) [name: "idx_si_eligibility_entity_contract"]
+  }
+}
+
+Table pit_bracket {
+  id uuid [pk, default: `gen_random_uuid()`]
+  statutory_rule_id uuid [not null, ref: > statutory_rule.id]
+  bracket_order smallint [not null]
+  income_from_vnd numeric(15,2) [not null]
+  income_to_vnd numeric(15,2) [note: "NULL = unbounded (last bracket)"]
+  rate_percent numeric(5,2) [not null, note: "e.g. 5.00, 10.00, 15.00, 20.00, 25.00, 30.00, 35.00"]
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (statutory_rule_id, bracket_order) [unique, name: "idx_pit_bracket_order"]
+  }
+}
+
+Table minimum_wage_config {
+  id uuid [pk, default: `gen_random_uuid()`]
+  statutory_rule_id uuid [not null, ref: > statutory_rule.id]
+  region_code varchar(10) [not null, note: "VN regions: 1, 2, 3, 4"]
+  monthly_amount_vnd numeric(15,2) [not null]
+  valid_from date [not null]
+  valid_to date
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (region_code, valid_from) [name: "idx_min_wage_region_effective"]
+    (statutory_rule_id) [name: "idx_min_wage_rule"]
+  }
+}
+
+// ============================================================
+// BC-03: PAYROLL EXECUTION
+// Schema: payroll_execution
+// ============================================================
+
+Table pay_period {
+  id uuid [pk, default: `gen_random_uuid()`]
+  pay_group_id uuid [not null, note: "FK to pay_master.pay_group.id"]
+  legal_entity_id uuid [not null]
+  period_start date [not null]
+  period_end date [not null]
+  cut_off_date date [not null, note: "Date when CompensationSnapshots are taken and data frozen"]
+  payment_date date [not null]
+  period_status pay_period_status [not null, default: 'OPEN']
+  locked_at timestamptz [note: "Set when period_status transitions to LOCKED"]
+  locked_by varchar(100)
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+
+  indexes {
+    (legal_entity_id) [name: "idx_pay_period_legal_entity"]
+    (pay_group_id, period_start) [unique, name: "idx_pay_period_group_start"]
+    (pay_group_id, period_status) [name: "idx_pay_period_group_status"]
+    (cut_off_date) [name: "idx_pay_period_cut_off"]
+  }
+}
+
+Table payroll_run {
+  id uuid [pk, default: `gen_random_uuid()`]
+  pay_group_id uuid [not null, note: "FK to pay_master.pay_group.id"]
+  period_id uuid [not null, ref: > pay_period.id]
+  legal_entity_id uuid [not null]
+  run_mode run_mode [not null]
+  run_type run_type [not null, default: 'REGULAR']
+  run_status payroll_run_status [not null, default: 'QUEUED']
+  worker_count integer [note: "Total workers included in this run"]
+  processed_count integer [note: "Workers successfully processed"]
+  exception_count integer [note: "Workers with open exceptions"]
+  statutory_rule_effective_date date [not null, note: "Cut-off date for all StatutoryRule lookups — ensures consistent rates across batch"]
+  initiated_by varchar(100) [not null]
+  initiated_at timestamptz [not null, default: `now()`]
+  completed_at timestamptz
+  failed_stage varchar(50) [note: "Set on FAILED: PRE_VALIDATION | GROSS | SI | PIT | NET | POST_PROCESSING"]
+  error_message text
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+
+  indexes {
+    (legal_entity_id) [name: "idx_payroll_run_legal_entity"]
+    (period_id) [name: "idx_payroll_run_period"]
+    (period_id, run_mode, run_status) [name: "idx_payroll_run_period_mode_status"]
+    (pay_group_id, run_status) [name: "idx_payroll_run_group_status"]
+  }
+}
+
+Table payroll_run_approval {
+  id uuid [pk, default: `gen_random_uuid()`]
+  run_id uuid [not null, ref: > payroll_run.id]
+  approval_level approval_level [not null]
+  action approval_action [not null]
+  actor_id varchar(100) [not null]
+  actor_role varchar(100) [not null]
+  action_timestamp timestamptz [not null, default: `now()`]
+  notes text
+  reason_code varchar(100)
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (run_id) [name: "idx_run_approval_run"]
+    (run_id, approval_level) [name: "idx_run_approval_level"]
+  }
+}
+
+Table payroll_result {
+  id uuid [pk, default: `gen_random_uuid()`]
+  run_id uuid [not null, ref: > payroll_run.id]
+  working_relationship_id uuid [not null, note: "FK from CO (EXT-01) — xTalent canonical term, not employee_id"]
+  period_id uuid [not null, ref: > pay_period.id]
+  legal_entity_id uuid [not null]
+  gross_amount numeric(15,2) [not null, note: "Must be >= 0 (BR-061)"]
+  si_employee_bhxh numeric(15,2) [not null, default: 0]
+  si_employee_bhyt numeric(15,2) [not null, default: 0]
+  si_employee_bhtn numeric(15,2) [not null, default: 0]
+  si_employee_total numeric(15,2) [not null, default: 0, note: "Computed: bhxh + bhyt + bhtn"]
+  pit_amount numeric(15,2) [not null, default: 0]
+  total_deductions numeric(15,2) [not null, default: 0]
+  net_amount numeric(15,2) [not null, note: "May be zero; NEGATIVE_NET exception if computed negative (BR-061)"]
+  element_amounts_json jsonb [not null, note: "Map of element_code => computed_amount for all elements"]
+  integrity_hash char(64) [note: "SHA-256 hash set at PayPeriod LOCK; null until period lock"]
+  result_status payroll_result_status [not null, default: 'DRAFT']
+  created_at timestamptz [not null, default: `now()`]
+  // NOTE: No updated_at — this table is IMMUTABLE after status = FINAL
+  // Application enforces: NO UPDATE/DELETE when result_status = FINAL
+
+  indexes {
+    (legal_entity_id) [name: "idx_payroll_result_legal_entity"]
+    (period_id) [name: "idx_payroll_result_period"]
+    (run_id) [name: "idx_payroll_result_run"]
+    (working_relationship_id, period_id) [unique, name: "idx_payroll_result_worker_period", note: "One FINAL result per worker per period"]
+    (period_id, result_status) [name: "idx_payroll_result_period_status"]
+  }
+}
+
+Table calc_log_entry {
+  id uuid [pk, default: `gen_random_uuid()`]
+  result_id uuid [not null, ref: > payroll_result.id]
+  step_order integer [not null, note: "Ordering of calculation steps (composite key with result_id)"]
+  element_code varchar(50) [not null]
+  element_name varchar(200)
+  formula_version varchar(50) [note: "formula_version_id used for this step"]
+  input_variables_json jsonb [note: "Map of variable_name => value used as inputs to this formula step"]
+  output_value numeric(15,2)
+  currency char(3) [not null, default: 'VND']
+  notes text
+  created_at timestamptz [not null, default: `now()`]
+  // NOTE: Insert-only. No updates. Part of immutable audit lineage.
+
+  indexes {
+    (result_id) [name: "idx_calc_log_result"]
+    (result_id, step_order) [unique, name: "idx_calc_log_result_step", note: "Composite ordering key"]
+  }
+}
+
+Table payroll_exception {
+  id uuid [pk, default: `gen_random_uuid()`]
+  result_id uuid [not null, ref: > payroll_result.id]
+  run_id uuid [not null, ref: > payroll_run.id]
+  working_relationship_id uuid [not null]
+  exception_type exception_type [not null]
+  details text
+  exception_status exception_status [not null, default: 'OPEN']
+  acknowledged_by varchar(100)
+  acknowledged_at timestamptz
+  reason_code varchar(100)
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (run_id) [name: "idx_payroll_exception_run"]
+    (result_id) [name: "idx_payroll_exception_result"]
+    (run_id, exception_status) [name: "idx_payroll_exception_run_status", note: "Used to check if all exceptions acknowledged before approval"]
+  }
+}
+
+Table compensation_snapshot {
+  id uuid [pk, default: `gen_random_uuid()`]
+  working_relationship_id uuid [not null, note: "FK from CO (EXT-01)"]
+  period_id uuid [not null, ref: > pay_period.id]
+  legal_entity_id uuid [not null]
+  snapshot_at timestamptz [not null, note: "Exact timestamp of cut-off event — point-in-time record"]
+  base_salary numeric(15,2) [not null, note: "Read-only after creation — immutable record"]
+  allowances_json jsonb [note: "Array of {element_code, amount} — pulled from TR via ACL. Read-only."]
+  contract_type varchar(100) [not null, note: "From CO via ACL. Read-only."]
+  dependent_count smallint [not null, default: 0, note: "Read-only."]
+  tax_residency_status tax_residency_status [not null, note: "RESIDENT or NON_RESIDENT. Read-only."]
+  nationality_code char(2) [note: "ISO 3166-1 alpha-2. Read-only."]
+  cost_center_id uuid [note: "From CO. Read-only."]
+  bank_account_id uuid [note: "FK from CO — bank account for payment disbursement. Read-only."]
+  pay_profile_id uuid [note: "FK to pay_master.pay_profile.id at cut-off time. Read-only."]
+  hourly_rate_multiplier numeric(8,4) [note: "Applicable if pay_method = HOURLY. Read-only."]
+  grade_code varchar(50) [note: "For GRADE_STEP pay method. Read-only."]
+  step_code varchar(50) [note: "For GRADE_STEP pay method. Read-only."]
+  created_at timestamptz [not null, default: `now()`]
+  // NOTE: This table is IMMUTABLE — NO UPDATE/DELETE operations permitted
+  // Application enforces at service layer + DB trigger
+
+  indexes {
+    (legal_entity_id) [name: "idx_comp_snapshot_legal_entity"]
+    (working_relationship_id, period_id) [unique, name: "idx_comp_snapshot_worker_period", note: "One snapshot per worker per period"]
+    (period_id) [name: "idx_comp_snapshot_period"]
+    (snapshot_at) [name: "idx_comp_snapshot_at"]
+  }
+}
+
+Table retroactive_adjustment {
+  id uuid [pk, default: `gen_random_uuid()`]
+  working_relationship_id uuid [not null]
+  legal_entity_id uuid [not null]
+  source_change_type retro_source_type [not null]
+  retroactive_from_period uuid [not null, note: "FK to pay_period.id — first period to recalculate"]
+  retroactive_to_period uuid [note: "FK to pay_period.id — last period to recalculate (null = current)"]
+  delta_amount numeric(15,2) [not null, note: "Net delta to be surfaced as RETRO_ADJUSTMENT element"]
+  applied_to_period_id uuid [note: "FK to pay_period.id — target period where delta is applied"]
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (legal_entity_id) [name: "idx_retro_adjustment_legal_entity"]
+    (working_relationship_id) [name: "idx_retro_adjustment_worker"]
+    (applied_to_period_id) [name: "idx_retro_adjustment_applied_period"]
+    (source_change_type) [name: "idx_retro_adjustment_type"]
+  }
+}
+
+// ============================================================
+// BC-04: PAYMENT OUTPUT
+// Schema: payment_output
+// ============================================================
+
+Table bank_payment_file {
+  id uuid [pk, default: `gen_random_uuid()`]
+  period_id uuid [not null, note: "FK to payroll_execution.pay_period.id"]
+  legal_entity_id uuid [not null]
+  bank_code varchar(20) [not null, note: "VCB | BIDV | TCB"]
+  file_name varchar(500) [not null]
+  file_url text [note: "Storage URL — populated after file generation"]
+  payment_channel varchar(50) [not null, default: 'BANK_TRANSFER']
+  record_count integer [not null]
+  total_amount_vnd numeric(18,2) [not null]
+  status bank_payment_file_status [not null, default: 'GENERATED']
+  generated_by varchar(100) [not null]
+  generated_at timestamptz [not null, default: `now()`]
+  downloaded_at timestamptz
+  submitted_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (legal_entity_id) [name: "idx_bank_payment_file_legal_entity"]
+    (period_id) [name: "idx_bank_payment_file_period"]
+    (period_id, bank_code) [name: "idx_bank_payment_file_period_bank"]
+  }
+}
+
+Table bank_payment_item {
+  id uuid [pk, default: `gen_random_uuid()`]
+  bank_payment_file_id uuid [not null, ref: > bank_payment_file.id]
+  working_relationship_id uuid [not null]
+  bank_account_number varchar(50) [not null]
+  bank_account_name varchar(200) [not null]
+  bank_branch_code varchar(50)
+  amount_vnd numeric(15,2) [not null]
+  reference_code varchar(100) [not null, note: "Unique reference per payment item for bank reconciliation"]
+  status bank_payment_item_status [not null, default: 'PENDING']
+  // V2: confirmation_received_at, bank_transaction_ref — reserved for webhook feedback loop (HS-8)
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (bank_payment_file_id) [name: "idx_bank_payment_item_file"]
+    (working_relationship_id) [name: "idx_bank_payment_item_worker"]
+    (reference_code) [unique, name: "idx_bank_payment_item_reference"]
+  }
+}
+
+Table gl_journal {
+  id uuid [pk, default: `gen_random_uuid()`]
+  period_id uuid [not null, note: "FK to payroll_execution.pay_period.id"]
+  legal_entity_id uuid [not null]
+  journal_reference varchar(100) [not null, note: "Unique journal reference code"]
+  journal_date date [not null]
+  description text
+  status gl_journal_status [not null, default: 'DRAFT']
+  total_debit_vnd numeric(18,2) [not null]
+  total_credit_vnd numeric(18,2) [not null]
+  generated_by varchar(100)
+  generated_at timestamptz [not null, default: `now()`]
+  posted_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (legal_entity_id) [name: "idx_gl_journal_legal_entity"]
+    (period_id) [name: "idx_gl_journal_period"]
+    (journal_reference) [unique, name: "idx_gl_journal_reference"]
+  }
+}
+
+Table gl_journal_line {
+  id uuid [pk, default: `gen_random_uuid()`]
+  gl_journal_id uuid [not null, ref: > gl_journal.id]
+  line_order smallint [not null]
+  account_code varchar(20) [not null, note: "VAS TK codes: TK 334, TK 338, TK 3383, TK 3335, TK 642"]
+  account_name varchar(200)
+  debit_amount_vnd numeric(15,2) [not null, default: 0]
+  credit_amount_vnd numeric(15,2) [not null, default: 0]
+  cost_center_id uuid
+  description text
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (gl_journal_id) [name: "idx_gl_journal_line_journal"]
+    (gl_journal_id, line_order) [unique, name: "idx_gl_journal_line_order"]
+    (account_code) [name: "idx_gl_journal_line_account"]
+  }
+}
+
+Table payslip_document {
+  id uuid [pk, default: `gen_random_uuid()`]
+  working_relationship_id uuid [not null]
+  period_id uuid [not null, note: "FK to payroll_execution.pay_period.id"]
+  legal_entity_id uuid [not null]
+  payroll_result_id uuid [not null, note: "FK to payroll_execution.payroll_result.id"]
+  file_name varchar(500) [not null]
+  file_url text [not null, note: "Storage URL for PDF"]
+  template_code varchar(50) [not null]
+  generated_at timestamptz [not null, default: `now()`]
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (legal_entity_id) [name: "idx_payslip_doc_legal_entity"]
+    (working_relationship_id, period_id) [unique, name: "idx_payslip_doc_worker_period"]
+    (period_id) [name: "idx_payslip_doc_period"]
+  }
+}
+
+// ============================================================
+// BC-05: STATUTORY REPORTING
+// Schema: statutory_reporting
+// ============================================================
+
+Table bhxh_report {
+  id uuid [pk, default: `gen_random_uuid()`]
+  period_id uuid [not null, note: "FK to payroll_execution.pay_period.id"]
+  legal_entity_id uuid [not null]
+  report_type varchar(20) [not null, default: 'D02_LT', note: "VssID report type"]
+  file_name varchar(500)
+  file_url text
+  eligible_worker_count integer
+  total_bhxh_employee numeric(18,2)
+  total_bhxh_employer numeric(18,2)
+  total_bhyt_employee numeric(18,2)
+  total_bhyt_employer numeric(18,2)
+  total_bhtn_employee numeric(18,2)
+  total_bhtn_employer numeric(18,2)
+  status bhxh_report_status [not null, default: 'DRAFT']
+  generated_by varchar(100)
+  generated_at timestamptz
+  submitted_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (legal_entity_id) [name: "idx_bhxh_report_legal_entity"]
+    (period_id) [name: "idx_bhxh_report_period"]
+    (legal_entity_id, period_id, report_type) [unique, name: "idx_bhxh_report_period_type"]
+  }
+}
+
+Table bhxh_report_item {
+  id uuid [pk, default: `gen_random_uuid()`]
+  bhxh_report_id uuid [not null, ref: > bhxh_report.id]
+  working_relationship_id uuid [not null]
+  si_number varchar(50) [note: "VssID social insurance number"]
+  full_name varchar(200)
+  bhxh_basis_vnd numeric(15,2)
+  bhxh_employee_amount numeric(15,2)
+  bhxh_employer_amount numeric(15,2)
+  bhyt_basis_vnd numeric(15,2)
+  bhyt_employee_amount numeric(15,2)
+  bhyt_employer_amount numeric(15,2)
+  bhtn_basis_vnd numeric(15,2)
+  bhtn_employee_amount numeric(15,2)
+  bhtn_employer_amount numeric(15,2)
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (bhxh_report_id) [name: "idx_bhxh_report_item_report"]
+    (bhxh_report_id, working_relationship_id) [unique, name: "idx_bhxh_report_item_worker"]
+  }
+}
+
+Table pit_declaration {
+  id uuid [pk, default: `gen_random_uuid()`]
+  legal_entity_id uuid [not null]
+  declaration_type pit_declaration_type [not null]
+  tax_period_year smallint [not null]
+  tax_period_quarter smallint [note: "1-4 for QUARTERLY; null for ANNUAL"]
+  xml_file_name varchar(500)
+  xml_file_url text
+  worker_count integer
+  total_pit_withheld_vnd numeric(18,2)
+  status pit_declaration_status [not null, default: 'DRAFT']
+  generated_by varchar(100)
+  generated_at timestamptz
+  submitted_at timestamptz
+  gdt_reference varchar(200) [note: "GDT acknowledgment reference on submission"]
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (legal_entity_id) [name: "idx_pit_declaration_legal_entity"]
+    (legal_entity_id, declaration_type, tax_period_year, tax_period_quarter) [unique, name: "idx_pit_declaration_period"]
+  }
+}
+
+Table pit_declaration_item {
+  id uuid [pk, default: `gen_random_uuid()`]
+  pit_declaration_id uuid [not null, ref: > pit_declaration.id]
+  working_relationship_id uuid [not null]
+  tax_code varchar(20) [note: "Worker personal tax code (MST cá nhân)"]
+  full_name varchar(200)
+  taxable_income_vnd numeric(15,2)
+  pit_withheld_vnd numeric(15,2)
+  pit_rate_percent numeric(5,2)
+  residency_status tax_residency_status
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (pit_declaration_id) [name: "idx_pit_decl_item_declaration"]
+    (pit_declaration_id, working_relationship_id) [unique, name: "idx_pit_decl_item_worker"]
+  }
+}
+
+Table pit_certificate {
+  id uuid [pk, default: `gen_random_uuid()`]
+  working_relationship_id uuid [not null]
+  legal_entity_id uuid [not null]
+  tax_year smallint [not null]
+  ytd_gross_vnd numeric(18,2) [not null]
+  ytd_pit_withheld_vnd numeric(18,2) [not null]
+  tax_code varchar(20) [note: "Worker MST cá nhân"]
+  full_name varchar(200)
+  certificate_number varchar(100)
+  file_name varchar(500)
+  file_url text
+  generated_by varchar(100)
+  generated_at timestamptz [not null, default: `now()`]
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (legal_entity_id) [name: "idx_pit_cert_legal_entity"]
+    (working_relationship_id, tax_year) [unique, name: "idx_pit_cert_worker_year"]
+    (legal_entity_id, tax_year) [name: "idx_pit_cert_entity_year"]
+  }
+}
+
+// ============================================================
+// BC-06: WORKER SELF-SERVICE
+// Schema: worker_self_service
+// ============================================================
+
+Table payslip_view_session {
+  id uuid [pk, default: `gen_random_uuid()`]
+  working_relationship_id uuid [not null]
+  legal_entity_id uuid [not null]
+  period_id uuid [not null, note: "FK to payroll_execution.pay_period.id"]
+  payslip_document_id uuid [note: "FK to payment_output.payslip_document.id"]
+  viewed_at timestamptz [not null, default: `now()`]
+  downloaded_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (working_relationship_id) [name: "idx_payslip_view_worker"]
+    (working_relationship_id, period_id) [name: "idx_payslip_view_worker_period"]
+    (legal_entity_id) [name: "idx_payslip_view_legal_entity"]
+  }
+}
+
+Table ytd_summary {
+  id uuid [pk, default: `gen_random_uuid()`]
+  working_relationship_id uuid [not null]
+  legal_entity_id uuid [not null]
+  tax_year smallint [not null]
+  ytd_gross_vnd numeric(18,2) [not null, default: 0]
+  ytd_si_bhxh_vnd numeric(18,2) [not null, default: 0]
+  ytd_si_bhyt_vnd numeric(18,2) [not null, default: 0]
+  ytd_si_bhtn_vnd numeric(18,2) [not null, default: 0]
+  ytd_pit_vnd numeric(18,2) [not null, default: 0]
+  ytd_net_vnd numeric(18,2) [not null, default: 0]
+  periods_included smallint [not null, default: 0]
+  last_updated_at timestamptz [not null, default: `now()`]
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (working_relationship_id, tax_year) [unique, name: "idx_ytd_summary_worker_year"]
+    (legal_entity_id, tax_year) [name: "idx_ytd_summary_entity_year"]
+  }
+}
+
+Table pit_certificate_request {
+  id uuid [pk, default: `gen_random_uuid()`]
+  working_relationship_id uuid [not null]
+  legal_entity_id uuid [not null]
+  tax_year smallint [not null]
+  requested_at timestamptz [not null, default: `now()`]
+  status pit_certificate_request_status [not null, default: 'PENDING']
+  pit_certificate_id uuid [note: "FK to statutory_reporting.pit_certificate.id — populated on completion"]
+  completed_at timestamptz
+  failure_reason text
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (working_relationship_id) [name: "idx_pit_cert_request_worker"]
+    (legal_entity_id, status) [name: "idx_pit_cert_request_status"]
+    (working_relationship_id, tax_year, status) [name: "idx_pit_cert_request_worker_year"]
+  }
+}
+
+// ============================================================
+// BC-07: AUDIT TRAIL
+// Schema: audit_trail
+// INSERT ONLY — NO UPDATE / DELETE
+// Partitioned by created_at month for 7-year retention management
+// ============================================================
+
+Table audit_log {
+  id uuid [pk, default: `gen_random_uuid()`]
+  legal_entity_id uuid [not null, note: "From source event — multi-tenancy context preserved"]
+  source_bc varchar(50) [not null, note: "Originating bounded context: pay-master, statutory-rules, payroll-execution, etc."]
+  aggregate_type varchar(100) [not null, note: "e.g. PayrollRun, PayPeriod, PayElement"]
+  aggregate_id uuid [not null, note: "ID of the aggregate that changed"]
+  event_name varchar(200) [not null, note: "e.g. PayrollRunApproved, PayPeriodLocked"]
+  actor_id varchar(100) [note: "User or system actor that triggered the event"]
+  actor_role varchar(100)
+  event_payload jsonb [not null, note: "Full event payload for reproducibility"]
+  severity varchar(20) [not null, default: 'INFO', note: "INFO | WARNING | CRITICAL"]
+  created_at timestamptz [not null, default: `now()`]
+  // NOTE: INSERT ONLY. Application and DB-level policy: no UPDATE or DELETE.
+  // Table is partitioned by created_at for 7-year retention management (Law 88/2015/QH13)
+
+  indexes {
+    (legal_entity_id, created_at) [name: "idx_audit_log_entity_date"]
+    (aggregate_type, aggregate_id) [name: "idx_audit_log_aggregate"]
+    (event_name, created_at) [name: "idx_audit_log_event_date"]
+    (source_bc, created_at) [name: "idx_audit_log_bc_date"]
+    (severity, created_at) [name: "idx_audit_log_severity_date", note: "Used for CRITICAL alert queries"]
+  }
+}
+
+Table integrity_hash_record {
+  id uuid [pk, default: `gen_random_uuid()`]
+  legal_entity_id uuid [not null]
+  period_id uuid [not null, note: "FK to payroll_execution.pay_period.id"]
+  working_relationship_id uuid [not null]
+  payroll_result_id uuid [not null, note: "FK to payroll_execution.payroll_result.id"]
+  integrity_hash char(64) [not null, note: "SHA-256 hash stored here mirrors payroll_result.integrity_hash"]
+  generated_at timestamptz [not null, default: `now()`]
+  last_verified_at timestamptz
+  verification_passed boolean
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (legal_entity_id, period_id) [name: "idx_integrity_hash_entity_period"]
+    (payroll_result_id) [unique, name: "idx_integrity_hash_result"]
+    (last_verified_at, verification_passed) [name: "idx_integrity_hash_verification"]
+  }
+}

@@ -1,0 +1,318 @@
+id: https://xtalent.vng.com.vn/payroll/payment-output
+name: PaymentOutput
+description: >-
+  LinkML schema for the Payment Output bounded context (BC-04).
+  Owns BankPaymentFile, GlJournal, PayslipDocument.
+  Generates all output artifacts from approved payroll results.
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  pr_po: https://xtalent.vng.com.vn/payroll/payment-output/
+  xsd: http://www.w3.org/2001/XMLSchema#
+
+default_prefix: pr_po
+default_range: string
+
+imports:
+  - linkml:types
+
+subsets:
+  aggregate_root:
+    description: Aggregate root entities
+  value_object:
+    description: Immutable value objects
+
+# ─────────────────────────────────────────────
+# ENUMS
+# ─────────────────────────────────────────────
+enums:
+  BankCodeEnum:
+    permissible_values:
+      VCB:
+        description: Vietcombank
+      BIDV:
+        description: Bank for Investment and Development of Vietnam
+      TCB:
+        description: Techcombank
+
+  BankFileStatusEnum:
+    permissible_values:
+      GENERATED:
+        description: File created; ready for download
+      DOWNLOADED:
+        description: File downloaded by Finance Manager
+      SUBMITTED:
+        description: File submitted to bank (V1 = manual; V2 = API)
+
+  GlJournalStatusEnum:
+    permissible_values:
+      GENERATED:
+        description: Journal entries created
+      POSTED:
+        description: Journal posted to accounting system
+
+  PayslipStatusEnum:
+    permissible_values:
+      GENERATED:
+        description: PDF created and stored
+      AVAILABLE:
+        description: Available for worker access via BC-06
+      VIEWED:
+        description: Worker has accessed
+      DOWNLOADED:
+        description: Worker has downloaded PDF
+
+  PaymentChannelEnum:
+    permissible_values:
+      FILE_MANUAL:
+        description: V1 — manual file download and bank upload
+      API_PUSH:
+        description: V2 — direct API submission (deferred; see AQ-05)
+
+# ─────────────────────────────────────────────
+# CLASSES
+# ─────────────────────────────────────────────
+classes:
+
+  # ── Aggregate: BankPaymentFile ───────────────
+  BankPaymentFile:
+    description: >-
+      Structured output file containing payment instructions for one bank
+      and one PayPeriod. Generated from locked PayrollResult records.
+      Bank-specific format applied by adapter (VCB/BIDV/TCB).
+    in_subset:
+      - aggregate_root
+    slots:
+      - file_id
+      - period_id
+      - pay_group_id
+      - legal_entity_id
+      - bank_code
+      - file_name
+      - file_url
+      - payment_channel
+      - record_count
+      - total_amount_vnd
+      - generated_at
+      - generated_by
+      - file_status
+      - payment_records
+    slot_usage:
+      file_id:
+        identifier: true
+        required: true
+      legal_entity_id:
+        required: true
+      bank_code:
+        range: BankCodeEnum
+        required: true
+      file_status:
+        range: BankFileStatusEnum
+        required: true
+      payment_channel:
+        range: PaymentChannelEnum
+        required: true
+      total_amount_vnd:
+        minimum_value: 0
+
+  BankPaymentRecord:
+    description: >-
+      Single payment instruction for one worker within a BankPaymentFile.
+      Format varies by bank adapter but domain data is bank-agnostic.
+    in_subset:
+      - value_object
+    slots:
+      - working_relationship_id
+      - worker_name
+      - bank_account_number
+      - bank_branch_code
+      - amount_vnd
+      - payment_description
+    slot_usage:
+      amount_vnd:
+        required: true
+        minimum_value: 0
+
+  # ── Aggregate: GlJournal ─────────────────────
+  GlJournal:
+    description: >-
+      VAS-compliant General Ledger journal entry batch.
+      Generated after a PayPeriod is approved.
+      Uses Vietnamese TK accounting codes.
+    in_subset:
+      - aggregate_root
+    slots:
+      - journal_id
+      - period_id
+      - legal_entity_id
+      - journal_line_count
+      - total_debit
+      - total_credit
+      - generated_at
+      - generated_by
+      - journal_status
+      - journal_lines
+    slot_usage:
+      journal_id:
+        identifier: true
+        required: true
+      legal_entity_id:
+        required: true
+      journal_status:
+        range: GlJournalStatusEnum
+        required: true
+
+  GlJournalLine:
+    description: >-
+      Single debit or credit entry in a GlJournal.
+      Uses Vietnamese VAS accounting TK codes.
+    in_subset:
+      - value_object
+    slots:
+      - line_number
+      - account_code
+      - debit_amount
+      - credit_amount
+      - cost_center_id
+      - line_description
+      - reference
+    slot_usage:
+      line_number:
+        required: true
+      account_code:
+        required: true
+        description: >-
+          VAS TK codes: 334 (salary payable), 338 (SI payable), 3383 (employer SI),
+          3335 (PIT payable), 642 (labor cost expense)
+
+  # ── Aggregate: PayslipDocument ───────────────
+  PayslipDocument:
+    description: >-
+      Generated PDF payslip for a specific worker for a specific PayPeriod.
+      Immutable once generated. Regeneration creates a new record.
+      Accessed by workers via BC-06 Worker Self-Service.
+    in_subset:
+      - aggregate_root
+    slots:
+      - payslip_id
+      - working_relationship_id
+      - period_id
+      - legal_entity_id
+      - template_code
+      - file_url
+      - generated_at
+      - generated_by
+      - payslip_status
+    slot_usage:
+      payslip_id:
+        identifier: true
+        required: true
+      legal_entity_id:
+        required: true
+      payslip_status:
+        range: PayslipStatusEnum
+        required: true
+
+# ─────────────────────────────────────────────
+# SLOTS
+# ─────────────────────────────────────────────
+slots:
+  # Identity
+  file_id:
+    range: string
+  journal_id:
+    range: string
+  payslip_id:
+    range: string
+
+  # Multi-tenancy
+  legal_entity_id:
+    range: string
+    required: true
+
+  # Cross-context references
+  period_id:
+    range: string
+    description: FK from BC-03 PayPeriod
+  pay_group_id:
+    range: string
+    description: FK from BC-01 PayGroup
+  working_relationship_id:
+    range: string
+    description: FK from CO (EXT-01)
+  cost_center_id:
+    range: string
+    description: FK from CO (EXT-01)
+
+  # BankPaymentFile slots
+  bank_code:
+    range: string
+  file_name:
+    range: string
+  file_url:
+    range: string
+  payment_channel:
+    range: string
+  record_count:
+    range: integer
+  total_amount_vnd:
+    range: float
+  generated_at:
+    range: datetime
+  generated_by:
+    range: string
+  file_status:
+    range: string
+  payment_records:
+    range: BankPaymentRecord
+    multivalued: true
+    inlined: true
+
+  # BankPaymentRecord slots
+  worker_name:
+    range: string
+  bank_account_number:
+    range: string
+  bank_branch_code:
+    range: string
+  amount_vnd:
+    range: float
+  payment_description:
+    range: string
+    description: Payment reference e.g. "LUONG T3/2026 - NGUYEN VAN A"
+
+  # GlJournal slots
+  journal_line_count:
+    range: integer
+  total_debit:
+    range: float
+  total_credit:
+    range: float
+  journal_status:
+    range: string
+  journal_lines:
+    range: GlJournalLine
+    multivalued: true
+    inlined: true
+
+  # GlJournalLine slots
+  line_number:
+    range: integer
+  account_code:
+    range: string
+  debit_amount:
+    range: float
+  credit_amount:
+    range: float
+  line_description:
+    range: string
+  reference:
+    range: string
+    description: period_id + run_id for traceability
+
+  # PayslipDocument slots
+  template_code:
+    range: string
+    description: Payslip template identifier for PDF renderer
+  payslip_status:
+    range: string

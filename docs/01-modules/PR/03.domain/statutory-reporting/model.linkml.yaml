@@ -1,0 +1,263 @@
+id: https://xtalent.vng.com.vn/payroll/statutory-reporting
+name: StatutoryReporting
+description: >-
+  LinkML schema for the Statutory Reporting bounded context (BC-05).
+  Owns BhxhReport, PitDeclaration, PitCertificate.
+  Generates compliance filing documents for BHXH agency and GDT.
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  pr_str: https://xtalent.vng.com.vn/payroll/statutory-reporting/
+  xsd: http://www.w3.org/2001/XMLSchema#
+
+default_prefix: pr_str
+default_range: string
+
+imports:
+  - linkml:types
+
+subsets:
+  aggregate_root:
+    description: Aggregate root entities
+
+# ─────────────────────────────────────────────
+# ENUMS
+# ─────────────────────────────────────────────
+enums:
+  FilingStatusEnum:
+    permissible_values:
+      GENERATED:
+        description: Document created; ready for submission
+      SUBMITTED:
+        description: Submitted to government agency
+      ACCEPTED:
+        description: Accepted by agency
+      REJECTED:
+        description: Rejected by agency; requires correction and resubmission
+
+  PitDeclarationPeriodTypeEnum:
+    permissible_values:
+      QUARTERLY:
+        description: Form 05/KK-TNCN — quarterly PIT withholding declaration
+      ANNUAL:
+        description: Form 05/QTT-TNCN — annual PIT settlement declaration
+
+  CertificateStatusEnum:
+    permissible_values:
+      GENERATED:
+        description: Certificate PDF created
+      AVAILABLE:
+        description: Available for worker download via BC-06
+      DOWNLOADED:
+        description: Worker has downloaded the certificate
+
+  BhxhReportTypeEnum:
+    permissible_values:
+      D02_LT:
+        description: D02-LT — Monthly social insurance contribution list (VssID format)
+
+# ─────────────────────────────────────────────
+# CLASSES
+# ─────────────────────────────────────────────
+classes:
+
+  # ── Aggregate: BhxhReport ────────────────────
+  BhxhReport:
+    description: >-
+      BHXH D02-LT monthly contribution list submitted to the Social Insurance agency
+      via the VssID portal. Generated from locked PayrollResult SI contribution amounts.
+    in_subset:
+      - aggregate_root
+    slots:
+      - report_id
+      - period_id
+      - legal_entity_id
+      - report_type
+      - file_name
+      - file_url
+      - eligible_worker_count
+      - total_bhxh_employee
+      - total_bhxh_employer
+      - total_bhyt_employee
+      - total_bhyt_employer
+      - total_bhtn_employee
+      - total_bhtn_employer
+      - generated_at
+      - generated_by
+      - filing_status
+    slot_usage:
+      report_id:
+        identifier: true
+        required: true
+      legal_entity_id:
+        required: true
+      report_type:
+        range: BhxhReportTypeEnum
+        required: true
+      filing_status:
+        range: FilingStatusEnum
+        required: true
+      total_bhxh_employee:
+        minimum_value: 0
+      total_bhxh_employer:
+        minimum_value: 0
+
+  # ── Aggregate: PitDeclaration ────────────────
+  PitDeclaration:
+    description: >-
+      PIT quarterly or annual settlement declaration submitted to GDT (eTax portal).
+      Quarterly: Form 05/KK-TNCN per Circular 08/2013/TT-BTC.
+      Annual: Form 05/QTT-TNCN.
+    in_subset:
+      - aggregate_root
+    slots:
+      - declaration_id
+      - period_type
+      - quarter
+      - year
+      - pay_group_id
+      - legal_entity_id
+      - xml_file_name
+      - file_url
+      - worker_count
+      - total_pit_withheld
+      - generated_at
+      - generated_by
+      - filing_status
+    slot_usage:
+      declaration_id:
+        identifier: true
+        required: true
+      legal_entity_id:
+        required: true
+      period_type:
+        range: PitDeclarationPeriodTypeEnum
+        required: true
+      year:
+        required: true
+      filing_status:
+        range: FilingStatusEnum
+        required: true
+      quarter:
+        minimum_value: 1
+        maximum_value: 4
+        description: 1–4 for quarterly; null for annual settlement
+
+  # ── Aggregate: PitCertificate ────────────────
+  PitCertificate:
+    description: >-
+      PIT withholding certificate issued per worker per calendar year.
+      Documents total income and PIT withheld. Used by worker for individual PIT filing.
+      Accessible via BC-06 Worker Self-Service on worker request.
+    in_subset:
+      - aggregate_root
+    slots:
+      - certificate_id
+      - working_relationship_id
+      - year
+      - legal_entity_id
+      - ytd_gross
+      - ytd_pit_withheld
+      - tax_code
+      - worker_name
+      - generated_at
+      - generated_by
+      - certificate_status
+    slot_usage:
+      certificate_id:
+        identifier: true
+        required: true
+      legal_entity_id:
+        required: true
+      year:
+        required: true
+      certificate_status:
+        range: CertificateStatusEnum
+        required: true
+      ytd_gross:
+        minimum_value: 0
+      ytd_pit_withheld:
+        minimum_value: 0
+
+# ─────────────────────────────────────────────
+# SLOTS
+# ─────────────────────────────────────────────
+slots:
+  # Identity
+  report_id:
+    range: string
+  declaration_id:
+    range: string
+  certificate_id:
+    range: string
+
+  # Multi-tenancy
+  legal_entity_id:
+    range: string
+    required: true
+
+  # Cross-context references
+  period_id:
+    range: string
+    description: FK from BC-03 PayPeriod
+  pay_group_id:
+    range: string
+    description: FK from BC-01 PayGroup
+  working_relationship_id:
+    range: string
+    description: FK from CO (EXT-01)
+
+  # BhxhReport slots
+  report_type:
+    range: string
+  file_name:
+    range: string
+  file_url:
+    range: string
+  eligible_worker_count:
+    range: integer
+  total_bhxh_employee:
+    range: float
+  total_bhxh_employer:
+    range: float
+  total_bhyt_employee:
+    range: float
+  total_bhyt_employer:
+    range: float
+  total_bhtn_employee:
+    range: float
+  total_bhtn_employer:
+    range: float
+  generated_at:
+    range: datetime
+  generated_by:
+    range: string
+  filing_status:
+    range: string
+
+  # PitDeclaration slots
+  period_type:
+    range: string
+  quarter:
+    range: integer
+  year:
+    range: integer
+  xml_file_name:
+    range: string
+  worker_count:
+    range: integer
+  total_pit_withheld:
+    range: float
+
+  # PitCertificate slots
+  ytd_gross:
+    range: float
+  ytd_pit_withheld:
+    range: float
+  tax_code:
+    range: string
+    description: Worker's personal tax identification code
+  worker_name:
+    range: string
+  certificate_status:
+    range: string

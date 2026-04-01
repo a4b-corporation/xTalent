@@ -1,0 +1,1423 @@
+version: "1.0"
+module: Payroll (PR)
+date: "2026-03-31"
+description: >
+  Centralized Business Event Repository for the Payroll (PR) module — xTalent HCM.
+  Events are aggregated from: Event Storming (Step 2), Use Case Flows, and BC interaction points.
+  All events use past-tense PascalCase naming.
+  Every event includes: source_bc, aggregate, trigger, payload, consumers, retention_days.
+  Integration events (from external modules) are included with source_bc = external module code.
+
+  Event categories:
+    DOMAIN   — Internal PR domain events
+    INTEGRATION — Events consumed from or produced for external systems
+
+  Retention policy baseline: 2555 days (7 years) per Accounting Law 88/2015/QH13.
+  Non-financial events may use shorter retention where permitted.
+
+# ────────────────────────────────────────────────────────────────────────────
+# BC-01: PAY MASTER EVENTS
+# ────────────────────────────────────────────────────────────────────────────
+
+events:
+
+  - name: PayGroupCreated
+    category: DOMAIN
+    source_bc: pay-master
+    aggregate: PayGroup
+    trigger: CreatePayGroup command by Payroll Admin
+    payload:
+      pay_group_id: uuid
+      legal_entity_id: uuid
+      name: string
+      pay_calendar_id: uuid
+      currency_code: string
+      created_by: string
+      created_at: datetime
+    consumers:
+      - bc: audit-trail
+        action: "Record creation event — INFO severity"
+    retention_days: 2555
+    notes: "Publishes to kafka topic: pr.pay-master"
+
+  - name: PayGroupUpdated
+    category: DOMAIN
+    source_bc: pay-master
+    aggregate: PayGroup
+    trigger: UpdatePayGroup command by Payroll Admin
+    payload:
+      pay_group_id: uuid
+      legal_entity_id: uuid
+      changed_fields: object
+      previous_values: object
+      updated_by: string
+      updated_at: datetime
+    consumers:
+      - bc: audit-trail
+        action: "Record update event — INFO severity"
+      - bc: payroll-execution
+        action: "Invalidate cached PayGroup configuration"
+    retention_days: 2555
+
+  - name: WorkerAssignedToPayGroup
+    category: DOMAIN
+    source_bc: pay-master
+    aggregate: PayGroup
+    trigger: AssignWorkerToPayGroup command by Payroll Admin or automated via CO WorkingRelationshipCreated event
+    payload:
+      pay_group_id: uuid
+      working_relationship_id: uuid
+      legal_entity_id: uuid
+      effective_date: date
+      assigned_by: string
+    consumers:
+      - bc: audit-trail
+        action: "Record assignment event — INFO severity"
+      - bc: payroll-execution
+        action: "Register worker as eligible for next pay period run"
+    retention_days: 2555
+
+  - name: WorkerRemovedFromPayGroup
+    category: DOMAIN
+    source_bc: pay-master
+    aggregate: PayGroup
+    trigger: RemoveWorkerFromPayGroup command or CO WorkingRelationshipTerminated event
+    payload:
+      pay_group_id: uuid
+      working_relationship_id: uuid
+      legal_entity_id: uuid
+      effective_date: date
+      removal_reason: string
+      removed_by: string
+    consumers:
+      - bc: audit-trail
+        action: "Record removal — INFO severity"
+      - bc: payroll-execution
+        action: "Flag worker exclusion in next pre-validation"
+    retention_days: 2555
+
+  - name: PayElementCreated
+    category: DOMAIN
+    source_bc: pay-master
+    aggregate: PayElement
+    trigger: CreatePayElement command by Payroll Admin
+    payload:
+      element_id: uuid
+      element_code: string
+      legal_entity_id: uuid
+      classification: string
+      tax_treatment: string
+      si_basis_inclusion: string
+      proration_method: string
+      created_by: string
+    consumers:
+      - bc: audit-trail
+        action: "Record element creation — INFO severity"
+    retention_days: 2555
+
+  - name: PayElementFormulaSubmitted
+    category: DOMAIN
+    source_bc: pay-master
+    aggregate: PayElement
+    trigger: SubmitFormulaForApproval command — formula status DRAFT to PENDING_APPROVAL
+    payload:
+      element_id: uuid
+      element_code: string
+      legal_entity_id: uuid
+      formula_version_id: uuid
+      version_number: integer
+      formula_script_hash: string
+      submitted_by: string
+      submitted_at: datetime
+    consumers:
+      - bc: audit-trail
+        action: "Record formula submission — INFO severity"
+      - external: notification-service
+        action: "Notify Finance Lead (formula approver) — approval required"
+    retention_days: 2555
+
+  - name: PayElementFormulaApproved
+    category: DOMAIN
+    source_bc: pay-master
+    aggregate: PayElement
+    trigger: ApproveFormula command by Finance Lead — status PENDING_APPROVAL to APPROVED
+    payload:
+      element_id: uuid
+      element_code: string
+      legal_entity_id: uuid
+      formula_version_id: uuid
+      version_number: integer
+      approved_by: string
+      approved_at: datetime
+    consumers:
+      - bc: audit-trail
+        action: "Record approval — INFO severity"
+      - external: notification-service
+        action: "Notify Payroll Admin — formula ready for activation"
+    retention_days: 2555
+
+  - name: PayElementActivated
+    category: DOMAIN
+    source_bc: pay-master
+    aggregate: PayElement
+    trigger: ActivateFormula command by Payroll Admin — status APPROVED to ACTIVE
+    payload:
+      element_id: uuid
+      element_code: string
+      legal_entity_id: uuid
+      formula_version_id: uuid
+      version_number: integer
+      active_from: date
+      activated_by: string
+      activated_at: datetime
+      previous_version_deprecated: boolean
+    consumers:
+      - bc: payroll-execution
+        action: "Refresh formula registry in calculation engine (Drools KieSession)"
+      - bc: audit-trail
+        action: "Record activation — INFO severity"
+    retention_days: 2555
+
+  - name: PayElementDeprecated
+    category: DOMAIN
+    source_bc: pay-master
+    aggregate: PayElement
+    trigger: Automatic when new formula version activates — previous ACTIVE version deprecated
+    payload:
+      element_id: uuid
+      element_code: string
+      legal_entity_id: uuid
+      deprecated_version_id: uuid
+      deprecated_version_number: integer
+      deprecated_at: datetime
+      superseded_by_version_number: integer
+    consumers:
+      - bc: audit-trail
+        action: "Record deprecation — INFO severity"
+    retention_days: 2555
+
+  - name: PayProfileCreated
+    category: DOMAIN
+    source_bc: pay-master
+    aggregate: PayProfile
+    trigger: CreatePayProfile command by Payroll Admin
+    payload:
+      profile_id: uuid
+      profile_code: string
+      legal_entity_id: uuid
+      pay_method: string
+      proration_method: string
+      rounding_method: string
+      payment_method: string
+      effective_from: date
+      created_by: string
+    consumers:
+      - bc: audit-trail
+        action: "Record creation — INFO severity"
+    retention_days: 2555
+
+  - name: PayProfileUpdated
+    category: DOMAIN
+    source_bc: pay-master
+    aggregate: PayProfile
+    trigger: UpdatePayProfile command by Payroll Admin
+    payload:
+      profile_id: uuid
+      legal_entity_id: uuid
+      changed_fields: object
+      previous_values: object
+      updated_by: string
+      updated_at: datetime
+    consumers:
+      - bc: audit-trail
+        action: "Record update — INFO severity"
+      - bc: payroll-execution
+        action: "Invalidate PayProfile cache if profile referenced in in-progress run"
+    retention_days: 2555
+
+  - name: PayProfileElementBound
+    category: DOMAIN
+    source_bc: pay-master
+    aggregate: PayProfile
+    trigger: BindElementToProfile command by Payroll Admin
+    payload:
+      profile_id: uuid
+      element_id: uuid
+      legal_entity_id: uuid
+      is_mandatory: boolean
+      priority_order: integer
+      effective_date: date
+      bound_by: string
+    consumers:
+      - bc: audit-trail
+        action: "Record binding — INFO severity"
+    retention_days: 2555
+
+  - name: PayProfileRuleBound
+    category: DOMAIN
+    source_bc: pay-master
+    aggregate: PayProfile
+    trigger: BindStatutoryRuleToProfile command by Payroll Admin
+    payload:
+      profile_id: uuid
+      statutory_rule_id: uuid
+      legal_entity_id: uuid
+      rule_scope: string
+      execution_order: integer
+      bound_by: string
+    consumers:
+      - bc: audit-trail
+        action: "Record rule binding — INFO severity"
+      - bc: payroll-execution
+        action: "Refresh rule registry binding for affected profiles"
+    retention_days: 2555
+
+# ────────────────────────────────────────────────────────────────────────────
+# BC-02: STATUTORY RULES EVENTS
+# ────────────────────────────────────────────────────────────────────────────
+
+  - name: StatutoryRuleCreated
+    category: DOMAIN
+    source_bc: statutory-rules
+    aggregate: StatutoryRule
+    trigger: CreateStatutoryRule command by Platform Admin
+    payload:
+      rule_id: uuid
+      rule_code: string
+      rule_category: string
+      country_code: string
+      legal_entity_id: uuid
+      valid_from: date
+      valid_to: date
+      formula_json: object
+      decree_reference: string
+      created_by: string
+    consumers:
+      - bc: audit-trail
+        action: "Record statutory rule creation — INFO severity"
+    retention_days: 2555
+
+  - name: StatutoryRuleActivated
+    category: DOMAIN
+    source_bc: statutory-rules
+    aggregate: StatutoryRule
+    trigger: ActivateStatutoryRule command by Platform Admin — status DRAFT to ACTIVE
+    payload:
+      rule_id: uuid
+      rule_code: string
+      rule_category: string
+      valid_from: date
+      legal_entity_id: uuid
+      activated_by: string
+      activated_at: datetime
+      superseded_rule_id: uuid
+    consumers:
+      - bc: payroll-execution
+        action: "Invalidate statutory rule cache in calculation engine"
+      - bc: audit-trail
+        action: "Record activation — INFO severity"
+      - external: notification-service
+        action: "Alert Payroll Admin: statutory rule updated, verify formula alignment"
+    retention_days: 2555
+
+  - name: StatutoryRuleDeactivated
+    category: DOMAIN
+    source_bc: statutory-rules
+    aggregate: StatutoryRule
+    trigger: DeactivateStatutoryRule command by Platform Admin
+    payload:
+      rule_id: uuid
+      rule_code: string
+      deactivated_by: string
+      deactivated_at: datetime
+      reason: string
+    consumers:
+      - bc: payroll-execution
+        action: "Invalidate statutory rule cache"
+      - bc: audit-trail
+        action: "Record deactivation — WARNING severity"
+    retention_days: 2555
+
+  - name: PitBracketsUpdated
+    category: DOMAIN
+    source_bc: statutory-rules
+    aggregate: StatutoryRule
+    trigger: CreateStatutoryRule for new VN_PIT_BRACKETS version (decree change)
+    payload:
+      old_rule_id: uuid
+      new_rule_id: uuid
+      rule_code: string
+      new_valid_from: date
+      new_brackets: array
+      updated_by: string
+    consumers:
+      - bc: payroll-execution
+        action: "Invalidate PIT bracket cache; reload from new rule"
+      - bc: audit-trail
+        action: "Record PIT bracket change — WARNING severity (regulatory change)"
+      - external: notification-service
+        action: "Alert Payroll Admin: PIT brackets updated — verify payroll formula alignment"
+    retention_days: 2555
+
+  - name: SiCeilingUpdated
+    category: DOMAIN
+    source_bc: statutory-rules
+    aggregate: StatutoryRule
+    trigger: CreateStatutoryRule for new VN_LUONG_CO_SO (base salary) or VN_SI_CEILING_MULTIPLIER
+    payload:
+      old_rule_id: uuid
+      new_rule_id: uuid
+      rule_code: string
+      old_value: number
+      new_value: number
+      new_valid_from: date
+      updated_by: string
+    consumers:
+      - bc: payroll-execution
+        action: "Invalidate SI ceiling cache"
+      - bc: audit-trail
+        action: "Record SI ceiling change — WARNING severity"
+      - external: notification-service
+        action: "Alert Payroll Admin: SI ceiling updated"
+    retention_days: 2555
+
+  - name: MinimumWageUpdated
+    category: DOMAIN
+    source_bc: statutory-rules
+    aggregate: StatutoryRule
+    trigger: CreateStatutoryRule for new VN_MIN_WAGE_REGION_* value
+    payload:
+      rule_id: uuid
+      rule_code: string
+      region_code: string
+      old_value: number
+      new_value: number
+      new_valid_from: date
+      decree_reference: string
+      updated_by: string
+    consumers:
+      - bc: payroll-execution
+        action: "Invalidate minimum wage cache for affected regions"
+      - bc: audit-trail
+        action: "Record minimum wage update — WARNING severity"
+      - external: notification-service
+        action: "Alert Payroll Admin: regional minimum wage updated"
+    retention_days: 2555
+
+# ────────────────────────────────────────────────────────────────────────────
+# BC-03: PAYROLL EXECUTION EVENTS
+# ────────────────────────────────────────────────────────────────────────────
+
+  - name: PayPeriodOpened
+    category: DOMAIN
+    source_bc: payroll-execution
+    aggregate: PayPeriod
+    trigger: OpenPayPeriod command by Payroll Admin or scheduled job on period_start date
+    payload:
+      period_id: uuid
+      pay_group_id: uuid
+      legal_entity_id: uuid
+      period_start: date
+      period_end: date
+      cut_off_date: date
+      payment_date: date
+      opened_by: string
+      opened_at: datetime
+    consumers:
+      - bc: audit-trail
+        action: "Record period opening — INFO severity"
+      - external: time-attendance
+        action: "Notify TA module: prepare attendance data for this period window"
+    retention_days: 2555
+
+  - name: CutOffReached
+    category: DOMAIN
+    source_bc: payroll-execution
+    aggregate: PayPeriod
+    trigger: Scheduled job on cut_off_date or manual trigger by Payroll Admin
+    payload:
+      period_id: uuid
+      pay_group_id: uuid
+      legal_entity_id: uuid
+      cut_off_timestamp: datetime
+      triggered_by: string
+      trigger_type: string
+    consumers:
+      - bc: payroll-execution
+        action: "Initiate CompensationSnapshot pull from CO and TR via ACL adapters"
+      - external: time-attendance
+        action: "Signal TA: close attendance window for this period"
+      - bc: audit-trail
+        action: "Record cut-off — INFO severity"
+    retention_days: 2555
+
+  - name: CompensationSnapshotCreated
+    category: DOMAIN
+    source_bc: payroll-execution
+    aggregate: CompensationSnapshot
+    trigger: CutOffReached event — PR pulls CO and TR data via ACL adapters per working_relationship
+    payload:
+      snapshot_id: uuid
+      working_relationship_id: uuid
+      period_id: uuid
+      legal_entity_id: uuid
+      snapshot_at: datetime
+      base_salary: number
+      dependent_count: integer
+      contract_type: string
+      tax_residency_status: string
+    consumers:
+      - bc: payroll-execution
+        action: "Mark snapshot as available for pre-validation"
+      - bc: audit-trail
+        action: "Record snapshot creation — INFO severity"
+    retention_days: 2555
+    notes: "One event per working_relationship per period. Immutable after creation."
+
+  - name: AttendanceDataReceived
+    category: DOMAIN
+    source_bc: payroll-execution
+    aggregate: PayrollRun
+    trigger: AttendanceLocked integration event from TA consumed by PR
+    payload:
+      working_relationship_id: uuid
+      period_id: uuid
+      legal_entity_id: uuid
+      actual_work_days: number
+      overtime_hours_json: object
+      received_at: datetime
+    consumers:
+      - bc: payroll-execution
+        action: "Update attendance completeness tracking; trigger pre-validation check"
+    retention_days: 2555
+
+  - name: AttendanceCompletenessThresholdMet
+    category: DOMAIN
+    source_bc: payroll-execution
+    aggregate: PayPeriod
+    trigger: AttendanceDataReceived count / total workers >= 0.95 for the pay group (HS-1)
+    payload:
+      period_id: uuid
+      pay_group_id: uuid
+      legal_entity_id: uuid
+      workers_total: integer
+      workers_with_attendance: integer
+      completeness_percent: number
+      threshold_met_at: datetime
+    consumers:
+      - bc: audit-trail
+        action: "Record completeness reached — INFO severity"
+    retention_days: 730
+
+  - name: PayrollRunInitiated
+    category: DOMAIN
+    source_bc: payroll-execution
+    aggregate: PayrollRun
+    trigger: InitiatePayrollRun command by Payroll Admin
+    payload:
+      run_id: uuid
+      pay_group_id: uuid
+      period_id: uuid
+      legal_entity_id: uuid
+      run_mode: string
+      run_type: string
+      worker_count: integer
+      initiated_by: string
+      initiated_at: datetime
+    consumers:
+      - bc: payroll-execution
+        action: "Enqueue run in calculation engine worker queue"
+      - bc: audit-trail
+        action: "Record run initiation — INFO severity"
+    retention_days: 2555
+
+  - name: PreValidationPassed
+    category: DOMAIN
+    source_bc: payroll-execution
+    aggregate: PayrollRun
+    trigger: Pre-flight validation completing without blocking errors
+    payload:
+      run_id: uuid
+      period_id: uuid
+      legal_entity_id: uuid
+      worker_count_passed: integer
+      worker_count_excluded: integer
+      validation_summary: object
+      validated_at: datetime
+    consumers:
+      - bc: payroll-execution
+        action: "Proceed to gross calculation stage"
+      - bc: audit-trail
+        action: "Record pre-validation passed — INFO severity"
+    retention_days: 2555
+
+  - name: PreValidationFailed
+    category: DOMAIN
+    source_bc: payroll-execution
+    aggregate: PayrollRun
+    trigger: Pre-flight validation detecting critical missing data for workers
+    payload:
+      run_id: uuid
+      period_id: uuid
+      legal_entity_id: uuid
+      failed_workers: array
+      validation_summary: object
+      failed_at: datetime
+    consumers:
+      - bc: audit-trail
+        action: "Record pre-validation failure — WARNING severity"
+      - external: notification-service
+        action: "Alert Payroll Admin: payroll run failed pre-validation — list of missing workers"
+    retention_days: 2555
+
+  - name: GrossCalculationCompleted
+    category: DOMAIN
+    source_bc: payroll-execution
+    aggregate: PayrollRun
+    trigger: Gross calculation stage completing for all workers in the batch
+    payload:
+      run_id: uuid
+      period_id: uuid
+      legal_entity_id: uuid
+      workers_processed: integer
+      total_gross_amount: number
+      duration_ms: integer
+      stage: string
+    consumers:
+      - bc: payroll-execution
+        action: "Proceed to SI deductions stage"
+      - bc: audit-trail
+        action: "Record stage completion — INFO severity"
+    retention_days: 2555
+
+  - name: StatutoryDeductionsCalculated
+    category: DOMAIN
+    source_bc: payroll-execution
+    aggregate: PayrollRun
+    trigger: SI contribution (BHXH/BHYT/BHTN) calculation stage completing for all workers
+    payload:
+      run_id: uuid
+      period_id: uuid
+      legal_entity_id: uuid
+      total_bhxh_employee: number
+      total_bhyt_employee: number
+      total_bhtn_employee: number
+      total_employer_contributions: number
+      duration_ms: integer
+    consumers:
+      - bc: payroll-execution
+        action: "Proceed to PIT calculation stage"
+      - bc: audit-trail
+        action: "Record SI calculation — INFO severity"
+    retention_days: 2555
+
+  - name: PitCalculated
+    category: DOMAIN
+    source_bc: payroll-execution
+    aggregate: PayrollRun
+    trigger: PIT calculation stage completing for all workers
+    payload:
+      run_id: uuid
+      period_id: uuid
+      legal_entity_id: uuid
+      total_pit_withheld: number
+      resident_worker_count: integer
+      non_resident_worker_count: integer
+      duration_ms: integer
+    consumers:
+      - bc: payroll-execution
+        action: "Proceed to net calculation stage"
+      - bc: audit-trail
+        action: "Record PIT calculation — INFO severity"
+    retention_days: 2555
+
+  - name: NetCalculationCompleted
+    category: DOMAIN
+    source_bc: payroll-execution
+    aggregate: PayrollRun
+    trigger: Net calculation (gross minus all deductions) stage completing
+    payload:
+      run_id: uuid
+      period_id: uuid
+      legal_entity_id: uuid
+      total_net_amount: number
+      workers_with_exceptions: integer
+      duration_ms: integer
+    consumers:
+      - bc: payroll-execution
+        action: "Proceed to post-processing (exception detection)"
+      - bc: audit-trail
+        action: "Record net calculation — INFO severity"
+    retention_days: 2555
+
+  - name: ExceptionFlagged
+    category: DOMAIN
+    source_bc: payroll-execution
+    aggregate: PayrollResult
+    trigger: Post-processing stage detecting a rule violation for a specific worker
+    payload:
+      run_id: uuid
+      result_id: uuid
+      working_relationship_id: uuid
+      legal_entity_id: uuid
+      exception_type: string
+      details: string
+      flagged_at: datetime
+    consumers:
+      - bc: audit-trail
+        action: "Record exception — WARNING severity"
+      - external: notification-service
+        action: "Alert Payroll Admin: exception flagged — run cannot proceed to approval"
+    retention_days: 2555
+
+  - name: ExceptionAcknowledged
+    category: DOMAIN
+    source_bc: payroll-execution
+    aggregate: PayrollResult
+    trigger: AcknowledgeException command by Payroll Admin
+    payload:
+      exception_id: uuid
+      run_id: uuid
+      result_id: uuid
+      working_relationship_id: uuid
+      legal_entity_id: uuid
+      exception_type: string
+      reason_code: string
+      acknowledged_by: string
+      acknowledged_at: datetime
+    consumers:
+      - bc: audit-trail
+        action: "Record acknowledgment — INFO severity"
+      - bc: payroll-execution
+        action: "Check if all exceptions acknowledged; if so, unlock submission for approval"
+    retention_days: 2555
+
+  - name: PayrollRunCompleted
+    category: DOMAIN
+    source_bc: payroll-execution
+    aggregate: PayrollRun
+    trigger: All post-processing stages passing; all exceptions acknowledged
+    payload:
+      run_id: uuid
+      pay_group_id: uuid
+      period_id: uuid
+      legal_entity_id: uuid
+      run_mode: string
+      run_type: string
+      workers_processed: integer
+      total_gross: number
+      total_net: number
+      total_pit: number
+      completed_at: datetime
+      duration_ms: integer
+    consumers:
+      - bc: audit-trail
+        action: "Record run completion — INFO severity"
+      - external: notification-service
+        action: "Notify Payroll Admin: run completed — ready for approval submission"
+    retention_days: 2555
+
+  - name: PayrollRunFailed
+    category: DOMAIN
+    source_bc: payroll-execution
+    aggregate: PayrollRun
+    trigger: Any engine stage throwing an uncaught exception; full rollback triggered
+    payload:
+      run_id: uuid
+      period_id: uuid
+      legal_entity_id: uuid
+      failed_stage: string
+      error_message: string
+      failed_at: datetime
+    consumers:
+      - bc: audit-trail
+        action: "Record failure — CRITICAL severity"
+      - external: notification-service
+        action: "Alert Payroll Admin: payroll run failed — error details + failed stage"
+    retention_days: 2555
+
+  - name: PayrollRunSubmittedForApproval
+    category: DOMAIN
+    source_bc: payroll-execution
+    aggregate: PayrollRun
+    trigger: SubmitForApproval command by Payroll Admin — all exceptions acknowledged
+    payload:
+      run_id: uuid
+      period_id: uuid
+      legal_entity_id: uuid
+      submitted_by: string
+      submitted_at: datetime
+      approval_level_required: string
+    consumers:
+      - bc: audit-trail
+        action: "Record submission — INFO severity"
+      - external: notification-service
+        action: "Notify HR Manager (Level 2): payroll run awaiting approval"
+    retention_days: 2555
+
+  - name: ApprovalLevelPassed
+    category: DOMAIN
+    source_bc: payroll-execution
+    aggregate: PayrollRun
+    trigger: ApprovePayrollRun command at a given approval level
+    payload:
+      run_id: uuid
+      period_id: uuid
+      legal_entity_id: uuid
+      approval_level: string
+      approved_by: string
+      approved_at: datetime
+      notes: string
+    consumers:
+      - bc: audit-trail
+        action: "Record approval level passed — INFO severity"
+      - external: notification-service
+        action: "Notify next approver if Level 2 passed; notify Finance Manager if Level 3 pending"
+    retention_days: 2555
+
+  - name: PayrollRunRejected
+    category: DOMAIN
+    source_bc: payroll-execution
+    aggregate: PayrollRun
+    trigger: RejectPayrollRun command by any approver
+    payload:
+      run_id: uuid
+      period_id: uuid
+      legal_entity_id: uuid
+      rejected_at_level: string
+      rejected_by: string
+      reason_code: string
+      notes: string
+      rejected_at: datetime
+    consumers:
+      - bc: payroll-execution
+        action: "Return PayPeriod to OPEN status"
+      - bc: audit-trail
+        action: "Record rejection — WARNING severity"
+      - external: notification-service
+        action: "Notify Payroll Admin: run rejected — reason code and notes"
+    retention_days: 2555
+
+  - name: PayrollRunApproved
+    category: DOMAIN
+    source_bc: payroll-execution
+    aggregate: PayrollRun
+    trigger: ApprovePayrollRun command at Level 3 (Finance Manager final approval)
+    payload:
+      run_id: uuid
+      period_id: uuid
+      pay_group_id: uuid
+      legal_entity_id: uuid
+      final_approver: string
+      approved_at: datetime
+      total_payment_amount: number
+    consumers:
+      - bc: payroll-execution
+        action: "Trigger PayPeriod transition to APPROVED"
+      - bc: payment-output
+        action: "Trigger bank file generation and GL journal generation"
+      - bc: audit-trail
+        action: "Record final approval — INFO severity (financial significance)"
+    retention_days: 2555
+
+  - name: PayPeriodLocked
+    category: DOMAIN
+    source_bc: payroll-execution
+    aggregate: PayPeriod
+    trigger: PayrollRunApproved event triggers period lock
+    payload:
+      period_id: uuid
+      pay_group_id: uuid
+      legal_entity_id: uuid
+      locked_at: datetime
+      locked_by: string
+      run_id: uuid
+      total_net_payment: number
+    consumers:
+      - bc: audit-trail
+        action: "Record period lock — INFO severity (financial period closed)"
+      - bc: payroll-execution
+        action: "Generate integrity hashes for all PayrollResult in this period"
+      - bc: payment-output
+        action: "Trigger payslip PDF generation for all workers"
+    retention_days: 2555
+
+  - name: IntegrityHashGenerated
+    category: DOMAIN
+    source_bc: payroll-execution
+    aggregate: PayrollResult
+    trigger: PayPeriodLocked event — SHA-256 hash computed per worker result
+    payload:
+      period_id: uuid
+      legal_entity_id: uuid
+      worker_result_hashes: array
+      generated_at: datetime
+    consumers:
+      - bc: audit-trail
+        action: "Store hash records — integrity_hash_record table"
+    retention_days: 2555
+
+  - name: IntegrityVerificationPassed
+    category: DOMAIN
+    source_bc: audit-trail
+    aggregate: PayPeriod
+    trigger: Nightly integrity verification job — all hashes match
+    payload:
+      period_id: uuid
+      legal_entity_id: uuid
+      verified_at: datetime
+      worker_count_verified: integer
+    consumers:
+      - bc: audit-trail
+        action: "Update last_verified_at on integrity_hash_record — INFO level"
+    retention_days: 730
+
+  - name: IntegrityViolationDetected
+    category: DOMAIN
+    source_bc: audit-trail
+    aggregate: PayPeriod
+    trigger: Nightly integrity verification job — hash mismatch detected
+    payload:
+      period_id: uuid
+      legal_entity_id: uuid
+      affected_worker_ids: array
+      mismatch_details: object
+      detected_at: datetime
+    consumers:
+      - bc: audit-trail
+        action: "Record integrity violation — CRITICAL severity"
+      - external: notification-service
+        action: "CRITICAL alert to Platform Admin and Finance Manager via priority channel"
+    retention_days: 2555
+    notes: "P0 security event — immediate escalation required"
+
+  - name: RetroactiveAdjustmentQueued
+    category: DOMAIN
+    source_bc: payroll-execution
+    aggregate: RetroactiveAdjustment
+    trigger: QueueRetroactiveAdjustment command — triggered by backdated compensation change
+    payload:
+      adjustment_id: uuid
+      working_relationship_id: uuid
+      legal_entity_id: uuid
+      source_change_type: string
+      retroactive_from_period: uuid
+      retroactive_to_period: uuid
+      queued_by: string
+      queued_at: datetime
+    consumers:
+      - bc: payroll-execution
+        action: "Route to retro calculation queue (RESIDENCY_CHANGE to isolated queue per HS-6)"
+      - bc: audit-trail
+        action: "Record retro queued — INFO severity"
+    retention_days: 2555
+
+  - name: RetroactiveAdjustmentApplied
+    category: DOMAIN
+    source_bc: payroll-execution
+    aggregate: PayrollResult
+    trigger: Retroactive calculation completing; delta applied to next open period
+    payload:
+      adjustment_id: uuid
+      target_period_id: uuid
+      working_relationship_id: uuid
+      legal_entity_id: uuid
+      retro_delta_amount: number
+      original_periods_recalculated: array
+      applied_at: datetime
+    consumers:
+      - bc: payroll-execution
+        action: "Insert RETRO_ADJUSTMENT element into target period PayrollResult"
+      - bc: audit-trail
+        action: "Record retro applied — INFO severity"
+    retention_days: 2555
+
+  - name: AnnualPitSettlementInitiated
+    category: DOMAIN
+    source_bc: payroll-execution
+    aggregate: PayrollRun
+    trigger: TriggerAnnualPitSettlement command by Payroll Admin
+    payload:
+      run_id: uuid
+      settlement_year: integer
+      pay_group_id: uuid
+      legal_entity_id: uuid
+      settlement_timing: string
+      initiated_by: string
+      initiated_at: datetime
+    consumers:
+      - bc: payroll-execution
+        action: "Enqueue ANNUAL_SETTLEMENT PayrollRun in calculation engine"
+      - bc: audit-trail
+        action: "Record settlement initiation — INFO severity"
+    retention_days: 2555
+
+  - name: AnnualPitSettlementCompleted
+    category: DOMAIN
+    source_bc: payroll-execution
+    aggregate: PayrollRun
+    trigger: Settlement engine completing annual PIT reconciliation
+    payload:
+      run_id: uuid
+      settlement_year: integer
+      legal_entity_id: uuid
+      worker_count: integer
+      underpaid_count: integer
+      overpaid_count: integer
+      total_underpayment: number
+      total_overpayment: number
+      completed_at: datetime
+    consumers:
+      - bc: statutory-reporting
+        action: "Trigger Form 05/QTT-TNCN (annual PIT certificate) generation"
+      - bc: audit-trail
+        action: "Record settlement completion — INFO severity"
+      - external: notification-service
+        action: "Notify workers of under/overpayment amounts"
+    retention_days: 2555
+
+  - name: YtdBalancesReset
+    category: DOMAIN
+    source_bc: payroll-execution
+    aggregate: YtdSummary
+    trigger: Scheduled job on January 1 each year (00:00:01)
+    payload:
+      reset_year: integer
+      balance_types_reset: array
+      worker_count_affected: integer
+      reset_at: datetime
+    consumers:
+      - bc: worker-self-service
+        action: "Reset ytd_summary records for new tax year"
+      - bc: audit-trail
+        action: "Record YTD reset — INFO severity"
+    retention_days: 2555
+
+  - name: OffCycleRunInitiated
+    category: DOMAIN
+    source_bc: payroll-execution
+    aggregate: PayrollRun
+    trigger: InitiateOffCycleRun command — run_type = TERMINATION | ADVANCE | CORRECTION | BONUS_RUN
+    payload:
+      run_id: uuid
+      run_type: string
+      pay_group_id: uuid
+      legal_entity_id: uuid
+      working_relationship_ids: array
+      trigger_reason: string
+      initiated_by: string
+      initiated_at: datetime
+    consumers:
+      - bc: payroll-execution
+        action: "Enqueue off-cycle run in calculation engine"
+      - bc: audit-trail
+        action: "Record off-cycle initiation — INFO severity"
+    retention_days: 2555
+
+  - name: TerminationPayCalculated
+    category: DOMAIN
+    source_bc: payroll-execution
+    aggregate: PayrollRun
+    trigger: Calculation engine completing a TERMINATION off-cycle run
+    payload:
+      run_id: uuid
+      working_relationship_id: uuid
+      legal_entity_id: uuid
+      termination_type: string
+      elements_included: array
+      gross_amount: number
+      net_amount: number
+      calculated_at: datetime
+    consumers:
+      - bc: payroll-execution
+        action: "Proceed to approval workflow"
+      - bc: audit-trail
+        action: "Record termination pay calculation — INFO severity"
+    retention_days: 2555
+
+  - name: SalaryAdvancePaid
+    category: DOMAIN
+    source_bc: payroll-execution
+    aggregate: PayrollRun
+    trigger: Final approval for an ADVANCE run
+    payload:
+      run_id: uuid
+      working_relationship_id: uuid
+      legal_entity_id: uuid
+      advance_amount: number
+      recovery_period_id: uuid
+      recovery_amount: number
+      advance_paid_at: datetime
+    consumers:
+      - bc: payroll-execution
+        action: "Schedule ADVANCE_RECOVERY element for next regular period"
+      - bc: payment-output
+        action: "Generate bank payment file for advance amount"
+      - bc: audit-trail
+        action: "Record advance payment — INFO severity"
+    retention_days: 2555
+
+  - name: AdvanceRecoveryScheduled
+    category: DOMAIN
+    source_bc: payroll-execution
+    aggregate: PayrollRun
+    trigger: SalaryAdvancePaid event — recovery element scheduled for upcoming period
+    payload:
+      working_relationship_id: uuid
+      legal_entity_id: uuid
+      advance_run_id: uuid
+      recovery_element_code: string
+      recovery_amount: number
+      scheduled_for_period_id: uuid
+    consumers:
+      - bc: payroll-execution
+        action: "Insert ADVANCE_RECOVERY element into target period pre-processing"
+      - bc: audit-trail
+        action: "Record advance recovery schedule — INFO severity"
+    retention_days: 2555
+
+# ────────────────────────────────────────────────────────────────────────────
+# BC-04: PAYMENT OUTPUT EVENTS
+# ────────────────────────────────────────────────────────────────────────────
+
+  - name: PayslipsGenerated
+    category: DOMAIN
+    source_bc: payment-output
+    aggregate: PayslipDocument
+    trigger: PayPeriodLocked event triggers payslip batch generation for all workers
+    payload:
+      period_id: uuid
+      pay_group_id: uuid
+      legal_entity_id: uuid
+      payslip_count: integer
+      generation_started_at: datetime
+      generation_completed_at: datetime
+      template_code: string
+    consumers:
+      - bc: worker-self-service
+        action: "Make payslips available in worker portal"
+      - external: notification-service
+        action: "Notify workers: payslip available for download"
+      - bc: audit-trail
+        action: "Record payslip generation — INFO severity"
+    retention_days: 2555
+
+  - name: BankPaymentFileGenerated
+    category: DOMAIN
+    source_bc: payment-output
+    aggregate: BankPaymentFile
+    trigger: Finance Manager triggers bank file generation after PayrollRunApproved
+    payload:
+      period_id: uuid
+      bank_payment_file_id: uuid
+      legal_entity_id: uuid
+      bank_code: string
+      file_name: string
+      file_url: string
+      payment_channel: string
+      record_count: integer
+      total_amount_vnd: number
+      generated_at: datetime
+      generated_by: string
+    consumers:
+      - bc: audit-trail
+        action: "Record bank file generation — INFO severity (financial)"
+      - external: notification-service
+        action: "Notify Finance Manager: bank payment file ready for download"
+    retention_days: 2555
+
+  - name: GlJournalGenerated
+    category: DOMAIN
+    source_bc: payment-output
+    aggregate: GlJournal
+    trigger: PayPeriodLocked event triggers GL journal batch generation
+    payload:
+      period_id: uuid
+      gl_journal_id: uuid
+      legal_entity_id: uuid
+      journal_reference: string
+      journal_date: date
+      journal_line_count: integer
+      total_debit_vnd: number
+      total_credit_vnd: number
+      generated_at: datetime
+    consumers:
+      - external: accounting
+        action: "Consume GlJournalGenerated to post VAS journal entries in GL system"
+      - bc: audit-trail
+        action: "Record GL journal generation — INFO severity"
+      - external: notification-service
+        action: "Notify Finance Manager: GL journal generated"
+    retention_days: 2555
+    notes: "This event is the primary integration point with the Accounting / GL system (OHS downstream)"
+
+# ────────────────────────────────────────────────────────────────────────────
+# BC-05: STATUTORY REPORTING EVENTS
+# ────────────────────────────────────────────────────────────────────────────
+
+  - name: BhxhReportGenerated
+    category: DOMAIN
+    source_bc: statutory-reporting
+    aggregate: BhxhReport
+    trigger: GenerateBhxhReport command by Payroll Admin after period lock
+    payload:
+      period_id: uuid
+      bhxh_report_id: uuid
+      legal_entity_id: uuid
+      report_type: string
+      file_name: string
+      file_url: string
+      eligible_worker_count: integer
+      total_bhxh_employee: number
+      total_bhxh_employer: number
+      generated_at: datetime
+    consumers:
+      - bc: audit-trail
+        action: "Record BHXH report generation — INFO severity"
+      - external: notification-service
+        action: "Notify Payroll Admin: BHXH D02-LT report ready for submission to VssID"
+    retention_days: 2555
+
+  - name: PitDeclarationGenerated
+    category: DOMAIN
+    source_bc: statutory-reporting
+    aggregate: PitDeclaration
+    trigger: GeneratePitDeclaration command by Payroll Admin (quarterly or annual)
+    payload:
+      pit_declaration_id: uuid
+      legal_entity_id: uuid
+      declaration_type: string
+      tax_period_year: integer
+      tax_period_quarter: integer
+      xml_file_name: string
+      xml_file_url: string
+      worker_count: integer
+      total_pit_withheld: number
+      generated_at: datetime
+    consumers:
+      - bc: audit-trail
+        action: "Record PIT declaration generation — INFO severity"
+      - external: notification-service
+        action: "Notify Payroll Admin: PIT declaration ready for GDT submission"
+    retention_days: 2555
+
+  - name: PitWithholdingCertificateGenerated
+    category: DOMAIN
+    source_bc: statutory-reporting
+    aggregate: PitCertificate
+    trigger: GeneratePitCertificate command by Worker (self-service) or Payroll Admin
+    payload:
+      certificate_id: uuid
+      working_relationship_id: uuid
+      legal_entity_id: uuid
+      tax_year: integer
+      ytd_gross: number
+      ytd_pit_withheld: number
+      tax_code: string
+      generated_at: datetime
+    consumers:
+      - bc: worker-self-service
+        action: "Make certificate available for download in worker portal"
+      - bc: audit-trail
+        action: "Record certificate generation — INFO severity"
+      - external: notification-service
+        action: "Notify worker: PIT certificate available for download"
+    retention_days: 2555
+
+# ────────────────────────────────────────────────────────────────────────────
+# BC-06: WORKER SELF-SERVICE EVENTS
+# ────────────────────────────────────────────────────────────────────────────
+
+  - name: PayslipViewed
+    category: DOMAIN
+    source_bc: worker-self-service
+    aggregate: PayslipViewSession
+    trigger: Worker navigates to payslip in self-service portal
+    payload:
+      working_relationship_id: uuid
+      legal_entity_id: uuid
+      period_id: uuid
+      viewed_by: string
+      viewed_at: datetime
+    consumers:
+      - bc: audit-trail
+        action: "Record payslip view — INFO severity (access audit)"
+    retention_days: 1095
+    notes: "3-year retention for access logs — shorter than financial data"
+
+  - name: PayslipDownloaded
+    category: DOMAIN
+    source_bc: worker-self-service
+    aggregate: PayslipViewSession
+    trigger: Worker clicks Download PDF on payslip page
+    payload:
+      working_relationship_id: uuid
+      legal_entity_id: uuid
+      period_id: uuid
+      downloaded_by: string
+      downloaded_at: datetime
+    consumers:
+      - bc: audit-trail
+        action: "Record payslip download — INFO severity"
+    retention_days: 1095
+
+  - name: PitCertificateRequested
+    category: DOMAIN
+    source_bc: worker-self-service
+    aggregate: PitCertificateRequest
+    trigger: Worker submits PIT certificate request in self-service portal
+    payload:
+      request_id: uuid
+      working_relationship_id: uuid
+      legal_entity_id: uuid
+      tax_year: integer
+      requested_at: datetime
+    consumers:
+      - bc: statutory-reporting
+        action: "Queue PitCertificate generation"
+      - bc: audit-trail
+        action: "Record certificate request — INFO severity"
+    retention_days: 2555
+
+  - name: PitCertificateDownloaded
+    category: DOMAIN
+    source_bc: worker-self-service
+    aggregate: PitCertificateRequest
+    trigger: Worker downloads PIT certificate from self-service portal
+    payload:
+      certificate_id: uuid
+      working_relationship_id: uuid
+      legal_entity_id: uuid
+      tax_year: integer
+      downloaded_by: string
+      downloaded_at: datetime
+    consumers:
+      - bc: audit-trail
+        action: "Record certificate download — INFO severity"
+    retention_days: 2555
+
+# ────────────────────────────────────────────────────────────────────────────
+# INTEGRATION EVENTS — CONSUMED FROM EXTERNAL MODULES
+# ────────────────────────────────────────────────────────────────────────────
+
+  - name: AttendanceLocked
+    category: INTEGRATION
+    source_bc: time-attendance (TA — external)
+    direction: INBOUND
+    aggregate: AttendanceRecord (TA domain)
+    trigger: TA module completes attendance data lock for a period and working_relationship
+    payload:
+      working_relationship_id: uuid
+      period_id: uuid
+      legal_entity_id: uuid
+      actual_work_days: number
+      overtime_hours_json: object
+      piece_data: object
+      locked_at: datetime
+    consumed_by:
+      - bc: payroll-execution
+        action: "Map TA data to internal payroll input variables; update attendance completeness tracking"
+    retention_days: 2555
+    notes: "OHS pattern — TA defines schema; PR conforms. PR must handle partial delivery (HS-1)."
+
+  - name: HolidayCalendarUpdated
+    category: INTEGRATION
+    source_bc: time-attendance (TA — external)
+    direction: INBOUND
+    aggregate: HolidayCalendar (TA domain)
+    trigger: TA module updates the holiday calendar (new public holiday or correction)
+    payload:
+      calendar_id: uuid
+      legal_entity_id: uuid
+      effective_date: date
+      changes: array
+      updated_at: datetime
+    consumed_by:
+      - bc: payroll-execution
+        action: "Invalidate cached holiday calendar; reload from TA"
+    retention_days: 730
+
+  - name: WorkingRelationshipCreated
+    category: INTEGRATION
+    source_bc: core-hr (CO — external)
+    direction: INBOUND
+    aggregate: WorkingRelationship (CO domain)
+    trigger: CO module creates a new working relationship (new hire or transfer)
+    payload:
+      working_relationship_id: uuid
+      legal_entity_id: uuid
+      contract_type: string
+      effective_date: date
+      created_at: datetime
+    consumed_by:
+      - bc: pay-master
+        action: "Trigger WorkerAssignedToPayGroup if default pay group configured for entity"
+    retention_days: 2555
+
+  - name: WorkingRelationshipTerminated
+    category: INTEGRATION
+    source_bc: core-hr (CO — external)
+    direction: INBOUND
+    aggregate: WorkingRelationship (CO domain)
+    trigger: CO module terminates a working relationship
+    payload:
+      working_relationship_id: uuid
+      legal_entity_id: uuid
+      termination_date: date
+      termination_type: string
+      terminated_at: datetime
+    consumed_by:
+      - bc: pay-master
+        action: "Remove worker from pay group (end_date = termination_date)"
+      - bc: payroll-execution
+        action: "Trigger TERMINATION off-cycle PayrollRun if unpaid amounts exist"
+    retention_days: 2555
+
+# ────────────────────────────────────────────────────────────────────────────
+# INTEGRATION EVENTS — PRODUCED FOR EXTERNAL SYSTEMS
+# ────────────────────────────────────────────────────────────────────────────
+
+  - name: GlJournalReadyForPosting
+    category: INTEGRATION
+    source_bc: payment-output (PR)
+    direction: OUTBOUND
+    target: accounting
+    trigger: GlJournalGenerated internal event (wrapper for external accounting system)
+    payload:
+      gl_journal_id: uuid
+      period_id: uuid
+      legal_entity_id: uuid
+      journal_reference: string
+      journal_date: date
+      line_items: array
+    notes: "Accounting adapter maps TK codes to target GL system. OHS pattern."
+    retention_days: 2555
+
+# ────────────────────────────────────────────────────────────────────────────
+# EVENT SUMMARY
+# ────────────────────────────────────────────────────────────────────────────
+
+summary:
+  total_events: 62
+  by_category:
+    DOMAIN: 58
+    INTEGRATION: 4
+  by_source_bc:
+    pay-master: 13
+    statutory-rules: 6
+    payroll-execution: 27
+    payment-output: 3
+    statutory-reporting: 3
+    worker-self-service: 4
+    audit-trail: 2
+    external_inbound: 4
+    external_outbound: 1
+  kafka_topics:
+    - "pr.pay-master"
+    - "pr.statutory-rules"
+    - "pr.payroll-execution"
+    - "pr.payment-output"
+    - "pr.statutory-reporting"
+    - "pr.worker-self-service"
+    - "ta.attendance"
+    - "co.working-relationship"

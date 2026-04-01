@@ -1,0 +1,1200 @@
+openapi: "3.0.3"
+info:
+  title: Payroll Use-Case API
+  description: >
+    Use-case driven API for the Payroll (PR) module — xTalent HCM.
+    Endpoints are derived from business use case flows (UCFs), not CRUD operations.
+    Each endpoint represents a named business intent: a command or query that corresponds
+    to a specific step in a payroll actor's workflow.
+    Base path: /api/v1/payroll-uc
+  version: "1.0.0"
+  contact:
+    name: xTalent Platform Team
+    email: platform@xtalent.vng.com.vn
+
+servers:
+  - url: https://api.xtalent.vng.com.vn/api/v1/payroll-uc
+    description: Production
+  - url: https://api-staging.xtalent.vng.com.vn/api/v1/payroll-uc
+    description: Staging
+
+tags:
+  - name: pay-period-lifecycle
+    description: Pay period creation, cut-off, and lock operations
+  - name: payroll-run-lifecycle
+    description: Payroll run initiation, approval, and off-cycle operations
+  - name: exception-management
+    description: Exception acknowledgment and resolution
+  - name: retro-adjustments
+    description: Retroactive adjustment operations
+  - name: annual-settlement
+    description: Year-end PIT settlement
+  - name: statutory-rule-management
+    description: Statutory rule creation and activation (Platform Admin operations)
+  - name: payment-generation
+    description: Bank file and GL journal generation (post-approval)
+  - name: statutory-reporting
+    description: BHXH and PIT report generation
+
+security:
+  - BearerAuth: []
+
+paths:
+
+  # ── Pay Period Lifecycle ─────────────────────────────────────────────────
+
+  /payroll/periods:
+    post:
+      tags: [pay-period-lifecycle]
+      operationId: createPayPeriod
+      summary: Create a pay period for a pay group
+      description: >
+        Creates a new PayPeriod for the specified PayGroup based on the pay calendar schedule.
+        The period is created in OPEN status. Only one active (non-LOCKED) period per PayGroup
+        is permitted at a time.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePayPeriodRequest'
+      responses:
+        '201':
+          description: Pay period created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayPeriodResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Conflict — an open period already exists for this pay group
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /payroll/periods/{periodId}/cut-off:
+    post:
+      tags: [pay-period-lifecycle]
+      operationId: applyPayPeriodCutOff
+      summary: Apply cut-off to a pay period
+      description: >
+        Transitions the pay period from OPEN to CUT_OFF status.
+        Triggers: CompensationSnapshot creation (CO ACL pull + TR ACL pull per working_relationship),
+        data freeze, and AttendanceLocked event subscription window closure.
+        Can be triggered automatically by scheduled job or manually by Payroll Admin.
+      parameters:
+        - $ref: '#/components/parameters/PeriodId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                manual_trigger_reason:
+                  type: string
+                  description: Required if triggered manually before scheduled cut_off_date
+      responses:
+        '200':
+          description: Cut-off applied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayPeriodResponse'
+        '409':
+          description: Period not in OPEN status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /payroll/periods/{periodId}/lock:
+    post:
+      tags: [pay-period-lifecycle]
+      operationId: lockPayPeriod
+      summary: Lock a pay period
+      description: >
+        Transitions the pay period to LOCKED status after the APPROVED PayrollRun.
+        Triggers: integrity hash generation for all PayrollResult records in this period.
+        Only callable by Finance Manager after PayrollRun reaches APPROVED status.
+        PayrollResult records become immutable after lock.
+      parameters:
+        - $ref: '#/components/parameters/PeriodId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [run_id]
+              properties:
+                run_id:
+                  type: string
+                  format: uuid
+                  description: The APPROVED PayrollRun that is being locked
+      responses:
+        '200':
+          description: Period locked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayPeriodResponse'
+        '409':
+          description: Period not in APPROVED status or no APPROVED run found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ── Payroll Run Lifecycle ────────────────────────────────────────────────
+
+  /payroll/runs:
+    post:
+      tags: [payroll-run-lifecycle]
+      operationId: initiatePayrollRun
+      summary: Initiate a payroll run
+      description: >
+        Initiates a new payroll run for a pay group and period.
+        Run mode determines behavior: DRY_RUN (validation only, no results created),
+        SIMULATION (full calculation, results visible but not approvable),
+        PRODUCTION (official run — results become final on period lock).
+        Only one PRODUCTION run can reach APPROVED per PayPeriod.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InitiatePayrollRunRequest'
+      responses:
+        '202':
+          description: Payroll run queued for processing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayrollRunResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: A PRODUCTION run already exists and is APPROVED for this period
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /payroll/runs/{runId}/submit-for-approval:
+    post:
+      tags: [payroll-run-lifecycle]
+      operationId: submitPayrollRunForApproval
+      summary: Submit a completed payroll run for approval
+      description: >
+        Transitions the PayrollRun from COMPLETED to PENDING_APPROVAL.
+        Precondition: all PayrollExceptions for this run must be in ACKNOWLEDGED status.
+        Notifies HR Manager (Level 2 approver).
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                submission_notes:
+                  type: string
+      responses:
+        '200':
+          description: Run submitted for approval
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayrollRunResponse'
+        '409':
+          description: Run not in COMPLETED status or unacknowledged exceptions exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /payroll/runs/{runId}/approve:
+    post:
+      tags: [payroll-run-lifecycle]
+      operationId: approvePayrollRun
+      summary: Approve a payroll run at the current approval level
+      description: >
+        Records an approval action at the specified level.
+        Level 2 (HR Manager): moves to pending Level 3 approval.
+        Level 3 (Finance Manager): final approval — triggers PayPeriod transition to APPROVED.
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApprovalActionRequest'
+      responses:
+        '200':
+          description: Approval recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayrollRunApprovalResponse'
+        '403':
+          description: Actor does not have the required approval role for this level
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Run not in PENDING_APPROVAL status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /payroll/runs/{runId}/reject:
+    post:
+      tags: [payroll-run-lifecycle]
+      operationId: rejectPayrollRun
+      summary: Reject a payroll run
+      description: >
+        Records a rejection at the current approval level.
+        The PayrollRun transitions back to a failed/rejected state.
+        The PayPeriod is returned to OPEN status for re-initiation.
+        Reason code is mandatory.
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RejectionActionRequest'
+      responses:
+        '200':
+          description: Rejection recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayrollRunApprovalResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /payroll/workers/{workingRelationshipId}/termination-run:
+    post:
+      tags: [payroll-run-lifecycle]
+      operationId: initiateTerminationPayrollRun
+      summary: Initiate a termination payroll run for a specific worker
+      description: >
+        Creates an off-cycle PayrollRun of type TERMINATION for the specified working_relationship.
+        Triggered when a worker is terminated mid-period.
+        Computes final pay including pro-rated salary, accrued leave payout, and mandatory notice-period elements.
+      parameters:
+        - in: path
+          name: workingRelationshipId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InitiateTerminationRunRequest'
+      responses:
+        '202':
+          description: Termination run queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayrollRunResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ── Exception Management ─────────────────────────────────────────────────
+
+  /payroll/runs/{runId}/exceptions/{exceptionId}/acknowledge:
+    post:
+      tags: [exception-management]
+      operationId: acknowledgePayrollException
+      summary: Acknowledge a payroll exception for a specific worker
+      description: >
+        Marks a PayrollException as ACKNOWLEDGED with a mandatory reason code.
+        Payroll Admin must acknowledge all open exceptions before a run can be
+        submitted for approval. Exceptions do not auto-clear; explicit acknowledgment
+        with documented reason is required.
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+        - in: path
+          name: exceptionId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason_code, acknowledgment_notes]
+              properties:
+                reason_code:
+                  type: string
+                  enum:
+                    - APPROVED_OVERRIDE
+                    - DATA_CORRECTION_SCHEDULED
+                    - RETRO_WILL_CORRECT
+                    - BUSINESS_EXCEPTION_APPROVED
+                  description: Mandatory reason code for audit trail
+                acknowledgment_notes:
+                  type: string
+                  description: Free-text justification (mandatory for audit)
+      responses:
+        '200':
+          description: Exception acknowledged
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayrollExceptionResponse'
+        '409':
+          description: Exception already acknowledged
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /payroll/runs/{runId}/exceptions:
+    get:
+      tags: [exception-management]
+      operationId: listPayrollRunExceptions
+      summary: List all exceptions for a payroll run
+      description: Returns all PayrollExceptions for the specified run, optionally filtered by status.
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [OPEN, ACKNOWLEDGED]
+          description: Filter by exception status
+      responses:
+        '200':
+          description: List of exceptions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PayrollExceptionResponse'
+
+  # ── Retroactive Adjustments ──────────────────────────────────────────────
+
+  /payroll/retro-adjustments:
+    post:
+      tags: [retro-adjustments]
+      operationId: createRetroAdjustment
+      summary: Create and queue a retroactive adjustment
+      description: >
+        Creates a RetroactiveAdjustment record for a backdated compensation change.
+        The delta amount is computed and surfaced as a RETRO_ADJUSTMENT PayElement
+        in the next open period's payroll result.
+        RESIDENCY_CHANGE retro type is processed via an isolated async queue (HS-6).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRetroAdjustmentRequest'
+      responses:
+        '202':
+          description: Retroactive adjustment queued for processing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetroAdjustmentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  # ── Annual PIT Settlement ────────────────────────────────────────────────
+
+  /payroll/annual-pit-settlement:
+    post:
+      tags: [annual-settlement]
+      operationId: initiateAnnualPITSettlement
+      summary: Initiate annual PIT settlement for a pay group
+      description: >
+        Initiates an ANNUAL_SETTLEMENT PayrollRun for year-end PIT reconciliation.
+        Compares withheld PIT against actual annual taxable income.
+        Settlement timing: DECEMBER_PAYROLL (included in December run) or
+        JANUARY_STANDALONE (separate run in January of following year).
+        Produces Form 05/QTT-TNCN on completion.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InitiateAnnualSettlementRequest'
+      responses:
+        '202':
+          description: Annual PIT settlement run queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayrollRunResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  # ── Statutory Rule Management ────────────────────────────────────────────
+
+  /statutory-rules:
+    post:
+      tags: [statutory-rule-management]
+      operationId: createStatutoryRule
+      summary: Create a new versioned statutory rule
+      description: >
+        Creates a new StatutoryRule record (DRAFT status) for regulatory rate changes
+        (PIT brackets, SI rates, OT multipliers, minimum wage, VN base salary).
+        Platform Admin role required. Rule becomes effective only after activation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateStatutoryRuleRequest'
+      responses:
+        '201':
+          description: Statutory rule created in DRAFT status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatutoryRuleResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Overlapping valid_from/valid_to for same rule_code
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /statutory-rules/{ruleId}/activate:
+    post:
+      tags: [statutory-rule-management]
+      operationId: activateStatutoryRule
+      summary: Activate a statutory rule
+      description: >
+        Transitions a StatutoryRule from DRAFT to ACTIVE status.
+        Triggers calculation engine cache invalidation.
+        Previous active rule for the same rule_code is superseded.
+        Publishes StatutoryRuleActivated event.
+      parameters:
+        - in: path
+          name: ruleId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                activation_notes:
+                  type: string
+                  description: Optional notes on the decree or regulatory change driving this activation
+      responses:
+        '200':
+          description: Statutory rule activated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatutoryRuleResponse'
+        '409':
+          description: Rule not in DRAFT status or conflicting active rule exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ── Payment Generation ───────────────────────────────────────────────────
+
+  /payroll/periods/{periodId}/generate-bank-payment-file:
+    post:
+      tags: [payment-generation]
+      operationId: generateBankPaymentFile
+      summary: Generate bank payment file for a locked period
+      description: >
+        Generates a bank-specific payment file (VCB, BIDV, or TCB format) for the
+        approved period. Finance Manager triggers this after PayrollRun approval.
+        V1 = file download. V2 API push deferred (HS-8).
+      parameters:
+        - $ref: '#/components/parameters/PeriodId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [bank_code]
+              properties:
+                bank_code:
+                  type: string
+                  enum: [VCB, BIDV, TCB]
+                  description: Target bank for file format
+      responses:
+        '202':
+          description: Bank payment file generation queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BankPaymentFileResponse'
+        '409':
+          description: Period not in APPROVED or LOCKED status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /payroll/periods/{periodId}/generate-gl-journal:
+    post:
+      tags: [payment-generation]
+      operationId: generateGlJournal
+      summary: Generate GL journal entries for a locked period
+      description: >
+        Generates VAS-compliant GL journal entries for the period.
+        Account codes: TK 334 (lương phải trả), TK 338 (BHXH/BHYT),
+        TK 3383 (KPCĐ), TK 3335 (thuế TNCN), TK 642 (chi phí lương).
+        Publishes GlJournalGenerated event for downstream Accounting system.
+      parameters:
+        - $ref: '#/components/parameters/PeriodId'
+      responses:
+        '202':
+          description: GL journal generation queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GlJournalGenerationResponse'
+
+  # ── Statutory Reporting ──────────────────────────────────────────────────
+
+  /statutory-reporting/bhxh-report:
+    post:
+      tags: [statutory-reporting]
+      operationId: generateBhxhReport
+      summary: Generate BHXH D02-LT monthly contribution report
+      description: >
+        Generates the BHXH D02-LT report in VssID format for a specific period.
+        Requires period to be LOCKED. Report covers all SI-eligible workers in the period.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [period_id, legal_entity_id]
+              properties:
+                period_id:
+                  type: string
+                  format: uuid
+                legal_entity_id:
+                  type: string
+                  format: uuid
+      responses:
+        '202':
+          description: BHXH report generation queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BhxhReportResponse'
+
+  /statutory-reporting/pit-declaration:
+    post:
+      tags: [statutory-reporting]
+      operationId: generatePitDeclaration
+      summary: Generate PIT declaration (quarterly or annual)
+      description: >
+        Generates PIT Form 05/KK-TNCN (quarterly) or 05/QTT-TNCN (annual settlement)
+        XML per Circular 08/2013/TT-BTC for GDT submission.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [legal_entity_id, declaration_type, tax_period_year]
+              properties:
+                legal_entity_id:
+                  type: string
+                  format: uuid
+                declaration_type:
+                  type: string
+                  enum: [QUARTERLY, ANNUAL]
+                tax_period_year:
+                  type: integer
+                  example: 2026
+                tax_period_quarter:
+                  type: integer
+                  minimum: 1
+                  maximum: 4
+                  description: Required if declaration_type = QUARTERLY
+      responses:
+        '202':
+          description: PIT declaration generation queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PitDeclarationResponse'
+
+# ────────────────────────────────────────────────────────────────────────────
+# COMPONENTS
+# ────────────────────────────────────────────────────────────────────────────
+components:
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    PeriodId:
+      in: path
+      name: periodId
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: UUID of the PayPeriod
+
+    RunId:
+      in: path
+      name: runId
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: UUID of the PayrollRun
+
+  responses:
+    BadRequest:
+      description: Bad request — validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    Forbidden:
+      description: Insufficient permissions for this operation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+
+    # ── Request schemas ────────────────────────────────────────────────────
+
+    CreatePayPeriodRequest:
+      type: object
+      required: [pay_group_id, legal_entity_id, period_start, period_end, cut_off_date, payment_date]
+      properties:
+        pay_group_id:
+          type: string
+          format: uuid
+        legal_entity_id:
+          type: string
+          format: uuid
+        period_start:
+          type: string
+          format: date
+          example: "2026-04-01"
+        period_end:
+          type: string
+          format: date
+          example: "2026-04-30"
+        cut_off_date:
+          type: string
+          format: date
+          example: "2026-04-25"
+        payment_date:
+          type: string
+          format: date
+          example: "2026-05-05"
+
+    InitiatePayrollRunRequest:
+      type: object
+      required: [pay_group_id, period_id, legal_entity_id, run_mode, run_type]
+      properties:
+        pay_group_id:
+          type: string
+          format: uuid
+        period_id:
+          type: string
+          format: uuid
+        legal_entity_id:
+          type: string
+          format: uuid
+        run_mode:
+          type: string
+          enum: [DRY_RUN, SIMULATION, PRODUCTION]
+          description: DRY_RUN = validation only; SIMULATION = full calc, non-approvable; PRODUCTION = official
+        run_type:
+          type: string
+          enum: [REGULAR, TERMINATION, ADVANCE, CORRECTION, BONUS_RUN, ANNUAL_SETTLEMENT, TASK_PAYMENT]
+          default: REGULAR
+        working_relationship_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Optional — if omitted, all workers in the pay group are included
+
+    InitiateTerminationRunRequest:
+      type: object
+      required: [period_id, legal_entity_id, termination_date]
+      properties:
+        period_id:
+          type: string
+          format: uuid
+        legal_entity_id:
+          type: string
+          format: uuid
+        termination_date:
+          type: string
+          format: date
+          description: Last day of employment — used for pro-ration and final pay computation
+
+    ApprovalActionRequest:
+      type: object
+      required: [approval_level]
+      properties:
+        approval_level:
+          type: string
+          enum: [LEVEL_2_HR_MANAGER, LEVEL_3_FINANCE_MANAGER]
+        notes:
+          type: string
+          description: Optional approval notes
+
+    RejectionActionRequest:
+      type: object
+      required: [approval_level, reason_code, notes]
+      properties:
+        approval_level:
+          type: string
+          enum: [LEVEL_2_HR_MANAGER, LEVEL_3_FINANCE_MANAGER]
+        reason_code:
+          type: string
+          enum:
+            - DATA_ERRORS
+            - CALCULATION_DISCREPANCY
+            - MISSING_DOCUMENTATION
+            - COMPLIANCE_CONCERN
+            - OTHER
+        notes:
+          type: string
+          description: Mandatory rejection justification
+
+    CreateRetroAdjustmentRequest:
+      type: object
+      required: [working_relationship_id, legal_entity_id, source_change_type, retroactive_from_period]
+      properties:
+        working_relationship_id:
+          type: string
+          format: uuid
+        legal_entity_id:
+          type: string
+          format: uuid
+        source_change_type:
+          type: string
+          enum: [SALARY_CHANGE, ALLOWANCE_CHANGE, GRADE_STEP_CHANGE, BONUS_CORRECTION, RESIDENCY_CHANGE]
+          description: RESIDENCY_CHANGE triggers isolated async processing queue (HS-6)
+        retroactive_from_period:
+          type: string
+          format: uuid
+          description: First period to recalculate
+        retroactive_to_period:
+          type: string
+          format: uuid
+          description: Last period to recalculate (omit for up to current period)
+
+    InitiateAnnualSettlementRequest:
+      type: object
+      required: [pay_group_id, legal_entity_id, settlement_year, settlement_timing]
+      properties:
+        pay_group_id:
+          type: string
+          format: uuid
+        legal_entity_id:
+          type: string
+          format: uuid
+        settlement_year:
+          type: integer
+          example: 2026
+        settlement_timing:
+          type: string
+          enum: [DECEMBER_PAYROLL, JANUARY_STANDALONE]
+          description: Whether settlement is included in December run or as standalone January run
+
+    CreateStatutoryRuleRequest:
+      type: object
+      required: [rule_code, rule_category, country_code, valid_from, formula_json]
+      properties:
+        rule_code:
+          type: string
+          example: VN_PIT_BRACKETS_2026
+        rule_category:
+          type: string
+          enum: [PIT_BRACKET, SI_RATE, SI_CEILING, OT_MULTIPLIER, MINIMUM_WAGE, BASE_SALARY_VN, FREELANCE_WITHHOLDING, LUNCH_EXEMPTION_CAP]
+        country_code:
+          type: string
+          default: VN
+        legal_entity_id:
+          type: string
+          format: uuid
+          description: Omit for global rule; provide for entity-specific override
+        valid_from:
+          type: string
+          format: date
+        valid_to:
+          type: string
+          format: date
+          description: Omit if rule is indefinitely active until superseded
+        formula_json:
+          type: object
+          description: Rate/bracket/threshold values as JSON (structure varies per rule_category)
+          example:
+            brackets:
+              - order: 1
+                income_from: 0
+                income_to: 5000000
+                rate_percent: 5
+              - order: 2
+                income_from: 5000000
+                income_to: 10000000
+                rate_percent: 10
+        decree_reference:
+          type: string
+          example: Circular 08/2013/TT-BTC
+
+    # ── Response schemas ───────────────────────────────────────────────────
+
+    PayPeriodResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        pay_group_id:
+          type: string
+          format: uuid
+        legal_entity_id:
+          type: string
+          format: uuid
+        period_start:
+          type: string
+          format: date
+        period_end:
+          type: string
+          format: date
+        cut_off_date:
+          type: string
+          format: date
+        payment_date:
+          type: string
+          format: date
+        period_status:
+          type: string
+          enum: [OPEN, CUT_OFF, RUNNING, PENDING_APPROVAL, APPROVED, LOCKED]
+        locked_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    PayrollRunResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        period_id:
+          type: string
+          format: uuid
+        pay_group_id:
+          type: string
+          format: uuid
+        legal_entity_id:
+          type: string
+          format: uuid
+        run_mode:
+          type: string
+          enum: [DRY_RUN, SIMULATION, PRODUCTION]
+        run_type:
+          type: string
+          enum: [REGULAR, TERMINATION, ADVANCE, CORRECTION, BONUS_RUN, ANNUAL_SETTLEMENT, TASK_PAYMENT]
+        run_status:
+          type: string
+          enum: [QUEUED, PRE_VALIDATING, RUNNING, COMPLETED, PENDING_APPROVAL, APPROVED, FAILED]
+        worker_count:
+          type: integer
+        processed_count:
+          type: integer
+        exception_count:
+          type: integer
+        initiated_by:
+          type: string
+        initiated_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+
+    PayrollRunApprovalResponse:
+      type: object
+      properties:
+        run_id:
+          type: string
+          format: uuid
+        approval_level:
+          type: string
+        action:
+          type: string
+          enum: [APPROVED, REJECTED]
+        actor_id:
+          type: string
+        action_timestamp:
+          type: string
+          format: date-time
+        run_status_after:
+          type: string
+          description: New status of the PayrollRun after this action
+
+    PayrollExceptionResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        run_id:
+          type: string
+          format: uuid
+        result_id:
+          type: string
+          format: uuid
+        working_relationship_id:
+          type: string
+          format: uuid
+        exception_type:
+          type: string
+          enum: [NEGATIVE_NET, MIN_WAGE_VIOLATION, ZERO_BHXH_SI_ELIGIBLE, OT_CAP_EXCEEDED]
+        details:
+          type: string
+        exception_status:
+          type: string
+          enum: [OPEN, ACKNOWLEDGED]
+        acknowledged_by:
+          type: string
+        acknowledged_at:
+          type: string
+          format: date-time
+        reason_code:
+          type: string
+
+    RetroAdjustmentResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        working_relationship_id:
+          type: string
+          format: uuid
+        source_change_type:
+          type: string
+        retroactive_from_period:
+          type: string
+          format: uuid
+        retroactive_to_period:
+          type: string
+          format: uuid
+        delta_amount:
+          type: number
+          format: double
+        applied_to_period_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+
+    StatutoryRuleResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        rule_code:
+          type: string
+        rule_category:
+          type: string
+        country_code:
+          type: string
+        valid_from:
+          type: string
+          format: date
+        valid_to:
+          type: string
+          format: date
+        is_active:
+          type: boolean
+        status:
+          type: string
+          enum: [DRAFT, ACTIVE, SUPERSEDED]
+        formula_json:
+          type: object
+        decree_reference:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    BankPaymentFileResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        period_id:
+          type: string
+          format: uuid
+        bank_code:
+          type: string
+        file_name:
+          type: string
+        file_url:
+          type: string
+          description: Download URL (populated when generation completes)
+        record_count:
+          type: integer
+        total_amount_vnd:
+          type: number
+          format: double
+        status:
+          type: string
+          enum: [GENERATED, DOWNLOADED, SUBMITTED, CONFIRMED, REJECTED]
+        generated_at:
+          type: string
+          format: date-time
+
+    GlJournalGenerationResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        period_id:
+          type: string
+          format: uuid
+        journal_reference:
+          type: string
+        journal_date:
+          type: string
+          format: date
+        total_debit_vnd:
+          type: number
+          format: double
+        total_credit_vnd:
+          type: number
+          format: double
+        status:
+          type: string
+          enum: [DRAFT, POSTED, REVERSED]
+
+    BhxhReportResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        period_id:
+          type: string
+          format: uuid
+        report_type:
+          type: string
+          default: D02_LT
+        file_name:
+          type: string
+        file_url:
+          type: string
+        eligible_worker_count:
+          type: integer
+        total_bhxh_employee:
+          type: number
+        status:
+          type: string
+          enum: [DRAFT, GENERATED, SUBMITTED, ACCEPTED, REJECTED]
+
+    PitDeclarationResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        declaration_type:
+          type: string
+          enum: [QUARTERLY, ANNUAL]
+        tax_period_year:
+          type: integer
+        tax_period_quarter:
+          type: integer
+        xml_file_name:
+          type: string
+        xml_file_url:
+          type: string
+        worker_count:
+          type: integer
+        total_pit_withheld_vnd:
+          type: number
+        status:
+          type: string
+          enum: [DRAFT, GENERATED, SUBMITTED, ACCEPTED, REJECTED]
+
+    ErrorResponse:
+      type: object
+      required: [error_code, message]
+      properties:
+        error_code:
+          type: string
+          example: PERIOD_ALREADY_LOCKED
+        message:
+          type: string
+          example: The pay period is already in LOCKED status and cannot be modified.
+        details:
+          type: array
+          items:
+            type: string
+        trace_id:
+          type: string
+          format: uuid
