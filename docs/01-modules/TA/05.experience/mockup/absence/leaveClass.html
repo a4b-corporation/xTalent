@@ -1,0 +1,2258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Leave Class Management System</title>
+<meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>View Leave Class - VN Standard Annual Leave</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+    </style>
+    <style>
+        /* Mode switching styles */
+        .mode-container { display: none; }
+        .mode-container.active { display: block; }
+    </style>
+</head>
+<body>
+
+<!-- ==================== DATA CONFIGURATION (JSON) ==================== -->
+<script id="appData" type="application/json">
+{
+    "leaveClassId": "LC-VN-001",
+    "name": "Vietnam Full-Time Employee Leave",
+    "code": "VN-FULLTIME",
+    "description": "Standard leave entitlements for full-time employees in Vietnam operations",
+    "status": "ACTIVE",
+    "scope": {
+        "country": "VN",
+        "businessUnit": null,
+        "employmentTypes": ["FULLTIME", "PERMANENT"],
+        "effectiveDate": "2025-01-01",
+        "expiryDate": null
+    },
+    "leaveTypes": [
+        {
+            "leaveTypeId": "LT-VN-ANNUAL-001",
+            "name": "Annual Leave",
+            "code": "ANNUAL",
+            "enabled": true,
+            "priority": 1,
+            "settings": {
+                "accrualPolicyId": "POL-ACC-VN-001",
+                "eligibilityPolicyId": "POL-ELIG-VN-001",
+                "validationPolicyId": "POL-VAL-VN-001",
+                "limitPolicyId": "POL-LMT-VN-001",
+                "carryOverPolicyId": "POL-CARRY-VN-001",
+                "overdraftPolicyId": "POL-OVD-VN-001"
+            }
+        },
+        {
+            "leaveTypeId": "LT-VN-SICK-001",
+            "name": "Sick Leave",
+            "code": "SICK",
+            "enabled": true,
+            "priority": 2,
+            "settings": {
+                "accrualPolicyId": "POL-ACC-VN-002",
+                "eligibilityPolicyId": "POL-ELIG-VN-001",
+                "validationPolicyId": "POL-VAL-VN-002",
+                "limitPolicyId": "POL-LMT-VN-002",
+                "carryOverPolicyId": null,
+                "overdraftPolicyId": null
+            }
+        },
+        {
+            "leaveTypeId": "LT-VN-PERSONAL-001",
+            "name": "Personal Leave",
+            "code": "PERSONAL",
+            "enabled": true,
+            "priority": 3,
+            "settings": {
+                "accrualPolicyId": "POL-ACC-VN-003",
+                "eligibilityPolicyId": "POL-ELIG-VN-001",
+                "validationPolicyId": "POL-VAL-VN-001",
+                "limitPolicyId": "POL-LMT-VN-003",
+                "carryOverPolicyId": null,
+                "overdraftPolicyId": null
+            }
+        }
+    ],
+    "eligibilityRules": {
+        "employmentType": ["FULLTIME", "PERMANENT"],
+        "minimumTenure": 90,
+        "tenureUnit": "DAYS",
+        "workLocation": ["VN"],
+        "employmentStatus": ["ACTIVE"],
+        "excludedDepartments": [],
+        "excludedJobLevels": []
+    },
+    "commonSettings": {
+        "defaultCurrency": "VND",
+        "workingDaysPerWeek": 5,
+        "workingHoursPerDay": 8,
+        "weekendDays": ["SATURDAY", "SUNDAY"],
+        "publicHolidayCalendar": "VN-CALENDAR-2025",
+        "fiscalYearStart": "01-01",
+        "leaveYearStart": "01-01"
+    },
+    "approvalWorkflow": {
+        "defaultApprovalChain": [
+            {
+                "level": 1,
+                "approverRole": "DIRECT_MANAGER",
+                "required": true
+            },
+            {
+                "level": 2,
+                "approverRole": "HR_MANAGER",
+                "required": false,
+                "condition": "DAYS_GREATER_THAN_5"
+            }
+        ],
+        "escalationEnabled": true,
+        "escalationAfterDays": 3,
+        "autoApprovalForCertainTypes": false
+    },
+    "notificationSettings": {
+        "notifyOnRequest": true,
+        "notifyOnApproval": true,
+        "notifyOnRejection": true,
+        "notifyOnCancellation": true,
+        "reminderBeforeLeaveStarts": true,
+        "reminderDaysBefore": 1,
+        "balanceReminderEnabled": true,
+        "balanceReminderThreshold": 5
+    },
+    "integrationSettings": {
+        "syncWithPayroll": true,
+        "payrollSystemId": "PAYROLL-VN-001",
+        "syncWithAttendance": true,
+        "attendanceSystemId": "ATTENDANCE-VN-001",
+        "syncWithHRMS": true,
+        "hrmsSystemId": "HRMS-VN-001"
+    },
+    "complianceSettings": {
+        "country": "VN",
+        "laborLawCompliance": true,
+        "laborLawVersion": "2019",
+        "minimumAnnualLeaveDays": 12,
+        "requiredDocumentation": ["LABOR_CONTRACT", "COMPANY_POLICY"],
+        "auditTrailEnabled": true,
+        "retentionPeriodYears": 7
+    },
+    "metadata": {
+        "createdBy": "admin@company.com",
+        "createdAt": "2025-01-01T10:00:00Z",
+        "modifiedBy": "hr.director@company.com",
+        "modifiedAt": "2025-11-12T09:30:00Z",
+        "version": "1.0.0",
+        "tags": ["vietnam", "full-time", "standard", "employee-class"]
+    }
+}
+</script>
+
+<!-- ==================== VIEW MODE (ORIGINAL) ==================== -->
+<div id="viewMode" class="mode-container active">
+<!-- Top Bar -->
+    <div class="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
+        <div class="px-6 py-3">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2 text-sm">
+                    <a href="#" class="text-blue-600 hover:text-blue-700">Leave Management</a>
+                    <i class="fas fa-chevron-right text-gray-400 text-xs"></i>
+                    <a href="#" class="text-blue-600 hover:text-blue-700">Leave Classes</a>
+                    <i class="fas fa-chevron-right text-gray-400 text-xs"></i>
+                    <span class="text-gray-900 font-medium">VN Standard Annual Leave</span>
+                    <span class="ml-2 px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-full font-medium">VIEW MODE</span>
+                </div>
+                
+                <div class="flex items-center gap-3">
+                    <button class="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">
+                        <i class="fas fa-copy mr-2"></i>Clone
+                    </button>
+                    <button class="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">
+                        <i class="fas fa-download mr-2"></i>Export
+                    </button>
+                    <button onclick="switchToMode('edit')" class="px-5 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-sm font-medium">
+                        <i class="fas fa-pen mr-2"></i>Edit Class
+                    </button>
+                    <button onclick="switchToMode('new')" class="px-5 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 shadow-sm font-medium">
+                        <i class="fas fa-plus mr-2"></i>New Policy
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <div class="bg-white border-b border-gray-200">
+        <div class="px-6 py-6">
+            <div class="flex items-start justify-between">
+                <div class="flex items-start gap-4">
+                    <div class="w-16 h-16 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
+                        <i class="fas fa-layer-group text-white text-2xl"></i>
+                    </div>
+                    <div>
+                        <div class="flex items-center gap-3 mb-1">
+                            <h1 class="text-2xl font-bold text-gray-900">VN Standard Annual Leave</h1>
+                            <span class="px-3 py-1 bg-green-100 text-green-800 text-sm font-medium rounded-full">Active</span>
+                            <span class="px-3 py-1 bg-blue-100 text-blue-800 text-sm font-medium rounded-full">ACCOUNT</span>
+                        </div>
+                        <p class="text-gray-600 mb-3">Annual leave with accrual, balance tracking and carry forward</p>
+                        <div class="flex items-center gap-6 text-sm text-gray-500">
+                            <span class="flex items-center gap-2"><i class="fas fa-hashtag"></i>LC-VN-ANNUAL-001</span>
+                            <span class="flex items-center gap-2"><i class="fas fa-flag"></i>Vietnam 🇻🇳</span>
+                            <span class="flex items-center gap-2"><i class="fas fa-umbrella-beach"></i>Annual Leave</span>
+                            <span class="flex items-center gap-2"><i class="fas fa-users"></i>1,245 employees</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="flex items-center gap-2">
+                    <button class="p-2 text-gray-600 hover:bg-gray-100 rounded-lg" title="Share"><i class="fas fa-share-nodes"></i></button>
+                    <button class="p-2 text-gray-600 hover:bg-gray-100 rounded-lg" title="Print"><i class="fas fa-print"></i></button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="px-6">
+            <div class="flex items-center gap-1 border-b border-gray-200">
+                <button onclick="switchTab('view','viewBasicInfo', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 flex items-center gap-2 text-blue-600 border-blue-600">
+                    <i class="fas fa-info-circle"></i>Basic Info
+                </button>
+                <button onclick="switchTab('view','viewPolicies', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent flex items-center gap-2 text-gray-600 hover:text-gray-900">
+                    <i class="fas fa-file-contract"></i>Policies
+                    <span class="px-1.5 py-0.5 bg-purple-100 text-purple-700 text-xs rounded-full font-semibold">6</span>
+                </button>
+                <button onclick="switchTab('view','viewEmployees', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent flex items-center gap-2 text-gray-600 hover:text-gray-900">
+                    <i class="fas fa-users"></i>Employees
+                    <span class="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full font-semibold">1,245</span>
+                </button>
+                <button onclick="switchTab('view','viewAnalytics', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent flex items-center gap-2 text-gray-600 hover:text-gray-900">
+                    <i class="fas fa-chart-bar"></i>Analytics
+                </button>
+                <button onclick="switchTab('view','viewJsonEditor', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent flex items-center gap-2 text-gray-600 hover:text-gray-900">
+                    <i class="fas fa-file-code"></i>JSON
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="p-6">
+        <div class="max-w-7xl mx-auto">
+            
+            <!-- TAB 1: Basic Info -->
+            <div id="viewBasicInfo" class="tab-content active">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-2 space-y-6">
+                        <!-- Mode Indicator -->
+                        <div class="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                            <div class="flex items-start gap-3">
+                                <div class="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center">
+                                    <i class="fas fa-wallet text-white text-xl"></i>
+                                </div>
+                                <div class="flex-1">
+                                    <div class="text-sm font-semibold text-gray-900 mb-1">ACCOUNT Mode - Balance-Based Leave</div>
+                                    <div class="text-sm text-gray-700">
+                                        This class operates with accrual-based leave balances. Employees earn leave over time and use from their available balance.
+                                        <strong>Applicable policies:</strong> Eligibility, Accrual, Carry Forward, Overdraft (optional), Validation.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- General Information -->
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
+                                <h3 class="text-lg font-semibold text-gray-900">General Information</h3>
+                            </div>
+                            <div class="p-6">
+                                <dl class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div>
+                                        <dt class="text-sm font-medium text-gray-500 mb-1">Leave Class ID</dt>
+                                        <dd class="text-sm text-gray-900 font-mono bg-gray-50 px-3 py-2 rounded">LC-VN-ANNUAL-001</dd>
+                                    </div>
+                                    <div>
+                                        <dt class="text-sm font-medium text-gray-500 mb-1">Mode</dt>
+                                        <dd><span class="px-3 py-1 bg-blue-100 text-blue-800 text-sm rounded-full font-medium">ACCOUNT</span></dd>
+                                    </div>
+                                    <div class="md:col-span-2">
+                                        <dt class="text-sm font-medium text-gray-500 mb-1">Class Name</dt>
+                                        <dd class="text-base text-gray-900 font-medium">VN Standard Annual Leave</dd>
+                                    </div>
+                                    <div class="md:col-span-2">
+                                        <dt class="text-sm font-medium text-gray-500 mb-1">Description</dt>
+                                        <dd class="text-sm text-gray-700 bg-gray-50 p-3 rounded">
+                                            Annual leave entitlement for Vietnam employees. Accrues monthly at 1.75 days/month (21 days/year). Balance-based with carry forward up to 5 days and optional overdraft.
+                                        </dd>
+                                    </div>
+                                    <div>
+                                        <dt class="text-sm font-medium text-gray-500 mb-1">Leave Type</dt>
+                                        <dd class="flex items-center gap-2">
+                                            <span class="text-sm text-gray-900 font-medium">Annual Leave</span>
+                                            <a href="#" class="text-blue-600 hover:text-blue-700 text-xs"><i class="fas fa-external-link-alt"></i></a>
+                                        </dd>
+                                    </div>
+                                    <div>
+                                        <dt class="text-sm font-medium text-gray-500 mb-1">Country</dt>
+                                        <dd class="text-sm text-gray-900">🇻🇳 Vietnam</dd>
+                                    </div>
+                                    <div>
+                                        <dt class="text-sm font-medium text-gray-500 mb-1">Status</dt>
+                                        <dd><span class="px-3 py-1 bg-green-100 text-green-800 text-sm rounded-full font-medium">
+                                            <i class="fas fa-circle text-xs mr-1"></i>Active</span>
+                                        </dd>
+                                    </div>
+                                    <div>
+                                        <dt class="text-sm font-medium text-gray-500 mb-1">Period Profile</dt>
+                                        <dd class="text-sm text-gray-900">Calendar Year (Jan 1 - Dec 31)</dd>
+                                    </div>
+                                </dl>
+                            </div>
+                        </div>
+
+                        <!-- Leave Type Reference -->
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-green-50 to-green-100">
+                                <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                    <i class="fas fa-umbrella-beach text-green-600"></i>
+                                    Inherited from Leave Type
+                                </h3>
+                            </div>
+                            <div class="p-6">
+                                <div class="flex items-start gap-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                                    <div class="w-12 h-12 bg-green-600 rounded-lg flex items-center justify-center">
+                                        <i class="fas fa-umbrella-beach text-white text-xl"></i>
+                                    </div>
+                                    <div class="flex-1">
+                                        <div class="flex items-center justify-between mb-2">
+                                            <div>
+                                                <div class="text-sm font-semibold text-gray-900">Annual Leave</div>
+                                                <div class="text-xs text-gray-600">LT-ANNUAL-001</div>
+                                            </div>
+                                            <a href="#" class="px-3 py-1.5 text-xs bg-white text-green-700 rounded-lg hover:bg-green-100 font-medium border border-green-300">
+                                                <i class="fas fa-external-link-alt mr-1"></i>View Type
+                                            </a>
+                                        </div>
+                                        <div class="grid grid-cols-2 gap-3 mt-3 text-sm">
+                                            <div>
+                                                <div class="text-xs text-gray-500">Unit</div>
+                                                <div class="font-medium text-gray-900">Days (0.5 min)</div>
+                                            </div>
+                                            <div>
+                                                <div class="text-xs text-gray-500">Properties</div>
+                                                <div class="flex gap-1">
+                                                    <span class="px-2 py-0.5 bg-green-100 text-green-800 text-xs rounded-full">Paid</span>
+                                                    <span class="px-2 py-0.5 bg-purple-100 text-purple-800 text-xs rounded-full">Quota</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Sidebar -->
+                    <div class="space-y-6">
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-4">Quick Stats</h3>
+                            <div class="space-y-4">
+                                <div>
+                                    <div class="flex items-center justify-between text-sm mb-1">
+                                        <span class="text-gray-600">Active Employees</span>
+                                        <span class="font-semibold text-gray-900">1,245</span>
+                                    </div>
+                                    <div class="w-full bg-gray-200 rounded-full h-2">
+                                        <div class="bg-blue-600 h-2 rounded-full" style="width: 100%"></div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div class="flex items-center justify-between text-sm mb-1">
+                                        <span class="text-gray-600">Linked Policies</span>
+                                        <span class="font-semibold text-purple-600">6</span>
+                                    </div>
+                                    <div class="w-full bg-gray-200 rounded-full h-2">
+                                        <div class="bg-purple-600 h-2 rounded-full" style="width: 100%"></div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div class="flex items-center justify-between text-sm mb-1">
+                                        <span class="text-gray-600">Avg Balance</span>
+                                        <span class="font-semibold text-green-600">14.2 days</span>
+                                    </div>
+                                    <div class="w-full bg-gray-200 rounded-full h-2">
+                                        <div class="bg-green-600 h-2 rounded-full" style="width: 68%"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-4">Mode Features</h3>
+                            <div class="space-y-3 text-sm">
+                                <div class="flex items-center gap-2 p-2 bg-blue-50 rounded">
+                                    <i class="fas fa-check-circle text-blue-600"></i>
+                                    <span class="text-gray-700">Balance Tracking</span>
+                                </div>
+                                <div class="flex items-center gap-2 p-2 bg-purple-50 rounded">
+                                    <i class="fas fa-check-circle text-purple-600"></i>
+                                    <span class="text-gray-700">Monthly Accrual</span>
+                                </div>
+                                <div class="flex items-center gap-2 p-2 bg-amber-50 rounded">
+                                    <i class="fas fa-check-circle text-amber-600"></i>
+                                    <span class="text-gray-700">Carry Forward</span>
+                                </div>
+                                <div class="flex items-center gap-2 p-2 bg-green-50 rounded">
+                                    <i class="fas fa-check-circle text-green-600"></i>
+                                    <span class="text-gray-700">Overdraft Allowed</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl border border-blue-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-4">Quick Actions</h3>
+                            <div class="space-y-2">
+                                <button class="w-full px-4 py-2 bg-white hover:bg-blue-50 text-sm text-gray-700 rounded-lg flex items-center gap-2 border border-blue-200">
+                                    <i class="fas fa-pen text-blue-600"></i><span>Edit Class</span>
+                                </button>
+                                <button class="w-full px-4 py-2 bg-white hover:bg-blue-50 text-sm text-gray-700 rounded-lg flex items-center gap-2 border border-blue-200">
+                                    <i class="fas fa-users text-blue-600"></i><span>Manage Employees</span>
+                                </button>
+                                <button class="w-full px-4 py-2 bg-white hover:bg-blue-50 text-sm text-gray-700 rounded-lg flex items-center gap-2 border border-blue-200">
+                                    <i class="fas fa-chart-bar text-blue-600"></i><span>View Reports</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 2: Policies (UPDATED with Overdraft & Limits) -->
+            <div id="viewPolicies" class="tab-content">
+                <div class="space-y-6">
+                    <!-- Mode Context Banner -->
+                    <div class="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                        <div class="flex items-start gap-3">
+                            <i class="fas fa-info-circle text-blue-600 mt-0.5"></i>
+                            <div class="text-sm text-gray-700">
+                                <strong class="text-gray-900">ACCOUNT Mode Policies</strong> - This class uses balance-based leave management. 
+                                <strong>Applicable:</strong> Eligibility, Accrual, Carry Forward, Overdraft (optional), Limits (not applicable), Validation.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 1. Eligibility Rules -->
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                        <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-blue-100 flex items-center justify-between">
+                            <div>
+                                <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                    <i class="fas fa-user-check text-blue-600"></i>
+                                    Eligibility Rules
+                                </h3>
+                                <p class="text-sm text-gray-600 mt-0.5">Who can use this leave class</p>
+                            </div>
+                            <a href="#" class="px-3 py-1.5 text-xs bg-white text-blue-700 rounded-lg hover:bg-blue-100 font-medium border border-blue-300">
+                                <i class="fas fa-external-link-alt mr-1"></i>View Full Policy
+                            </a>
+                        </div>
+                        <div class="p-6">
+                            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                <div class="text-sm font-medium text-gray-900 mb-3">VN Standard Employee Eligibility (POL-ELIG-VN-STD-001)</div>
+                                <div class="space-y-2">
+                                    <div class="flex items-center gap-2 text-sm text-gray-700">
+                                        <i class="fas fa-check text-green-600"></i>
+                                        <span>All Active Employees</span>
+                                    </div>
+                                    <div class="flex items-center gap-2 text-sm text-gray-700">
+                                        <i class="fas fa-check text-green-600"></i>
+                                        <span>Employment Type: <strong>Full-time, Part-time</strong></span>
+                                    </div>
+                                    <div class="flex items-center gap-2 text-sm text-gray-700">
+                                        <i class="fas fa-check text-green-600"></i>
+                                        <span>Country: <strong>Vietnam</strong></span>
+                                    </div>
+                                    <div class="flex items-center gap-2 text-sm text-gray-700">
+                                        <i class="fas fa-clock text-amber-600"></i>
+                                        <span>Waiting Period: <strong>180 days from hire date</strong></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 2. Accrual Rules -->
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                        <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-purple-100 flex items-center justify-between">
+                            <div>
+                                <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                    <i class="fas fa-seedling text-purple-600"></i>
+                                    Accrual Rules
+                                </h3>
+                                <p class="text-sm text-gray-600 mt-0.5">How leave is earned (ACCOUNT mode only)</p>
+                            </div>
+                            <a href="#" class="px-3 py-1.5 text-xs bg-white text-purple-700 rounded-lg hover:bg-purple-100 font-medium border border-purple-300">
+                                <i class="fas fa-external-link-alt mr-1"></i>View Full Policy
+                            </a>
+                        </div>
+                        <div class="p-6">
+                            <div class="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                                <div class="text-sm font-medium text-gray-900 mb-3">VN Annual Leave Accrual (POL-ACCR-VN-ANNUAL-001)</div>
+                                <div class="grid grid-cols-2 gap-4 mt-3">
+                                    <div class="text-sm">
+                                        <div class="text-gray-500 mb-1">Frequency</div>
+                                        <div class="font-semibold text-purple-900">Monthly</div>
+                                    </div>
+                                    <div class="text-sm">
+                                        <div class="text-gray-500 mb-1">Amount</div>
+                                        <div class="font-semibold text-purple-900">1.75 days/month</div>
+                                    </div>
+                                    <div class="text-sm">
+                                        <div class="text-gray-500 mb-1">Annual Total</div>
+                                        <div class="font-semibold text-purple-900">21 days/year</div>
+                                    </div>
+                                    <div class="text-sm">
+                                        <div class="text-gray-500 mb-1">Proration</div>
+                                        <div class="font-semibold text-purple-900">By working days</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 3. Carry Forward Rules -->
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                        <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-amber-50 to-amber-100 flex items-center justify-between">
+                            <div>
+                                <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                    <i class="fas fa-forward text-amber-600"></i>
+                                    Carry Forward Rules
+                                </h3>
+                                <p class="text-sm text-gray-600 mt-0.5">End-of-period balance treatment (ACCOUNT mode)</p>
+                            </div>
+                            <a href="#" class="px-3 py-1.5 text-xs bg-white text-amber-700 rounded-lg hover:bg-amber-100 font-medium border border-amber-300">
+                                <i class="fas fa-external-link-alt mr-1"></i>View Full Policy
+                            </a>
+                        </div>
+                        <div class="p-6">
+                            <div class="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                                <div class="text-sm font-medium text-gray-900 mb-3">VN Carry Forward 5 Days (POL-CARRY-VN-STD-001)</div>
+                                <div class="space-y-2 text-sm text-gray-700">
+                                    <div class="flex items-center gap-2">
+                                        <i class="fas fa-check text-green-600"></i>
+                                        <span>Maximum: <strong>5 days</strong></span>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <i class="fas fa-check text-green-600"></i>
+                                        <span>Expiry: <strong>March 31 next year</strong></span>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <i class="fas fa-check text-green-600"></i>
+                                        <span>Excess balance forfeited</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 4. Overdraft Rules (NEW - ACCOUNT mode only) -->
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                        <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-indigo-50 to-indigo-100 flex items-center justify-between">
+                            <div>
+                                <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                    <i class="fas fa-hand-holding-usd text-indigo-600"></i>
+                                    Overdraft Rules
+                                </h3>
+                                <p class="text-sm text-gray-600 mt-0.5">Advance leave - use before accrued (ACCOUNT mode)</p>
+                            </div>
+                            <a href="#" class="px-3 py-1.5 text-xs bg-white text-indigo-700 rounded-lg hover:bg-indigo-100 font-medium border border-indigo-300">
+                                <i class="fas fa-external-link-alt mr-1"></i>View Full Policy
+                            </a>
+                        </div>
+                        <div class="p-6">
+                            <div class="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
+                                <div class="text-sm font-medium text-gray-900 mb-3">VN Standard Overdraft 5 Days (POL-OD-VN-STD-001)</div>
+                                <div class="space-y-2 text-sm text-gray-700">
+                                    <div class="flex items-center gap-2">
+                                        <i class="fas fa-check text-green-600"></i>
+                                        <span>Maximum Overdraft: <strong>-5 days</strong></span>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <i class="fas fa-check text-green-600"></i>
+                                        <span>Requires: <strong>Manager + HR approval</strong></span>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <i class="fas fa-check text-green-600"></i>
+                                        <span>Auto-deduct from future accruals</span>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <i class="fas fa-exclamation-triangle text-amber-600"></i>
+                                        <span>Payroll deduction on termination if not repaid</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 5. Usage Limits (NEW - LIMIT mode only - NOT APPLICABLE here) -->
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 opacity-50">
+                        <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-orange-50 to-orange-100 flex items-center justify-between">
+                            <div>
+                                <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                    <i class="fas fa-chart-line text-orange-600"></i>
+                                    Usage Limits
+                                </h3>
+                                <p class="text-sm text-gray-600 mt-0.5">Usage caps without balance (LIMIT mode only)</p>
+                            </div>
+                            <span class="px-3 py-1 bg-gray-100 text-gray-600 text-xs rounded-full font-semibold">NOT APPLICABLE</span>
+                        </div>
+                        <div class="p-6">
+                            <div class="text-center py-8 text-gray-500">
+                                <i class="fas fa-info-circle text-4xl mb-2 text-gray-300"></i>
+                                <p class="text-sm"><strong>Not applicable for ACCOUNT mode.</strong></p>
+                                <p class="text-sm">Usage Limits are only for LIMIT mode classes (e.g., Sick Leave, Unpaid Leave).</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 6. Validation Rules -->
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                        <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-red-50 to-red-100 flex items-center justify-between">
+                            <div>
+                                <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                    <i class="fas fa-shield-check text-red-600"></i>
+                                    Validation Rules
+                                </h3>
+                                <p class="text-sm text-gray-600 mt-0.5">Request validation checks (All modes)</p>
+                            </div>
+                            <a href="#" class="px-3 py-1.5 text-xs bg-white text-red-700 rounded-lg hover:bg-red-100 font-medium border border-red-300">
+                                <i class="fas fa-external-link-alt mr-1"></i>View Full Policy
+                            </a>
+                        </div>
+                        <div class="p-6">
+                            <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+                                <div class="text-sm font-medium text-gray-900 mb-3">VN Annual Leave Validation (POL-VAL-VN-ANNUAL-001)</div>
+                                <div class="space-y-2 text-sm text-gray-700">
+                                    <div class="flex items-center gap-2">
+                                        <i class="fas fa-check text-green-600"></i>
+                                        <span>Advance Notice: <strong>3 days minimum</strong></span>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <i class="fas fa-check text-green-600"></i>
+                                        <span>Manager Approval: <strong>Required</strong></span>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <i class="fas fa-check text-green-600"></i>
+                                        <span>Team Limit Check: <strong>Max 30% concurrent</strong></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 3: Employees -->
+            <div id="viewEmployees" class="tab-content">
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                    <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-blue-100 flex items-center justify-between">
+                        <div>
+                            <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                <i class="fas fa-users text-blue-600"></i>
+                                Enrolled Employees
+                            </h3>
+                            <p class="text-sm text-gray-600 mt-1">1,245 employees with active leave accounts</p>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <input type="search" placeholder="Search employees..." class="px-4 py-2 border border-gray-300 rounded-lg text-sm">
+                            <button class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium">
+                                <i class="fas fa-download mr-2"></i>Export
+                            </button>
+                        </div>
+                    </div>
+                    <div class="p-6">
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm">
+                                <thead class="bg-gray-50 border-b border-gray-200">
+                                    <tr>
+                                        <th class="px-4 py-3 text-left font-semibold text-gray-900">Employee</th>
+                                        <th class="px-4 py-3 text-center font-semibold text-gray-900">Current Balance</th>
+                                        <th class="px-4 py-3 text-center font-semibold text-gray-900">Hold Qty</th>
+                                        <th class="px-4 py-3 text-center font-semibold text-gray-900">Available</th>
+                                        <th class="px-4 py-3 text-center font-semibold text-gray-900">YTD Used</th>
+                                        <th class="px-4 py-3 text-center font-semibold text-gray-900">Overdraft</th>
+                                        <th class="px-4 py-3 text-right font-semibold text-gray-900">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-200">
+                                    <tr class="hover:bg-gray-50">
+                                        <td class="px-4 py-3">
+                                            <div class="flex items-center gap-3">
+                                                <div class="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center font-semibold text-blue-700 text-xs">NA</div>
+                                                <div>
+                                                    <div class="font-medium text-gray-900">Nguyen Van A</div>
+                                                    <div class="text-xs text-gray-600">EMP-VN-001</div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td class="px-4 py-3 text-center font-semibold text-blue-700">18.5 days</td>
+                                        <td class="px-4 py-3 text-center text-amber-600">2.0 days</td>
+                                        <td class="px-4 py-3 text-center font-semibold text-green-700">16.5 days</td>
+                                        <td class="px-4 py-3 text-center text-gray-700">5.5 days</td>
+                                        <td class="px-4 py-3 text-center text-gray-500">0</td>
+                                        <td class="px-4 py-3 text-right">
+                                            <button class="text-blue-600 hover:text-blue-800 text-xs"><i class="fas fa-eye mr-1"></i>View</button>
+                                        </td>
+                                    </tr>
+                                    <tr class="hover:bg-gray-50">
+                                        <td class="px-4 py-3">
+                                            <div class="flex items-center gap-3">
+                                                <div class="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center font-semibold text-purple-700 text-xs">TB</div>
+                                                <div>
+                                                    <div class="font-medium text-gray-900">Tran Thi B</div>
+                                                    <div class="text-xs text-gray-600">EMP-VN-002</div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td class="px-4 py-3 text-center font-semibold text-red-700">-2.5 days</td>
+                                        <td class="px-4 py-3 text-center text-amber-600">0 days</td>
+                                        <td class="px-4 py-3 text-center font-semibold text-green-700">2.5 days</td>
+                                        <td class="px-4 py-3 text-center text-gray-700">12.0 days</td>
+                                        <td class="px-4 py-3 text-center">
+                                            <span class="px-2 py-0.5 bg-red-100 text-red-800 text-xs rounded-full font-semibold">-2.5</span>
+                                        </td>
+                                        <td class="px-4 py-3 text-right">
+                                            <button class="text-blue-600 hover:text-blue-800 text-xs"><i class="fas fa-eye mr-1"></i>View</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 4: Analytics -->
+            <div id="viewAnalytics" class="tab-content">
+                <div class="text-center py-12 text-gray-500">
+                    <i class="fas fa-chart-bar text-6xl mb-4 text-gray-300"></i>
+                    <p>Usage analytics for this leave class</p>
+                </div>
+            </div>
+
+            <!-- TAB 5: JSON -->
+            <div id="viewJsonEditor" class="tab-content">
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                    <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-gray-700 to-gray-800">
+                        <h3 class="text-lg font-semibold text-white flex items-center gap-2">
+                            <i class="fas fa-file-code"></i>JSON Configuration (Read-only)
+                        </h3>
+                    </div>
+                    <div class="p-6">
+                        <pre class="bg-gray-900 text-gray-100 p-6 rounded-lg overflow-x-auto text-sm font-mono"><code>{
+  "leaveClassId": "LC-VN-ANNUAL-001",
+  "leaveTypeId": "LT-ANNUAL-001",
+  "mode": "ACCOUNT",
+  "name": "VN Standard Annual Leave",
+  "countryCode": "VN",
+  "periodProfile": "CALENDAR_YEAR",
+  "linkedPolicies": {
+    "eligibility": "POL-ELIG-VN-STD-001",
+    "accrual": "POL-ACCR-VN-ANNUAL-001",
+    "carryForward": "POL-CARRY-VN-STD-001",
+    "overdraft": "POL-OD-VN-STD-001",
+    "limits": null,
+    "validation": "POL-VAL-VN-ANNUAL-001"
+  }
+}</code></pre>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<!-- ==================== EDIT MODE (ORIGINAL with prefix) ==================== -->
+<div id="editMode" class="mode-container">
+<!-- Top Bar -->
+    <div class="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
+        <div class="px-6 py-3">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2 text-sm">
+                    <a href="#" class="text-blue-600 hover:text-blue-700">Leave Management</a>
+                    <i class="fas fa-chevron-right text-gray-400 text-xs"></i>
+                    <a href="#" class="text-blue-600 hover:text-blue-700">Leave Classes</a>
+                    <i class="fas fa-chevron-right text-gray-400 text-xs"></i>
+                    <span class="text-gray-900 font-medium">VN Standard Annual Leave</span>
+                    <span class="ml-2 px-2 py-0.5 bg-yellow-100 text-yellow-800 text-xs rounded-full font-medium">EDIT MODE</span>
+                </div>
+                
+                <div class="flex items-center gap-3">
+                    <button class="px-3 py-2 text-sm text-gray-600 hover:text-gray-900">
+                        <i class="fas fa-clock-rotate-left mr-2"></i>Version History
+                    </button>
+                    <div class="h-6 w-px bg-gray-300"></div>
+                    <button onclick="switchToMode('view')" class="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">
+                        Discard Changes
+                    </button>
+                    <button onclick="saveEditChanges()" class="px-5 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-sm font-medium">
+                        <i class="fas fa-save mr-2"></i>Save Changes
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Unsaved Changes Banner -->
+    <div class="bg-yellow-50 border-b border-yellow-200">
+        <div class="px-6 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <i class="fas fa-exclamation-triangle text-yellow-600"></i>
+                <span class="text-sm font-medium text-yellow-900">You have unsaved changes</span>
+                <button class="text-sm text-yellow-700 underline hover:text-yellow-900">View Changes</button>
+            </div>
+            <button class="text-yellow-600 hover:text-yellow-900"><i class="fas fa-times"></i></button>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <div class="bg-white border-b border-gray-200">
+        <div class="px-6 py-6">
+            <div class="flex items-start justify-between">
+                <div class="flex items-start gap-4">
+                    <div class="w-16 h-16 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
+                        <i class="fas fa-layer-group text-white text-2xl"></i>
+                    </div>
+                    <div>
+                        <div class="flex items-center gap-3 mb-1">
+                            <h1 class="text-2xl font-bold text-gray-900">VN Standard Annual Leave</h1>
+                            <span class="px-3 py-1 bg-green-100 text-green-800 text-sm font-medium rounded-full">Active</span>
+                            <span class="px-3 py-1 bg-blue-100 text-blue-800 text-sm font-medium rounded-full">ACCOUNT</span>
+                        </div>
+                        <p class="text-gray-600 mb-3">Annual leave with accrual, balance tracking and carry forward</p>
+                        <div class="flex items-center gap-6 text-sm text-gray-500">
+                            <span class="flex items-center gap-2"><i class="fas fa-hashtag"></i>LC-VN-ANNUAL-001</span>
+                            <span class="flex items-center gap-2"><i class="fas fa-calendar"></i>Created: Jan 10, 2025</span>
+                            <span class="flex items-center gap-2"><i class="fas fa-pen"></i>Modified: 3 days ago</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="flex items-center gap-2">
+                    <button class="p-2 text-gray-600 hover:bg-gray-100 rounded-lg" title="Clone"><i class="fas fa-copy"></i></button>
+                    <button class="p-2 text-gray-600 hover:bg-gray-100 rounded-lg" title="Share"><i class="fas fa-share-nodes"></i></button>
+                    <button class="p-2 text-red-600 hover:bg-red-50 rounded-lg" title="Delete"><i class="fas fa-trash"></i></button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="px-6">
+            <div class="flex items-center gap-1 border-b border-gray-200">
+                <button onclick="switchTab('edit','editBasicInfo', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 flex items-center gap-2 text-blue-600 border-blue-600">
+                    <i class="fas fa-info-circle"></i>Basic Info
+                </button>
+                <button onclick="switchTab('edit','editPolicies', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent flex items-center gap-2 text-gray-600 hover:text-gray-900">
+                    <i class="fas fa-file-contract"></i>Policies
+                </button>
+                <button onclick="switchTab('edit','editJsonEditor', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent flex items-center gap-2 text-gray-600 hover:text-gray-900">
+                    <i class="fas fa-file-code"></i>JSON Editor
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="p-6">
+        <div class="max-w-6xl mx-auto">
+            
+            <!-- TAB 1: Basic Info (EDIT MODE) -->
+            <div id="editBasicInfo" class="tab-content active">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-2 space-y-6">
+                        <div class="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                            <div class="flex items-start gap-3">
+                                <i class="fas fa-info-circle text-blue-600 mt-0.5"></i>
+                                <div class="flex-1">
+                                    <div class="text-sm font-medium text-gray-900 mb-1">Edit Mode Active</div>
+                                    <div class="text-sm text-gray-700">
+                                        Changes will create version <strong>v1.4.0</strong>. Current active version is <strong>v1.3.0</strong>.
+                                        Modified fields will be highlighted.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- General Information -->
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
+                                <h3 class="text-lg font-semibold text-gray-900">General Information</h3>
+                            </div>
+                            <div class="p-6 space-y-5">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Leave Class ID</label>
+                                    <input type="text" value="LC-VN-ANNUAL-001" readonly class="w-full px-4 py-2.5 bg-gray-100 border border-gray-300 rounded-lg text-gray-500 cursor-not-allowed">
+                                    <p class="mt-1.5 text-xs text-gray-500">Cannot be changed after creation</p>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Mode</label>
+                                    <input type="text" value="ACCOUNT" readonly class="w-full px-4 py-2.5 bg-gray-100 border border-gray-300 rounded-lg text-gray-500 cursor-not-allowed">
+                                    <p class="mt-1.5 text-xs text-gray-500">Cannot be changed after creation</p>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                                        Class Name <span class="text-red-500">*</span>
+                                    </label>
+                                    <input type="text" value="VN Standard Annual Leave" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                                    <textarea rows="3" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">Annual leave entitlement for Vietnam employees. Accrues monthly at 1.75 days/month (21 days/year). Balance-based with carry forward up to 5 days and optional overdraft.</textarea>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Leave Type</label>
+                                    <div class="flex items-center gap-3 p-4 bg-green-50 border border-green-200 rounded-lg">
+                                        <div class="w-10 h-10 bg-green-600 rounded-lg flex items-center justify-center">
+                                            <i class="fas fa-umbrella-beach text-white"></i>
+                                        </div>
+                                        <div>
+                                            <div class="text-sm font-medium text-gray-900">Annual Leave</div>
+                                            <div class="text-xs text-gray-600">LT-ANNUAL-001 (Cannot be changed)</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">Country</label>
+                                        <input type="text" value="Vietnam 🇻🇳" readonly class="w-full px-4 py-2.5 bg-gray-100 border border-gray-300 rounded-lg text-gray-500 cursor-not-allowed">
+                                        <p class="mt-1.5 text-xs text-gray-500">Cannot be changed</p>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">Business Unit (Optional)</label>
+                                        <select class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                            <option value="" selected>All Business Units</option>
+                                            <option value="bu001">BU-001 - Headquarters</option>
+                                            <option value="bu002">BU-002 - Sales</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                                    <div class="flex items-center gap-4">
+                                        <label class="flex items-center gap-2 cursor-pointer p-3 border-2 border-green-500 bg-green-50 rounded-lg">
+                                            <input type="radio" name="status" value="active" checked class="w-4 h-4 text-green-600">
+                                            <div>
+                                                <div class="text-sm font-medium text-gray-900">Active</div>
+                                                <div class="text-xs text-gray-600">Currently in use</div>
+                                            </div>
+                                        </label>
+                                        <label class="flex items-center gap-2 cursor-pointer p-3 border-2 border-gray-200 rounded-lg hover:border-yellow-500">
+                                            <input type="radio" name="status" value="draft" class="w-4 h-4 text-yellow-600">
+                                            <div>
+                                                <div class="text-sm font-medium text-gray-900">Draft</div>
+                                                <div class="text-xs text-gray-600">Pause usage</div>
+                                            </div>
+                                        </label>
+                                        <label class="flex items-center gap-2 cursor-pointer p-3 border-2 border-gray-200 rounded-lg hover:border-gray-500">
+                                            <input type="radio" name="status" value="inactive" class="w-4 h-4 text-gray-600">
+                                            <div>
+                                                <div class="text-sm font-medium text-gray-900">Inactive</div>
+                                                <div class="text-xs text-gray-600">Deactivate</div>
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Period Profile</label>
+                                    <select class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                        <option selected>Calendar Year (Jan 1 - Dec 31)</option>
+                                        <option>Fiscal Year (Apr 1 - Mar 31)</option>
+                                        <option>Rolling 12 Months</option>
+                                        <option>Custom Period</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Sidebar -->
+                    <div class="space-y-6">
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-4">Version Information</h3>
+                            <div class="space-y-3 text-sm">
+                                <div class="flex justify-between">
+                                    <span class="text-gray-600">Current Version</span>
+                                    <span class="font-medium text-gray-900">v1.3.0</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-gray-600">Next Version</span>
+                                    <span class="font-medium text-blue-600">v1.4.0</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-gray-600">Changes Count</span>
+                                    <span class="font-medium text-yellow-600">0 fields</span>
+                                </div>
+                            </div>
+                            <button class="mt-4 w-full px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg">
+                                <i class="fas fa-clock-rotate-left mr-2"></i>View All Versions
+                            </button>
+                        </div>
+
+                        <div class="bg-amber-50 rounded-xl border border-amber-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                <i class="fas fa-exclamation-triangle text-amber-600"></i>Impact Analysis
+                            </h3>
+                            <p class="text-sm text-gray-700 mb-3">This leave class is currently used by:</p>
+                            <div class="space-y-2 text-sm">
+                                <div class="flex items-center justify-between p-2 bg-white rounded">
+                                    <span class="text-gray-600">Active Employees</span>
+                                    <span class="font-semibold text-gray-900">1,245</span>
+                                </div>
+                                <div class="flex items-center justify-between p-2 bg-white rounded">
+                                    <span class="text-gray-600">Total Balances</span>
+                                    <span class="font-semibold text-gray-900">17,698 days</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 2: Policies (EDIT MODE with Overdraft & Limits) -->
+            <div id="editPolicies" class="tab-content">
+                <div class="space-y-6">
+                    <!-- Mode Context Banner -->
+                    <div class="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                        <div class="flex items-start gap-3">
+                            <i class="fas fa-info-circle text-blue-600 mt-0.5"></i>
+                            <div class="text-sm text-gray-700">
+                                <strong class="text-gray-900">ACCOUNT Mode Configuration</strong> - Select policies for balance-based leave management.
+                                <strong>Required:</strong> Eligibility, Accrual. <strong>Optional:</strong> Carry Forward, Overdraft, Validation. <strong>Not applicable:</strong> Limits (LIMIT mode only).
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 1. Eligibility Rules -->
+                    <div class="bg-white rounded-xl shadow-sm border-2 border-blue-300 shadow-blue-100">
+                        <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-blue-100 flex items-center justify-between">
+                            <div>
+                                <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                    <i class="fas fa-user-check text-blue-600"></i>
+                                    Eligibility Rules
+                                </h3>
+                                <p class="text-sm text-gray-600 mt-0.5">Define who can use this leave class</p>
+                            </div>
+                            <span class="px-3 py-1 bg-red-100 text-red-800 text-xs rounded-full font-semibold">REQUIRED</span>
+                        </div>
+                        <div class="p-6 space-y-4">
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-900 mb-3">
+                                    Select Eligibility Rules Policy <span class="text-red-500">*</span>
+                                </label>
+                                <select class="w-full px-4 py-2.5 border-2 border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white" required>
+                                    <option value="">-- Select Eligibility Policy --</option>
+                                    <option value="POL-ELIG-VN-STD-001" selected>VN Standard Employee Eligibility (POL-ELIG-VN-STD-001)</option>
+                                    <option value="POL-ELIG-VN-SNR-001">VN Senior Staff Eligibility (POL-ELIG-VN-SNR-001)</option>
+                                    <option value="POL-ELIG-GLOBAL-001">Global All Employees (POL-ELIG-GLOBAL-001)</option>
+                                </select>
+                                <p class="mt-2 text-xs text-gray-500">
+                                    <i class="fas fa-lightbulb mr-1"></i>Select a policy or <a href="#" class="text-blue-600 underline font-medium">create new</a>
+                                </p>
+                            </div>
+
+                            <div class="border-2 border-blue-300 rounded-lg p-4 bg-blue-50">
+                                <div class="flex items-start justify-between mb-3">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
+                                            <i class="fas fa-link text-white"></i>
+                                        </div>
+                                        <div>
+                                            <div class="text-sm font-semibold text-gray-900">VN Standard Employee Eligibility</div>
+                                            <div class="text-xs text-gray-600">POL-ELIG-VN-STD-001</div>
+                                        </div>
+                                    </div>
+                                    <a href="#" class="px-3 py-1.5 text-xs bg-white text-blue-700 rounded-lg hover:bg-blue-100 font-medium border border-blue-300">
+                                        <i class="fas fa-external-link-alt mr-1"></i>View/Edit
+                                    </a>
+                                </div>
+                                <div class="text-sm text-gray-700">
+                                    <strong>Preview:</strong> Active employees, Full-time/Part-time, Vietnam, 180 days waiting
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 2. Accrual Rules -->
+                    <div class="bg-white rounded-xl shadow-sm border-2 border-purple-300 shadow-purple-100">
+                        <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-purple-100 flex items-center justify-between">
+                            <div>
+                                <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                    <i class="fas fa-seedling text-purple-600"></i>
+                                    Accrual Rules
+                                </h3>
+                                <p class="text-sm text-gray-600 mt-0.5">Define how leave is earned (ACCOUNT mode)</p>
+                            </div>
+                            <span class="px-3 py-1 bg-red-100 text-red-800 text-xs rounded-full font-semibold">REQUIRED</span>
+                        </div>
+                        <div class="p-6 space-y-4">
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-900 mb-3">
+                                    Select Accrual Rules Policy <span class="text-red-500">*</span>
+                                </label>
+                                <select class="w-full px-4 py-2.5 border-2 border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500 bg-white" required>
+                                    <option value="">-- Select Accrual Policy --</option>
+                                    <option value="POL-ACCR-VN-ANNUAL-001" selected>VN Annual Leave Accrual (POL-ACCR-VN-ANNUAL-001)</option>
+                                    <option value="POL-ACCR-VN-SENIOR-001">VN Senior Staff Accrual (POL-ACCR-VN-SENIOR-001)</option>
+                                </select>
+                                <p class="mt-2 text-xs text-gray-500">
+                                    <i class="fas fa-lightbulb mr-1"></i><a href="#" class="text-purple-600 underline font-medium">Create new accrual policy</a>
+                                </p>
+                            </div>
+
+                            <div class="border-2 border-purple-300 rounded-lg p-4 bg-purple-50">
+                                <div class="flex items-start justify-between mb-3">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-10 h-10 bg-purple-600 rounded-lg flex items-center justify-center">
+                                            <i class="fas fa-link text-white"></i>
+                                        </div>
+                                        <div>
+                                            <div class="text-sm font-semibold text-gray-900">VN Annual Leave Accrual</div>
+                                            <div class="text-xs text-gray-600">POL-ACCR-VN-ANNUAL-001</div>
+                                        </div>
+                                    </div>
+                                    <a href="#" class="px-3 py-1.5 text-xs bg-white text-purple-700 rounded-lg hover:bg-purple-100 font-medium border border-purple-300">
+                                        <i class="fas fa-external-link-alt mr-1"></i>View/Edit
+                                    </a>
+                                </div>
+                                <div class="text-sm text-gray-700">
+                                    <strong>Preview:</strong> Monthly, 1.75 days/month (21/year), prorated
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 3. Carry Forward Rules -->
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                        <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-amber-50 to-amber-100 flex items-center justify-between">
+                            <div>
+                                <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                    <i class="fas fa-forward text-amber-600"></i>
+                                    Carry Forward Rules
+                                </h3>
+                                <p class="text-sm text-gray-600 mt-0.5">End-of-period balance treatment (Optional)</p>
+                            </div>
+                            <span class="px-3 py-1 bg-green-100 text-green-800 text-xs rounded-full font-semibold">OPTIONAL</span>
+                        </div>
+                        <div class="p-6 space-y-4">
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-900 mb-3">
+                                    Select Carry Forward Policy (Optional)
+                                </label>
+                                <select class="w-full px-4 py-2.5 border border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 bg-white">
+                                    <option value="">-- No Carry Forward (Forfeit All) --</option>
+                                    <option value="POL-CARRY-VN-STD-001" selected>VN Carry Forward 5 Days (POL-CARRY-VN-STD-001)</option>
+                                    <option value="POL-CARRY-VN-FULL-001">VN Full Carry Forward (POL-CARRY-VN-FULL-001)</option>
+                                </select>
+                                <p class="mt-2 text-xs text-gray-500">
+                                    <i class="fas fa-lightbulb mr-1"></i>Leave blank to forfeit or <a href="#" class="text-amber-600 underline font-medium">create new</a>
+                                </p>
+                            </div>
+
+                            <div class="border-2 border-amber-300 rounded-lg p-4 bg-amber-50">
+                                <div class="flex items-start justify-between mb-3">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-10 h-10 bg-amber-600 rounded-lg flex items-center justify-center">
+                                            <i class="fas fa-link text-white"></i>
+                                        </div>
+                                        <div>
+                                            <div class="text-sm font-semibold text-gray-900">VN Carry Forward 5 Days</div>
+                                            <div class="text-xs text-gray-600">POL-CARRY-VN-STD-001</div>
+                                        </div>
+                                    </div>
+                                    <a href="#" class="px-3 py-1.5 text-xs bg-white text-amber-700 rounded-lg hover:bg-amber-100 font-medium border border-amber-300">
+                                        <i class="fas fa-external-link-alt mr-1"></i>View/Edit
+                                    </a>
+                                </div>
+                                <div class="text-sm text-gray-700">
+                                    <strong>Preview:</strong> Max 5 days, expires Mar 31, excess forfeited
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 4. Overdraft Rules (NEW - ACCOUNT mode) -->
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                        <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-indigo-50 to-indigo-100 flex items-center justify-between">
+                            <div>
+                                <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                    <i class="fas fa-hand-holding-usd text-indigo-600"></i>
+                                    Overdraft Rules
+                                </h3>
+                                <p class="text-sm text-gray-600 mt-0.5">Advance leave - negative balance (ACCOUNT mode, Optional)</p>
+                            </div>
+                            <span class="px-3 py-1 bg-green-100 text-green-800 text-xs rounded-full font-semibold">OPTIONAL</span>
+                        </div>
+                        <div class="p-6 space-y-4">
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-900 mb-3">
+                                    Select Overdraft Policy (Optional)
+                                </label>
+                                <select class="w-full px-4 py-2.5 border border-indigo-300 rounded-lg focus:ring-2 focus:ring-indigo-500 bg-white">
+                                    <option value="">-- No Overdraft Allowed --</option>
+                                    <option value="POL-OD-VN-STD-001" selected>VN Standard Overdraft 5 Days (POL-OD-VN-STD-001)</option>
+                                    <option value="POL-OD-VN-SENIOR-001">VN Senior Staff Overdraft 10 Days (POL-OD-VN-SENIOR-001)</option>
+                                </select>
+                                <p class="mt-2 text-xs text-gray-500">
+                                    <i class="fas fa-lightbulb mr-1"></i>Leave blank to prevent overdraft or <a href="#" class="text-indigo-600 underline font-medium">create new</a>
+                                </p>
+                            </div>
+
+                            <div class="border-2 border-indigo-300 rounded-lg p-4 bg-indigo-50">
+                                <div class="flex items-start justify-between mb-3">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-10 h-10 bg-indigo-600 rounded-lg flex items-center justify-center">
+                                            <i class="fas fa-link text-white"></i>
+                                        </div>
+                                        <div>
+                                            <div class="text-sm font-semibold text-gray-900">VN Standard Overdraft 5 Days</div>
+                                            <div class="text-xs text-gray-600">POL-OD-VN-STD-001</div>
+                                        </div>
+                                    </div>
+                                    <a href="#" class="px-3 py-1.5 text-xs bg-white text-indigo-700 rounded-lg hover:bg-indigo-100 font-medium border border-indigo-300">
+                                        <i class="fas fa-external-link-alt mr-1"></i>View/Edit
+                                    </a>
+                                </div>
+                                <div class="text-sm text-gray-700">
+                                    <strong>Preview:</strong> Max -5 days, Manager+HR approval, auto-deduct from accruals
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 5. Usage Limits (NEW - NOT APPLICABLE for ACCOUNT mode) -->
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 opacity-60">
+                        <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-orange-50 to-orange-100 flex items-center justify-between">
+                            <div>
+                                <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                    <i class="fas fa-chart-line text-orange-600"></i>
+                                    Usage Limits
+                                </h3>
+                                <p class="text-sm text-gray-600 mt-0.5">Usage caps without balance (LIMIT mode only)</p>
+                            </div>
+                            <span class="px-3 py-1 bg-gray-200 text-gray-600 text-xs rounded-full font-semibold">NOT APPLICABLE</span>
+                        </div>
+                        <div class="p-6">
+                            <div class="bg-gray-100 border border-gray-300 rounded-lg p-4">
+                                <div class="text-center py-6 text-gray-500">
+                                    <i class="fas fa-info-circle text-3xl mb-2 text-gray-400"></i>
+                                    <p class="text-sm font-medium text-gray-700"><strong>Not applicable for ACCOUNT mode</strong></p>
+                                    <p class="text-sm mt-1">Usage Limits are only for LIMIT mode classes (Sick Leave, Unpaid Leave - no accrual, usage caps only).</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 6. Validation Rules -->
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                        <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-red-50 to-red-100 flex items-center justify-between">
+                            <div>
+                                <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                    <i class="fas fa-shield-check text-red-600"></i>
+                                    Validation Rules
+                                </h3>
+                                <p class="text-sm text-gray-600 mt-0.5">Request validation checks (Optional, All modes)</p>
+                            </div>
+                            <span class="px-3 py-1 bg-green-100 text-green-800 text-xs rounded-full font-semibold">OPTIONAL</span>
+                        </div>
+                        <div class="p-6 space-y-4">
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-900 mb-3">
+                                    Select Validation Rules Policy (Optional)
+                                </label>
+                                <select class="w-full px-4 py-2.5 border border-red-300 rounded-lg focus:ring-2 focus:ring-red-500 bg-white">
+                                    <option value="">-- No Validation Rules --</option>
+                                    <option value="POL-VAL-VN-ANNUAL-001" selected>VN Annual Leave Validation (POL-VAL-VN-ANNUAL-001)</option>
+                                    <option value="POL-VAL-VN-STRICT-001">VN Strict Validation (POL-VAL-VN-STRICT-001)</option>
+                                </select>
+                                <p class="mt-2 text-xs text-gray-500">
+                                    <i class="fas fa-lightbulb mr-1"></i>Basic validation only or <a href="#" class="text-red-600 underline font-medium">create new</a>
+                                </p>
+                            </div>
+
+                            <div class="border-2 border-red-300 rounded-lg p-4 bg-red-50">
+                                <div class="flex items-start justify-between mb-3">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-10 h-10 bg-red-600 rounded-lg flex items-center justify-center">
+                                            <i class="fas fa-link text-white"></i>
+                                        </div>
+                                        <div>
+                                            <div class="text-sm font-semibold text-gray-900">VN Annual Leave Validation</div>
+                                            <div class="text-xs text-gray-600">POL-VAL-VN-ANNUAL-001</div>
+                                        </div>
+                                    </div>
+                                    <a href="#" class="px-3 py-1.5 text-xs bg-white text-red-700 rounded-lg hover:bg-red-100 font-medium border border-red-300">
+                                        <i class="fas fa-external-link-alt mr-1"></i>View/Edit
+                                    </a>
+                                </div>
+                                <div class="text-sm text-gray-700">
+                                    <strong>Preview:</strong> 3 days advance, manager approval, max 30% team concurrent
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 3: JSON Editor (EDIT MODE) -->
+            <div id="editJsonEditor" class="tab-content">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-2 space-y-6">
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-gray-700 to-gray-800 flex items-center justify-between">
+                                <div>
+                                    <h3 class="text-lg font-semibold text-white flex items-center gap-2">
+                                        <i class="fas fa-file-code"></i>Edit JSON Configuration
+                                    </h3>
+                                    <p class="text-sm text-gray-300 mt-1">Direct JSON editing for advanced users</p>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <button class="px-3 py-1.5 text-sm bg-gray-600 hover:bg-gray-500 text-white rounded-lg">
+                                        <i class="fas fa-check mr-1"></i>Validate
+                                    </button>
+                                    <button class="px-3 py-1.5 text-sm bg-gray-600 hover:bg-gray-500 text-white rounded-lg">
+                                        <i class="fas fa-undo mr-1"></i>Reset
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="p-6">
+                                <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+                                    <div class="flex items-start gap-2 text-sm text-amber-800">
+                                        <i class="fas fa-exclamation-triangle mt-0.5"></i>
+                                        <div><strong>Warning:</strong> Invalid JSON will prevent saving. Use form editor for safer editing.</div>
+                                    </div>
+                                </div>
+
+                                <textarea rows="25" class="w-full px-4 py-3 bg-gray-900 text-gray-100 border border-gray-700 rounded-lg font-mono text-sm focus:ring-2 focus:ring-blue-500 leading-relaxed" spellcheck="false">{
+  "leaveClassId": "LC-VN-ANNUAL-001",
+  "leaveTypeId": "LT-ANNUAL-001",
+  "mode": "ACCOUNT",
+  "name": "VN Standard Annual Leave",
+  "description": "Annual leave with balance tracking",
+  "countryCode": "VN",
+  "businessUnitId": null,
+  "periodProfile": "CALENDAR_YEAR",
+  "status": "ACTIVE",
+  "linkedPolicies": {
+    "eligibility": "POL-ELIG-VN-STD-001",
+    "accrual": "POL-ACCR-VN-ANNUAL-001",
+    "carryForward": "POL-CARRY-VN-STD-001",
+    "overdraft": "POL-OD-VN-STD-001",
+    "limits": null,
+    "validation": "POL-VAL-VN-ANNUAL-001"
+  }
+}</textarea>
+
+                                <div class="mt-4 flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
+                                    <div class="flex items-center gap-2 text-sm text-green-800">
+                                        <i class="fas fa-check-circle"></i>
+                                        <span class="font-medium">Valid JSON</span>
+                                    </div>
+                                    <button class="text-green-800 underline hover:text-green-900 text-xs">Format JSON</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="space-y-6">
+                        <div class="bg-gradient-to-br from-gray-700 to-gray-800 text-white rounded-xl border border-gray-600 p-5">
+                            <h3 class="text-sm font-semibold mb-3">JSON Editor Controls</h3>
+                            <div class="space-y-2">
+                                <button class="w-full px-3 py-2 text-sm bg-gray-600 hover:bg-gray-500 rounded-lg text-left">
+                                    <i class="fas fa-check mr-2"></i>Validate JSON
+                                </button>
+                                <button class="w-full px-3 py-2 text-sm bg-gray-600 hover:bg-gray-500 rounded-lg text-left">
+                                    <i class="fas fa-paint-roller mr-2"></i>Auto Format
+                                </button>
+                                <button class="w-full px-3 py-2 text-sm bg-gray-600 hover:bg-gray-500 rounded-lg text-left">
+                                    <i class="fas fa-undo mr-2"></i>Reset Changes
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="bg-blue-50 rounded-xl border border-blue-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                <i class="fas fa-info-circle text-blue-600"></i>
+                                Policy Configuration
+                            </h3>
+                            <ul class="space-y-2 text-sm text-gray-700">
+                                <li class="flex items-center gap-2">
+                                    <i class="fas fa-check text-blue-600 text-xs"></i>
+                                    <span>All policies linked via ID</span>
+                                </li>
+                                <li class="flex items-center gap-2">
+                                    <i class="fas fa-check text-blue-600 text-xs"></i>
+                                    <span>Use null for no policy</span>
+                                </li>
+                                <li class="flex items-center gap-2">
+                                    <i class="fas fa-check text-blue-600 text-xs"></i>
+                                    <span>Limits N/A for ACCOUNT mode</span>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom Actions -->
+            <div class="mt-6 flex items-center justify-between p-4 bg-white rounded-xl shadow-sm border border-gray-200">
+                <button onclick="switchToMode('view')" class="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">
+                    <i class="fas fa-times mr-2"></i>Discard Changes
+                </button>
+                <div class="flex items-center gap-3">
+                    <button onclick="saveAsDraft()" class="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">
+                        Save as Draft
+                    </button>
+                    <button onclick="saveEditChanges()" class="px-6 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-sm font-medium">
+                        <i class="fas fa-save mr-2"></i>Save Changes
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ==================== NEW MODE (ORIGINAL with prefix) ==================== -->
+<div id="newMode" class="mode-container">
+<!-- Top Bar -->
+    <div class="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
+        <div class="px-6 py-3">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2 text-sm">
+                    <a href="#" class="text-blue-600 hover:text-blue-700">Leave Management</a>
+                    <i class="fas fa-chevron-right text-gray-400 text-xs"></i>
+                    <a href="#" class="text-blue-600 hover:text-blue-700">Leave Classes</a>
+                    <i class="fas fa-chevron-right text-gray-400 text-xs"></i>
+                    <span class="text-gray-900 font-medium">New Leave Class</span>
+                    <span class="ml-2 px-2 py-0.5 bg-blue-100 text-blue-800 text-xs rounded-full font-medium">NEW</span>
+                </div>
+                
+                <div class="flex items-center gap-3">
+                    <button onclick="switchToMode('view')" class="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+                    <button onclick="saveAsDraft()" class="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">
+                        <i class="fas fa-save mr-2"></i>Save as Draft
+                    </button>
+                    <button onclick="createAndActivate()" class="px-5 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-sm font-medium">
+                        <i class="fas fa-check mr-2"></i>Create & Activate
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <div class="bg-white border-b border-gray-200">
+        <div class="px-6 py-6">
+            <div class="flex items-start gap-4">
+                <div class="w-16 h-16 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
+                    <i class="fas fa-layer-group text-white text-2xl"></i>
+                </div>
+                <div class="flex-1">
+                    <h1 class="text-2xl font-bold text-gray-900 mb-1">Create New Leave Class</h1>
+                    <p class="text-gray-600">Define an operational leave class for a specific country or business unit</p>
+                    <div class="flex items-center gap-4 mt-3 text-sm text-gray-500">
+                        <span class="flex items-center gap-2">
+                            <i class="fas fa-info-circle"></i>Leave Class = Leave Type + Country/BU + Policies
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="px-6">
+            <div class="flex items-center gap-1 border-b border-gray-200">
+                <button onclick="switchTab('new','newBasicInfo', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 flex items-center gap-2 text-blue-600 border-blue-600">
+                    <i class="fas fa-info-circle"></i>Basic Info
+                </button>
+                <button onclick="switchTab('new','newPolicies', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent flex items-center gap-2 text-gray-600 hover:text-gray-900">
+                    <i class="fas fa-file-contract"></i>Policies
+                </button>
+                <button onclick="switchTab('new','newJsonEditor', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent flex items-center gap-2 text-gray-600 hover:text-gray-900">
+                    <i class="fas fa-file-code"></i>JSON Editor
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="p-6">
+        <div class="max-w-6xl mx-auto">
+            
+            <!-- TAB 1: Basic Info -->
+            <div id="newBasicInfo" class="tab-content active">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-2 space-y-6">
+                        <!-- Step Indicator -->
+                        <div class="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                            <div class="flex items-center gap-4">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-semibold text-sm">1</div>
+                                    <span class="text-sm font-medium text-gray-900">Basic Information</span>
+                                </div>
+                                <i class="fas fa-arrow-right text-gray-400"></i>
+                                <div class="flex items-center gap-3">
+                                    <div class="w-8 h-8 bg-gray-300 text-gray-600 rounded-full flex items-center justify-center font-semibold text-sm">2</div>
+                                    <span class="text-sm text-gray-600">Policy Configuration</span>
+                                </div>
+                                <i class="fas fa-arrow-right text-gray-400"></i>
+                                <div class="flex items-center gap-3">
+                                    <div class="w-8 h-8 bg-gray-300 text-gray-600 rounded-full flex items-center justify-center font-semibold text-sm">3</div>
+                                    <span class="text-sm text-gray-600">Review</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- General Information -->
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
+                                <h3 class="text-lg font-semibold text-gray-900">General Information</h3>
+                                <p class="text-sm text-gray-600 mt-0.5">Basic details about this leave class</p>
+                            </div>
+                            <div class="p-6 space-y-5">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Leave Class ID</label>
+                                    <input type="text" value="LC-AUTO-GENERATED" readonly class="w-full px-4 py-2.5 bg-gray-100 border border-gray-300 rounded-lg text-gray-500 cursor-not-allowed">
+                                    <p class="mt-1.5 text-xs text-gray-500">
+                                        <i class="fas fa-info-circle mr-1"></i>Will be auto-generated upon saving
+                                    </p>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                                        Select Leave Type <span class="text-red-500">*</span>
+                                    </label>
+                                    <select class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" required>
+                                        <option value="">-- Select a Leave Type --</option>
+                                        <option value="LT-ANNUAL-001">Annual Leave (LT-ANNUAL-001)</option>
+                                        <option value="LT-SICK-001">Sick Leave (LT-SICK-001)</option>
+                                        <option value="LT-MATERNITY-001">Maternity Leave (LT-MATERNITY-001)</option>
+                                        <option value="LT-UNPAID-001">Unpaid Leave (LT-UNPAID-001)</option>
+                                    </select>
+                                    <p class="mt-1.5 text-xs text-gray-500">Choose the base leave type for this class</p>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                                        Mode <span class="text-red-500">*</span>
+                                    </label>
+                                    <div class="space-y-3">
+                                        <label class="flex items-start gap-3 p-4 border-2 border-gray-200 rounded-lg cursor-pointer hover:border-blue-500 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50">
+                                            <input type="radio" name="mode" value="ACCOUNT" checked class="w-4 h-4 text-blue-600 mt-0.5" onchange="toggleModeFields()">
+                                            <div class="flex-1">
+                                                <div class="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                                                    <i class="fas fa-wallet text-blue-600"></i>
+                                                    ACCOUNT Mode - Balance-Based
+                                                </div>
+                                                <div class="text-xs text-gray-600 mt-1">
+                                                    Employees earn leave through accrual and use from their balance. Supports carry forward and overdraft.
+                                                    <strong>Example:</strong> Annual Leave, Vacation Leave.
+                                                </div>
+                                            </div>
+                                        </label>
+
+                                        <label class="flex items-start gap-3 p-4 border-2 border-gray-200 rounded-lg cursor-pointer hover:border-orange-500 has-[:checked]:border-orange-500 has-[:checked]:bg-orange-50">
+                                            <input type="radio" name="mode" value="LIMIT" class="w-4 h-4 text-orange-600 mt-0.5" onchange="toggleModeFields()">
+                                            <div class="flex-1">
+                                                <div class="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                                                    <i class="fas fa-chart-line text-orange-600"></i>
+                                                    LIMIT Mode - Usage Caps Only
+                                                </div>
+                                                <div class="text-xs text-gray-600 mt-1">
+                                                    No accrual or balance. Employees can request up to a defined limit per period.
+                                                    <strong>Example:</strong> Sick Leave (20 days/year cap), Unpaid Leave (30 days/year max).
+                                                </div>
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                                        Class Name <span class="text-red-500">*</span>
+                                    </label>
+                                    <input type="text" placeholder="e.g., VN Standard Annual Leave, SG Sick Leave" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" required>
+                                    <p class="mt-1.5 text-xs text-gray-500">Descriptive name for this operational class</p>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                                    <textarea rows="3" placeholder="Describe this leave class, its purpose, and applicable employees..." class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"></textarea>
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                                            Country <span class="text-red-500">*</span>
+                                        </label>
+                                        <select class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" required>
+                                            <option value="">Select country...</option>
+                                            <option value="VN">🇻🇳 Vietnam</option>
+                                            <option value="SG">🇸🇬 Singapore</option>
+                                            <option value="TH">🇹🇭 Thailand</option>
+                                            <option value="ID">🇮🇩 Indonesia</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">Business Unit (Optional)</label>
+                                        <select class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                            <option value="">All Business Units</option>
+                                            <option value="bu001">BU-001 - Headquarters</option>
+                                            <option value="bu002">BU-002 - Sales</option>
+                                            <option value="bu003">BU-003 - Operations</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Period Profile <span class="text-red-500">*</span></label>
+                                    <select class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" required>
+                                        <option value="">Select period...</option>
+                                        <option value="calendar" selected>Calendar Year (Jan 1 - Dec 31)</option>
+                                        <option value="fiscal">Fiscal Year (Apr 1 - Mar 31)</option>
+                                        <option value="rolling">Rolling 12 Months</option>
+                                        <option value="custom">Custom Period</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Initial Status <span class="text-red-500">*</span></label>
+                                    <div class="flex items-center gap-4">
+                                        <label class="flex items-center gap-2 cursor-pointer p-3 border-2 border-gray-200 rounded-lg hover:border-blue-500 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50">
+                                            <input type="radio" name="status" value="active" class="w-4 h-4 text-blue-600">
+                                            <div>
+                                                <div class="text-sm font-medium text-gray-900">Active</div>
+                                                <div class="text-xs text-gray-600">Ready immediately</div>
+                                            </div>
+                                        </label>
+                                        <label class="flex items-center gap-2 cursor-pointer p-3 border-2 border-gray-200 rounded-lg hover:border-yellow-500 has-[:checked]:border-yellow-500 has-[:checked]:bg-yellow-50">
+                                            <input type="radio" name="status" value="draft" checked class="w-4 h-4 text-yellow-600">
+                                            <div>
+                                                <div class="text-sm font-medium text-gray-900">Draft</div>
+                                                <div class="text-xs text-gray-600">Save for later</div>
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Sidebar -->
+                    <div class="space-y-6">
+                        <div class="bg-blue-50 rounded-xl border border-blue-200 p-5">
+                            <div class="flex items-center gap-2 mb-3">
+                                <i class="fas fa-lightbulb text-blue-600 text-lg"></i>
+                                <h3 class="text-sm font-semibold text-gray-900">Getting Started</h3>
+                            </div>
+                            <ul class="space-y-2 text-sm text-gray-700">
+                                <li class="flex items-start gap-2">
+                                    <i class="fas fa-check text-blue-600 mt-0.5"></i>
+                                    <span>Choose a Leave Type</span>
+                                </li>
+                                <li class="flex items-start gap-2">
+                                    <i class="fas fa-check text-blue-600 mt-0.5"></i>
+                                    <span>Select mode (ACCOUNT vs LIMIT)</span>
+                                </li>
+                                <li class="flex items-start gap-2">
+                                    <i class="fas fa-check text-blue-600 mt-0.5"></i>
+                                    <span>Specify country/BU</span>
+                                </li>
+                                <li class="flex items-start gap-2">
+                                    <i class="fas fa-check text-blue-600 mt-0.5"></i>
+                                    <span>Link policies (next step)</span>
+                                </li>
+                            </ul>
+                        </div>
+
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                <i class="fas fa-info-circle text-blue-600"></i>
+                                Mode Comparison
+                            </h3>
+                            <div class="space-y-3 text-xs">
+                                <div class="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                                    <div class="font-semibold text-gray-900 mb-1">ACCOUNT Mode</div>
+                                    <div class="text-gray-600">✓ Accrual, ✓ Balance, ✓ Carry, ✓ Overdraft</div>
+                                </div>
+                                <div class="p-3 bg-orange-50 rounded-lg border border-orange-200">
+                                    <div class="font-semibold text-gray-900 mb-1">LIMIT Mode</div>
+                                    <div class="text-gray-600">✗ No accrual, ✓ Usage caps only</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-amber-50 rounded-xl border border-amber-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                <i class="fas fa-exclamation-triangle text-amber-600"></i>
+                                Required Fields
+                            </h3>
+                            <ul class="space-y-1.5 text-sm text-gray-700">
+                                <li class="flex items-center gap-2">
+                                    <i class="fas fa-circle text-red-500 text-xs"></i>
+                                    <span>Leave Type</span>
+                                </li>
+                                <li class="flex items-center gap-2">
+                                    <i class="fas fa-circle text-red-500 text-xs"></i>
+                                    <span>Mode (ACCOUNT/LIMIT)</span>
+                                </li>
+                                <li class="flex items-center gap-2">
+                                    <i class="fas fa-circle text-red-500 text-xs"></i>
+                                    <span>Class Name</span>
+                                </li>
+                                <li class="flex items-center gap-2">
+                                    <i class="fas fa-circle text-red-500 text-xs"></i>
+                                    <span>Country</span>
+                                </li>
+                                <li class="flex items-center gap-2">
+                                    <i class="fas fa-circle text-red-500 text-xs"></i>
+                                    <span>Required policies (next step)</span>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 2: Policies (NEW MODE - Mode-aware) -->
+            <div id="newPolicies" class="tab-content">
+                <div class="space-y-6">
+                    <!-- Step Indicator -->
+                    <div class="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                        <div class="flex items-center gap-4">
+                            <div class="flex items-center gap-3">
+                                <div class="w-8 h-8 bg-green-500 text-white rounded-full flex items-center justify-center">
+                                    <i class="fas fa-check text-sm"></i>
+                                </div>
+                                <span class="text-sm text-gray-600">Basic Information</span>
+                            </div>
+                            <i class="fas fa-arrow-right text-gray-400"></i>
+                            <div class="flex items-center gap-3">
+                                <div class="w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-semibold text-sm">2</div>
+                                <span class="text-sm font-medium text-gray-900">Policy Configuration</span>
+                            </div>
+                            <i class="fas fa-arrow-right text-gray-400"></i>
+                            <div class="flex items-center gap-3">
+                                <div class="w-8 h-8 bg-gray-300 text-gray-600 rounded-full flex items-center justify-center font-semibold text-sm">3</div>
+                                <span class="text-sm text-gray-600">Review</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ACCOUNT Mode Policies -->
+                    <div id="new-accountModePolicies" class="mode-section active">
+                        <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
+                            <div class="flex items-start gap-3">
+                                <i class="fas fa-wallet text-blue-600 mt-0.5 text-lg"></i>
+                                <div class="text-sm text-gray-700">
+                                    <strong class="text-gray-900">ACCOUNT Mode - Balance-Based Configuration</strong><br>
+                                    Select policies for accrual, balance tracking, carry forward, and optional overdraft.
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 1. Eligibility -->
+                        <div class="bg-white rounded-xl shadow-sm border-2 border-blue-300 mb-6">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-blue-100 flex items-center justify-between">
+                                <div>
+                                    <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                        <i class="fas fa-user-check text-blue-600"></i>
+                                        Eligibility Rules
+                                    </h3>
+                                    <p class="text-sm text-gray-600 mt-0.5">Who can use this leave class</p>
+                                </div>
+                                <span class="px-3 py-1 bg-red-100 text-red-800 text-xs rounded-full font-semibold">REQUIRED</span>
+                            </div>
+                            <div class="p-6">
+                                <select class="w-full px-4 py-2.5 border-2 border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500" required>
+                                    <option value="">-- Select Eligibility Policy --</option>
+                                    <option value="POL-ELIG-VN-STD-001">VN Standard Employee Eligibility (POL-ELIG-VN-STD-001)</option>
+                                    <option value="POL-ELIG-GLOBAL-001">Global All Employees (POL-ELIG-GLOBAL-001)</option>
+                                </select>
+                                <p class="mt-2 text-xs text-gray-500">
+                                    <i class="fas fa-lightbulb mr-1"></i><a href="#" class="text-blue-600 underline font-medium">Create new eligibility policy</a>
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- 2. Accrual -->
+                        <div class="bg-white rounded-xl shadow-sm border-2 border-purple-300 mb-6">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-purple-100 flex items-center justify-between">
+                                <div>
+                                    <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                        <i class="fas fa-seedling text-purple-600"></i>
+                                        Accrual Rules
+                                    </h3>
+                                    <p class="text-sm text-gray-600 mt-0.5">How leave is earned</p>
+                                </div>
+                                <span class="px-3 py-1 bg-red-100 text-red-800 text-xs rounded-full font-semibold">REQUIRED</span>
+                            </div>
+                            <div class="p-6">
+                                <select class="w-full px-4 py-2.5 border-2 border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500" required>
+                                    <option value="">-- Select Accrual Policy --</option>
+                                    <option value="POL-ACCR-VN-ANNUAL-001">VN Annual Leave Accrual - 1.75 days/month (POL-ACCR-VN-ANNUAL-001)</option>
+                                    <option value="POL-ACCR-VN-SENIOR-001">VN Senior Staff - 2.5 days/month (POL-ACCR-VN-SENIOR-001)</option>
+                                </select>
+                                <p class="mt-2 text-xs text-gray-500">
+                                    <i class="fas fa-lightbulb mr-1"></i><a href="#" class="text-purple-600 underline font-medium">Create new accrual policy</a>
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- 3. Carry Forward -->
+                        <div class="bg-white rounded-xl shadow-sm border border-amber-300 mb-6">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-amber-50 to-amber-100 flex items-center justify-between">
+                                <div>
+                                    <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                        <i class="fas fa-forward text-amber-600"></i>
+                                        Carry Forward Rules
+                                    </h3>
+                                    <p class="text-sm text-gray-600 mt-0.5">Balance rollover (Optional)</p>
+                                </div>
+                                <span class="px-3 py-1 bg-green-100 text-green-800 text-xs rounded-full font-semibold">OPTIONAL</span>
+                            </div>
+                            <div class="p-6">
+                                <select class="w-full px-4 py-2.5 border border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500">
+                                    <option value="">-- No Carry Forward (Forfeit All) --</option>
+                                    <option value="POL-CARRY-VN-STD-001">VN Carry Forward 5 Days (POL-CARRY-VN-STD-001)</option>
+                                    <option value="POL-CARRY-VN-FULL-001">VN Full Carry Forward (POL-CARRY-VN-FULL-001)</option>
+                                </select>
+                                <p class="mt-2 text-xs text-gray-500">
+                                    <i class="fas fa-lightbulb mr-1"></i><a href="#" class="text-amber-600 underline font-medium">Create new carry forward policy</a>
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- 4. Overdraft -->
+                        <div class="bg-white rounded-xl shadow-sm border border-indigo-300 mb-6">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-indigo-50 to-indigo-100 flex items-center justify-between">
+                                <div>
+                                    <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                        <i class="fas fa-hand-holding-usd text-indigo-600"></i>
+                                        Overdraft Rules
+                                    </h3>
+                                    <p class="text-sm text-gray-600 mt-0.5">Advance leave allowance (Optional)</p>
+                                </div>
+                                <span class="px-3 py-1 bg-green-100 text-green-800 text-xs rounded-full font-semibold">OPTIONAL</span>
+                            </div>
+                            <div class="p-6">
+                                <select class="w-full px-4 py-2.5 border border-indigo-300 rounded-lg focus:ring-2 focus:ring-indigo-500">
+                                    <option value="">-- No Overdraft Allowed --</option>
+                                    <option value="POL-OD-VN-STD-001">VN Standard Overdraft 5 Days (POL-OD-VN-STD-001)</option>
+                                    <option value="POL-OD-VN-SENIOR-001">VN Senior Staff 10 Days (POL-OD-VN-SENIOR-001)</option>
+                                </select>
+                                <p class="mt-2 text-xs text-gray-500">
+                                    <i class="fas fa-lightbulb mr-1"></i><a href="#" class="text-indigo-600 underline font-medium">Create new overdraft policy</a>
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- 5. Validation -->
+                        <div class="bg-white rounded-xl shadow-sm border border-red-300 mb-6">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-red-50 to-red-100 flex items-center justify-between">
+                                <div>
+                                    <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                        <i class="fas fa-shield-check text-red-600"></i>
+                                        Validation Rules
+                                    </h3>
+                                    <p class="text-sm text-gray-600 mt-0.5">Request validation (Optional)</p>
+                                </div>
+                                <span class="px-3 py-1 bg-green-100 text-green-800 text-xs rounded-full font-semibold">OPTIONAL</span>
+                            </div>
+                            <div class="p-6">
+                                <select class="w-full px-4 py-2.5 border border-red-300 rounded-lg focus:ring-2 focus:ring-red-500">
+                                    <option value="">-- Basic Validation Only --</option>
+                                    <option value="POL-VAL-VN-ANNUAL-001">VN Annual Validation (POL-VAL-VN-ANNUAL-001)</option>
+                                    <option value="POL-VAL-VN-STRICT-001">VN Strict Validation (POL-VAL-VN-STRICT-001)</option>
+                                </select>
+                                <p class="mt-2 text-xs text-gray-500">
+                                    <i class="fas fa-lightbulb mr-1"></i><a href="#" class="text-red-600 underline font-medium">Create new validation policy</a>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- LIMIT Mode Policies -->
+                    <div id="new-limitModePolicies" class="mode-section">
+                        <div class="bg-orange-50 border border-orange-200 rounded-xl p-4 mb-6">
+                            <div class="flex items-start gap-3">
+                                <i class="fas fa-chart-line text-orange-600 mt-0.5 text-lg"></i>
+                                <div class="text-sm text-gray-700">
+                                    <strong class="text-gray-900">LIMIT Mode - Usage Caps Configuration</strong><br>
+                                    Configure usage limits without accrual. Employees can request up to defined caps per period.
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 1. Eligibility -->
+                        <div class="bg-white rounded-xl shadow-sm border-2 border-blue-300 mb-6">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-blue-100 flex items-center justify-between">
+                                <div>
+                                    <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                        <i class="fas fa-user-check text-blue-600"></i>
+                                        Eligibility Rules
+                                    </h3>
+                                    <p class="text-sm text-gray-600 mt-0.5">Who can use this leave class</p>
+                                </div>
+                                <span class="px-3 py-1 bg-red-100 text-red-800 text-xs rounded-full font-semibold">REQUIRED</span>
+                            </div>
+                            <div class="p-6">
+                                <select class="w-full px-4 py-2.5 border-2 border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500" required>
+                                    <option value="">-- Select Eligibility Policy --</option>
+                                    <option value="POL-ELIG-VN-STD-001">VN Standard Employee Eligibility (POL-ELIG-VN-STD-001)</option>
+                                </select>
+                                <p class="mt-2 text-xs text-gray-500">
+                                    <i class="fas fa-lightbulb mr-1"></i><a href="#" class="text-blue-600 underline font-medium">Create new eligibility policy</a>
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- 2. Usage Limits -->
+                        <div class="bg-white rounded-xl shadow-sm border-2 border-orange-300 mb-6">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-orange-50 to-orange-100 flex items-center justify-between">
+                                <div>
+                                    <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                        <i class="fas fa-chart-line text-orange-600"></i>
+                                        Usage Limits
+                                    </h3>
+                                    <p class="text-sm text-gray-600 mt-0.5">Define usage caps (yearly, monthly, per-case)</p>
+                                </div>
+                                <span class="px-3 py-1 bg-red-100 text-red-800 text-xs rounded-full font-semibold">REQUIRED</span>
+                            </div>
+                            <div class="p-6">
+                                <select class="w-full px-4 py-2.5 border-2 border-orange-300 rounded-lg focus:ring-2 focus:ring-orange-500" required>
+                                    <option value="">-- Select Usage Limits Policy --</option>
+                                    <option value="POL-LMT-VN-SICK-001">VN Sick Leave Limits - 20 days/year (POL-LMT-VN-SICK-001)</option>
+                                    <option value="POL-LMT-VN-UNPAID-001">VN Unpaid Limits - 30 days/year (POL-LMT-VN-UNPAID-001)</option>
+                                </select>
+                                <p class="mt-2 text-xs text-gray-500">
+                                    <i class="fas fa-lightbulb mr-1"></i><a href="#" class="text-orange-600 underline font-medium">Create new limits policy</a>
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- 3. Validation -->
+                        <div class="bg-white rounded-xl shadow-sm border border-red-300 mb-6">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-red-50 to-red-100 flex items-center justify-between">
+                                <div>
+                                    <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                        <i class="fas fa-shield-check text-red-600"></i>
+                                        Validation Rules
+                                    </h3>
+                                    <p class="text-sm text-gray-600 mt-0.5">Request validation (Optional)</p>
+                                </div>
+                                <span class="px-3 py-1 bg-green-100 text-green-800 text-xs rounded-full font-semibold">OPTIONAL</span>
+                            </div>
+                            <div class="p-6">
+                                <select class="w-full px-4 py-2.5 border border-red-300 rounded-lg focus:ring-2 focus:ring-red-500">
+                                    <option value="">-- Basic Validation Only --</option>
+                                    <option value="POL-VAL-VN-SICK-001">VN Sick Leave Validation (POL-VAL-VN-SICK-001)</option>
+                                </select>
+                                <p class="mt-2 text-xs text-gray-500">
+                                    <i class="fas fa-lightbulb mr-1"></i><a href="#" class="text-red-600 underline font-medium">Create new validation policy</a>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 3: JSON Editor -->
+            <div id="newJsonEditor" class="tab-content">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-2">
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-gray-700 to-gray-800">
+                                <h3 class="text-lg font-semibold text-white flex items-center gap-2">
+                                    <i class="fas fa-file-code"></i>JSON Editor (Advanced)
+                                </h3>
+                                <p class="text-sm text-gray-300 mt-1">Optional - for experienced users</p>
+                            </div>
+                            <div class="p-6">
+                                <div class="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-4">
+                                    <div class="flex items-start gap-3">
+                                        <i class="fas fa-info-circle text-purple-600 mt-0.5"></i>
+                                        <div class="text-sm text-purple-900">
+                                            <strong>Advanced Mode</strong> - Use form editor for easier configuration.
+                                        </div>
+                                    </div>
+                                </div>
+                                <textarea rows="25" class="w-full px-4 py-3 bg-gray-900 text-gray-100 border border-gray-700 rounded-lg font-mono text-sm" placeholder='{"mode": "ACCOUNT", "leaveTypeId": "LT-ANNUAL-001", ...}'></textarea>
+                                <div class="mt-4 flex gap-2">
+                                    <button class="px-4 py-2 text-sm bg-gray-700 text-white rounded-lg hover:bg-gray-600">
+                                        <i class="fas fa-check mr-2"></i>Validate
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="bg-green-50 rounded-xl border border-green-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-3">Recommendation</h3>
+                            <p class="text-sm text-gray-700">Use the form editor for creating leave classes. It provides validation and prevents errors.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom Actions -->
+            <div class="mt-6 flex items-center justify-between p-4 bg-white rounded-xl shadow-sm border border-gray-200">
+                <button onclick="switchToMode('view')" class="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">
+                    <i class="fas fa-arrow-left mr-2"></i>Back to Library
+                </button>
+                <div class="flex items-center gap-3">
+                    <button onclick="saveAsDraft()" class="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">
+                        Save as Draft
+                    </button>
+                    <button onclick="createAndActivate()" class="px-6 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-sm font-medium">
+                        <i class="fas fa-check mr-2"></i>Create & Activate
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ==================== MODE SWITCHING & DATA LOADING SCRIPT ==================== -->
+<script>
+    let appData = {};
+    let currentMode = 'view';
+
+    // Load data from JSON on page load
+    function loadAppData() {
+        const dataScript = document.getElementById('appData');
+        appData = JSON.parse(dataScript.textContent);
+        console.log('Data loaded:', appData);
+
+        // Initial population
+        populateViewMode();
+        wireButtons();
+    }
+
+    // Wire up all buttons for mode switching
+    function wireButtons() {
+        // VIEW MODE BUTTONS
+        // Find "Edit" buttons in view mode and wire them
+        const viewEditButtons = document.querySelectorAll('#viewMode button');
+        viewEditButtons.forEach(btn => {
+            const btnText = btn.textContent.toLowerCase();
+            if (btnText.includes('edit') || btnText.includes('modify')) {
+                btn.onclick = () => switchToMode('edit');
+            }
+        });
+
+        // Add "New" button functionality
+        const viewNewButtons = document.querySelectorAll('#viewMode button');
+        viewNewButtons.forEach(btn => {
+            const btnText = btn.textContent.toLowerCase();
+            if (btnText.includes('new') || btnText.includes('create new')) {
+                btn.onclick = () => switchToMode('new');
+            }
+        });
+
+        // EDIT MODE BUTTONS
+        const editButtons = document.querySelectorAll('#editMode button');
+        editButtons.forEach(btn => {
+            const btnText = btn.textContent.toLowerCase();
+            if (btnText.includes('save changes')) {
+                btn.onclick = (e) => {
+                    e.preventDefault();
+                    saveEditChanges();
+                };
+            } else if (btnText.includes('discard') || btnText.includes('cancel')) {
+                btn.onclick = (e) => {
+                    e.preventDefault();
+                    switchToMode('view');
+                };
+            }
+        });
+
+        // NEW MODE BUTTONS
+        const newButtons = document.querySelectorAll('#newMode button');
+        newButtons.forEach(btn => {
+            const btnText = btn.textContent.toLowerCase();
+            if (btnText.includes('cancel')) {
+                btn.onclick = (e) => {
+                    e.preventDefault();
+                    switchToMode('view');
+                };
+            } else if (btnText.includes('save as draft')) {
+                btn.onclick = (e) => {
+                    e.preventDefault();
+                    saveAsDraft();
+                };
+            } else if (btnText.includes('create') && btnText.includes('activate')) {
+                btn.onclick = (e) => {
+                    e.preventDefault();
+                    createAndActivate();
+                };
+            }
+        });
+
+        console.log('Buttons wired for mode switching');
+    }
+
+    // Switch between modes
+    function switchToMode(mode) {
+        // Hide all modes
+        document.getElementById('viewMode').classList.remove('active');
+        document.getElementById('editMode').classList.remove('active');
+        document.getElementById('newMode').classList.remove('active');
+
+        // Show selected mode
+        currentMode = mode;
+        if (mode === 'view') {
+            document.getElementById('viewMode').classList.add('active');
+            populateViewMode();
+        } else if (mode === 'edit') {
+            document.getElementById('editMode').classList.add('active');
+            populateEditMode();
+        } else if (mode === 'new') {
+            document.getElementById('newMode').classList.add('active');
+            populateNewMode();
+        }
+
+        // Scroll to top
+        window.scrollTo(0, 0);
+
+        console.log('Switched to mode:', mode);
+    }
+
+    // Populate VIEW mode with JSON data
+    function populateViewMode() {
+        // Replace hardcoded values with data from appData JSON
+        // This is where you would implement data binding
+        console.log('View mode populated with:', appData);
+
+        // Example: Update title, description, etc. based on appData
+        // You can add specific implementation here
+    }
+
+    // Populate EDIT mode with JSON data
+    function populateEditMode() {
+        // Pre-fill form fields with current data
+        console.log('Edit mode populated with:', appData);
+
+        // Example: Fill form inputs with appData values
+        // You can add specific implementation here
+    }
+
+    // Initialize NEW mode
+    function populateNewMode() {
+        // Initialize empty form or default values
+        console.log('New mode initialized');
+    }
+
+    function switchTab(mode, tabId, button) {
+        const modeContainer = document.getElementById(`${mode}Mode`);
+        if (!modeContainer) return;
+
+        modeContainer.querySelectorAll('.tab-content').forEach(tab => {
+            tab.classList.remove('active');
+        });
+
+        const targetTab = modeContainer.querySelector(`#${tabId}`);
+        targetTab?.classList.add('active');
+
+        modeContainer.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.classList.remove('text-blue-600', 'border-blue-600');
+            btn.classList.add('text-gray-600', 'border-transparent');
+        });
+
+        if (button) {
+            button.classList.remove('text-gray-600', 'border-transparent');
+            button.classList.add('text-blue-600', 'border-blue-600');
+        }
+    }
+
+    function toggleModeFields() {
+        const mode = document.querySelector('input[name="mode"]:checked')?.value;
+        const accountSection = document.getElementById('new-accountModePolicies');
+        const limitSection = document.getElementById('new-limitModePolicies');
+
+        if (!accountSection || !limitSection || !mode) return;
+
+        if (mode === 'ACCOUNT') {
+            accountSection.classList.add('active');
+            limitSection.classList.remove('active');
+        } else {
+            accountSection.classList.remove('active');
+            limitSection.classList.add('active');
+        }
+    }
+
+    // Save edit changes
+    function saveEditChanges() {
+        console.log('Saving edit changes...');
+        // Collect form data and update appData
+        // For now, just show alert and go back to view
+        alert('Changes saved successfully!');
+
+        // Update appData from form fields here
+        // appData.name = document.getElementById('edit-name').value;
+        // etc...
+
+        switchToMode('view');
+    }
+
+    // Save as draft
+    function saveAsDraft() {
+        console.log('Saving as draft...');
+        alert('Leave class saved as draft!');
+
+        // Collect form data and create new leave class with DRAFT status
+        // appData = { ...collected data, status: 'DRAFT' };
+
+        switchToMode('view');
+    }
+
+    // Create and activate
+    function createAndActivate() {
+        console.log('Creating and activating leave class...');
+        alert('Leave class created and activated!');
+
+        // Collect form data and create new leave class with ACTIVE status
+        // appData = { ...collected data, status: 'ACTIVE' };
+
+        switchToMode('view');
+    }
+
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        loadAppData();
+
+        // Re-wire buttons after a short delay to ensure DOM is ready
+        setTimeout(() => {
+            wireButtons();
+        }, 100);
+    });
+</script>
+
+</body>
+</html>

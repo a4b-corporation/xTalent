@@ -1,0 +1,2191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Leave Type Management System</title>
+<meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>View Leave Type - Annual Leave</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+    </style>
+    <style>
+        /* Mode switching styles */
+        .mode-container { display: none; }
+        .mode-container.active { display: block; }
+    </style>
+</head>
+<body>
+
+<!-- ==================== DATA CONFIGURATION (JSON) ==================== -->
+<script id="appData" type="application/json">
+{
+    "leaveTypeId": "LT-VN-ANNUAL-001",
+    "name": "Annual Leave",
+    "displayName": "Annual Leave",
+    "code": "ANNUAL",
+    "description": "Paid annual leave for all full-time employees in Vietnam",
+    "category": "PAID_LEAVE",
+    "status": "ACTIVE",
+    "scope": {
+        "country": "VN",
+        "businessUnit": null,
+        "effectiveDate": "2025-01-01",
+        "expiryDate": null
+    },
+    "leaveTypeSettings": {
+        "isPaid": true,
+        "requiresApproval": true,
+        "allowHalfDay": true,
+        "allowHourly": false,
+        "countAsWorkingDay": false,
+        "affectsAttendance": true,
+        "visibleToEmployee": true,
+        "allowEmployeeRequest": true,
+        "color": "#4F46E5",
+        "icon": "calendar"
+    },
+    "accrualSettings": {
+        "hasAccrual": true,
+        "accrualPolicyId": "POL-ACC-VN-001",
+        "accrualPolicyName": "Vietnam Annual Leave Accrual",
+        "accrualFrequency": "MONTHLY",
+        "accrualRate": 1.0,
+        "accrualUnit": "DAYS_PER_MONTH"
+    },
+    "eligibilitySettings": {
+        "hasEligibility": true,
+        "eligibilityPolicyId": "POL-ELIG-VN-001",
+        "eligibilityPolicyName": "VN Employee Eligibility",
+        "requiredTenure": 90,
+        "requiredTenureUnit": "DAYS"
+    },
+    "validationSettings": {
+        "hasValidation": true,
+        "validationPolicyId": "POL-VAL-VN-001",
+        "validationPolicyName": "Vietnam Leave Request Validation",
+        "advanceNoticeDays": 7,
+        "maximumDaysPerRequest": 10
+    },
+    "balanceSettings": {
+        "hasBalance": true,
+        "trackBalance": true,
+        "initialBalance": 0,
+        "maxBalance": 30,
+        "allowNegativeBalance": false,
+        "carryOverAllowed": true,
+        "maxCarryOver": 10
+    },
+    "limitSettings": {
+        "hasLimits": true,
+        "limitPolicyId": "POL-LMT-VN-001",
+        "limitPolicyName": "Vietnam Leave Balance Limits",
+        "maxUsagePerYear": 20,
+        "maxConsecutiveDays": 15
+    },
+    "carryOverSettings": {
+        "hasCarryOver": true,
+        "carryOverPolicyId": "POL-CARRY-VN-001",
+        "carryOverPolicyName": "Vietnam Annual Leave Carry Over Rule",
+        "maxCarryOverDays": 10,
+        "carryOverExpiryDays": 90
+    },
+    "overdraftSettings": {
+        "hasOverdraft": true,
+        "overdraftPolicyId": "POL-OVD-VN-001",
+        "overdraftPolicyName": "Vietnam Leave Overdraft Policy",
+        "allowOverdraft": true,
+        "maxOverdraftDays": 5
+    },
+    "documentationSettings": {
+        "requireDocumentation": false,
+        "documentTypes": [],
+        "mandatoryForDaysAbove": null
+    },
+    "notificationSettings": {
+        "notifyManager": true,
+        "notifyHR": false,
+        "notifyEmployee": true,
+        "reminderBeforeDays": 7
+    },
+    "integrationSettings": {
+        "syncWithPayroll": true,
+        "syncWithAttendance": true,
+        "externalSystemId": null
+    },
+    "metadata": {
+        "createdBy": "admin@company.com",
+        "createdAt": "2025-01-01T08:00:00Z",
+        "modifiedBy": "hr.manager@company.com",
+        "modifiedAt": "2025-11-11T14:20:00Z",
+        "version": "1.0.0",
+        "tags": ["vietnam", "annual-leave", "paid-leave", "standard"]
+    }
+}
+</script>
+
+<!-- ==================== VIEW MODE (ORIGINAL) ==================== -->
+<div id="viewMode" class="mode-container active">
+<!-- Top Bar -->
+    <div class="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
+        <div class="px-6 py-3">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2 text-sm">
+                    <a href="#" class="text-blue-600 hover:text-blue-700">Leave Management</a>
+                    <i class="fas fa-chevron-right text-gray-400 text-xs"></i>
+                    <a href="#" class="text-blue-600 hover:text-blue-700">Leave Types</a>
+                    <i class="fas fa-chevron-right text-gray-400 text-xs"></i>
+                    <span class="text-gray-900 font-medium">Annual Leave</span>
+                    <span class="ml-2 px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-full font-medium">VIEW MODE</span>
+                </div>
+                
+                <div class="flex items-center gap-3">
+                    <button class="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">
+                        <i class="fas fa-copy mr-2"></i>Clone
+                    </button>
+                    <button class="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">
+                        <i class="fas fa-download mr-2"></i>Export
+                    </button>
+                    <button onclick="switchToMode('edit')" class="px-5 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-sm font-medium">
+                        <i class="fas fa-pen mr-2"></i>Edit Leave Type
+                    </button>
+                    <button onclick="switchToMode('new')" class="px-5 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 shadow-sm font-medium">
+                        <i class="fas fa-plus mr-2"></i>New Leave Type
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <div class="bg-white border-b border-gray-200">
+        <div class="px-6 py-6">
+            <div class="flex items-start justify-between">
+                <div class="flex items-start gap-4">
+                    <div class="w-16 h-16 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center shadow-lg">
+                        <i class="fas fa-umbrella-beach text-white text-2xl"></i>
+                    </div>
+                    <div>
+                        <div class="flex items-center gap-3 mb-1">
+                            <h1 class="text-2xl font-bold text-gray-900">Annual Leave</h1>
+                            <span class="px-3 py-1 bg-green-100 text-green-800 text-sm font-medium rounded-full">Active</span>
+                            <span class="px-3 py-1 bg-blue-100 text-blue-800 text-sm font-medium rounded-full">Paid</span>
+                            <span class="px-3 py-1 bg-purple-100 text-purple-800 text-sm font-medium rounded-full">Quota-Based</span>
+                        </div>
+                        <p class="text-gray-600 mb-3">Standard annual leave entitlement for all employees</p>
+                        <div class="flex items-center gap-6 text-sm text-gray-500">
+                            <span class="flex items-center gap-2"><i class="fas fa-hashtag"></i>LT-ANNUAL-001</span>
+                            <span class="flex items-center gap-2"><i class="fas fa-calendar"></i>Created: Jan 5, 2025</span>
+                            <span class="flex items-center gap-2"><i class="fas fa-pen"></i>Modified: 3 days ago</span>
+                            <span class="flex items-center gap-2"><i class="fas fa-user"></i>By: HR Admin</span>
+                            <span class="flex items-center gap-2"><i class="fas fa-users"></i>3,245 employees</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="flex items-center gap-2">
+                    <button class="p-2 text-gray-600 hover:bg-gray-100 rounded-lg" title="Share"><i class="fas fa-share-nodes"></i></button>
+                    <button class="p-2 text-gray-600 hover:bg-gray-100 rounded-lg" title="Print"><i class="fas fa-print"></i></button>
+                    <button class="p-2 text-gray-600 hover:bg-gray-100 rounded-lg" title="Bookmark"><i class="far fa-bookmark"></i></button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="px-6">
+            <div class="flex items-center gap-1 border-b border-gray-200">
+                <button onclick="switchTab('view','viewBasicInfo', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 flex items-center gap-2 text-blue-600 border-blue-600">
+                    <i class="fas fa-info-circle"></i>Basic Info
+                </button>
+                <button onclick="switchTab('view','viewConfiguration', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent flex items-center gap-2 text-gray-600 hover:text-gray-900">
+                    <i class="fas fa-sliders"></i>Configuration
+                </button>
+                <button onclick="switchTab('view','viewLeaveClasses', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent flex items-center gap-2 text-gray-600 hover:text-gray-900">
+                    <i class="fas fa-layer-group"></i>Leave Classes
+                    <span class="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full font-semibold">12</span>
+                </button>
+                <button onclick="switchTab('view','viewAnalytics', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent flex items-center gap-2 text-gray-600 hover:text-gray-900">
+                    <i class="fas fa-chart-bar"></i>Usage Analytics
+                </button>
+                <button onclick="switchTab('view','viewJsonEditor', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent flex items-center gap-2 text-gray-600 hover:text-gray-900">
+                    <i class="fas fa-file-code"></i>JSON
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="p-6">
+        <div class="max-w-6xl mx-auto">
+            
+            <!-- TAB 1: Basic Info -->
+            <div id="viewBasicInfo" class="tab-content active">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-2 space-y-6">
+                        <!-- General Information -->
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
+                                <h3 class="text-lg font-semibold text-gray-900">General Information</h3>
+                            </div>
+                            <div class="p-6">
+                                <dl class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div>
+                                        <dt class="text-sm font-medium text-gray-500 mb-1">Leave Type ID</dt>
+                                        <dd class="text-sm text-gray-900 font-mono bg-gray-50 px-3 py-2 rounded">LT-ANNUAL-001</dd>
+                                    </div>
+                                    <div>
+                                        <dt class="text-sm font-medium text-gray-500 mb-1">Type Code</dt>
+                                        <dd class="text-sm text-gray-900 font-mono bg-gray-50 px-3 py-2 rounded">ANNUAL</dd>
+                                    </div>
+                                    <div class="md:col-span-2">
+                                        <dt class="text-sm font-medium text-gray-500 mb-1">Leave Type Name</dt>
+                                        <dd class="text-base text-gray-900 font-medium">Annual Leave</dd>
+                                    </div>
+                                    <div class="md:col-span-2">
+                                        <dt class="text-sm font-medium text-gray-500 mb-1">Description</dt>
+                                        <dd class="text-sm text-gray-700 bg-gray-50 p-3 rounded">
+                                            Standard paid annual leave entitlement for all eligible employees. Accrues monthly and can be carried forward according to company policy.
+                                        </dd>
+                                    </div>
+                                    <div>
+                                        <dt class="text-sm font-medium text-gray-500 mb-1">Support Scope</dt>
+                                        <dd class="text-sm text-gray-900">Global - All Countries</dd>
+                                    </div>
+                                    <div>
+                                        <dt class="text-sm font-medium text-gray-500 mb-1">Status</dt>
+                                        <dd><span class="px-3 py-1 bg-green-100 text-green-800 text-sm rounded-full font-medium">
+                                            <i class="fas fa-circle text-xs mr-1"></i>Active</span>
+                                        </dd>
+                                    </div>
+                                    <div class="md:col-span-2">
+                                        <dt class="text-sm font-medium text-gray-500 mb-2">Tags</dt>
+                                        <dd class="flex flex-wrap gap-2">
+                                            <span class="px-3 py-1 bg-green-100 text-green-800 text-sm rounded-full">annual</span>
+                                            <span class="px-3 py-1 bg-green-100 text-green-800 text-sm rounded-full">paid</span>
+                                            <span class="px-3 py-1 bg-green-100 text-green-800 text-sm rounded-full">quota-based</span>
+                                            <span class="px-3 py-1 bg-green-100 text-green-800 text-sm rounded-full">carry-forward</span>
+                                        </dd>
+                                    </div>
+                                </dl>
+                            </div>
+                        </div>
+
+                        <!-- System Information -->
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
+                                <h3 class="text-lg font-semibold text-gray-900">System Information</h3>
+                            </div>
+                            <div class="p-6">
+                                <dl class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div>
+                                        <dt class="text-sm font-medium text-gray-500 mb-1">Created</dt>
+                                        <dd class="text-sm text-gray-900">January 5, 2025 at 10:00 AM<br><span class="text-gray-600">by HR Admin</span></dd>
+                                    </div>
+                                    <div>
+                                        <dt class="text-sm font-medium text-gray-500 mb-1">Last Modified</dt>
+                                        <dd class="text-sm text-gray-900">November 10, 2025 at 3:30 PM<br><span class="text-gray-600">by System Admin</span></dd>
+                                    </div>
+                                    <div>
+                                        <dt class="text-sm font-medium text-gray-500 mb-1">Current Version</dt>
+                                        <dd class="text-sm text-gray-900 font-mono">v2.1.0</dd>
+                                    </div>
+                                    <div>
+                                        <dt class="text-sm font-medium text-gray-500 mb-1">Total Versions</dt>
+                                        <dd class="text-sm text-gray-900">5 versions</dd>
+                                    </div>
+                                </dl>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Sidebar -->
+                    <div class="space-y-6">
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-4">Quick Stats</h3>
+                            <div class="space-y-4">
+                                <div>
+                                    <div class="flex items-center justify-between text-sm mb-1">
+                                        <span class="text-gray-600">Total Employees</span>
+                                        <span class="font-semibold text-gray-900">3,245</span>
+                                    </div>
+                                    <div class="w-full bg-gray-200 rounded-full h-2">
+                                        <div class="bg-green-600 h-2 rounded-full" style="width: 100%"></div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div class="flex items-center justify-between text-sm mb-1">
+                                        <span class="text-gray-600">Active Leave Classes</span>
+                                        <span class="font-semibold text-blue-600">12</span>
+                                    </div>
+                                    <div class="w-full bg-gray-200 rounded-full h-2">
+                                        <div class="bg-blue-600 h-2 rounded-full" style="width: 85%"></div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div class="flex items-center justify-between text-sm mb-1">
+                                        <span class="text-gray-600">Avg Balance</span>
+                                        <span class="font-semibold text-purple-600">14.2 days</span>
+                                    </div>
+                                    <div class="w-full bg-gray-200 rounded-full h-2">
+                                        <div class="bg-purple-600 h-2 rounded-full" style="width: 70%"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-4">Type Properties</h3>
+                            <div class="space-y-3 text-sm">
+                                <div class="flex items-center justify-between p-2 bg-green-50 rounded">
+                                    <span class="text-gray-700">Is Paid</span>
+                                    <span class="font-semibold text-green-700">✓ Yes</span>
+                                </div>
+                                <div class="flex items-center justify-between p-2 bg-purple-50 rounded">
+                                    <span class="text-gray-700">Quota-Based</span>
+                                    <span class="font-semibold text-purple-700">✓ Yes</span>
+                                </div>
+                                <div class="flex items-center justify-between p-2 bg-blue-50 rounded">
+                                    <span class="text-gray-700">Unit</span>
+                                    <span class="font-semibold text-blue-700">Days</span>
+                                </div>
+                                <div class="flex items-center justify-between p-2 bg-amber-50 rounded">
+                                    <span class="text-gray-700">Min Unit</span>
+                                    <span class="font-semibold text-amber-700">0.5 Day</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-gradient-to-br from-green-50 to-green-100 rounded-xl border border-green-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-4">Quick Actions</h3>
+                            <div class="space-y-2">
+                                <button class="w-full px-4 py-2 bg-white hover:bg-green-50 text-sm text-gray-700 rounded-lg flex items-center gap-2 border border-green-200">
+                                    <i class="fas fa-pen text-green-600"></i><span>Edit Type</span>
+                                </button>
+                                <button class="w-full px-4 py-2 bg-white hover:bg-green-50 text-sm text-gray-700 rounded-lg flex items-center gap-2 border border-green-200">
+                                    <i class="fas fa-plus text-green-600"></i><span>New Leave Class</span>
+                                </button>
+                                <button class="w-full px-4 py-2 bg-white hover:bg-green-50 text-sm text-gray-700 rounded-lg flex items-center gap-2 border border-green-200">
+                                    <i class="fas fa-chart-bar text-green-600"></i><span>View Reports</span>
+                                </button>
+                                <button class="w-full px-4 py-2 bg-white hover:bg-green-50 text-sm text-gray-700 rounded-lg flex items-center gap-2 border border-green-200">
+                                    <i class="fas fa-download text-green-600"></i><span>Export Data</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 2: Configuration -->
+            <div id="viewConfiguration" class="tab-content">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-2 space-y-6">
+                        <!-- Unit & Measurement -->
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-blue-100">
+                                <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                    <i class="fas fa-ruler text-blue-600"></i>
+                                    Unit & Measurement
+                                </h3>
+                            </div>
+                            <div class="p-6">
+                                <dl class="space-y-4">
+                                    <div class="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <dt class="text-sm font-medium text-gray-500 mb-1">Unit</dt>
+                                            <dd class="text-sm text-gray-900 bg-blue-50 px-3 py-2 rounded font-medium">Days</dd>
+                                        </div>
+                                        <div>
+                                            <dt class="text-sm font-medium text-gray-500 mb-1">Core Minimum Unit</dt>
+                                            <dd class="text-sm text-gray-900 bg-blue-50 px-3 py-2 rounded font-medium">0.5 Day (Half day)</dd>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <dt class="text-sm font-medium text-gray-500 mb-2">Rounding Rules</dt>
+                                        <dd class="bg-gray-50 p-4 rounded-lg">
+                                            <div class="space-y-2 text-sm">
+                                                <div class="flex items-center justify-between">
+                                                    <span class="text-gray-700">Rounding Mode:</span>
+                                                    <span class="font-medium text-gray-900">Half Up (0.5 → 1.0)</span>
+                                                </div>
+                                                <div class="flex items-center justify-between">
+                                                    <span class="text-gray-700">Precision:</span>
+                                                    <span class="font-medium text-gray-900">2 decimal places</span>
+                                                </div>
+                                            </div>
+                                        </dd>
+                                    </div>
+                                </dl>
+                            </div>
+                        </div>
+
+                        <!-- Type Properties -->
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-green-50 to-green-100">
+                                <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                    <i class="fas fa-toggle-on text-green-600"></i>
+                                    Leave Type Properties
+                                </h3>
+                            </div>
+                            <div class="p-6">
+                                <dl class="space-y-4">
+                                    <div>
+                                        <dt class="text-sm font-medium text-gray-500 mb-2">Leave Characteristics</dt>
+                                        <dd class="grid grid-cols-2 gap-3">
+                                            <div class="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-lg">
+                                                <i class="fas fa-check-circle text-green-600"></i>
+                                                <div>
+                                                    <div class="text-sm font-medium text-gray-900">Paid Leave</div>
+                                                    <div class="text-xs text-gray-600">Counts as paid time</div>
+                                                </div>
+                                            </div>
+                                            <div class="flex items-center gap-2 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                                                <i class="fas fa-check-circle text-purple-600"></i>
+                                                <div>
+                                                    <div class="text-sm font-medium text-gray-900">Quota-Based</div>
+                                                    <div class="text-xs text-gray-600">Requires balance</div>
+                                                </div>
+                                            </div>
+                                        </dd>
+                                    </div>
+                                </dl>
+                            </div>
+                        </div>
+
+                        <!-- Holiday Handling -->
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-amber-50 to-amber-100">
+                                <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                    <i class="fas fa-calendar-day text-amber-600"></i>
+                                    Holiday Handling
+                                </h3>
+                            </div>
+                            <div class="p-6">
+                                <dl class="space-y-4">
+                                    <div>
+                                        <dt class="text-sm font-medium text-gray-500 mb-2">Public Holiday Rules</dt>
+                                        <dd class="bg-amber-50 p-4 rounded-lg border border-amber-200">
+                                            <div class="text-sm text-gray-900 font-medium mb-2">Exclude Public Holidays</div>
+                                            <div class="text-xs text-gray-600">Public holidays are not deducted from leave balance. Leave spanning holidays will skip those days.</div>
+                                        </dd>
+                                    </div>
+                                    <div>
+                                        <dt class="text-sm font-medium text-gray-500 mb-2">Weekend Treatment</dt>
+                                        <dd class="bg-gray-50 p-4 rounded-lg">
+                                            <div class="text-sm text-gray-900">Exclude weekends from leave calculation</div>
+                                        </dd>
+                                    </div>
+                                </dl>
+                            </div>
+                        </div>
+
+                        <!-- Overlap Policy -->
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-red-50 to-red-100">
+                                <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                    <i class="fas fa-ban text-red-600"></i>
+                                    Overlap Policy
+                                </h3>
+                            </div>
+                            <div class="p-6">
+                                <dl class="space-y-4">
+                                    <div>
+                                        <dt class="text-sm font-medium text-gray-500 mb-2">Concurrent Leave Rules</dt>
+                                        <dd class="bg-red-50 p-4 rounded-lg border border-red-200">
+                                            <div class="text-sm text-gray-900 font-medium mb-2">No Overlap Allowed</div>
+                                            <div class="text-xs text-gray-600">Cannot request this leave type if another leave is already approved for the same dates.</div>
+                                        </dd>
+                                    </div>
+                                </dl>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Sidebar -->
+                    <div class="space-y-6">
+                        <div class="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl border border-blue-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                <i class="fas fa-info-circle text-blue-600"></i>
+                                Configuration Summary
+                            </h3>
+                            <ul class="space-y-2 text-sm text-gray-700">
+                                <li class="flex items-center gap-2">
+                                    <i class="fas fa-check text-blue-600"></i>
+                                    <span>Unit: <strong>Days (0.5 min)</strong></span>
+                                </li>
+                                <li class="flex items-center gap-2">
+                                    <i class="fas fa-check text-blue-600"></i>
+                                    <span>Paid & Quota-based</span>
+                                </li>
+                                <li class="flex items-center gap-2">
+                                    <i class="fas fa-check text-blue-600"></i>
+                                    <span>Excludes public holidays</span>
+                                </li>
+                                <li class="flex items-center gap-2">
+                                    <i class="fas fa-check text-blue-600"></i>
+                                    <span>No overlap allowed</span>
+                                </li>
+                            </ul>
+                        </div>
+
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-3">Common Use Cases</h3>
+                            <div class="space-y-3 text-sm">
+                                <div class="p-3 bg-green-50 rounded-lg border border-green-200">
+                                    <div class="font-medium text-gray-900 mb-1">Vacation Planning</div>
+                                    <div class="text-xs text-gray-600">Primary leave type for planned vacations</div>
+                                </div>
+                                <div class="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                                    <div class="font-medium text-gray-900 mb-1">Personal Days</div>
+                                    <div class="text-xs text-gray-600">Can be used for personal matters</div>
+                                </div>
+                                <div class="p-3 bg-purple-50 rounded-lg border border-purple-200">
+                                    <div class="font-medium text-gray-900 mb-1">Extended Leave</div>
+                                    <div class="text-xs text-gray-600">Supports multi-week vacations</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 3: Leave Classes -->
+            <div id="viewLeaveClasses" class="tab-content">
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                    <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-purple-100 flex items-center justify-between">
+                        <div>
+                            <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                <i class="fas fa-layer-group text-purple-600"></i>
+                                Leave Classes Using This Type
+                            </h3>
+                            <p class="text-sm text-gray-600 mt-1">Operational classes derived from this leave type</p>
+                        </div>
+                        <button class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm font-medium">
+                            <i class="fas fa-plus mr-2"></i>New Leave Class
+                        </button>
+                    </div>
+                    <div class="p-6">
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm">
+                                <thead class="bg-gray-50 border-b border-gray-200">
+                                    <tr>
+                                        <th class="px-4 py-3 text-left font-semibold text-gray-900">Class Name</th>
+                                        <th class="px-4 py-3 text-center font-semibold text-gray-900">Mode</th>
+                                        <th class="px-4 py-3 text-center font-semibold text-gray-900">Country/BU</th>
+                                        <th class="px-4 py-3 text-center font-semibold text-gray-900">Employees</th>
+                                        <th class="px-4 py-3 text-center font-semibold text-gray-900">Policies</th>
+                                        <th class="px-4 py-3 text-right font-semibold text-gray-900">Status</th>
+                                        <th class="px-4 py-3 text-right font-semibold text-gray-900">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-200">
+                                    <tr class="hover:bg-gray-50">
+                                        <td class="px-4 py-3">
+                                            <div class="font-medium text-gray-900">VN Standard Annual Leave</div>
+                                            <div class="text-xs text-gray-600">LC-VN-ANNUAL-001</div>
+                                        </td>
+                                        <td class="px-4 py-3 text-center">
+                                            <span class="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">ACCOUNT</span>
+                                        </td>
+                                        <td class="px-4 py-3 text-center text-gray-700">🇻🇳 Vietnam</td>
+                                        <td class="px-4 py-3 text-center font-semibold text-gray-900">1,245</td>
+                                        <td class="px-4 py-3 text-center">
+                                            <span class="px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded-full">5 policies</span>
+                                        </td>
+                                        <td class="px-4 py-3 text-right">
+                                            <span class="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">Active</span>
+                                        </td>
+                                        <td class="px-4 py-3 text-right">
+                                            <button class="text-blue-600 hover:text-blue-800 text-xs"><i class="fas fa-eye mr-1"></i>View</button>
+                                        </td>
+                                    </tr>
+                                    <tr class="hover:bg-gray-50">
+                                        <td class="px-4 py-3">
+                                            <div class="font-medium text-gray-900">SG Annual Leave</div>
+                                            <div class="text-xs text-gray-600">LC-SG-ANNUAL-001</div>
+                                        </td>
+                                        <td class="px-4 py-3 text-center">
+                                            <span class="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">ACCOUNT</span>
+                                        </td>
+                                        <td class="px-4 py-3 text-center text-gray-700">🇸🇬 Singapore</td>
+                                        <td class="px-4 py-3 text-center font-semibold text-gray-900">856</td>
+                                        <td class="px-4 py-3 text-center">
+                                            <span class="px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded-full">4 policies</span>
+                                        </td>
+                                        <td class="px-4 py-3 text-right">
+                                            <span class="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">Active</span>
+                                        </td>
+                                        <td class="px-4 py-3 text-right">
+                                            <button class="text-blue-600 hover:text-blue-800 text-xs"><i class="fas fa-eye mr-1"></i>View</button>
+                                        </td>
+                                    </tr>
+                                    <tr class="hover:bg-gray-50">
+                                        <td class="px-4 py-3">
+                                            <div class="font-medium text-gray-900">TH Annual Leave</div>
+                                            <div class="text-xs text-gray-600">LC-TH-ANNUAL-001</div>
+                                        </td>
+                                        <td class="px-4 py-3 text-center">
+                                            <span class="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">ACCOUNT</span>
+                                        </td>
+                                        <td class="px-4 py-3 text-center text-gray-700">🇹🇭 Thailand</td>
+                                        <td class="px-4 py-3 text-center font-semibold text-gray-900">634</td>
+                                        <td class="px-4 py-3 text-center">
+                                            <span class="px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded-full">4 policies</span>
+                                        </td>
+                                        <td class="px-4 py-3 text-right">
+                                            <span class="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">Active</span>
+                                        </td>
+                                        <td class="px-4 py-3 text-right">
+                                            <button class="text-blue-600 hover:text-blue-800 text-xs"><i class="fas fa-eye mr-1"></i>View</button>
+                                        </td>
+                                    </tr>
+                                    <!-- More rows... -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 4: Analytics (Similar structure to previous analytics tabs) -->
+            <div id="viewAnalytics" class="tab-content">
+                <div class="text-center py-12 text-gray-500">
+                    <i class="fas fa-chart-bar text-6xl mb-4 text-gray-300"></i>
+                    <p>Usage analytics for this leave type</p>
+                </div>
+            </div>
+
+            <!-- TAB 5: JSON Editor -->
+            <div id="viewJsonEditor" class="tab-content">
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                    <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-gray-700 to-gray-800">
+                        <h3 class="text-lg font-semibold text-white flex items-center gap-2">
+                            <i class="fas fa-file-code"></i>JSON Configuration (Read-only)
+                        </h3>
+                    </div>
+                    <div class="p-6">
+                        <pre class="bg-gray-900 text-gray-100 p-6 rounded-lg overflow-x-auto text-sm font-mono"><code>{
+  "leaveTypeId": "LT-ANNUAL-001",
+  "typeCode": "ANNUAL",
+  "name": "Annual Leave",
+  "description": "Standard annual leave entitlement",
+  "unit": "DAYS",
+  "coreMinUnit": 0.5,
+  "isPaid": true,
+  "isQuotaBased": true,
+  "holidayHandling": "EXCLUDE",
+  "overlapPolicy": "NO_OVERLAP",
+  "supportScope": "GLOBAL"
+}</code></pre>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+</div>
+
+<!-- ==================== EDIT MODE (ORIGINAL with prefix) ==================== -->
+<div id="editMode" class="mode-container">
+<!-- Top Bar -->
+    <div class="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
+        <div class="px-6 py-3">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2 text-sm">
+                    <a href="#" class="text-blue-600 hover:text-blue-700">Leave Management</a>
+                    <i class="fas fa-chevron-right text-gray-400 text-xs"></i>
+                    <a href="#" class="text-blue-600 hover:text-blue-700">Leave Types</a>
+                    <i class="fas fa-chevron-right text-gray-400 text-xs"></i>
+                    <span class="text-gray-900 font-medium">Annual Leave</span>
+                    <span class="ml-2 px-2 py-0.5 bg-yellow-100 text-yellow-800 text-xs rounded-full font-medium">EDIT MODE</span>
+                </div>
+                
+                <div class="flex items-center gap-3">
+                    <button class="px-3 py-2 text-sm text-gray-600 hover:text-gray-900">
+                        <i class="fas fa-clock-rotate-left mr-2"></i>Version History
+                    </button>
+                    <div class="h-6 w-px bg-gray-300"></div>
+                    <button class="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">
+                        Discard Changes
+                    </button>
+                    <button class="px-5 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-sm font-medium">
+                        <i class="fas fa-save mr-2"></i>Save Changes
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Unsaved Changes Banner -->
+    <div class="bg-yellow-50 border-b border-yellow-200">
+        <div class="px-6 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <i class="fas fa-exclamation-triangle text-yellow-600"></i>
+                <span class="text-sm font-medium text-yellow-900">You have unsaved changes</span>
+                <button class="text-sm text-yellow-700 underline hover:text-yellow-900">View Changes</button>
+            </div>
+            <button class="text-yellow-600 hover:text-yellow-900"><i class="fas fa-times"></i></button>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <div class="bg-white border-b border-gray-200">
+        <div class="px-6 py-6">
+            <div class="flex items-start justify-between">
+                <div class="flex items-start gap-4">
+                    <div class="w-16 h-16 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center shadow-lg">
+                        <i class="fas fa-umbrella-beach text-white text-2xl"></i>
+                    </div>
+                    <div>
+                        <div class="flex items-center gap-3 mb-1">
+                            <h1 class="text-2xl font-bold text-gray-900">Annual Leave</h1>
+                            <span class="px-3 py-1 bg-green-100 text-green-800 text-sm font-medium rounded-full">Active</span>
+                            <span class="px-3 py-1 bg-blue-100 text-blue-800 text-sm font-medium rounded-full">Paid</span>
+                        </div>
+                        <p class="text-gray-600 mb-3">Standard annual leave entitlement for all employees</p>
+                        <div class="flex items-center gap-6 text-sm text-gray-500">
+                            <span class="flex items-center gap-2"><i class="fas fa-hashtag"></i>LT-ANNUAL-001</span>
+                            <span class="flex items-center gap-2"><i class="fas fa-calendar"></i>Created: Jan 5, 2025</span>
+                            <span class="flex items-center gap-2"><i class="fas fa-pen"></i>Modified: 3 days ago</span>
+                            <span class="flex items-center gap-2"><i class="fas fa-user"></i>By: HR Admin</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="flex items-center gap-2">
+                    <button class="p-2 text-gray-600 hover:bg-gray-100 rounded-lg" title="Clone"><i class="fas fa-copy"></i></button>
+                    <button class="p-2 text-gray-600 hover:bg-gray-100 rounded-lg" title="Share"><i class="fas fa-share-nodes"></i></button>
+                    <button class="p-2 text-gray-600 hover:bg-gray-100 rounded-lg" title="Export"><i class="fas fa-download"></i></button>
+                    <button class="p-2 text-red-600 hover:bg-red-50 rounded-lg" title="Delete"><i class="fas fa-trash"></i></button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="px-6">
+            <div class="flex items-center gap-1 border-b border-gray-200">
+                <button onclick="switchTab('edit','editBasicInfo', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 flex items-center gap-2 text-blue-600 border-blue-600">
+                    <i class="fas fa-info-circle"></i>Basic Info
+                </button>
+                <button onclick="switchTab('edit','editConfiguration', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent flex items-center gap-2 text-gray-600 hover:text-gray-900">
+                    <i class="fas fa-sliders"></i>Configuration
+                </button>
+                <button onclick="switchTab('edit','editJsonEditor', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent flex items-center gap-2 text-gray-600 hover:text-gray-900">
+                    <i class="fas fa-file-code"></i>JSON Editor
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="p-6">
+        <div class="max-w-6xl mx-auto">
+            
+            <!-- TAB 1: Basic Info (EDIT MODE) -->
+            <div id="editBasicInfo" class="tab-content active">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-2 space-y-6">
+                        <div class="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                            <div class="flex items-start gap-3">
+                                <i class="fas fa-info-circle text-blue-600 mt-0.5"></i>
+                                <div class="flex-1">
+                                    <div class="text-sm font-medium text-gray-900 mb-1">Edit Mode Active</div>
+                                    <div class="text-sm text-gray-700">
+                                        Changes will create version <strong>v2.2.0</strong>. Current active version is <strong>v2.1.0</strong>.
+                                        Fields with changes will be highlighted.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- General Information -->
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
+                                <h3 class="text-lg font-semibold text-gray-900">General Information</h3>
+                            </div>
+                            <div class="p-6 space-y-5">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Leave Type ID</label>
+                                    <input type="text" value="LT-ANNUAL-001" readonly class="w-full px-4 py-2.5 bg-gray-100 border border-gray-300 rounded-lg text-gray-500 cursor-not-allowed">
+                                    <p class="mt-1.5 text-xs text-gray-500">Cannot be changed after creation</p>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                                        Type Code <span class="text-red-500">*</span>
+                                    </label>
+                                    <input type="text" value="ANNUAL" readonly class="w-full px-4 py-2.5 bg-gray-100 border border-gray-300 rounded-lg text-gray-500 cursor-not-allowed">
+                                    <p class="mt-1.5 text-xs text-gray-500">System code - cannot be modified</p>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                                        Leave Type Name <span class="text-red-500">*</span>
+                                    </label>
+                                    <input type="text" value="Annual Leave" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                                    <textarea rows="3" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">Standard paid annual leave entitlement for all eligible employees. Accrues monthly and can be carried forward according to company policy.</textarea>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Support Scope</label>
+                                    <select class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                        <option value="global" selected>Global - All Countries</option>
+                                        <option value="specific">Specific Countries Only</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                                    <div class="flex items-center gap-4">
+                                        <label class="flex items-center gap-2 cursor-pointer p-3 border-2 border-green-500 bg-green-50 rounded-lg">
+                                            <input type="radio" name="status" value="active" checked class="w-4 h-4 text-green-600">
+                                            <div>
+                                                <div class="text-sm font-medium text-gray-900">Active</div>
+                                                <div class="text-xs text-gray-600">Currently in use</div>
+                                            </div>
+                                        </label>
+                                        <label class="flex items-center gap-2 cursor-pointer p-3 border-2 border-gray-200 rounded-lg hover:border-yellow-500">
+                                            <input type="radio" name="status" value="draft" class="w-4 h-4 text-yellow-600">
+                                            <div>
+                                                <div class="text-sm font-medium text-gray-900">Draft</div>
+                                                <div class="text-xs text-gray-600">Pause usage</div>
+                                            </div>
+                                        </label>
+                                        <label class="flex items-center gap-2 cursor-pointer p-3 border-2 border-gray-200 rounded-lg hover:border-gray-500">
+                                            <input type="radio" name="status" value="inactive" class="w-4 h-4 text-gray-600">
+                                            <div>
+                                                <div class="text-sm font-medium text-gray-900">Inactive</div>
+                                                <div class="text-xs text-gray-600">Deactivate</div>
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Tags</label>
+                                    <div class="flex flex-wrap gap-2 mb-2">
+                                        <span class="inline-flex items-center gap-1 px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
+                                            annual
+                                            <button class="hover:text-green-900"><i class="fas fa-times text-xs"></i></button>
+                                        </span>
+                                        <span class="inline-flex items-center gap-1 px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
+                                            paid
+                                            <button class="hover:text-green-900"><i class="fas fa-times text-xs"></i></button>
+                                        </span>
+                                        <span class="inline-flex items-center gap-1 px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
+                                            quota-based
+                                            <button class="hover:text-green-900"><i class="fas fa-times text-xs"></i></button>
+                                        </span>
+                                    </div>
+                                    <div class="flex gap-2">
+                                        <input type="text" placeholder="Add new tag..." class="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                        <button type="button" class="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">
+                                            <i class="fas fa-plus"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Sidebar -->
+                    <div class="space-y-6">
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-4">Version Information</h3>
+                            <div class="space-y-3 text-sm">
+                                <div class="flex justify-between">
+                                    <span class="text-gray-600">Current Version</span>
+                                    <span class="font-medium text-gray-900">v2.1.0</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-gray-600">Next Version</span>
+                                    <span class="font-medium text-blue-600">v2.2.0</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-gray-600">Changes Count</span>
+                                    <span class="font-medium text-yellow-600">0 fields</span>
+                                </div>
+                            </div>
+                            <button class="mt-4 w-full px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg">
+                                <i class="fas fa-clock-rotate-left mr-2"></i>View All Versions
+                            </button>
+                        </div>
+
+                        <div class="bg-amber-50 rounded-xl border border-amber-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                <i class="fas fa-exclamation-triangle text-amber-600"></i>Impact Analysis
+                            </h3>
+                            <p class="text-sm text-gray-700 mb-3">This leave type is currently used by:</p>
+                            <div class="space-y-2 text-sm">
+                                <div class="flex items-center justify-between p-2 bg-white rounded">
+                                    <span class="text-gray-600">Leave Classes</span>
+                                    <span class="font-semibold text-gray-900">12</span>
+                                </div>
+                                <div class="flex items-center justify-between p-2 bg-white rounded">
+                                    <span class="text-gray-600">Active Employees</span>
+                                    <span class="font-semibold text-gray-900">3,245</span>
+                                </div>
+                            </div>
+                            <div class="mt-4 p-3 bg-amber-100 rounded-lg">
+                                <p class="text-xs text-amber-900">
+                                    <i class="fas fa-info-circle mr-1"></i>
+                                    Changes may affect existing leave classes and employee balances
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 2: Configuration (EDIT MODE) -->
+            <div id="editConfiguration" class="tab-content">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-2 space-y-6">
+                        <!-- Unit & Measurement -->
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-blue-100">
+                                <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                    <i class="fas fa-ruler text-blue-600"></i>
+                                    Unit & Measurement
+                                </h3>
+                            </div>
+                            <div class="p-6 space-y-5">
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-900 mb-3">Leave Unit <span class="text-red-500">*</span></label>
+                                    <select class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                        <option selected>Days</option>
+                                        <option>Hours</option>
+                                    </select>
+                                    <p class="mt-2 text-xs text-gray-500">Fundamental unit for this leave type</p>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-900 mb-3">Core Minimum Unit <span class="text-red-500">*</span></label>
+                                    <select class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                        <option>0.25 Day (Quarter day)</option>
+                                        <option selected>0.5 Day (Half day)</option>
+                                        <option>1.0 Day (Full day)</option>
+                                    </select>
+                                    <p class="mt-2 text-xs text-gray-500">Smallest requestable increment</p>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-900 mb-3">Rounding Rules</label>
+                                    <div class="space-y-3">
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 mb-2">Rounding Mode</label>
+                                            <select class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                                <option>Round Down (Floor)</option>
+                                                <option selected>Round Half Up (0.5 → 1.0)</option>
+                                                <option>Round Half Down</option>
+                                                <option>Round Up (Ceiling)</option>
+                                                <option>Round to Nearest</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 mb-2">Precision (Decimal Places)</label>
+                                            <select class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                                <option>0 (Whole numbers only)</option>
+                                                <option>1 (e.g., 1.5)</option>
+                                                <option selected>2 (e.g., 1.75)</option>
+                                                <option>3 (e.g., 1.125)</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Type Properties -->
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-green-50 to-green-100">
+                                <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                    <i class="fas fa-toggle-on text-green-600"></i>
+                                    Leave Type Properties
+                                </h3>
+                            </div>
+                            <div class="p-6 space-y-5">
+                                <div class="space-y-3">
+                                    <div class="flex items-center gap-3 p-4 border-2 border-green-500 bg-green-50 rounded-lg">
+                                        <input type="checkbox" id="edit-isPaid" checked class="w-5 h-5 text-green-600 rounded">
+                                        <div class="flex-1">
+                                            <label for="isPaid" class="text-sm font-medium text-gray-900 cursor-pointer">Paid Leave</label>
+                                            <div class="text-xs text-gray-600 mt-1">Employee receives normal pay during this leave</div>
+                                        </div>
+                                    </div>
+
+                                    <div class="flex items-center gap-3 p-4 border-2 border-purple-500 bg-purple-50 rounded-lg">
+                                        <input type="checkbox" id="edit-isQuotaBased" checked class="w-5 h-5 text-purple-600 rounded">
+                                        <div class="flex-1">
+                                            <label for="isQuotaBased" class="text-sm font-medium text-gray-900 cursor-pointer">Quota-Based Leave</label>
+                                            <div class="text-xs text-gray-600 mt-1">Requires available balance to request. Accrual-based leave types.</div>
+                                        </div>
+                                    </div>
+
+                                    <div class="flex items-center gap-3 p-4 border-2 border-gray-200 rounded-lg hover:border-blue-300">
+                                        <input type="checkbox" id="edit-requiresApproval" class="w-5 h-5 text-blue-600 rounded">
+                                        <div class="flex-1">
+                                            <label for="requiresApproval" class="text-sm font-medium text-gray-900 cursor-pointer">Always Requires Approval</label>
+                                            <div class="text-xs text-gray-600 mt-1">All requests must go through approval workflow</div>
+                                        </div>
+                                    </div>
+
+                                    <div class="flex items-center gap-3 p-4 border-2 border-gray-200 rounded-lg hover:border-amber-300">
+                                        <input type="checkbox" id="edit-allowPartialDays" checked class="w-5 h-5 text-amber-600 rounded">
+                                        <div class="flex-1">
+                                            <label for="allowPartialDays" class="text-sm font-medium text-gray-900 cursor-pointer">Allow Partial Days</label>
+                                            <div class="text-xs text-gray-600 mt-1">Employees can request less than full day (based on minimum unit)</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Holiday Handling -->
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-amber-50 to-amber-100">
+                                <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                    <i class="fas fa-calendar-day text-amber-600"></i>
+                                    Holiday & Weekend Handling
+                                </h3>
+                            </div>
+                            <div class="p-6 space-y-5">
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-900 mb-3">Public Holiday Treatment</label>
+                                    <div class="space-y-3">
+                                        <label class="flex items-start gap-3 p-4 border-2 border-amber-500 bg-amber-50 rounded-lg cursor-pointer">
+                                            <input type="radio" name="holidayHandling" value="exclude" checked class="w-4 h-4 text-amber-600 mt-0.5">
+                                            <div class="flex-1">
+                                                <div class="text-sm font-medium text-gray-900">Exclude Public Holidays</div>
+                                                <div class="text-xs text-gray-600 mt-1">Public holidays within leave period are not counted against balance</div>
+                                            </div>
+                                        </label>
+
+                                        <label class="flex items-start gap-3 p-4 border-2 border-gray-200 rounded-lg cursor-pointer hover:border-amber-300">
+                                            <input type="radio" name="holidayHandling" value="include" class="w-4 h-4 text-amber-600 mt-0.5">
+                                            <div class="flex-1">
+                                                <div class="text-sm font-medium text-gray-900">Include Public Holidays</div>
+                                                <div class="text-xs text-gray-600 mt-1">Public holidays are counted as part of leave</div>
+                                            </div>
+                                        </label>
+
+                                        <label class="flex items-start gap-3 p-4 border-2 border-gray-200 rounded-lg cursor-pointer hover:border-amber-300">
+                                            <input type="radio" name="holidayHandling" value="ignore" class="w-4 h-4 text-amber-600 mt-0.5">
+                                            <div class="flex-1">
+                                                <div class="text-sm font-medium text-gray-900">Ignore (No Special Treatment)</div>
+                                                <div class="text-xs text-gray-600 mt-1">Holidays treated same as regular working days</div>
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-900 mb-3">Weekend Treatment</label>
+                                    <div class="space-y-3">
+                                        <label class="flex items-start gap-3 p-4 border-2 border-blue-500 bg-blue-50 rounded-lg cursor-pointer">
+                                            <input type="radio" name="weekendHandling" value="exclude" checked class="w-4 h-4 text-blue-600 mt-0.5">
+                                            <div class="flex-1">
+                                                <div class="text-sm font-medium text-gray-900">Exclude Weekends</div>
+                                                <div class="text-xs text-gray-600 mt-1">Only working days are counted</div>
+                                            </div>
+                                        </label>
+
+                                        <label class="flex items-start gap-3 p-4 border-2 border-gray-200 rounded-lg cursor-pointer hover:border-blue-300">
+                                            <input type="radio" name="weekendHandling" value="include" class="w-4 h-4 text-blue-600 mt-0.5">
+                                            <div class="flex-1">
+                                                <div class="text-sm font-medium text-gray-900">Include Weekends</div>
+                                                <div class="text-xs text-gray-600 mt-1">Calendar days including weekends</div>
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Overlap Policy -->
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-red-50 to-red-100">
+                                <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                    <i class="fas fa-ban text-red-600"></i>
+                                    Overlap & Conflict Policy
+                                </h3>
+                            </div>
+                            <div class="p-6 space-y-5">
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-900 mb-3">Concurrent Leave Handling</label>
+                                    <div class="space-y-3">
+                                        <label class="flex items-start gap-3 p-4 border-2 border-red-500 bg-red-50 rounded-lg cursor-pointer">
+                                            <input type="radio" name="overlapPolicy" value="no-overlap" checked class="w-4 h-4 text-red-600 mt-0.5">
+                                            <div class="flex-1">
+                                                <div class="text-sm font-medium text-gray-900">No Overlap Allowed</div>
+                                                <div class="text-xs text-gray-600 mt-1">Cannot request if another leave is approved for same dates</div>
+                                            </div>
+                                        </label>
+
+                                        <label class="flex items-start gap-3 p-4 border-2 border-gray-200 rounded-lg cursor-pointer hover:border-red-300">
+                                            <input type="radio" name="overlapPolicy" value="allow-overlap" class="w-4 h-4 text-red-600 mt-0.5">
+                                            <div class="flex-1">
+                                                <div class="text-sm font-medium text-gray-900">Allow Overlap</div>
+                                                <div class="text-xs text-gray-600 mt-1">Multiple leave types can be used for same period</div>
+                                            </div>
+                                        </label>
+
+                                        <label class="flex items-start gap-3 p-4 border-2 border-gray-200 rounded-lg cursor-pointer hover:border-red-300">
+                                            <input type="radio" name="overlapPolicy" value="partial-overlap" class="w-4 h-4 text-red-600 mt-0.5">
+                                            <div class="flex-1">
+                                                <div class="text-sm font-medium text-gray-900">Partial Overlap (Split Days)</div>
+                                                <div class="text-xs text-gray-600 mt-1">Allow half-day combinations with other leave types</div>
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Sidebar -->
+                    <div class="space-y-6">
+                        <div class="bg-gradient-to-br from-green-50 to-green-100 rounded-xl border border-green-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                <i class="fas fa-lightbulb text-green-600"></i>
+                                Configuration Tips
+                            </h3>
+                            <ul class="space-y-2 text-sm text-gray-700">
+                                <li class="flex items-start gap-2">
+                                    <i class="fas fa-check text-green-600 mt-0.5"></i>
+                                    <span>Most annual leave types use 0.5 day minimum</span>
+                                </li>
+                                <li class="flex items-start gap-2">
+                                    <i class="fas fa-check text-green-600 mt-0.5"></i>
+                                    <span>Exclude holidays is standard practice</span>
+                                </li>
+                                <li class="flex items-start gap-2">
+                                    <i class="fas fa-check text-green-600 mt-0.5"></i>
+                                    <span>No overlap prevents conflicts</span>
+                                </li>
+                            </ul>
+                        </div>
+
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-3">Current Settings</h3>
+                            <div class="space-y-2 text-sm">
+                                <div class="flex justify-between items-center p-2 bg-blue-50 rounded">
+                                    <span class="text-gray-700">Unit</span>
+                                    <span class="font-semibold text-blue-700">Days</span>
+                                </div>
+                                <div class="flex justify-between items-center p-2 bg-green-50 rounded">
+                                    <span class="text-gray-700">Min Unit</span>
+                                    <span class="font-semibold text-green-700">0.5</span>
+                                </div>
+                                <div class="flex justify-between items-center p-2 bg-purple-50 rounded">
+                                    <span class="text-gray-700">Paid</span>
+                                    <span class="font-semibold text-purple-700">Yes</span>
+                                </div>
+                                <div class="flex justify-between items-center p-2 bg-amber-50 rounded">
+                                    <span class="text-gray-700">Holiday</span>
+                                    <span class="font-semibold text-amber-700">Exclude</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-amber-50 rounded-xl border border-amber-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                <i class="fas fa-exclamation-triangle text-amber-600"></i>
+                                Warning
+                            </h3>
+                            <p class="text-sm text-gray-700 leading-relaxed">
+                                Changing core settings (unit, paid status) may impact existing leave classes and employee balances. Review impact before saving.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 3: JSON Editor (EDIT MODE) -->
+            <div id="editJsonEditor" class="tab-content">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-2 space-y-6">
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-gray-700 to-gray-800 flex items-center justify-between">
+                                <div>
+                                    <h3 class="text-lg font-semibold text-white flex items-center gap-2">
+                                        <i class="fas fa-file-code"></i>Edit JSON Configuration
+                                    </h3>
+                                    <p class="text-sm text-gray-300 mt-1">Direct JSON editing for advanced users</p>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <button class="px-3 py-1.5 text-sm bg-gray-600 hover:bg-gray-500 text-white rounded-lg">
+                                        <i class="fas fa-check mr-1"></i>Validate
+                                    </button>
+                                    <button class="px-3 py-1.5 text-sm bg-gray-600 hover:bg-gray-500 text-white rounded-lg">
+                                        <i class="fas fa-undo mr-1"></i>Reset
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="p-6">
+                                <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+                                    <div class="flex items-start gap-2 text-sm text-amber-800">
+                                        <i class="fas fa-exclamation-triangle mt-0.5"></i>
+                                        <div><strong>Warning:</strong> Invalid JSON will prevent saving. Use form editor for safer editing.</div>
+                                    </div>
+                                </div>
+
+                                <textarea rows="25" class="w-full px-4 py-3 bg-gray-900 text-gray-100 border border-gray-700 rounded-lg font-mono text-sm focus:ring-2 focus:ring-blue-500 leading-relaxed" spellcheck="false">{
+  "leaveTypeId": "LT-ANNUAL-001",
+  "typeCode": "ANNUAL",
+  "name": "Annual Leave",
+  "description": "Standard annual leave entitlement",
+  "unit": "DAYS",
+  "coreMinUnit": 0.5,
+  "isPaid": true,
+  "isQuotaBased": true,
+  "holidayHandling": "EXCLUDE",
+  "weekendHandling": "EXCLUDE",
+  "overlapPolicy": "NO_OVERLAP",
+  "supportScope": "GLOBAL",
+  "rounding": {
+    "mode": "HALF_UP",
+    "precision": 2
+  }
+}</textarea>
+
+                                <div class="mt-4 flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
+                                    <div class="flex items-center gap-2 text-sm text-green-800">
+                                        <i class="fas fa-check-circle"></i>
+                                        <span class="font-medium">Valid JSON</span>
+                                    </div>
+                                    <button class="text-green-800 underline hover:text-green-900 text-xs">Format JSON</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="space-y-6">
+                        <div class="bg-gradient-to-br from-gray-700 to-gray-800 text-white rounded-xl border border-gray-600 p-5">
+                            <h3 class="text-sm font-semibold mb-3">JSON Editor Controls</h3>
+                            <div class="space-y-2">
+                                <button class="w-full px-3 py-2 text-sm bg-gray-600 hover:bg-gray-500 rounded-lg text-left">
+                                    <i class="fas fa-check mr-2"></i>Validate JSON
+                                </button>
+                                <button class="w-full px-3 py-2 text-sm bg-gray-600 hover:bg-gray-500 rounded-lg text-left">
+                                    <i class="fas fa-paint-roller mr-2"></i>Auto Format
+                                </button>
+                                <button class="w-full px-3 py-2 text-sm bg-gray-600 hover:bg-gray-500 rounded-lg text-left">
+                                    <i class="fas fa-undo mr-2"></i>Reset Changes
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="bg-green-50 rounded-xl border border-green-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                <i class="fas fa-info-circle text-green-600"></i>
+                                JSON Editing Tips
+                            </h3>
+                            <ul class="space-y-2 text-sm text-gray-700">
+                                <li class="flex items-center gap-2">
+                                    <i class="fas fa-check text-green-600 text-xs"></i>
+                                    <span>Validate before saving</span>
+                                </li>
+                                <li class="flex items-center gap-2">
+                                    <i class="fas fa-check text-green-600 text-xs"></i>
+                                    <span>Use form editor for safer changes</span>
+                                </li>
+                                <li class="flex items-center gap-2">
+                                    <i class="fas fa-check text-green-600 text-xs"></i>
+                                    <span>Format for readability</span>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom Actions -->
+            <div class="mt-6 flex items-center justify-between p-4 bg-white rounded-xl shadow-sm border border-gray-200">
+                <button class="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">
+                    <i class="fas fa-times mr-2"></i>Discard Changes
+                </button>
+                <div class="flex items-center gap-3">
+                    <button class="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">
+                        Save as Draft
+                    </button>
+                    <button class="px-6 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-sm font-medium">
+                        <i class="fas fa-save mr-2"></i>Save Changes
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ==================== NEW MODE (ORIGINAL with prefix) ==================== -->
+<div id="newMode" class="mode-container">
+<!-- Top Bar -->
+    <div class="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
+        <div class="px-6 py-3">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2 text-sm">
+                    <a href="#" class="text-blue-600 hover:text-blue-700">Leave Management</a>
+                    <i class="fas fa-chevron-right text-gray-400 text-xs"></i>
+                    <a href="#" class="text-blue-600 hover:text-blue-700">Leave Types</a>
+                    <i class="fas fa-chevron-right text-gray-400 text-xs"></i>
+                    <span class="text-gray-900 font-medium">New Leave Type</span>
+                    <span class="ml-2 px-2 py-0.5 bg-blue-100 text-blue-800 text-xs rounded-full font-medium">NEW</span>
+                </div>
+                
+                <div class="flex items-center gap-3">
+                    <button onclick="switchToMode('view')" class="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+                    <button onclick="saveAsDraft()" class="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">
+                        <i class="fas fa-save mr-2"></i>Save as Draft
+                    </button>
+                    <button onclick="createAndActivate()" class="px-5 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-sm font-medium">
+                        <i class="fas fa-check mr-2"></i>Create & Activate
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <div class="bg-white border-b border-gray-200">
+        <div class="px-6 py-6">
+            <div class="flex items-start gap-4">
+                <div class="w-16 h-16 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center shadow-lg">
+                    <i class="fas fa-umbrella-beach text-white text-2xl"></i>
+                </div>
+                <div class="flex-1">
+                    <h1 class="text-2xl font-bold text-gray-900 mb-1">Create New Leave Type</h1>
+                    <p class="text-gray-600">Define a new leave type (e.g., Annual Leave, Sick Leave, Maternity Leave)</p>
+                    <div class="flex items-center gap-4 mt-3 text-sm text-gray-500">
+                        <span class="flex items-center gap-2">
+                            <i class="fas fa-info-circle"></i>Leave Types are the foundation for Leave Classes
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="px-6">
+            <div class="flex items-center gap-1 border-b border-gray-200">
+                <button onclick="switchTab('new','newBasicInfo', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 flex items-center gap-2 text-blue-600 border-blue-600">
+                    <i class="fas fa-info-circle"></i>Basic Info
+                </button>
+                <button onclick="switchTab('new','newConfiguration', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent flex items-center gap-2 text-gray-600 hover:text-gray-900">
+                    <i class="fas fa-sliders"></i>Configuration
+                </button>
+                <button onclick="switchTab('new','newJsonEditor', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent flex items-center gap-2 text-gray-600 hover:text-gray-900">
+                    <i class="fas fa-file-code"></i>JSON Editor
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="p-6">
+        <div class="max-w-6xl mx-auto">
+            
+            <!-- TAB 1: Basic Info -->
+            <div id="newBasicInfo" class="tab-content active">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-2 space-y-6">
+                        <!-- Step Indicator -->
+                        <div class="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                            <div class="flex items-center gap-4">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-semibold text-sm">1</div>
+                                    <span class="text-sm font-medium text-gray-900">Basic Information</span>
+                                </div>
+                                <i class="fas fa-arrow-right text-gray-400"></i>
+                                <div class="flex items-center gap-3">
+                                    <div class="w-8 h-8 bg-gray-300 text-gray-600 rounded-full flex items-center justify-center font-semibold text-sm">2</div>
+                                    <span class="text-sm text-gray-600">Configuration</span>
+                                </div>
+                                <i class="fas fa-arrow-right text-gray-400"></i>
+                                <div class="flex items-center gap-3">
+                                    <div class="w-8 h-8 bg-gray-300 text-gray-600 rounded-full flex items-center justify-center font-semibold text-sm">3</div>
+                                    <span class="text-sm text-gray-600">Review</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- General Information -->
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
+                                <h3 class="text-lg font-semibold text-gray-900">General Information</h3>
+                                <p class="text-sm text-gray-600 mt-0.5">Basic details about this leave type</p>
+                            </div>
+                            <div class="p-6 space-y-5">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Leave Type ID</label>
+                                    <input type="text" value="LT-AUTO-GENERATED" readonly class="w-full px-4 py-2.5 bg-gray-100 border border-gray-300 rounded-lg text-gray-500 cursor-not-allowed">
+                                    <p class="mt-1.5 text-xs text-gray-500">
+                                        <i class="fas fa-info-circle mr-1"></i>Will be auto-generated upon saving
+                                    </p>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                                        Type Code <span class="text-red-500">*</span>
+                                    </label>
+                                    <input type="text" placeholder="e.g., ANNUAL, SICK, MATERNITY" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent uppercase" required>
+                                    <p class="mt-1.5 text-xs text-gray-500">Short unique code (uppercase, no spaces). Cannot be changed after creation.</p>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                                        Leave Type Name <span class="text-red-500">*</span>
+                                    </label>
+                                    <input type="text" placeholder="e.g., Annual Leave, Sick Leave, Maternity Leave" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" required>
+                                    <p class="mt-1.5 text-xs text-gray-500">Display name shown to employees</p>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                                    <textarea rows="3" placeholder="Describe this leave type, its purpose, and when it should be used..." class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"></textarea>
+                                    <p class="mt-1.5 text-xs text-gray-500">Help others understand this leave type</p>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Support Scope <span class="text-red-500">*</span></label>
+                                    <select class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" required>
+                                        <option value="">Select scope...</option>
+                                        <option value="global" selected>Global - All Countries</option>
+                                        <option value="specific">Specific Countries Only</option>
+                                    </select>
+                                    <p class="mt-1.5 text-xs text-gray-500">Where this leave type can be used</p>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Initial Status <span class="text-red-500">*</span></label>
+                                    <div class="flex items-center gap-4">
+                                        <label class="flex items-center gap-2 cursor-pointer p-3 border-2 border-gray-200 rounded-lg hover:border-blue-500 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50">
+                                            <input type="radio" name="status" value="active" class="w-4 h-4 text-blue-600">
+                                            <div>
+                                                <div class="text-sm font-medium text-gray-900">Active</div>
+                                                <div class="text-xs text-gray-600">Ready to use immediately</div>
+                                            </div>
+                                        </label>
+                                        <label class="flex items-center gap-2 cursor-pointer p-3 border-2 border-gray-200 rounded-lg hover:border-yellow-500 has-[:checked]:border-yellow-500 has-[:checked]:bg-yellow-50">
+                                            <input type="radio" name="status" value="draft" checked class="w-4 h-4 text-yellow-600">
+                                            <div>
+                                                <div class="text-sm font-medium text-gray-900">Draft</div>
+                                                <div class="text-xs text-gray-600">Save for later completion</div>
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Tags</label>
+                                    <div class="flex flex-wrap gap-2 mb-2" id="new-tagsContainer"></div>
+                                    <div class="flex gap-2">
+                                        <input type="text" id="new-tagInput" placeholder="Type and press Enter to add tags" class="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                        <button type="button" onclick="addTag()" class="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">
+                                            <i class="fas fa-plus"></i>
+                                        </button>
+                                    </div>
+                                    <p class="mt-1.5 text-xs text-gray-500">Tags help organize and find leave types easily</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Sidebar -->
+                    <div class="space-y-6">
+                        <div class="bg-blue-50 rounded-xl border border-blue-200 p-5">
+                            <div class="flex items-center gap-2 mb-3">
+                                <i class="fas fa-lightbulb text-blue-600 text-lg"></i>
+                                <h3 class="text-sm font-semibold text-gray-900">Getting Started</h3>
+                            </div>
+                            <ul class="space-y-2 text-sm text-gray-700">
+                                <li class="flex items-start gap-2">
+                                    <i class="fas fa-check text-blue-600 mt-0.5"></i>
+                                    <span>Fill in basic information first</span>
+                                </li>
+                                <li class="flex items-start gap-2">
+                                    <i class="fas fa-check text-blue-600 mt-0.5"></i>
+                                    <span>Configure unit and properties</span>
+                                </li>
+                                <li class="flex items-start gap-2">
+                                    <i class="fas fa-check text-blue-600 mt-0.5"></i>
+                                    <span>Set holiday and overlap rules</span>
+                                </li>
+                                <li class="flex items-start gap-2">
+                                    <i class="fas fa-check text-blue-600 mt-0.5"></i>
+                                    <span>Review and create</span>
+                                </li>
+                            </ul>
+                        </div>
+
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                <i class="fas fa-star text-yellow-500"></i>Common Leave Types
+                            </h3>
+                            <div class="space-y-2">
+                                <button class="w-full text-left p-3 border border-gray-200 rounded-lg hover:border-green-500 hover:bg-green-50 transition-all">
+                                    <div class="text-sm font-medium text-gray-900">Annual Leave</div>
+                                    <div class="text-xs text-gray-600 mt-0.5">Paid, quota-based, exclude holidays</div>
+                                </button>
+                                <button class="w-full text-left p-3 border border-gray-200 rounded-lg hover:border-red-500 hover:bg-red-50 transition-all">
+                                    <div class="text-sm font-medium text-gray-900">Sick Leave</div>
+                                    <div class="text-xs text-gray-600 mt-0.5">Paid, quota-based, medical cert required</div>
+                                </button>
+                                <button class="w-full text-left p-3 border border-gray-200 rounded-lg hover:border-purple-500 hover:bg-purple-50 transition-all">
+                                    <div class="text-sm font-medium text-gray-900">Maternity Leave</div>
+                                    <div class="text-xs text-gray-600 mt-0.5">Paid, non-quota, include holidays</div>
+                                </button>
+                                <button class="w-full text-left p-3 border border-gray-200 rounded-lg hover:border-gray-500 hover:bg-gray-50 transition-all">
+                                    <div class="text-sm font-medium text-gray-900">Unpaid Leave</div>
+                                    <div class="text-xs text-gray-600 mt-0.5">Unpaid, non-quota, approval required</div>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="bg-amber-50 rounded-xl border border-amber-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                <i class="fas fa-exclamation-triangle text-amber-600"></i>
+                                Required Fields
+                            </h3>
+                            <ul class="space-y-1.5 text-sm text-gray-700">
+                                <li class="flex items-center gap-2">
+                                    <i class="fas fa-circle text-red-500 text-xs"></i>
+                                    <span>Type Code (unique)</span>
+                                </li>
+                                <li class="flex items-center gap-2">
+                                    <i class="fas fa-circle text-red-500 text-xs"></i>
+                                    <span>Leave Type Name</span>
+                                </li>
+                                <li class="flex items-center gap-2">
+                                    <i class="fas fa-circle text-red-500 text-xs"></i>
+                                    <span>Support Scope</span>
+                                </li>
+                                <li class="flex items-center gap-2">
+                                    <i class="fas fa-circle text-red-500 text-xs"></i>
+                                    <span>Unit & Min Unit</span>
+                                </li>
+                                <li class="flex items-center gap-2">
+                                    <i class="fas fa-circle text-red-500 text-xs"></i>
+                                    <span>Paid/Unpaid Status</span>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 2: Configuration (NEW MODE) -->
+            <div id="newConfiguration" class="tab-content">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-2 space-y-6">
+                        <!-- Step Indicator -->
+                        <div class="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                            <div class="flex items-center gap-4">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-8 h-8 bg-green-500 text-white rounded-full flex items-center justify-center">
+                                        <i class="fas fa-check text-sm"></i>
+                                    </div>
+                                    <span class="text-sm text-gray-600">Basic Information</span>
+                                </div>
+                                <i class="fas fa-arrow-right text-gray-400"></i>
+                                <div class="flex items-center gap-3">
+                                    <div class="w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-semibold text-sm">2</div>
+                                    <span class="text-sm font-medium text-gray-900">Configuration</span>
+                                </div>
+                                <i class="fas fa-arrow-right text-gray-400"></i>
+                                <div class="flex items-center gap-3">
+                                    <div class="w-8 h-8 bg-gray-300 text-gray-600 rounded-full flex items-center justify-center font-semibold text-sm">3</div>
+                                    <span class="text-sm text-gray-600">Review</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Unit & Measurement -->
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-blue-100">
+                                <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                    <i class="fas fa-ruler text-blue-600"></i>
+                                    Unit & Measurement
+                                </h3>
+                            </div>
+                            <div class="p-6 space-y-5">
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-900 mb-3">Leave Unit <span class="text-red-500">*</span></label>
+                                    <select class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" required>
+                                        <option value="">Select unit...</option>
+                                        <option selected>Days</option>
+                                        <option>Hours</option>
+                                    </select>
+                                    <p class="mt-2 text-xs text-gray-500">Fundamental unit for this leave type</p>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-900 mb-3">Core Minimum Unit <span class="text-red-500">*</span></label>
+                                    <select class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" required>
+                                        <option value="">Select minimum unit...</option>
+                                        <option>0.25 Day (Quarter day)</option>
+                                        <option selected>0.5 Day (Half day)</option>
+                                        <option>1.0 Day (Full day)</option>
+                                    </select>
+                                    <p class="mt-2 text-xs text-gray-500">Smallest requestable increment</p>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-900 mb-3">Rounding Rules (Optional)</label>
+                                    <div class="space-y-3">
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 mb-2">Rounding Mode</label>
+                                            <select class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                                <option>Use System Default</option>
+                                                <option>Round Down (Floor)</option>
+                                                <option selected>Round Half Up (0.5 → 1.0)</option>
+                                                <option>Round Half Down</option>
+                                                <option>Round Up (Ceiling)</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 mb-2">Precision (Decimal Places)</label>
+                                            <select class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                                <option>0 (Whole numbers only)</option>
+                                                <option>1 (e.g., 1.5)</option>
+                                                <option selected>2 (e.g., 1.75)</option>
+                                                <option>3 (e.g., 1.125)</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Type Properties -->
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-green-50 to-green-100">
+                                <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                    <i class="fas fa-toggle-on text-green-600"></i>
+                                    Leave Type Properties
+                                </h3>
+                            </div>
+                            <div class="p-6 space-y-5">
+                                <div class="space-y-3">
+                                    <div class="flex items-center gap-3 p-4 border-2 border-gray-200 rounded-lg hover:border-green-300">
+                                        <input type="checkbox" id="new-isPaid" checked class="w-5 h-5 text-green-600 rounded">
+                                        <div class="flex-1">
+                                            <label for="isPaid" class="text-sm font-medium text-gray-900 cursor-pointer">Paid Leave <span class="text-red-500">*</span></label>
+                                            <div class="text-xs text-gray-600 mt-1">Employee receives normal pay during this leave</div>
+                                        </div>
+                                    </div>
+
+                                    <div class="flex items-center gap-3 p-4 border-2 border-gray-200 rounded-lg hover:border-purple-300">
+                                        <input type="checkbox" id="new-isQuotaBased" checked class="w-5 h-5 text-purple-600 rounded">
+                                        <div class="flex-1">
+                                            <label for="isQuotaBased" class="text-sm font-medium text-gray-900 cursor-pointer">Quota-Based Leave</label>
+                                            <div class="text-xs text-gray-600 mt-1">Requires available balance to request. If unchecked, leave is unlimited.</div>
+                                        </div>
+                                    </div>
+
+                                    <div class="flex items-center gap-3 p-4 border-2 border-gray-200 rounded-lg hover:border-blue-300">
+                                        <input type="checkbox" id="new-requiresApproval" class="w-5 h-5 text-blue-600 rounded">
+                                        <div class="flex-1">
+                                            <label for="requiresApproval" class="text-sm font-medium text-gray-900 cursor-pointer">Always Requires Approval</label>
+                                            <div class="text-xs text-gray-600 mt-1">All requests must go through approval workflow</div>
+                                        </div>
+                                    </div>
+
+                                    <div class="flex items-center gap-3 p-4 border-2 border-gray-200 rounded-lg hover:border-amber-300">
+                                        <input type="checkbox" id="new-allowPartialDays" checked class="w-5 h-5 text-amber-600 rounded">
+                                        <div class="flex-1">
+                                            <label for="allowPartialDays" class="text-sm font-medium text-gray-900 cursor-pointer">Allow Partial Days</label>
+                                            <div class="text-xs text-gray-600 mt-1">Employees can request less than full day (based on minimum unit)</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Holiday Handling -->
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-amber-50 to-amber-100">
+                                <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                    <i class="fas fa-calendar-day text-amber-600"></i>
+                                    Holiday & Weekend Handling
+                                </h3>
+                            </div>
+                            <div class="p-6 space-y-5">
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-900 mb-3">Public Holiday Treatment <span class="text-red-500">*</span></label>
+                                    <div class="space-y-3">
+                                        <label class="flex items-start gap-3 p-4 border-2 border-gray-200 rounded-lg cursor-pointer hover:border-amber-500 has-[:checked]:border-amber-500 has-[:checked]:bg-amber-50">
+                                            <input type="radio" name="holidayHandling" value="exclude" checked class="w-4 h-4 text-amber-600 mt-0.5">
+                                            <div class="flex-1">
+                                                <div class="text-sm font-medium text-gray-900">Exclude Public Holidays</div>
+                                                <div class="text-xs text-gray-600 mt-1">Public holidays within leave period are not counted against balance (most common)</div>
+                                            </div>
+                                        </label>
+
+                                        <label class="flex items-start gap-3 p-4 border-2 border-gray-200 rounded-lg cursor-pointer hover:border-amber-500 has-[:checked]:border-amber-500 has-[:checked]:bg-amber-50">
+                                            <input type="radio" name="holidayHandling" value="include" class="w-4 h-4 text-amber-600 mt-0.5">
+                                            <div class="flex-1">
+                                                <div class="text-sm font-medium text-gray-900">Include Public Holidays</div>
+                                                <div class="text-xs text-gray-600 mt-1">Public holidays are counted as part of leave (e.g., maternity leave)</div>
+                                            </div>
+                                        </label>
+
+                                        <label class="flex items-start gap-3 p-4 border-2 border-gray-200 rounded-lg cursor-pointer hover:border-amber-500 has-[:checked]:border-amber-500 has-[:checked]:bg-amber-50">
+                                            <input type="radio" name="holidayHandling" value="ignore" class="w-4 h-4 text-amber-600 mt-0.5">
+                                            <div class="flex-1">
+                                                <div class="text-sm font-medium text-gray-900">Ignore (No Special Treatment)</div>
+                                                <div class="text-xs text-gray-600 mt-1">Holidays treated same as regular working days</div>
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-900 mb-3">Weekend Treatment <span class="text-red-500">*</span></label>
+                                    <div class="space-y-3">
+                                        <label class="flex items-start gap-3 p-4 border-2 border-gray-200 rounded-lg cursor-pointer hover:border-blue-500 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50">
+                                            <input type="radio" name="weekendHandling" value="exclude" checked class="w-4 h-4 text-blue-600 mt-0.5">
+                                            <div class="flex-1">
+                                                <div class="text-sm font-medium text-gray-900">Exclude Weekends</div>
+                                                <div class="text-xs text-gray-600 mt-1">Only working days are counted (most common for annual leave)</div>
+                                            </div>
+                                        </label>
+
+                                        <label class="flex items-start gap-3 p-4 border-2 border-gray-200 rounded-lg cursor-pointer hover:border-blue-500 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50">
+                                            <input type="radio" name="weekendHandling" value="include" class="w-4 h-4 text-blue-600 mt-0.5">
+                                            <div class="flex-1">
+                                                <div class="text-sm font-medium text-gray-900">Include Weekends</div>
+                                                <div class="text-xs text-gray-600 mt-1">Calendar days including weekends (e.g., medical leave)</div>
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Overlap Policy -->
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-red-50 to-red-100">
+                                <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                    <i class="fas fa-ban text-red-600"></i>
+                                    Overlap & Conflict Policy
+                                </h3>
+                            </div>
+                            <div class="p-6 space-y-5">
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-900 mb-3">Concurrent Leave Handling <span class="text-red-500">*</span></label>
+                                    <div class="space-y-3">
+                                        <label class="flex items-start gap-3 p-4 border-2 border-gray-200 rounded-lg cursor-pointer hover:border-red-500 has-[:checked]:border-red-500 has-[:checked]:bg-red-50">
+                                            <input type="radio" name="overlapPolicy" value="no-overlap" checked class="w-4 h-4 text-red-600 mt-0.5">
+                                            <div class="flex-1">
+                                                <div class="text-sm font-medium text-gray-900">No Overlap Allowed</div>
+                                                <div class="text-xs text-gray-600 mt-1">Cannot request if another leave is approved for same dates (recommended)</div>
+                                            </div>
+                                        </label>
+
+                                        <label class="flex items-start gap-3 p-4 border-2 border-gray-200 rounded-lg cursor-pointer hover:border-red-500 has-[:checked]:border-red-500 has-[:checked]:bg-red-50">
+                                            <input type="radio" name="overlapPolicy" value="allow-overlap" class="w-4 h-4 text-red-600 mt-0.5">
+                                            <div class="flex-1">
+                                                <div class="text-sm font-medium text-gray-900">Allow Overlap</div>
+                                                <div class="text-xs text-gray-600 mt-1">Multiple leave types can be used for same period</div>
+                                            </div>
+                                        </label>
+
+                                        <label class="flex items-start gap-3 p-4 border-2 border-gray-200 rounded-lg cursor-pointer hover:border-red-500 has-[:checked]:border-red-500 has-[:checked]:bg-red-50">
+                                            <input type="radio" name="overlapPolicy" value="partial-overlap" class="w-4 h-4 text-red-600 mt-0.5">
+                                            <div class="flex-1">
+                                                <div class="text-sm font-medium text-gray-900">Partial Overlap (Split Days)</div>
+                                                <div class="text-xs text-gray-600 mt-1">Allow half-day combinations with other leave types</div>
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Sidebar -->
+                    <div class="space-y-6">
+                        <div class="bg-gradient-to-br from-green-50 to-green-100 rounded-xl border border-green-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                <i class="fas fa-lightbulb text-green-600"></i>
+                                Configuration Tips
+                            </h3>
+                            <ul class="space-y-2 text-sm text-gray-700">
+                                <li class="flex items-start gap-2">
+                                    <i class="fas fa-check text-green-600 mt-0.5"></i>
+                                    <span>Most leave types use Days with 0.5 minimum</span>
+                                </li>
+                                <li class="flex items-start gap-2">
+                                    <i class="fas fa-check text-green-600 mt-0.5"></i>
+                                    <span>Exclude holidays is standard for annual leave</span>
+                                </li>
+                                <li class="flex items-start gap-2">
+                                    <i class="fas fa-check text-green-600 mt-0.5"></i>
+                                    <span>No overlap prevents booking conflicts</span>
+                                </li>
+                                <li class="flex items-start gap-2">
+                                    <i class="fas fa-check text-green-600 mt-0.5"></i>
+                                    <span>Check "Paid" for compensated leave</span>
+                                </li>
+                            </ul>
+                        </div>
+
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-3">Configuration Presets</h3>
+                            <div class="space-y-3 text-sm">
+                                <div class="p-3 bg-green-50 rounded-lg border border-green-200">
+                                    <div class="font-medium text-gray-900 mb-1">Annual Leave</div>
+                                    <div class="text-xs text-gray-600">Paid, quota, 0.5 day min, exclude holidays</div>
+                                </div>
+                                <div class="p-3 bg-red-50 rounded-lg border border-red-200">
+                                    <div class="font-medium text-gray-900 mb-1">Sick Leave</div>
+                                    <div class="text-xs text-gray-600">Paid, quota, exclude holidays, approval req</div>
+                                </div>
+                                <div class="p-3 bg-purple-50 rounded-lg border border-purple-200">
+                                    <div class="font-medium text-gray-900 mb-1">Maternity</div>
+                                    <div class="text-xs text-gray-600">Paid, non-quota, include holidays</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-blue-50 rounded-xl border border-blue-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                <i class="fas fa-info-circle text-blue-600"></i>
+                                Next Steps
+                            </h3>
+                            <p class="text-sm text-gray-700 leading-relaxed">
+                                After creating this leave type, you'll create <strong>Leave Classes</strong> for specific countries or business units with detailed policies.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 3: JSON Editor (NEW MODE - Optional) -->
+            <div id="newJsonEditor" class="tab-content">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-2 space-y-6">
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-gray-700 to-gray-800 flex items-center justify-between">
+                                <div>
+                                    <h3 class="text-lg font-semibold text-white flex items-center gap-2">
+                                        <i class="fas fa-file-code"></i>JSON Editor (Advanced)
+                                    </h3>
+                                    <p class="text-sm text-gray-300 mt-1">For advanced users - optional</p>
+                                </div>
+                            </div>
+                            <div class="p-6">
+                                <div class="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-4">
+                                    <div class="flex items-start gap-3">
+                                        <i class="fas fa-info-circle text-purple-600 mt-0.5"></i>
+                                        <div class="text-sm text-purple-900">
+                                            <strong>Advanced Mode</strong> - Use form editor for easier configuration. JSON editor is for experienced users who need direct access.
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <textarea rows="25" class="w-full px-4 py-3 bg-gray-900 text-gray-100 border border-gray-700 rounded-lg font-mono text-sm focus:ring-2 focus:ring-blue-500 leading-relaxed" placeholder='{"typeCode": "ANNUAL", "name": "Annual Leave", ...}'></textarea>
+
+                                <div class="mt-4 flex items-center justify-between">
+                                    <button class="px-4 py-2 text-sm bg-gray-700 text-white rounded-lg hover:bg-gray-600">
+                                        <i class="fas fa-check mr-2"></i>Validate JSON
+                                    </button>
+                                    <button class="px-4 py-2 text-sm text-blue-600 underline hover:text-blue-800">
+                                        Load from Template →
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="space-y-6">
+                        <div class="bg-gradient-to-br from-gray-700 to-gray-800 text-white rounded-xl border border-gray-600 p-5">
+                            <h3 class="text-sm font-semibold mb-3">JSON Editor</h3>
+                            <p class="text-sm text-gray-300 mb-4">For advanced users who prefer direct JSON editing</p>
+                            <button class="w-full px-3 py-2 text-sm bg-gray-600 hover:bg-gray-500 rounded-lg">
+                                <i class="fas fa-book mr-2"></i>View JSON Schema
+                            </button>
+                        </div>
+
+                        <div class="bg-green-50 rounded-xl border border-green-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                <i class="fas fa-exclamation-triangle text-green-600"></i>
+                                Recommendation
+                            </h3>
+                            <p class="text-sm text-gray-700">
+                                We recommend using the form editor for creating leave types. It provides validation and helps prevent errors.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom Actions -->
+            <div class="mt-6 flex items-center justify-between p-4 bg-white rounded-xl shadow-sm border border-gray-200">
+                <button onclick="switchToMode('view')" class="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">
+                    <i class="fas fa-arrow-left mr-2"></i>Back to Library
+                </button>
+                <div class="flex items-center gap-3">
+                    <button onclick="saveAsDraft()" class="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">
+                        Save as Draft
+                    </button>
+                    <button onclick="createAndActivate()" class="px-6 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-sm font-medium">
+                        <i class="fas fa-check mr-2"></i>Create & Activate
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let tags = [];
+
+        function addTag() {
+            const input = document.getElementById('new-tagInput');
+            const tag = input.value.trim();
+            if (tag && !tags.includes(tag)) {
+                tags.push(tag);
+                renderTags();
+                input.value = '';
+            }
+        }
+
+        function removeTag(tag) {
+            tags = tags.filter(t => t !== tag);
+            renderTags();
+        }
+
+        function renderTags() {
+            const container = document.getElementById('new-tagsContainer');
+            container.innerHTML = tags.map(tag => `
+                <span class="inline-flex items-center gap-1 px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
+                    ${tag}
+                    <button onclick="removeTag('${tag}')" class="hover:text-green-900">
+                        <i class="fas fa-times text-xs"></i>
+                    </button>
+                </span>
+            `).join('');
+        }
+
+        // Enter key for tags
+        document.getElementById('new-tagInput')?.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                addTag();
+            }
+        });
+    </script>
+</div>
+
+<!-- ==================== MODE SWITCHING & DATA LOADING SCRIPT ==================== -->
+<script>
+    let appData = {};
+    let currentMode = 'view';
+
+    // Load data from JSON on page load
+    function loadAppData() {
+        const dataScript = document.getElementById('appData');
+        appData = JSON.parse(dataScript.textContent);
+        console.log('Data loaded:', appData);
+
+        // Initial population
+        populateViewMode();
+        wireButtons();
+    }
+
+    // Wire up all buttons for mode switching
+    function wireButtons() {
+        // VIEW MODE BUTTONS
+        // Find "Edit" buttons in view mode and wire them
+        const viewEditButtons = document.querySelectorAll('#viewMode button');
+        viewEditButtons.forEach(btn => {
+            const btnText = btn.textContent.toLowerCase();
+            if (btnText.includes('edit') || btnText.includes('modify')) {
+                btn.onclick = () => switchToMode('edit');
+            }
+        });
+
+        // Add "New" button functionality
+        const viewNewButtons = document.querySelectorAll('#viewMode button');
+        viewNewButtons.forEach(btn => {
+            const btnText = btn.textContent.toLowerCase();
+            if (btnText.includes('new') || btnText.includes('create new')) {
+                btn.onclick = () => switchToMode('new');
+            }
+        });
+
+        // EDIT MODE BUTTONS
+        const editButtons = document.querySelectorAll('#editMode button');
+        editButtons.forEach(btn => {
+            const btnText = btn.textContent.toLowerCase();
+            if (btnText.includes('save changes')) {
+                btn.onclick = (e) => {
+                    e.preventDefault();
+                    saveEditChanges();
+                };
+            } else if (btnText.includes('discard') || btnText.includes('cancel')) {
+                btn.onclick = (e) => {
+                    e.preventDefault();
+                    switchToMode('view');
+                };
+            }
+        });
+
+        // NEW MODE BUTTONS
+        const newButtons = document.querySelectorAll('#newMode button');
+        newButtons.forEach(btn => {
+            const btnText = btn.textContent.toLowerCase();
+            if (btnText.includes('cancel')) {
+                btn.onclick = (e) => {
+                    e.preventDefault();
+                    switchToMode('view');
+                };
+            } else if (btnText.includes('save as draft')) {
+                btn.onclick = (e) => {
+                    e.preventDefault();
+                    saveAsDraft();
+                };
+            } else if (btnText.includes('create') && btnText.includes('activate')) {
+                btn.onclick = (e) => {
+                    e.preventDefault();
+                    createAndActivate();
+                };
+            }
+        });
+
+        console.log('Buttons wired for mode switching');
+    }
+
+    // Switch between modes
+    function switchToMode(mode) {
+        // Hide all modes
+        document.getElementById('viewMode').classList.remove('active');
+        document.getElementById('editMode').classList.remove('active');
+        document.getElementById('newMode').classList.remove('active');
+
+        // Show selected mode
+        currentMode = mode;
+        if (mode === 'view') {
+            document.getElementById('viewMode').classList.add('active');
+            populateViewMode();
+        } else if (mode === 'edit') {
+            document.getElementById('editMode').classList.add('active');
+            populateEditMode();
+        } else if (mode === 'new') {
+            document.getElementById('newMode').classList.add('active');
+            populateNewMode();
+        }
+
+        // Scroll to top
+        window.scrollTo(0, 0);
+
+        console.log('Switched to mode:', mode);
+    }
+
+    // Populate VIEW mode with JSON data
+    function populateViewMode() {
+        // Replace hardcoded values with data from appData JSON
+        // This is where you would implement data binding
+        console.log('View mode populated with:', appData);
+
+        // Example: Update title, description, etc. based on appData
+        // You can add specific implementation here
+    }
+
+    // Populate EDIT mode with JSON data
+    function populateEditMode() {
+        // Pre-fill form fields with current data
+        console.log('Edit mode populated with:', appData);
+
+        // Example: Fill form inputs with appData values
+        // You can add specific implementation here
+    }
+
+    // Initialize NEW mode
+    function populateNewMode() {
+        // Initialize empty form or default values
+        console.log('New mode initialized');
+    }
+
+    function switchTab(mode, tabId, button) {
+        const modeContainer = document.getElementById(`${mode}Mode`);
+        if (!modeContainer) return;
+
+        modeContainer.querySelectorAll('.tab-content').forEach(tab => {
+            tab.classList.remove('active');
+        });
+
+        const targetTab = modeContainer.querySelector(`#${tabId}`);
+        targetTab?.classList.add('active');
+
+        modeContainer.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.classList.remove('text-blue-600', 'border-blue-600');
+            btn.classList.add('text-gray-600', 'border-transparent');
+        });
+
+        if (button) {
+            button.classList.remove('text-gray-600', 'border-transparent');
+            button.classList.add('text-blue-600', 'border-blue-600');
+        }
+    }
+
+    // Save edit changes
+    function saveEditChanges() {
+        console.log('Saving edit changes...');
+        // Collect form data and update appData
+        // For now, just show alert and go back to view
+        alert('Changes saved successfully!');
+
+        // Update appData from form fields here
+        // appData.name = document.getElementById('edit-name').value;
+        // etc...
+
+        switchToMode('view');
+    }
+
+    // Save as draft
+    function saveAsDraft() {
+        console.log('Saving as draft...');
+        alert('Leave type saved as draft!');
+
+        // Collect form data and create new leave type with DRAFT status
+        // appData = { ...collected data, status: 'DRAFT' };
+
+        switchToMode('view');
+    }
+
+    // Create and activate
+    function createAndActivate() {
+        console.log('Creating and activating leave type...');
+        alert('Leave type created and activated!');
+
+        // Collect form data and create new leave type with ACTIVE status
+        // appData = { ...collected data, status: 'ACTIVE' };
+
+        switchToMode('view');
+    }
+
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        loadAppData();
+
+        // Re-wire buttons after a short delay to ensure DOM is ready
+        setTimeout(() => {
+            wireButtons();
+        }, 100);
+    });
+</script>
+
+</body>
+</html>

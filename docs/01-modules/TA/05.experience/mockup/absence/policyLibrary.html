@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Policy Library - Absence Management</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-gray-50">
+    <!-- Main Container -->
+    <div class="min-h-screen p-6">
+        <!-- Header -->
+        <div class="mb-6">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h1 class="text-3xl font-bold text-gray-900 flex items-center gap-3">
+                        <i class="fas fa-book-open text-blue-600"></i>
+                        Policy Library
+                    </h1>
+                    <p class="mt-1 text-sm text-gray-500">
+                        Manage reusable policy templates for leave management
+                    </p>
+                </div>
+                <button class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 shadow-sm">
+                    <i class="fas fa-plus"></i>
+                    New Policy
+                </button>
+            </div>
+        </div>
+
+        <!-- Stats Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div class="bg-white rounded-lg shadow-sm p-4 border border-gray-200">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-600">Total Policies</p>
+                        <p class="text-2xl font-bold text-gray-900 mt-1">47</p>
+                    </div>
+                    <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                        <i class="fas fa-scroll text-blue-600 text-xl"></i>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-white rounded-lg shadow-sm p-4 border border-gray-200">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-600">Active</p>
+                        <p class="text-2xl font-bold text-green-600 mt-1">42</p>
+                    </div>
+                    <div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+                        <i class="fas fa-check-circle text-green-600 text-xl"></i>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-white rounded-lg shadow-sm p-4 border border-gray-200">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-600">Draft</p>
+                        <p class="text-2xl font-bold text-yellow-600 mt-1">3</p>
+                    </div>
+                    <div class="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center">
+                        <i class="fas fa-file-pen text-yellow-600 text-xl"></i>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-white rounded-lg shadow-sm p-4 border border-gray-200">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-600">Inactive</p>
+                        <p class="text-2xl font-bold text-gray-600 mt-1">2</p>
+                    </div>
+                    <div class="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center">
+                        <i class="fas fa-circle-pause text-gray-600 text-xl"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filters and Search -->
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 mb-6">
+            <div class="p-4">
+                <div class="flex flex-col md:flex-row gap-4">
+                    <!-- Search -->
+                    <div class="flex-1">
+                        <div class="relative">
+                            <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                            <input type="text" 
+                                   placeholder="Search policies by name, description, or tag..." 
+                                   class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        </div>
+                    </div>
+                    
+                    <!-- Policy Type Filter -->
+                    <div class="w-full md:w-48">
+                        <select class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            <option value="">All Types</option>
+                            <option value="accrual">Accrual Rules</option>
+                            <option value="eligibility">Eligibility Rules</option>
+                            <option value="validation">Validation Rules</option>
+                            <option value="carry">Carry/Expire/Reset</option>
+                            <option value="limit">Limit & Overdraft</option>
+                            <option value="proration">Proration & Rounding</option>
+                        </select>
+                    </div>
+                    
+                    <!-- Status Filter -->
+                    <div class="w-full md:w-40">
+                        <select class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            <option value="">All Status</option>
+                            <option value="active">Active</option>
+                            <option value="draft">Draft</option>
+                            <option value="inactive">Inactive</option>
+                        </select>
+                    </div>
+                    
+                    <!-- Country Filter -->
+                    <div class="w-full md:w-40">
+                        <select class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            <option value="">All Countries</option>
+                            <option value="global">Global</option>
+                            <option value="vn">Vietnam</option>
+                            <option value="sg">Singapore</option>
+                            <option value="th">Thailand</option>
+                        </select>
+                    </div>
+                    
+                    <!-- More Filters -->
+                    <button class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2">
+                        <i class="fas fa-filter"></i>
+                        More
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Policy Templates (Popular) -->
+        <div class="mb-6">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                    <i class="fas fa-star text-yellow-500"></i>
+                    Popular Templates
+                </h2>
+                <a href="#" class="text-sm text-blue-600 hover:text-blue-700">View all templates →</a>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <!-- Template Card 1 -->
+                <div class="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-4 border border-blue-200 hover:shadow-md transition-shadow cursor-pointer">
+                    <div class="flex items-start justify-between mb-3">
+                        <div class="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-bell text-white"></i>
+                        </div>
+                        <span class="px-2 py-1 bg-blue-600 text-white text-xs rounded-full">Template</span>
+                    </div>
+                    <h3 class="font-semibold text-gray-900 mb-1">Minimum Advance Notice</h3>
+                    <p class="text-sm text-gray-600 mb-3">Requires employees to request leave X days ahead</p>
+                    <div class="flex items-center justify-between text-xs text-gray-500">
+                        <span class="flex items-center gap-1">
+                            <i class="fas fa-users"></i>
+                            Used by 245 companies
+                        </span>
+                        <span class="flex items-center gap-1">
+                            <i class="fas fa-star text-yellow-500"></i>
+                            4.8/5
+                        </span>
+                    </div>
+                    <button class="mt-3 w-full px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700">
+                        Use Template
+                    </button>
+                </div>
+
+                <!-- Template Card 2 -->
+                <div class="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-4 border border-purple-200 hover:shadow-md transition-shadow cursor-pointer">
+                    <div class="flex items-start justify-between mb-3">
+                        <div class="w-10 h-10 bg-purple-600 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-calendar-days text-white"></i>
+                        </div>
+                        <span class="px-2 py-1 bg-purple-600 text-white text-xs rounded-full">Template</span>
+                    </div>
+                    <h3 class="font-semibold text-gray-900 mb-1">Consecutive Days Limit</h3>
+                    <p class="text-sm text-gray-600 mb-3">Limits maximum consecutive leave days</p>
+                    <div class="flex items-center justify-between text-xs text-gray-500">
+                        <span class="flex items-center gap-1">
+                            <i class="fas fa-users"></i>
+                            Used by 189 companies
+                        </span>
+                        <span class="flex items-center gap-1">
+                            <i class="fas fa-star text-yellow-500"></i>
+                            4.6/5
+                        </span>
+                    </div>
+                    <button class="mt-3 w-full px-3 py-2 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700">
+                        Use Template
+                    </button>
+                </div>
+
+                <!-- Template Card 3 -->
+                <div class="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-4 border border-green-200 hover:shadow-md transition-shadow cursor-pointer">
+                    <div class="flex items-start justify-between mb-3">
+                        <div class="w-10 h-10 bg-green-600 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-shield-halved text-white"></i>
+                        </div>
+                        <span class="px-2 py-1 bg-green-600 text-white text-xs rounded-full">Template</span>
+                    </div>
+                    <h3 class="font-semibold text-gray-900 mb-1">Block Overlapping Leaves</h3>
+                    <p class="text-sm text-gray-600 mb-3">Prevents multiple leave requests for same period</p>
+                    <div class="flex items-center justify-between text-xs text-gray-500">
+                        <span class="flex items-center gap-1">
+                            <i class="fas fa-users"></i>
+                            Used by 312 companies
+                        </span>
+                        <span class="flex items-center gap-1">
+                            <i class="fas fa-star text-yellow-500"></i>
+                            4.9/5
+                        </span>
+                    </div>
+                    <button class="mt-3 w-full px-3 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700">
+                        Use Template
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Policy List -->
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200">
+            <!-- Table Header -->
+            <div class="px-6 py-4 border-b border-gray-200">
+                <div class="flex items-center justify-between">
+                    <h2 class="text-lg font-semibold text-gray-900">Your Policies</h2>
+                    <div class="flex items-center gap-2">
+                        <button class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">
+                            <i class="fas fa-download mr-1"></i>
+                            Export
+                        </button>
+                        <button class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">
+                            <i class="fas fa-sliders mr-1"></i>
+                            Columns
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Table -->
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-gray-50 border-b border-gray-200">
+                        <tr>
+                            <th class="px-6 py-3 text-left">
+                                <input type="checkbox" class="rounded border-gray-300">
+                            </th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Policy Name
+                            </th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Type
+                            </th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Scope
+                            </th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Status
+                            </th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Usage
+                            </th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Modified
+                            </th>
+                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Actions
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        <!-- Row 1 -->
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-4">
+                                <input type="checkbox" class="rounded border-gray-300">
+                            </td>
+                            <td class="px-6 py-4">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                        <i class="fas fa-plus-circle text-blue-600 text-sm"></i>
+                                    </div>
+                                    <div>
+                                        <div class="font-medium text-gray-900">VN Standard Accrual</div>
+                                        <div class="text-sm text-gray-500">1.0 day/month, monthly frequency</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                    <i class="fas fa-plus-circle mr-1"></i>
+                                    Accrual
+                                </span>
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="flex items-center gap-1 text-sm text-gray-900">
+                                    <span class="text-lg">🇻🇳</span>
+                                    Vietnam
+                                </span>
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                    <i class="fas fa-circle text-xs mr-1"></i>
+                                    Active
+                                </span>
+                            </td>
+                            <td class="px-6 py-4">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-sm font-medium text-gray-900">8</span>
+                                    <span class="text-xs text-gray-500">classes</span>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-500">
+                                <div>2 days ago</div>
+                                <div class="text-xs text-gray-400">by HR Admin</div>
+                            </td>
+                            <td class="px-6 py-4 text-right">
+                                <div class="flex items-center justify-end gap-2">
+                                    <button class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                    <button class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg">
+                                        <i class="fas fa-pen"></i>
+                                    </button>
+                                    <button class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg">
+                                        <i class="fas fa-copy"></i>
+                                    </button>
+                                    <button class="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+
+                        <!-- Row 2 -->
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-4">
+                                <input type="checkbox" class="rounded border-gray-300">
+                            </td>
+                            <td class="px-6 py-4">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                        <i class="fas fa-id-card text-purple-600 text-sm"></i>
+                                    </div>
+                                    <div>
+                                        <div class="font-medium text-gray-900">Standard Eligibility - 12M</div>
+                                        <div class="text-sm text-gray-500">Min tenure: 12 months, Active status</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                                    <i class="fas fa-id-card mr-1"></i>
+                                    Eligibility
+                                </span>
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="flex items-center gap-1 text-sm text-gray-900">
+                                    <i class="fas fa-globe text-gray-400"></i>
+                                    Global
+                                </span>
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                    <i class="fas fa-circle text-xs mr-1"></i>
+                                    Active
+                                </span>
+                            </td>
+                            <td class="px-6 py-4">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-sm font-medium text-gray-900">15</span>
+                                    <span class="text-xs text-gray-500">classes</span>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-500">
+                                <div>5 days ago</div>
+                                <div class="text-xs text-gray-400">by System</div>
+                            </td>
+                            <td class="px-6 py-4 text-right">
+                                <div class="flex items-center justify-end gap-2">
+                                    <button class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                    <button class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg">
+                                        <i class="fas fa-pen"></i>
+                                    </button>
+                                    <button class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg">
+                                        <i class="fas fa-copy"></i>
+                                    </button>
+                                    <button class="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+
+                        <!-- Row 3 -->
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-4">
+                                <input type="checkbox" class="rounded border-gray-300">
+                            </td>
+                            <td class="px-6 py-4">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                        <i class="fas fa-shield-halved text-green-600 text-sm"></i>
+                                    </div>
+                                    <div>
+                                        <div class="font-medium text-gray-900">Manager Leave Validation</div>
+                                        <div class="text-sm text-gray-500">Advanced validation with approval rules</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                    <i class="fas fa-shield-check mr-1"></i>
+                                    Validation
+                                </span>
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="flex items-center gap-1 text-sm text-gray-900">
+                                    <i class="fas fa-globe text-gray-400"></i>
+                                    Global
+                                </span>
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                    <i class="fas fa-circle text-xs mr-1"></i>
+                                    Draft
+                                </span>
+                            </td>
+                            <td class="px-6 py-4">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-sm font-medium text-gray-900">0</span>
+                                    <span class="text-xs text-gray-500">classes</span>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-500">
+                                <div>1 hour ago</div>
+                                <div class="text-xs text-gray-400">by You</div>
+                            </td>
+                            <td class="px-6 py-4 text-right">
+                                <div class="flex items-center justify-end gap-2">
+                                    <button class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                    <button class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg">
+                                        <i class="fas fa-pen"></i>
+                                    </button>
+                                    <button class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg">
+                                        <i class="fas fa-copy"></i>
+                                    </button>
+                                    <button class="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+
+                        <!-- Row 4 -->
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-4">
+                                <input type="checkbox" class="rounded border-gray-300">
+                            </td>
+                            <td class="px-6 py-4">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                        <i class="fas fa-repeat text-orange-600 text-sm"></i>
+                                    </div>
+                                    <div>
+                                        <div class="font-medium text-gray-900">Senior Staff Carry Forward</div>
+                                        <div class="text-sm text-gray-500">Max 15 days, Expire after 6 months</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                                    <i class="fas fa-repeat mr-1"></i>
+                                    Carry/Expire
+                                </span>
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="flex items-center gap-1 text-sm text-gray-900">
+                                    <span class="text-lg">🇸🇬</span>
+                                    Singapore
+                                </span>
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                    <i class="fas fa-circle text-xs mr-1"></i>
+                                    Active
+                                </span>
+                            </td>
+                            <td class="px-6 py-4">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-sm font-medium text-gray-900">3</span>
+                                    <span class="text-xs text-gray-500">classes</span>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-500">
+                                <div>1 week ago</div>
+                                <div class="text-xs text-gray-400">by HR Manager</div>
+                            </td>
+                            <td class="px-6 py-4 text-right">
+                                <div class="flex items-center justify-end gap-2">
+                                    <button class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                    <button class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg">
+                                        <i class="fas fa-pen"></i>
+                                    </button>
+                                    <button class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg">
+                                        <i class="fas fa-copy"></i>
+                                    </button>
+                                    <button class="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Pagination -->
+            <div class="px-6 py-4 border-t border-gray-200">
+                <div class="flex items-center justify-between">
+                    <div class="text-sm text-gray-500">
+                        Showing <span class="font-medium text-gray-900">1</span> to 
+                        <span class="font-medium text-gray-900">10</span> of 
+                        <span class="font-medium text-gray-900">47</span> results
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button class="px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                            <i class="fas fa-chevron-left"></i>
+                            Previous
+                        </button>
+                        <button class="px-3 py-2 text-sm bg-blue-600 text-white rounded-lg">1</button>
+                        <button class="px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">2</button>
+                        <button class="px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">3</button>
+                        <span class="px-2 text-gray-500">...</span>
+                        <button class="px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">5</button>
+                        <button class="px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">
+                            Next
+                            <i class="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,1990 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Leave Profile Management System</title>
+<meta charset="UTF-8"> <meta name="viewport" content="width=device-width, initial-scale=1.0"> <title>View Leave Account - Nguyen Van A</title> <script src="https://cdn.tailwindcss.com"></script> <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"> <style> .tab-content { display: none; } .tab-content.active { display: block; } </style>
+    <style>
+        /* Mode switching styles */
+        .mode-container { display: none; }
+        .mode-container.active { display: block; }
+    </style>
+</head>
+<body>
+
+<!-- ==================== DATA CONFIGURATION (JSON) ==================== -->
+<script id="appData" type="application/json">
+{
+    "leaveAccountId": "LACC-EMP-2025-001",
+    "employeeId": "EMP-VN-12345",
+    "employeeInfo": {
+        "employeeCode": "VN12345",
+        "fullName": "Nguyen Van An",
+        "email": "nguyen.van.an@company.com",
+        "department": "Engineering",
+        "jobTitle": "Senior Software Engineer",
+        "hireDate": "2023-06-15",
+        "employmentType": "FULLTIME",
+        "workLocation": "Hanoi, Vietnam"
+    },
+    "leaveClassId": "LC-VN-001",
+    "leaveClassName": "Vietnam Full-Time Employee Leave",
+    "status": "ACTIVE",
+    "effectiveDate": "2025-01-01",
+    "expiryDate": null,
+    "leaveBalances": [
+        {
+            "leaveTypeId": "LT-VN-ANNUAL-001",
+            "leaveTypeName": "Annual Leave",
+            "leaveTypeCode": "ANNUAL",
+            "balance": {
+                "opening": 12.0,
+                "accrued": 8.0,
+                "used": 5.0,
+                "pending": 2.0,
+                "expired": 0.0,
+                "adjusted": 0.0,
+                "carriedOver": 5.0,
+                "current": 18.0,
+                "available": 16.0
+            },
+            "accrualDetails": {
+                "accrualRate": 1.0,
+                "accrualUnit": "DAYS_PER_MONTH",
+                "lastAccrualDate": "2025-11-01",
+                "nextAccrualDate": "2025-12-01",
+                "accruedThisYear": 8.0,
+                "projectedYearEnd": 12.0
+            },
+            "usageDetails": {
+                "usedThisYear": 5.0,
+                "pendingRequests": 2.0,
+                "remainingAllowance": 18.0,
+                "maxUsagePerYear": 20.0
+            },
+            "carryOverDetails": {
+                "carriedOverFromPreviousYear": 5.0,
+                "carriedOverDate": "2025-01-01",
+                "carryOverExpiry": "2025-03-31",
+                "carryOverStatus": "ACTIVE"
+            }
+        },
+        {
+            "leaveTypeId": "LT-VN-SICK-001",
+            "leaveTypeName": "Sick Leave",
+            "leaveTypeCode": "SICK",
+            "balance": {
+                "opening": 30.0,
+                "accrued": 0.0,
+                "used": 3.0,
+                "pending": 0.0,
+                "expired": 0.0,
+                "adjusted": 0.0,
+                "carriedOver": 0.0,
+                "current": 27.0,
+                "available": 27.0
+            },
+            "accrualDetails": {
+                "accrualRate": 30.0,
+                "accrualUnit": "DAYS_PER_YEAR",
+                "lastAccrualDate": "2025-01-01",
+                "nextAccrualDate": "2026-01-01",
+                "accruedThisYear": 30.0,
+                "projectedYearEnd": 30.0
+            },
+            "usageDetails": {
+                "usedThisYear": 3.0,
+                "pendingRequests": 0.0,
+                "remainingAllowance": 27.0,
+                "maxUsagePerYear": 30.0
+            },
+            "carryOverDetails": null
+        },
+        {
+            "leaveTypeId": "LT-VN-PERSONAL-001",
+            "leaveTypeName": "Personal Leave",
+            "leaveTypeCode": "PERSONAL",
+            "balance": {
+                "opening": 3.0,
+                "accrued": 0.0,
+                "used": 1.0,
+                "pending": 0.0,
+                "expired": 0.0,
+                "adjusted": 0.0,
+                "carriedOver": 0.0,
+                "current": 2.0,
+                "available": 2.0
+            },
+            "accrualDetails": {
+                "accrualRate": 3.0,
+                "accrualUnit": "DAYS_PER_YEAR",
+                "lastAccrualDate": "2025-01-01",
+                "nextAccrualDate": "2026-01-01",
+                "accruedThisYear": 3.0,
+                "projectedYearEnd": 3.0
+            },
+            "usageDetails": {
+                "usedThisYear": 1.0,
+                "pendingRequests": 0.0,
+                "remainingAllowance": 2.0,
+                "maxUsagePerYear": 3.0
+            },
+            "carryOverDetails": null
+        }
+    ],
+    "leaveHistory": [
+        {
+            "requestId": "REQ-2025-001",
+            "leaveTypeCode": "ANNUAL",
+            "startDate": "2025-10-15",
+            "endDate": "2025-10-17",
+            "daysRequested": 3.0,
+            "status": "APPROVED",
+            "approvedBy": "manager@company.com",
+            "approvedDate": "2025-10-10T10:30:00Z"
+        },
+        {
+            "requestId": "REQ-2025-002",
+            "leaveTypeCode": "SICK",
+            "startDate": "2025-09-05",
+            "endDate": "2025-09-05",
+            "daysRequested": 1.0,
+            "status": "APPROVED",
+            "approvedBy": "manager@company.com",
+            "approvedDate": "2025-09-05T14:20:00Z"
+        },
+        {
+            "requestId": "REQ-2025-003",
+            "leaveTypeCode": "ANNUAL",
+            "startDate": "2025-12-20",
+            "endDate": "2025-12-22",
+            "daysRequested": 2.0,
+            "status": "PENDING",
+            "approvedBy": null,
+            "approvedDate": null
+        }
+    ],
+    "adjustmentHistory": [
+        {
+            "adjustmentId": "ADJ-2025-001",
+            "leaveTypeCode": "ANNUAL",
+            "adjustmentType": "MANUAL_ADJUSTMENT",
+            "amount": 2.0,
+            "reason": "Bonus leave for outstanding performance",
+            "adjustedBy": "hr.manager@company.com",
+            "adjustedDate": "2025-03-15T09:00:00Z"
+        }
+    ],
+    "periodProfileId": "PP-VN-CALENDAR-001",
+    "periodProfileName": "Vietnam Calendar Year Period",
+    "currentPeriod": {
+        "periodNumber": 11,
+        "periodName": "Period 11 - November",
+        "startDate": "2025-11-01",
+        "endDate": "2025-11-30"
+    },
+    "eligibilityStatus": {
+        "isEligible": true,
+        "eligibilityPolicyId": "POL-ELIG-VN-001",
+        "eligibilityCheckDate": "2025-01-01T00:00:00Z",
+        "eligibilityReasons": [
+            "Employment type: FULLTIME",
+            "Tenure: 520 days (>= 90 days required)",
+            "Employment status: ACTIVE",
+            "Location: VN"
+        ]
+    },
+    "complianceSettings": {
+        "country": "VN",
+        "laborLawVersion": "2019",
+        "minimumAnnualLeaveDays": 12,
+        "auditTrailEnabled": true,
+        "dataRetentionYears": 7
+    },
+    "metadata": {
+        "createdBy": "system@company.com",
+        "createdAt": "2023-06-15T08:00:00Z",
+        "modifiedBy": "hr.manager@company.com",
+        "modifiedAt": "2025-11-14T09:15:00Z",
+        "lastSyncDate": "2025-11-14T09:15:00Z",
+        "version": "1.2.0"
+    }
+}
+</script>
+
+<!-- ==================== VIEW MODE (ORIGINAL) ==================== -->
+<div id="viewMode" class="mode-container active">
+<!-- Top Bar --> <div class="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm"> <div class="px-6 py-3"> <div class="flex items-center justify-between"> <div class="flex items-center gap-2 text-sm"> <a href="#" class="text-blue-600 hover:text-blue-700">Leave Management</a> <i class="fas fa-chevron-right text-gray-400 text-xs"></i> <a href="#" class="text-blue-600 hover:text-blue-700">Leave Accounts</a> <i class="fas fa-chevron-right text-gray-400 text-xs"></i> <span class="text-gray-900 font-medium">Nguyen Van A - Annual Leave</span> <span class="ml-2 px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-full font-medium">VIEW MODE</span> </div>
+                <div class="flex items-center gap-3">
+                    <button class="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">
+                        <i class="fas fa-download mr-2"></i>Export History
+                    </button>
+                    <button class="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">
+                        <i class="fas fa-calculator mr-2"></i>Recalculate
+                    </button>
+                    <button onclick="switchToMode('edit')" class="px-5 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-sm font-medium">
+                        <i class="fas fa-pen mr-2"></i>Manage Account
+                    </button>
+                    <button onclick="switchToMode('new')" class="px-5 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 shadow-sm font-medium">
+                        <i class="fas fa-plus mr-2"></i>New Leave Account
+                    </button>
+                </div>
+        </div>
+    </div>
+</div>
+
+<!-- Header -->
+<div class="bg-white border-b border-gray-200">
+    <div class="px-6 py-6">
+        <div class="flex items-start justify-between">
+            <div class="flex items-start gap-4">
+                <div class="w-16 h-16 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center shadow-lg">
+                    <i class="fas fa-wallet text-white text-2xl"></i>
+                </div>
+                <div>
+                    <div class="flex items-center gap-3 mb-1">
+                        <h1 class="text-2xl font-bold text-gray-900">Annual Leave Account</h1>
+                        <span class="px-3 py-1 bg-green-100 text-green-800 text-sm font-medium rounded-full">Active</span>
+                        <span class="px-3 py-1 bg-blue-100 text-blue-800 text-sm font-medium rounded-full">ACCOUNT</span>
+                    </div>
+                    <p class="text-gray-600 mb-3">Nguyen Van A -  EMP-001234 -  Software Engineer</p>
+                    <div class="flex items-center gap-6 text-sm text-gray-500">
+                        <span class="flex items-center gap-2"><i class="fas fa-hashtag"></i>ACC-2025-001234-ANNUAL</span>
+                        <span class="flex items-center gap-2"><i class="fas fa-layer-group"></i>VN Standard Annual Leave</span>
+                        <span class="flex items-center gap-2"><i class="fas fa-calendar"></i>Period: 2025</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="flex items-center gap-2">
+                <button class="p-2 text-gray-600 hover:bg-gray-100 rounded-lg" title="Refresh"><i class="fas fa-sync-alt"></i></button>
+                <button class="p-2 text-gray-600 hover:bg-gray-100 rounded-lg" title="Share"><i class="fas fa-share-nodes"></i></button>
+                <button class="p-2 text-gray-600 hover:bg-gray-100 rounded-lg" title="Print"><i class="fas fa-print"></i></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="px-6">
+        <div class="flex items-center gap-1 border-b border-gray-200">
+            <button onclick="switchTab('view','viewOverview', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 flex items-center gap-2 text-blue-600 border-blue-600">
+                <i class="fas fa-dashboard"></i>Overview
+            </button>
+            <button onclick="switchTab('view','viewBalance', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent flex items-center gap-2 text-gray-600 hover:text-gray-900">
+                <i class="fas fa-coins"></i>Balance Details
+            </button>
+            <button onclick="switchTab('view','viewMovements', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent flex items-center gap-2 text-gray-600 hover:text-gray-900">
+                <i class="fas fa-exchange-alt"></i>Movements
+                <span class="px-1.5 py-0.5 bg-purple-100 text-purple-700 text-xs rounded-full font-semibold">24</span>
+            </button>
+            <button onclick="switchTab('view','viewRequests', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent flex items-center gap-2 text-gray-600 hover:text-gray-900">
+                <i class="fas fa-paper-plane"></i>Leave Requests
+                <span class="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full font-semibold">8</span>
+            </button>
+            <button onclick="switchTab('view','viewEvents', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent flex items-center gap-2 text-gray-600 hover:text-gray-900">
+                <i class="fas fa-clock"></i>Events
+            </button>
+            <button onclick="switchTab('view','viewJsonEditor', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent flex items-center gap-2 text-gray-600 hover:text-gray-900">
+                <i class="fas fa-file-code"></i>JSON
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Main Content -->
+<div class="p-6">
+    <div class="max-w-7xl mx-auto">
+        
+        <!-- TAB 1: Overview -->
+        <div id="viewOverview" class="tab-content active">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div class="lg:col-span-2 space-y-6">
+                    <!-- Balance Summary Cards -->
+                    <div class="grid grid-cols-3 gap-4">
+                        <div class="bg-white rounded-xl shadow-sm border-2 border-green-300 p-5">
+                            <div class="flex items-center justify-between mb-2">
+                                <div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                                    <i class="fas fa-wallet text-green-600 text-lg"></i>
+                                </div>
+                                <i class="fas fa-arrow-up text-green-600 text-sm"></i>
+                            </div>
+                            <div class="text-3xl font-bold text-green-600">14.5</div>
+                            <div class="text-sm text-gray-600 mt-1">Available Days</div>
+                            <div class="mt-3 text-xs text-gray-500">Out of 21.0 total</div>
+                        </div>
+
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                            <div class="flex items-center justify-between mb-2">
+                                <div class="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center">
+                                    <i class="fas fa-lock text-amber-600 text-lg"></i>
+                                </div>
+                            </div>
+                            <div class="text-3xl font-bold text-amber-600">2.0</div>
+                            <div class="text-sm text-gray-600 mt-1">On Hold</div>
+                            <div class="mt-3 text-xs text-gray-500">Pending requests</div>
+                        </div>
+
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                            <div class="flex items-center justify-between mb-2">
+                                <div class="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
+                                    <i class="fas fa-minus text-red-600 text-lg"></i>
+                                </div>
+                            </div>
+                            <div class="text-3xl font-bold text-red-600">4.5</div>
+                            <div class="text-sm text-gray-600 mt-1">Used Days</div>
+                            <div class="mt-3 text-xs text-gray-500">21% of total</div>
+                        </div>
+                    </div>
+
+                    <!-- Balance Breakdown -->
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                        <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
+                            <h3 class="text-lg font-semibold text-gray-900">Balance Breakdown</h3>
+                        </div>
+                        <div class="p-6">
+                            <dl class="grid grid-cols-2 gap-6">
+                                <div>
+                                    <dt class="text-sm font-medium text-gray-500 mb-1">Current Quantity</dt>
+                                    <dd class="text-2xl font-bold text-gray-900">21.0 days</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-sm font-medium text-gray-500 mb-1">Accrued This Year</dt>
+                                    <dd class="text-2xl font-bold text-purple-600">19.25 days</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-sm font-medium text-gray-500 mb-1">Carried Forward</dt>
+                                    <dd class="text-2xl font-bold text-blue-600">1.75 days</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-sm font-medium text-gray-500 mb-1">Granted (Bonus)</dt>
+                                    <dd class="text-2xl font-bold text-green-600">0.0 days</dd>
+                                </div>
+                            </dl>
+
+                            <div class="mt-6">
+                                <div class="text-sm font-medium text-gray-700 mb-2">Balance Composition</div>
+                                <div class="w-full bg-gray-200 rounded-full h-6 overflow-hidden">
+                                    <div class="flex h-full">
+                                        <div class="bg-green-500 flex items-center justify-center text-xs text-white font-semibold" style="width: 69%">Available 69%</div>
+                                        <div class="bg-amber-500 flex items-center justify-center text-xs text-white font-semibold" style="width: 10%">Hold 10%</div>
+                                        <div class="bg-red-500 flex items-center justify-center text-xs text-white font-semibold" style="width: 21%">Used 21%</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Account Information -->
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                        <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
+                            <h3 class="text-lg font-semibold text-gray-900">Account Information</h3>
+                        </div>
+                        <div class="p-6">
+                            <dl class="grid grid-cols-2 gap-6">
+                                <div>
+                                    <dt class="text-sm font-medium text-gray-500 mb-1">Account ID</dt>
+                                    <dd class="text-sm text-gray-900 font-mono bg-gray-50 px-3 py-2 rounded">ACC-2025-001234-ANNUAL</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-sm font-medium text-gray-500 mb-1">Mode</dt>
+                                    <dd><span class="px-3 py-1 bg-blue-100 text-blue-800 text-sm rounded-full font-medium">ACCOUNT</span></dd>
+                                </div>
+                                <div>
+                                    <dt class="text-sm font-medium text-gray-500 mb-1">Leave Class</dt>
+                                    <dd class="text-sm text-gray-900 font-medium">VN Standard Annual Leave</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-sm font-medium text-gray-500 mb-1">Period Profile</dt>
+                                    <dd class="text-sm text-gray-900">Calendar Year 2025</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-sm font-medium text-gray-500 mb-1">Effective Date</dt>
+                                    <dd class="text-sm text-gray-900">January 1, 2025</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-sm font-medium text-gray-500 mb-1">Status</dt>
+                                    <dd><span class="px-3 py-1 bg-green-100 text-green-800 text-sm rounded-full font-medium">
+                                        <i class="fas fa-circle text-xs mr-1"></i>Active</span>
+                                    </dd>
+                                </div>
+                            </dl>
+                        </div>
+                    </div>
+
+                    <!-- Recent Activity -->
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                        <div class="px-6 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
+                            <h3 class="text-lg font-semibold text-gray-900">Recent Activity</h3>
+                            <a href="#" class="text-sm text-blue-600 hover:text-blue-700">View All</a>
+                        </div>
+                        <div class="divide-y divide-gray-200">
+                            <div class="p-4 hover:bg-gray-50">
+                                <div class="flex items-start gap-3">
+                                    <div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                                        <i class="fas fa-plus text-green-600"></i>
+                                    </div>
+                                    <div class="flex-1">
+                                        <div class="text-sm font-medium text-gray-900">Monthly Accrual</div>
+                                        <div class="text-sm text-gray-600 mt-0.5">+1.75 days accrued for November 2025</div>
+                                        <div class="text-xs text-gray-500 mt-1">Nov 30, 2025 -  System</div>
+                                    </div>
+                                    <div class="text-sm font-semibold text-green-600">+1.75</div>
+                                </div>
+                            </div>
+
+                            <div class="p-4 hover:bg-gray-50">
+                                <div class="flex items-start gap-3">
+                                    <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                                        <i class="fas fa-paper-plane text-blue-600"></i>
+                                    </div>
+                                    <div class="flex-1">
+                                        <div class="text-sm font-medium text-gray-900">Leave Request Approved</div>
+                                        <div class="text-sm text-gray-600 mt-0.5">REQ-2025-1234 -  Dec 25-26, 2025</div>
+                                        <div class="text-xs text-gray-500 mt-1">Nov 14, 2025 -  Manager Approved</div>
+                                    </div>
+                                    <div class="text-sm font-semibold text-blue-600">-2.0</div>
+                                </div>
+                            </div>
+
+                            <div class="p-4 hover:bg-gray-50">
+                                <div class="flex items-start gap-3">
+                                    <div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                                        <i class="fas fa-plus text-green-600"></i>
+                                    </div>
+                                    <div class="flex-1">
+                                        <div class="text-sm font-medium text-gray-900">Monthly Accrual</div>
+                                        <div class="text-sm text-gray-600 mt-0.5">+1.75 days accrued for October 2025</div>
+                                        <div class="text-xs text-gray-500 mt-1">Oct 31, 2025 -  System</div>
+                                    </div>
+                                    <div class="text-sm font-semibold text-green-600">+1.75</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Sidebar -->
+                <div class="space-y-6">
+                    <!-- Employee Card -->
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                        <h3 class="text-sm font-semibold text-gray-900 mb-4">Employee</h3>
+                        <div class="flex items-start gap-3">
+                            <div class="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center text-white font-semibold">
+                                NA
+                            </div>
+                            <div class="flex-1">
+                                <div class="font-semibold text-gray-900">Nguyen Van A</div>
+                                <div class="text-sm text-gray-600">EMP-001234</div>
+                                <div class="text-sm text-gray-600 mt-1">Software Engineer</div>
+                                <a href="#" class="text-sm text-blue-600 hover:text-blue-700 mt-2 inline-block">
+                                    <i class="fas fa-external-link-alt mr-1"></i>View Profile
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Quick Stats -->
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                        <h3 class="text-sm font-semibold text-gray-900 mb-4">This Year Stats</h3>
+                        <div class="space-y-3 text-sm">
+                            <div class="flex items-center justify-between">
+                                <span class="text-gray-600">Total Accrued</span>
+                                <span class="font-semibold text-purple-600">19.25 days</span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-gray-600">Total Used</span>
+                                <span class="font-semibold text-red-600">4.5 days</span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-gray-600">Requests Submitted</span>
+                                <span class="font-semibold text-blue-600">8 requests</span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-gray-600">Requests Approved</span>
+                                <span class="font-semibold text-green-600">7 requests</span>
+                            </div>
+                            <div class="flex items-center justify-between border-t border-gray-200 pt-3">
+                                <span class="text-gray-600">Utilization Rate</span>
+                                <span class="font-semibold text-gray-900">21%</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Projected Balance -->
+                    <div class="bg-gradient-to-br from-indigo-50 to-indigo-100 rounded-xl border border-indigo-200 p-5">
+                        <h3 class="text-sm font-semibold text-gray-900 mb-3">Year-End Projection</h3>
+                        <div class="space-y-3 text-sm">
+                            <div class="flex items-center justify-between">
+                                <span class="text-gray-700">Projected Total</span>
+                                <span class="font-semibold text-indigo-900">21.0 days</span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-gray-700">Pending Requests</span>
+                                <span class="font-semibold text-amber-700">2.0 days</span>
+                            </div>
+                            <div class="flex items-center justify-between border-t border-indigo-200 pt-3">
+                                <span class="text-gray-700">Expected Available</span>
+                                <span class="font-semibold text-indigo-900">12.5 days</span>
+                            </div>
+                            <div class="mt-3 p-2 bg-amber-100 rounded text-xs text-amber-900">
+                                <i class="fas fa-exclamation-triangle mr-1"></i>
+                                Max carry forward: 5 days
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Quick Actions -->
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                        <h3 class="text-sm font-semibold text-gray-900 mb-4">Quick Actions</h3>
+                        <div class="space-y-2">
+                            <button class="w-full px-4 py-2 bg-blue-50 hover:bg-blue-100 text-sm text-blue-700 rounded-lg flex items-center gap-2 border border-blue-200">
+                                <i class="fas fa-plus"></i><span>Manual Adjustment</span>
+                            </button>
+                            <button class="w-full px-4 py-2 bg-blue-50 hover:bg-blue-100 text-sm text-blue-700 rounded-lg flex items-center gap-2 border border-blue-200">
+                                <i class="fas fa-lock"></i><span>Suspend Account</span>
+                            </button>
+                            <button class="w-full px-4 py-2 bg-blue-50 hover:bg-blue-100 text-sm text-blue-700 rounded-lg flex items-center gap-2 border border-blue-200">
+                                <i class="fas fa-calculator"></i><span>Recalculate Balance</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 2: Balance Details -->
+        <div id="viewBalance" class="tab-content">
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
+                    <h3 class="text-lg font-semibold text-gray-900">Detailed Balance Information</h3>
+                </div>
+                <div class="p-6 space-y-6">
+                    <!-- Current State -->
+                    <div>
+                        <h4 class="text-md font-semibold text-gray-900 mb-4">Current Balance State</h4>
+                        <dl class="grid grid-cols-3 gap-6">
+                            <div class="p-4 bg-green-50 rounded-lg border border-green-200">
+                                <dt class="text-sm font-medium text-gray-600 mb-1">Current Quantity</dt>
+                                <dd class="text-3xl font-bold text-green-600">21.0</dd>
+                                <div class="text-xs text-gray-600 mt-2">Total balance in account</div>
+                            </div>
+                            <div class="p-4 bg-amber-50 rounded-lg border border-amber-200">
+                                <dt class="text-sm font-medium text-gray-600 mb-1">Hold Quantity</dt>
+                                <dd class="text-3xl font-bold text-amber-600">2.0</dd>
+                                <div class="text-xs text-gray-600 mt-2">Reserved for pending requests</div>
+                            </div>
+                            <div class="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                                <dt class="text-sm font-medium text-gray-600 mb-1">Available Quantity</dt>
+                                <dd class="text-3xl font-bold text-blue-600">14.5</dd>
+                                <div class="text-xs text-gray-600 mt-2">Can be requested now</div>
+                            </div>
+                        </dl>
+                    </div>
+
+                    <!-- Balance Formula -->
+                    <div class="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                        <div class="text-sm font-medium text-gray-900 mb-2">Balance Calculation</div>
+                        <div class="text-sm text-gray-700 font-mono">
+                            Available = Current - Hold - Posted<br>
+                            14.5 = 21.0 - 2.0 - 4.5
+                        </div>
+                    </div>
+
+                    <!-- YTD Summary -->
+                    <div>
+                        <h4 class="text-md font-semibold text-gray-900 mb-4">Year-to-Date Summary (2025)</h4>
+                        <table class="w-full text-sm">
+                            <thead class="bg-gray-50 border-b border-gray-200">
+                                <tr>
+                                    <th class="px-4 py-3 text-left font-semibold text-gray-900">Category</th>
+                                    <th class="px-4 py-3 text-center font-semibold text-gray-900">Quantity (days)</th>
+                                    <th class="px-4 py-3 text-left font-semibold text-gray-900">Description</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-200">
+                                <tr>
+                                    <td class="px-4 py-3 font-medium text-gray-900">Opening Balance</td>
+                                    <td class="px-4 py-3 text-center text-gray-700">1.75</td>
+                                    <td class="px-4 py-3 text-gray-600">Carried from 2024</td>
+                                </tr>
+                                <tr>
+                                    <td class="px-4 py-3 font-medium text-purple-900">Total Accrued</td>
+                                    <td class="px-4 py-3 text-center text-purple-700 font-semibold">+19.25</td>
+                                    <td class="px-4 py-3 text-gray-600">11 months × 1.75 days</td>
+                                </tr>
+                                <tr>
+                                    <td class="px-4 py-3 font-medium text-green-900">Granted (Bonus)</td>
+                                    <td class="px-4 py-3 text-center text-green-700 font-semibold">+0.0</td>
+                                    <td class="px-4 py-3 text-gray-600">Manual grants</td>
+                                </tr>
+                                <tr>
+                                    <td class="px-4 py-3 font-medium text-red-900">Total Used</td>
+                                    <td class="px-4 py-3 text-center text-red-700 font-semibold">-4.5</td>
+                                    <td class="px-4 py-3 text-gray-600">7 approved requests</td>
+                                </tr>
+                                <tr class="bg-gray-50">
+                                    <td class="px-4 py-3 font-bold text-gray-900">Current Balance</td>
+                                    <td class="px-4 py-3 text-center text-gray-900 font-bold text-lg">21.0</td>
+                                    <td class="px-4 py-3 text-gray-600">As of Nov 14, 2025</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 3: Movements (Transaction History) -->
+        <div id="viewMovements" class="tab-content">
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                <div class="px-6 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
+                    <div>
+                        <h3 class="text-lg font-semibold text-gray-900">Leave Movements</h3>
+                        <p class="text-sm text-gray-600 mt-0.5">24 transactions in 2025</p>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <select class="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                            <option value="all">All Types</option>
+                            <option value="ACCRUAL">Accrual Only</option>
+                            <option value="USAGE">Usage Only</option>
+                            <option value="ADJUSTMENT">Adjustments</option>
+                        </select>
+                        <button class="px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                            <i class="fas fa-download mr-1"></i>Export
+                        </button>
+                    </div>
+                </div>
+                <div class="p-6">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead class="bg-gray-50 border-b border-gray-200">
+                                <tr>
+                                    <th class="px-4 py-3 text-left font-semibold text-gray-900">Date</th>
+                                    <th class="px-4 py-3 text-left font-semibold text-gray-900">Type</th>
+                                    <th class="px-4 py-3 text-left font-semibold text-gray-900">Description</th>
+                                    <th class="px-4 py-3 text-center font-semibold text-gray-900">Movement</th>
+                                    <th class="px-4 py-3 text-center font-semibold text-gray-900">Balance After</th>
+                                    <th class="px-4 py-3 text-left font-semibold text-gray-900">Reference</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-200">
+                                <!-- Accrual Movement -->
+                                <tr class="hover:bg-gray-50">
+                                    <td class="px-4 py-3 text-gray-700">Nov 30, 2025</td>
+                                    <td class="px-4 py-3">
+                                        <span class="px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded-full">ACCRUAL</span>
+                                    </td>
+                                    <td class="px-4 py-3 text-gray-700">Monthly accrual - November</td>
+                                    <td class="px-4 py-3 text-center">
+                                        <span class="text-green-600 font-semibold">+1.75</span>
+                                    </td>
+                                    <td class="px-4 py-3 text-center text-gray-900 font-medium">21.0</td>
+                                    <td class="px-4 py-3 text-gray-600">MOV-2025-1124</td>
+                                </tr>
+
+                                <!-- Leave Request Movement -->
+                                <tr class="hover:bg-gray-50">
+                                    <td class="px-4 py-3 text-gray-700">Nov 14, 2025</td>
+                                    <td class="px-4 py-3">
+                                        <span class="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">USAGE</span>
+                                    </td>
+                                    <td class="px-4 py-3 text-gray-700">Leave taken: Dec 25-26</td>
+                                    <td class="px-4 py-3 text-center">
+                                        <span class="text-red-600 font-semibold">-2.0</span>
+                                    </td>
+                                    <td class="px-4 py-3 text-center text-gray-900 font-medium">19.25</td>
+                                    <td class="px-4 py-3 text-gray-600">REQ-2025-1234</td>
+                                </tr>
+
+                                <!-- More movements... -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="mt-4 flex items-center justify-between text-sm">
+                        <div class="text-gray-600">Showing 1-10 of 24 movements</div>
+                        <div class="flex items-center gap-2">
+                            <button class="px-3 py-1.5 border border-gray-300 rounded hover:bg-gray-50">Previous</button>
+                            <button class="px-3 py-1.5 bg-blue-600 text-white rounded">1</button>
+                            <button class="px-3 py-1.5 border border-gray-300 rounded hover:bg-gray-50">2</button>
+                            <button class="px-3 py-1.5 border border-gray-300 rounded hover:bg-gray-50">3</button>
+                            <button class="px-3 py-1.5 border border-gray-300 rounded hover:bg-gray-50">Next</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 4: Leave Requests -->
+        <div id="viewRequests" class="tab-content">
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
+                    <h3 class="text-lg font-semibold text-gray-900">Leave Requests - 2025</h3>
+                    <p class="text-sm text-gray-600 mt-0.5">8 requests submitted this year</p>
+                </div>
+                <div class="p-6">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead class="bg-gray-50 border-b border-gray-200">
+                                <tr>
+                                    <th class="px-4 py-3 text-left font-semibold text-gray-900">Request ID</th>
+                                    <th class="px-4 py-3 text-left font-semibold text-gray-900">Period</th>
+                                    <th class="px-4 py-3 text-center font-semibold text-gray-900">Days</th>
+                                    <th class="px-4 py-3 text-center font-semibold text-gray-900">Status</th>
+                                    <th class="px-4 py-3 text-left font-semibold text-gray-900">Submitted</th>
+                                    <th class="px-4 py-3 text-right font-semibold text-gray-900">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-200">
+                                <tr class="hover:bg-gray-50">
+                                    <td class="px-4 py-3 font-mono text-gray-900">REQ-2025-1234</td>
+                                    <td class="px-4 py-3 text-gray-700">Dec 25-26, 2025</td>
+                                    <td class="px-4 py-3 text-center font-semibold">2.0</td>
+                                    <td class="px-4 py-3 text-center">
+                                        <span class="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">Approved</span>
+                                    </td>
+                                    <td class="px-4 py-3 text-gray-600">Nov 14, 2025</td>
+                                    <td class="px-4 py-3 text-right">
+                                        <button class="text-blue-600 hover:text-blue-800 text-xs">
+                                            <i class="fas fa-eye mr-1"></i>View
+                                        </button>
+                                    </td>
+                                </tr>
+                                <!-- More requests... -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 5: Events -->
+        <div id="viewEvents" class="tab-content">
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
+                    <h3 class="text-lg font-semibold text-gray-900">System Events</h3>
+                </div>
+                <div class="p-6">
+                    <div class="space-y-3">
+                        <div class="p-4 border border-gray-200 rounded-lg hover:bg-gray-50">
+                            <div class="flex items-start gap-3">
+                                <div class="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+                                    <i class="fas fa-calendar-check text-purple-600"></i>
+                                </div>
+                                <div class="flex-1">
+                                    <div class="text-sm font-medium text-gray-900">EVENT: Accrual Scheduled</div>
+                                    <div class="text-sm text-gray-600 mt-1">Next accrual run scheduled for Dec 31, 2025 at 11:00 PM</div>
+                                    <div class="text-xs text-gray-500 mt-2">Expected amount: +1.75 days</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="p-4 border border-gray-200 rounded-lg hover:bg-gray-50">
+                            <div class="flex items-start gap-3">
+                                <div class="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center">
+                                    <i class="fas fa-forward text-amber-600"></i>
+                                </div>
+                                <div class="flex-1">
+                                    <div class="text-sm font-medium text-gray-900">EVENT: Carry Forward Due</div>
+                                    <div class="text-sm text-gray-600 mt-1">Carry forward will execute on Dec 31, 2025</div>
+                                    <div class="text-xs text-gray-500 mt-2">Max carry: 5 days -  Current eligible: 14.5 days</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 6: JSON -->
+        <div id="viewJsonEditor" class="tab-content">
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-gray-700 to-gray-800">
+                    <h3 class="text-lg font-semibold text-white">JSON Data (Read-only)</h3>
+                </div>
+                <div class="p-6">
+                    <pre class="bg-gray-900 text-gray-100 p-6 rounded-lg overflow-x-auto text-sm font-mono leading-relaxed"><code>{
+"accountId": "ACC-2025-001234-ANNUAL",
+"employeeId": "EMP-001234",
+"leaveClassId": "LC-VN-ANNUAL-001",
+"mode": "ACCOUNT",
+"periodProfileId": "PERIOD-CAL-2025",
+"effectiveDate": "2025-01-01",
+"status": "ACTIVE",
+"balance": {
+"currentQty": 21.0,
+"holdQty": 2.0,
+"availableQty": 14.5,
+"postedQty": 4.5
+},
+"ytdSummary": {
+"openingBalance": 1.75,
+"totalAccrued": 19.25,
+"totalGranted": 0.0,
+"totalUsed": 4.5
+}
+}</code></pre>
+</div>
+</div>
+</div>
+    </div>
+</div>
+
+</div>
+
+<!-- ==================== EDIT MODE (ORIGINAL with prefix) ==================== -->
+<div id="editMode" class="mode-container">
+<!-- Top Bar -->
+    <div class="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
+        <div class="px-6 py-3">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2 text-sm">
+                    <a href="#" class="text-blue-600 hover:text-blue-700">Leave Management</a>
+                    <i class="fas fa-chevron-right text-gray-400 text-xs"></i>
+                    <a href="#" class="text-blue-600 hover:text-blue-700">Leave Accounts</a>
+                    <i class="fas fa-chevron-right text-gray-400 text-xs"></i>
+                    <span class="text-gray-900 font-medium">Nguyen Van A - Annual Leave</span>
+                    <span class="ml-2 px-2 py-0.5 bg-yellow-100 text-yellow-800 text-xs rounded-full font-medium">EDIT MODE</span>
+                </div>
+                
+                <div class="flex items-center gap-3">
+                    <button class="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">
+                        Discard Changes
+                    </button>
+                    <button class="px-5 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-sm font-medium">
+                        <i class="fas fa-save mr-2"></i>Save Changes
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Unsaved Changes Banner -->
+    <div class="bg-yellow-50 border-b border-yellow-200">
+        <div class="px-6 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <i class="fas fa-exclamation-triangle text-yellow-600"></i>
+                <span class="text-sm font-medium text-yellow-900">You have unsaved changes</span>
+            </div>
+            <button class="text-yellow-600 hover:text-yellow-900"><i class="fas fa-times"></i></button>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <div class="bg-white border-b border-gray-200">
+        <div class="px-6 py-6">
+            <div class="flex items-start justify-between">
+                <div class="flex items-start gap-4">
+                    <div class="w-16 h-16 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center shadow-lg">
+                        <i class="fas fa-wallet text-white text-2xl"></i>
+                    </div>
+                    <div>
+                        <div class="flex items-center gap-3 mb-1">
+                            <h1 class="text-2xl font-bold text-gray-900">Manage Leave Account</h1>
+                            <span class="px-3 py-1 bg-green-100 text-green-800 text-sm font-medium rounded-full">Active</span>
+                            <span class="px-3 py-1 bg-blue-100 text-blue-800 text-sm font-medium rounded-full">ACCOUNT</span>
+                        </div>
+                        <p class="text-gray-600 mb-3">Nguyen Van A -  EMP-001234 -  Annual Leave</p>
+                        <div class="flex items-center gap-6 text-sm text-gray-500">
+                            <span class="flex items-center gap-2"><i class="fas fa-hashtag"></i>ACC-2025-001234-ANNUAL</span>
+                            <span class="flex items-center gap-2"><i class="fas fa-calendar"></i>Period: 2025</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="flex items-center gap-2">
+                    <button class="p-2 text-gray-600 hover:bg-gray-100 rounded-lg" title="History"><i class="fas fa-clock-rotate-left"></i></button>
+                    <button class="p-2 text-red-600 hover:bg-red-50 rounded-lg" title="Suspend"><i class="fas fa-pause"></i></button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="px-6">
+            <div class="flex items-center gap-1 border-b border-gray-200">
+                <button onclick="switchTab('edit','editBasicInfo', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 flex items-center gap-2 text-blue-600 border-blue-600">
+                    <i class="fas fa-info-circle"></i>Account Info
+                </button>
+                <button onclick="switchTab('edit','editBalanceAdjustment', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent flex items-center gap-2 text-gray-600 hover:text-gray-900">
+                    <i class="fas fa-edit"></i>Adjustments
+                </button>
+                <button onclick="switchTab('edit','editSettings', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent flex items-center gap-2 text-gray-600 hover:text-gray-900">
+                    <i class="fas fa-cogs"></i>Settings
+                </button>
+                <button onclick="switchTab('edit','editAudit', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent flex items-center gap-2 text-gray-600 hover:text-gray-900">
+                    <i class="fas fa-history"></i>Audit Trail
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="p-6">
+        <div class="max-w-6xl mx-auto">
+            
+            <!-- TAB 1: Account Info (Mostly Read-only) -->
+            <div id="editBasicInfo" class="tab-content active">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-2 space-y-6">
+                        <div class="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                            <div class="flex items-start gap-3">
+                                <i class="fas fa-info-circle text-blue-600 mt-0.5"></i>
+                                <div class="text-sm text-gray-700">
+                                    <strong class="text-gray-900">Limited Editing</strong> - Core account properties are read-only. You can only modify status and certain settings.
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Read-Only Account Information -->
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
+                                <h3 class="text-lg font-semibold text-gray-900">Account Information (Read-only)</h3>
+                            </div>
+                            <div class="p-6 space-y-5">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Account ID</label>
+                                    <input type="text" value="ACC-2025-001234-ANNUAL" readonly class="w-full px-4 py-2.5 bg-gray-100 border border-gray-300 rounded-lg text-gray-500 cursor-not-allowed">
+                                    <p class="mt-1.5 text-xs text-gray-500">Cannot be changed</p>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Employee</label>
+                                    <div class="p-4 bg-gray-100 border border-gray-300 rounded-lg">
+                                        <div class="flex items-center gap-3">
+                                            <div class="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-semibold">
+                                                NA
+                                            </div>
+                                            <div>
+                                                <div class="font-semibold text-gray-900">Nguyen Van A</div>
+                                                <div class="text-sm text-gray-600">EMP-001234 -  Software Engineer</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <p class="mt-1.5 text-xs text-gray-500">Employee cannot be changed</p>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Leave Class</label>
+                                    <div class="p-4 bg-gray-100 border border-gray-300 rounded-lg">
+                                        <div class="flex items-center gap-3">
+                                            <div class="w-10 h-10 bg-green-600 rounded-lg flex items-center justify-center">
+                                                <i class="fas fa-layer-group text-white"></i>
+                                            </div>
+                                            <div>
+                                                <div class="font-semibold text-gray-900">VN Standard Annual Leave</div>
+                                                <div class="text-sm text-gray-600">LC-VN-ANNUAL-001 -  ACCOUNT Mode</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <p class="mt-1.5 text-xs text-gray-500">Leave class cannot be changed</p>
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">Effective Date</label>
+                                        <input type="date" value="2025-01-01" readonly class="w-full px-4 py-2.5 bg-gray-100 border border-gray-300 rounded-lg text-gray-500 cursor-not-allowed">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">Period Profile</label>
+                                        <input type="text" value="Calendar Year 2025" readonly class="w-full px-4 py-2.5 bg-gray-100 border border-gray-300 rounded-lg text-gray-500 cursor-not-allowed">
+                                    </div>
+                                </div>
+
+                                <!-- Editable Status -->
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-900 mb-3">
+                                        Account Status <span class="text-amber-600">(Editable)</span>
+                                    </label>
+                                    <div class="grid grid-cols-3 gap-3">
+                                        <label class="flex items-center gap-2 cursor-pointer p-3 border-2 border-green-500 bg-green-50 rounded-lg">
+                                            <input type="radio" name="status" value="active" checked class="w-4 h-4 text-green-600">
+                                            <div>
+                                                <div class="text-sm font-medium text-gray-900">Active</div>
+                                                <div class="text-xs text-gray-600">Normal use</div>
+                                            </div>
+                                        </label>
+                                        <label class="flex items-center gap-2 cursor-pointer p-3 border-2 border-gray-200 rounded-lg hover:border-amber-500">
+                                            <input type="radio" name="status" value="suspended" class="w-4 h-4 text-amber-600">
+                                            <div>
+                                                <div class="text-sm font-medium text-gray-900">Suspended</div>
+                                                <div class="text-xs text-gray-600">Temporarily paused</div>
+                                            </div>
+                                        </label>
+                                        <label class="flex items-center gap-2 cursor-pointer p-3 border-2 border-gray-200 rounded-lg hover:border-red-500">
+                                            <input type="radio" name="status" value="closed" class="w-4 h-4 text-red-600">
+                                            <div>
+                                                <div class="text-sm font-medium text-gray-900">Closed</div>
+                                                <div class="text-xs text-gray-600">Permanently closed</div>
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Current Balance (Read-only) -->
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
+                                <h3 class="text-lg font-semibold text-gray-900">Current Balance (Read-only)</h3>
+                            </div>
+                            <div class="p-6">
+                                <div class="grid grid-cols-3 gap-4">
+                                    <div class="p-4 bg-green-50 rounded-lg border border-green-200">
+                                        <div class="text-sm text-gray-600 mb-1">Current Quantity</div>
+                                        <div class="text-3xl font-bold text-green-600">21.0</div>
+                                    </div>
+                                    <div class="p-4 bg-amber-50 rounded-lg border border-amber-200">
+                                        <div class="text-sm text-gray-600 mb-1">On Hold</div>
+                                        <div class="text-3xl font-bold text-amber-600">2.0</div>
+                                    </div>
+                                    <div class="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                                        <div class="text-sm text-gray-600 mb-1">Available</div>
+                                        <div class="text-3xl font-bold text-blue-600">14.5</div>
+                                    </div>
+                                </div>
+                                <div class="mt-4 p-3 bg-gray-50 rounded-lg">
+                                    <p class="text-sm text-gray-700">
+                                        <i class="fas fa-lock text-gray-500 mr-1"></i>
+                                        Balance values are calculated automatically. Use <strong>Adjustments</strong> tab to make manual changes.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Sidebar -->
+                    <div class="space-y-6">
+                        <div class="bg-amber-50 rounded-xl border border-amber-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                <i class="fas fa-lock text-amber-600"></i>
+                                Edit Restrictions
+                            </h3>
+                            <ul class="space-y-2 text-sm text-gray-700">
+                                <li class="flex items-center gap-2">
+                                    <i class="fas fa-times text-red-500 text-xs"></i>
+                                    <span>Cannot change employee</span>
+                                </li>
+                                <li class="flex items-center gap-2">
+                                    <i class="fas fa-times text-red-500 text-xs"></i>
+                                    <span>Cannot change leave class</span>
+                                </li>
+                                <li class="flex items-center gap-2">
+                                    <i class="fas fa-times text-red-500 text-xs"></i>
+                                    <span>Cannot change effective date</span>
+                                </li>
+                                <li class="flex items-center gap-2">
+                                    <i class="fas fa-check text-green-600 text-xs"></i>
+                                    <span>Can change status</span>
+                                </li>
+                                <li class="flex items-center gap-2">
+                                    <i class="fas fa-check text-green-600 text-xs"></i>
+                                    <span>Can make adjustments</span>
+                                </li>
+                                <li class="flex items-center gap-2">
+                                    <i class="fas fa-check text-green-600 text-xs"></i>
+                                    <span>Can modify settings</span>
+                                </li>
+                            </ul>
+                        </div>
+
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-4">What You Can Do</h3>
+                            <ul class="space-y-2 text-sm text-gray-700">
+                                <li class="flex items-start gap-2">
+                                    <i class="fas fa-arrow-right text-blue-600 mt-0.5"></i>
+                                    <span>Change account status</span>
+                                </li>
+                                <li class="flex items-start gap-2">
+                                    <i class="fas fa-arrow-right text-blue-600 mt-0.5"></i>
+                                    <span>Make manual balance adjustments</span>
+                                </li>
+                                <li class="flex items-start gap-2">
+                                    <i class="fas fa-arrow-right text-blue-600 mt-0.5"></i>
+                                    <span>Update notification settings</span>
+                                </li>
+                                <li class="flex items-start gap-2">
+                                    <i class="fas fa-arrow-right text-blue-600 mt-0.5"></i>
+                                    <span>Suspend/reactivate account</span>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 2: Balance Adjustments (EDITABLE) -->
+            <div id="editBalanceAdjustment" class="tab-content">
+                <div class="space-y-6">
+                    <div class="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                        <div class="flex items-start gap-3">
+                            <i class="fas fa-exclamation-triangle text-amber-600 mt-0.5"></i>
+                            <div class="text-sm text-gray-700">
+                                <strong class="text-gray-900">Manual Adjustments</strong> - Use with caution. All adjustments create audit trail and affect balance history.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Manual Adjustment Form -->
+                    <div class="bg-white rounded-xl shadow-sm border-2 border-blue-300">
+                        <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-blue-100">
+                            <h3 class="text-lg font-semibold text-gray-900">Make Manual Adjustment</h3>
+                            <p class="text-sm text-gray-600 mt-0.5">Add or deduct leave balance manually</p>
+                        </div>
+                        <div class="p-6 space-y-5">
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-900 mb-3">
+                                    Adjustment Type <span class="text-red-500">*</span>
+                                </label>
+                                <div class="grid grid-cols-2 gap-3">
+                                    <label class="flex items-start gap-3 p-4 border-2 border-green-300 bg-green-50 rounded-lg cursor-pointer">
+                                        <input type="radio" name="adjustmentType" value="GRANT" checked class="w-4 h-4 text-green-600 mt-0.5">
+                                        <div class="flex-1">
+                                            <div class="text-sm font-semibold text-gray-900">Grant (Add Balance)</div>
+                                            <div class="text-xs text-gray-600 mt-1">Increase leave balance (+)</div>
+                                        </div>
+                                    </label>
+
+                                    <label class="flex items-start gap-3 p-4 border-2 border-gray-200 rounded-lg cursor-pointer hover:border-red-300">
+                                        <input type="radio" name="adjustmentType" value="DEDUCT" class="w-4 h-4 text-red-600 mt-0.5">
+                                        <div class="flex-1">
+                                            <div class="text-sm font-semibold text-gray-900">Deduct (Remove Balance)</div>
+                                            <div class="text-xs text-gray-600 mt-1">Decrease leave balance (-)</div>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">
+                                    Quantity (days) <span class="text-red-500">*</span>
+                                </label>
+                                <input type="number" step="0.5" min="0" placeholder="0.0" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" required>
+                                <p class="mt-1.5 text-xs text-gray-500">Number of days to add or deduct</p>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Reason <span class="text-red-500">*</span></label>
+                                <select class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" required>
+                                    <option value="">-- Select Reason --</option>
+                                    <option value="CORRECTION">Correction/Error Fix</option>
+                                    <option value="BONUS">Bonus Grant</option>
+                                    <option value="MIGRATION">Data Migration</option>
+                                    <option value="POLICY">Policy Change</option>
+                                    <option value="PENALTY">Penalty Deduction</option>
+                                    <option value="OTHER">Other</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Effective Date</label>
+                                <input type="date" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                <p class="mt-1.5 text-xs text-gray-500">Leave blank to use today</p>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Notes <span class="text-red-500">*</span></label>
+                                <textarea rows="3" placeholder="Explain why this adjustment is needed..." class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" required></textarea>
+                                <p class="mt-1.5 text-xs text-gray-500">Detailed explanation for audit trail</p>
+                            </div>
+
+                            <div class="pt-4 border-t border-gray-200">
+                                <button class="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">
+                                    <i class="fas fa-plus mr-2"></i>Create Adjustment
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Recent Adjustments -->
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                        <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
+                            <h3 class="text-lg font-semibold text-gray-900">Recent Adjustments</h3>
+                        </div>
+                        <div class="p-6">
+                            <div class="text-center py-8 text-gray-500">
+                                <i class="fas fa-inbox text-4xl mb-3 text-gray-300"></i>
+                                <p class="text-sm">No manual adjustments made yet</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 3: Settings (EDITABLE) -->
+            <div id="editSettings" class="tab-content">
+                <div class="space-y-6">
+                    <!-- Accrual Settings -->
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                        <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-purple-100">
+                            <h3 class="text-lg font-semibold text-gray-900">Accrual Settings</h3>
+                        </div>
+                        <div class="p-6 space-y-4">
+                            <div class="flex items-center gap-4 p-4 border-2 border-purple-300 bg-purple-50 rounded-lg">
+                                <input type="checkbox" id="edit-enableAccrual" checked class="w-5 h-5 text-purple-600 rounded">
+                                <div class="flex-1">
+                                    <label for="enableAccrual" class="text-sm font-medium text-gray-900 cursor-pointer">Enable Auto-Accrual</label>
+                                    <div class="text-xs text-gray-600 mt-1">Automatically accrue leave based on class policy</div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Proration Method</label>
+                                <select class="w-full px-4 py-2.5 border border-gray-300 rounded-lg">
+                                    <option value="DAILY" selected>Daily Proration</option>
+                                    <option value="FULL_MONTH">Full Month (no proration)</option>
+                                    <option value="WEEKLY">Weekly Proration</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Notification Settings -->
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                        <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-blue-100">
+                            <h3 class="text-lg font-semibold text-gray-900">Notification Settings</h3>
+                        </div>
+                        <div class="p-6 space-y-4">
+                            <div class="flex items-center gap-4 p-4 border-2 border-gray-200 rounded-lg hover:border-blue-300">
+                                <input type="checkbox" id="edit-notifyLow" checked class="w-5 h-5 text-blue-600 rounded">
+                                <label for="notifyLow" class="flex-1 text-sm font-medium text-gray-900 cursor-pointer">
+                                    Notify when balance is low (< 2 days)
+                                </label>
+                            </div>
+
+                            <div class="flex items-center gap-4 p-4 border-2 border-gray-200 rounded-lg hover:border-blue-300">
+                                <input type="checkbox" id="edit-notifyAccrual" class="w-5 h-5 text-blue-600 rounded">
+                                <label for="notifyAccrual" class="flex-1 text-sm font-medium text-gray-900 cursor-pointer">
+                                    Notify employee after each accrual
+                                </label>
+                            </div>
+
+                            <div class="flex items-center gap-4 p-4 border-2 border-gray-200 rounded-lg hover:border-blue-300">
+                                <input type="checkbox" id="edit-notifyExpiry" checked class="w-5 h-5 text-blue-600 rounded">
+                                <label for="notifyExpiry" class="flex-1 text-sm font-medium text-gray-900 cursor-pointer">
+                                    Notify before balance expires
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Advanced Options -->
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                        <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-red-50 to-red-100">
+                            <h3 class="text-lg font-semibold text-gray-900">Advanced Options</h3>
+                        </div>
+                        <div class="p-6 space-y-4">
+                            <div class="flex items-center gap-4 p-4 border-2 border-red-300 bg-red-50 rounded-lg">
+                                <input type="checkbox" id="edit-allowNegative" class="w-5 h-5 text-red-600 rounded">
+                                <div class="flex-1">
+                                    <label for="allowNegative" class="text-sm font-medium text-gray-900 cursor-pointer">Allow Negative Balance (Overdraft)</label>
+                                    <div class="text-xs text-gray-600 mt-1">Enable if overdraft policy is configured</div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Override Period Profile (Optional)</label>
+                                <select class="w-full px-4 py-2.5 border border-gray-300 rounded-lg">
+                                    <option value="">Use class default (Calendar Year 2025)</option>
+                                    <option value="CUSTOM-1">Custom Period 1</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 4: Audit Trail (Read-only) -->
+            <div id="editAudit" class="tab-content">
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                    <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
+                        <h3 class="text-lg font-semibold text-gray-900">Audit Trail (Read-only)</h3>
+                        <p class="text-sm text-gray-600 mt-0.5">Complete history of account changes</p>
+                    </div>
+                    <div class="p-6">
+                        <div class="space-y-3">
+                            <div class="p-4 border border-gray-200 rounded-lg hover:bg-gray-50">
+                                <div class="flex items-start gap-3">
+                                    <div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                                        <i class="fas fa-check text-green-600"></i>
+                                    </div>
+                                    <div class="flex-1">
+                                        <div class="text-sm font-medium text-gray-900">Account Activated</div>
+                                        <div class="text-sm text-gray-600 mt-0.5">Account status changed from Draft to Active</div>
+                                        <div class="text-xs text-gray-500 mt-2">
+                                            Jan 1, 2025, 9:00 AM -  by HR Admin (admin@company.com)
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="p-4 border border-gray-200 rounded-lg hover:bg-gray-50">
+                                <div class="flex items-start gap-3">
+                                    <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                                        <i class="fas fa-plus text-blue-600"></i>
+                                    </div>
+                                    <div class="flex-1">
+                                        <div class="text-sm font-medium text-gray-900">Account Created</div>
+                                        <div class="text-sm text-gray-600 mt-0.5">Leave account initialized for Nguyen Van A</div>
+                                        <div class="text-xs text-gray-500 mt-2">
+                                            Jan 1, 2025, 8:30 AM -  by System (system@company.com)
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom Actions -->
+            <div class="mt-6 flex items-center justify-between p-4 bg-white rounded-xl shadow-sm border border-gray-200">
+                <button class="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">
+                    <i class="fas fa-times mr-2"></i>Discard Changes
+                </button>
+                <div class="flex items-center gap-3">
+                    <button class="px-6 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-sm font-medium">
+                        <i class="fas fa-save mr-2"></i>Save Changes
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    </div>
+</div>
+
+<!-- ==================== NEW MODE (ORIGINAL with prefix) ==================== -->
+<div id="newMode" class="mode-container">
+<!-- Top Bar --> <div class="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm"> <div class="px-6 py-3"> <div class="flex items-center justify-between"> <div class="flex items-center gap-2 text-sm"> <a href="#" class="text-blue-600 hover:text-blue-700">Leave Management</a> <i class="fas fa-chevron-right text-gray-400 text-xs"></i> <a href="#" class="text-blue-600 hover:text-blue-700">Leave Accounts</a> <i class="fas fa-chevron-right text-gray-400 text-xs"></i> <span class="text-gray-900 font-medium">New Leave Account</span> <span class="ml-2 px-2 py-0.5 bg-blue-100 text-blue-800 text-xs rounded-full font-medium">NEW</span> </div>
+                <div class="flex items-center gap-3">
+                    <button onclick="switchToMode('view')" class="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+                    <button onclick="saveAsDraft()" class="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">
+                        <i class="fas fa-save mr-2"></i>Save as Draft
+                    </button>
+                    <button onclick="createAndActivate()" class="px-5 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-sm font-medium">
+                        <i class="fas fa-check mr-2"></i>Create & Activate
+                    </button>
+                </div>
+        </div>
+    </div>
+</div>
+
+<!-- Header -->
+<div class="bg-white border-b border-gray-200">
+    <div class="px-6 py-6">
+        <div class="flex items-start gap-4">
+            <div class="w-16 h-16 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center shadow-lg">
+                <i class="fas fa-wallet text-white text-2xl"></i>
+            </div>
+            <div class="flex-1">
+                <h1 class="text-2xl font-bold text-gray-900 mb-1">Create New Leave Account</h1>
+                <p class="text-gray-600">Initialize a leave balance account for an employee</p>
+                <div class="flex items-center gap-4 mt-3 text-sm text-gray-500">
+                    <span class="flex items-center gap-2">
+                        <i class="fas fa-info-circle"></i>Account will be created based on selected Leave Class
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="px-6">
+        <div class="flex items-center gap-1 border-b border-gray-200">
+            <button onclick="switchTab('new','newBasicInfo', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 flex items-center gap-2 text-blue-600 border-blue-600">
+                <i class="fas fa-info-circle"></i>Basic Info
+            </button>
+            <button onclick="switchTab('new','newInitialBalance', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent flex items-center gap-2 text-gray-600 hover:text-gray-900">
+                <i class="fas fa-coins"></i>Initial Balance
+            </button>
+            <button onclick="switchTab('new','newSettings', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent flex items-center gap-2 text-gray-600 hover:text-gray-900">
+                <i class="fas fa-cogs"></i>Settings
+            </button>
+            <button onclick="switchTab('new','newJsonEditor', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent flex items-center gap-2 text-gray-600 hover:text-gray-900">
+                <i class="fas fa-file-code"></i>JSON
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Main Content -->
+<div class="p-6">
+    <div class="max-w-6xl mx-auto">
+        
+        <!-- TAB 1: Basic Info -->
+        <div id="newBasicInfo" class="tab-content active">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div class="lg:col-span-2 space-y-6">
+                    <!-- General Information -->
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                        <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
+                            <h3 class="text-lg font-semibold text-gray-900">Account Information</h3>
+                            <p class="text-sm text-gray-600 mt-0.5">Select employee and leave class</p>
+                        </div>
+                        <div class="p-6 space-y-5">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Account ID</label>
+                                <input type="text" value="ACC-AUTO-GENERATED" readonly class="w-full px-4 py-2.5 bg-gray-100 border border-gray-300 rounded-lg text-gray-500 cursor-not-allowed">
+                                <p class="mt-1.5 text-xs text-gray-500">
+                                    <i class="fas fa-info-circle mr-1"></i>Will be auto-generated upon creation
+                                </p>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-900 mb-3">
+                                    Select Employee <span class="text-red-500">*</span>
+                                </label>
+                                <div class="relative">
+                                    <input type="text" placeholder="Search by name or employee ID..." class="w-full px-4 py-2.5 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" required>
+                                    <i class="fas fa-search absolute right-3 top-3.5 text-gray-400"></i>
+                                </div>
+                                <p class="mt-1.5 text-xs text-gray-500">Search and select employee to create account for</p>
+                            </div>
+
+                            <!-- Employee Preview (after selection) -->
+                            <div class="p-4 bg-blue-50 border-2 border-blue-300 rounded-lg hidden" id="new-employeePreview">
+                                <div class="flex items-start gap-3">
+                                    <div class="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center text-white font-semibold">
+                                        NT
+                                    </div>
+                                    <div class="flex-1">
+                                        <div class="font-semibold text-gray-900">Nguyen Van A</div>
+                                        <div class="text-sm text-gray-600">EMP-001234 -  Software Engineer</div>
+                                        <div class="text-sm text-gray-600 mt-1">Department: Engineering -  Location: Vietnam</div>
+                                    </div>
+                                    <button class="text-blue-600 hover:text-blue-800 text-sm">
+                                        <i class="fas fa-times mr-1"></i>Change
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-900 mb-3">
+                                    Select Leave Class <span class="text-red-500">*</span>
+                                </label>
+                                <select class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" required>
+                                    <option value="">-- Select Leave Class --</option>
+                                    <option value="LC-VN-ANNUAL-001">VN Standard Annual Leave (ACCOUNT)</option>
+                                    <option value="LC-VN-SICK-001">VN Sick Leave (LIMIT)</option>
+                                    <option value="LC-VN-MATERNITY-001">VN Maternity Leave (ACCOUNT)</option>
+                                </select>
+                                <p class="mt-1.5 text-xs text-gray-500">This determines the leave type, policies, and mode</p>
+                            </div>
+
+                            <!-- Leave Class Preview -->
+                            <div class="p-4 bg-green-50 border-2 border-green-300 rounded-lg">
+                                <div class="flex items-start gap-3">
+                                    <div class="w-10 h-10 bg-green-600 rounded-lg flex items-center justify-center">
+                                        <i class="fas fa-layer-group text-white"></i>
+                                    </div>
+                                    <div class="flex-1">
+                                        <div class="font-semibold text-gray-900">VN Standard Annual Leave</div>
+                                        <div class="text-sm text-gray-600">LC-VN-ANNUAL-001</div>
+                                        <div class="flex gap-2 mt-2">
+                                            <span class="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">ACCOUNT Mode</span>
+                                            <span class="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">Annual Leave</span>
+                                            <span class="px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded-full">Accrual: 1.75 days/month</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Effective Date <span class="text-red-500">*</span></label>
+                                <input type="date" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" required>
+                                <p class="mt-1.5 text-xs text-gray-500">Date when this account becomes active</p>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                                <div class="flex items-center gap-4">
+                                    <label class="flex items-center gap-2 cursor-pointer p-3 border-2 border-green-500 bg-green-50 rounded-lg">
+                                        <input type="radio" name="status" value="active" checked class="w-4 h-4 text-green-600">
+                                        <div>
+                                            <div class="text-sm font-medium text-gray-900">Active</div>
+                                            <div class="text-xs text-gray-600">Ready to use</div>
+                                        </div>
+                                    </label>
+                                    <label class="flex items-center gap-2 cursor-pointer p-3 border-2 border-gray-200 rounded-lg hover:border-gray-500">
+                                        <input type="radio" name="status" value="suspended" class="w-4 h-4 text-gray-600">
+                                        <div>
+                                            <div class="text-sm font-medium text-gray-900">Suspended</div>
+                                            <div class="text-xs text-gray-600">Temporarily inactive</div>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Sidebar -->
+                <div class="space-y-6">
+                    <div class="bg-blue-50 rounded-xl border border-blue-200 p-5">
+                        <div class="flex items-center gap-2 mb-3">
+                            <i class="fas fa-lightbulb text-blue-600 text-lg"></i>
+                            <h3 class="text-sm font-semibold text-gray-900">Account Creation</h3>
+                        </div>
+                        <ul class="space-y-2 text-sm text-gray-700">
+                            <li class="flex items-start gap-2">
+                                <i class="fas fa-check text-blue-600 mt-0.5"></i>
+                                <span>Select employee</span>
+                            </li>
+                            <li class="flex items-start gap-2">
+                                <i class="fas fa-check text-blue-600 mt-0.5"></i>
+                                <span>Choose leave class</span>
+                            </li>
+                            <li class="flex items-start gap-2">
+                                <i class="fas fa-check text-blue-600 mt-0.5"></i>
+                                <span>Set initial balance (optional)</span>
+                            </li>
+                            <li class="flex items-start gap-2">
+                                <i class="fas fa-check text-blue-600 mt-0.5"></i>
+                                <span>Configure settings</span>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                        <h3 class="text-sm font-semibold text-gray-900 mb-4">Account Modes</h3>
+                        <div class="space-y-3 text-sm">
+                            <div class="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                                <div class="font-semibold text-gray-900 mb-1">ACCOUNT Mode</div>
+                                <div class="text-gray-600">Balance-based with accrual, carry forward, and tracking</div>
+                            </div>
+                            <div class="p-3 bg-orange-50 rounded-lg border border-orange-200">
+                                <div class="font-semibold text-gray-900 mb-1">LIMIT Mode</div>
+                                <div class="text-gray-600">Usage caps without balance tracking</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-amber-50 rounded-xl border border-amber-200 p-5">
+                        <h3 class="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                            <i class="fas fa-exclamation-triangle text-amber-600"></i>
+                            Required Fields
+                        </h3>
+                        <ul class="space-y-1.5 text-sm text-gray-700">
+                            <li class="flex items-center gap-2">
+                                <i class="fas fa-circle text-red-500 text-xs"></i>
+                                <span>Employee</span>
+                            </li>
+                            <li class="flex items-center gap-2">
+                                <i class="fas fa-circle text-red-500 text-xs"></i>
+                                <span>Leave Class</span>
+                            </li>
+                            <li class="flex items-center gap-2">
+                                <i class="fas fa-circle text-red-500 text-xs"></i>
+                                <span>Effective Date</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 2: Initial Balance (for ACCOUNT mode) -->
+        <div id="newInitialBalance" class="tab-content">
+            <div class="space-y-6">
+                <div class="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                    <div class="flex items-start gap-3">
+                        <i class="fas fa-info-circle text-blue-600 mt-0.5"></i>
+                        <div class="text-sm text-gray-700">
+                            <strong class="text-gray-900">Initial Balance (Optional)</strong> - For ACCOUNT mode classes, you can set an opening balance. For LIMIT mode, skip this step.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Opening Balance -->
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                    <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-green-50 to-green-100">
+                        <h3 class="text-lg font-semibold text-gray-900">Opening Balance (ACCOUNT Mode Only)</h3>
+                        <p class="text-sm text-gray-600 mt-0.5">Set initial leave balance for this account</p>
+                    </div>
+                    <div class="p-6 space-y-5">
+                        <div class="flex items-center gap-4 p-4 border-2 border-gray-200 rounded-lg hover:border-green-300">
+                            <input type="checkbox" id="new-setInitialBalance" class="w-5 h-5 text-green-600 rounded">
+                            <div class="flex-1">
+                                <label for="setInitialBalance" class="text-sm font-medium text-gray-900 cursor-pointer">Set Initial Balance</label>
+                                <div class="text-xs text-gray-600 mt-1">Grant opening balance for mid-year account creation or migration</div>
+                            </div>
+                        </div>
+
+                        <div id="new-initialBalanceFields" class="space-y-4 hidden">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Opening Balance (days)</label>
+                                <input type="number" step="0.5" min="0" placeholder="0.0" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500">
+                                <p class="mt-1.5 text-xs text-gray-500">Initial leave balance to grant</p>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Grant Reason</label>
+                                <select class="w-full px-4 py-2.5 border border-gray-300 rounded-lg">
+                                    <option value="OPENING">Opening Balance</option>
+                                    <option value="MIGRATION">Data Migration</option>
+                                    <option value="ADJUSTMENT">Manual Adjustment</option>
+                                    <option value="BONUS">Bonus Grant</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Expiry Date (Optional)</label>
+                                <input type="date" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg">
+                                <p class="mt-1.5 text-xs text-gray-500">Leave blank if no expiry</p>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Notes</label>
+                                <textarea rows="2" placeholder="e.g., Migrated from old system with 10 days remaining" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg"></textarea>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Balance Preview -->
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                    <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
+                        <h3 class="text-lg font-semibold text-gray-900">Account Preview</h3>
+                    </div>
+                    <div class="p-6">
+                        <div class="grid grid-cols-3 gap-6">
+                            <div class="text-center p-4 bg-green-50 rounded-lg border border-green-200">
+                                <div class="text-2xl font-bold text-green-600">0.0</div>
+                                <div class="text-sm text-gray-600 mt-1">Opening Balance</div>
+                            </div>
+                            <div class="text-center p-4 bg-gray-50 rounded-lg border border-gray-200">
+                                <div class="text-2xl font-bold text-gray-400">0.0</div>
+                                <div class="text-sm text-gray-600 mt-1">On Hold</div>
+                            </div>
+                            <div class="text-center p-4 bg-blue-50 rounded-lg border border-blue-200">
+                                <div class="text-2xl font-bold text-blue-600">0.0</div>
+                                <div class="text-sm text-gray-600 mt-1">Available</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 3: Settings -->
+        <div id="newSettings" class="tab-content">
+            <div class="space-y-6">
+                <!-- Auto-Accrual -->
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                    <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-purple-100">
+                        <h3 class="text-lg font-semibold text-gray-900">Accrual Settings</h3>
+                        <p class="text-sm text-gray-600 mt-0.5">For ACCOUNT mode classes</p>
+                    </div>
+                    <div class="p-6 space-y-4">
+                        <div class="flex items-center gap-4 p-4 border-2 border-purple-300 bg-purple-50 rounded-lg">
+                            <input type="checkbox" id="new-enableAccrual" checked class="w-5 h-5 text-purple-600 rounded">
+                            <div class="flex-1">
+                                <label for="enableAccrual" class="text-sm font-medium text-gray-900 cursor-pointer">Enable Auto-Accrual</label>
+                                <div class="text-xs text-gray-600 mt-1">Automatically accrue leave based on class policy (recommended)</div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Proration Method</label>
+                            <select class="w-full px-4 py-2.5 border border-gray-300 rounded-lg">
+                                <option value="FULL_MONTH">Full Month (no proration)</option>
+                                <option value="DAILY" selected>Daily Proration</option>
+                                <option value="WEEKLY">Weekly Proration</option>
+                            </select>
+                            <p class="mt-1.5 text-xs text-gray-500">How to calculate accrual for partial periods</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Notifications -->
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                    <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-blue-100">
+                        <h3 class="text-lg font-semibold text-gray-900">Notification Settings</h3>
+                    </div>
+                    <div class="p-6 space-y-4">
+                        <div class="flex items-center gap-4 p-4 border-2 border-gray-200 rounded-lg hover:border-blue-300">
+                            <input type="checkbox" id="new-notifyBalance" checked class="w-5 h-5 text-blue-600 rounded">
+                            <label for="notifyBalance" class="flex-1 text-sm font-medium text-gray-900 cursor-pointer">
+                                Notify employee when account is created
+                            </label>
+                        </div>
+
+                        <div class="flex items-center gap-4 p-4 border-2 border-gray-200 rounded-lg hover:border-blue-300">
+                            <input type="checkbox" id="new-notifyLowBalance" class="w-5 h-5 text-blue-600 rounded">
+                            <label for="notifyLowBalance" class="flex-1 text-sm font-medium text-gray-900 cursor-pointer">
+                                Notify when balance is low (< 2 days)
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Advanced Settings -->
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                    <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-amber-50 to-amber-100">
+                        <h3 class="text-lg font-semibold text-gray-900">Advanced Settings</h3>
+                    </div>
+                    <div class="p-6 space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Override Period Profile (Optional)</label>
+                            <select class="w-full px-4 py-2.5 border border-gray-300 rounded-lg">
+                                <option value="">Use class default (Calendar Year 2025)</option>
+                                <option value="CUSTOM-1">Custom Period 1</option>
+                                <option value="CUSTOM-2">Custom Period 2</option>
+                            </select>
+                            <p class="mt-1.5 text-xs text-gray-500">Override period structure for this account only</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 4: JSON Editor -->
+        <div id="newJsonEditor" class="tab-content">
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-gray-700 to-gray-800">
+                    <h3 class="text-lg font-semibold text-white">JSON Editor (Advanced)</h3>
+                    <p class="text-sm text-gray-300 mt-1">Optional - for experienced users</p>
+                </div>
+                <div class="p-6">
+                    <div class="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-4">
+                        <div class="text-sm text-purple-900">
+                            <strong>Recommendation:</strong> Use the form editor for creating leave accounts.
+                        </div>
+                    </div>
+                    <textarea rows="20" class="w-full px-4 py-3 bg-gray-900 text-gray-100 border border-gray-700 rounded-lg font-mono text-sm" placeholder='{"employeeId": "EMP-001234", "leaveClassId": "LC-VN-ANNUAL-001", ...}'></textarea>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Actions -->
+        <div class="mt-6 flex items-center justify-between p-4 bg-white rounded-xl shadow-sm border border-gray-200">
+            <button onclick="switchToMode('view')" class="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">
+                <i class="fas fa-arrow-left mr-2"></i>Back to Accounts
+            </button>
+            <div class="flex items-center gap-3">
+                <button onclick="saveAsDraft()" class="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">
+                    Save as Draft
+                </button>
+                <button onclick="createAndActivate()" class="px-6 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-sm font-medium">
+                    <i class="fas fa-check mr-2"></i>Create & Activate
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Toggle initial balance fields
+    document.getElementById('new-setInitialBalance')?.addEventListener('change', function() {
+        const fields = document.getElementById('new-initialBalanceFields');
+        if (this.checked) {
+            fields.classList.remove('hidden');
+        } else {
+            fields.classList.add('hidden');
+        }
+    });
+</script>
+</div>
+
+<!-- ==================== MODE SWITCHING & DATA LOADING SCRIPT ==================== -->
+<script>
+    let appData = {};
+    let currentMode = 'view';
+
+    // Load data from JSON on page load
+    function loadAppData() {
+        const dataScript = document.getElementById('appData');
+        appData = JSON.parse(dataScript.textContent);
+        console.log('Data loaded:', appData);
+
+        // Initial population
+        populateViewMode();
+        wireButtons();
+    }
+
+    // Wire up all buttons for mode switching
+    function wireButtons() {
+        // VIEW MODE BUTTONS
+        // Find "Edit" buttons in view mode and wire them
+        const viewEditButtons = document.querySelectorAll('#viewMode button');
+        viewEditButtons.forEach(btn => {
+            const btnText = btn.textContent.toLowerCase();
+            if (btnText.includes('edit') || btnText.includes('modify')) {
+                btn.onclick = () => switchToMode('edit');
+            }
+        });
+
+        // Add "New" button functionality
+        const viewNewButtons = document.querySelectorAll('#viewMode button');
+        viewNewButtons.forEach(btn => {
+            const btnText = btn.textContent.toLowerCase();
+            if (btnText.includes('new') || btnText.includes('create new')) {
+                btn.onclick = () => switchToMode('new');
+            }
+        });
+
+        // EDIT MODE BUTTONS
+        const editButtons = document.querySelectorAll('#editMode button');
+        editButtons.forEach(btn => {
+            const btnText = btn.textContent.toLowerCase();
+            if (btnText.includes('save changes')) {
+                btn.onclick = (e) => {
+                    e.preventDefault();
+                    saveEditChanges();
+                };
+            } else if (btnText.includes('discard') || btnText.includes('cancel')) {
+                btn.onclick = (e) => {
+                    e.preventDefault();
+                    switchToMode('view');
+                };
+            }
+        });
+
+        // NEW MODE BUTTONS
+        const newButtons = document.querySelectorAll('#newMode button');
+        newButtons.forEach(btn => {
+            const btnText = btn.textContent.toLowerCase();
+            if (btnText.includes('cancel')) {
+                btn.onclick = (e) => {
+                    e.preventDefault();
+                    switchToMode('view');
+                };
+            } else if (btnText.includes('save as draft')) {
+                btn.onclick = (e) => {
+                    e.preventDefault();
+                    saveAsDraft();
+                };
+            } else if (btnText.includes('create') && btnText.includes('activate')) {
+                btn.onclick = (e) => {
+                    e.preventDefault();
+                    createAndActivate();
+                };
+            }
+        });
+
+        console.log('Buttons wired for mode switching');
+    }
+
+    // Switch between modes
+    function switchToMode(mode) {
+        // Hide all modes
+        document.getElementById('viewMode').classList.remove('active');
+        document.getElementById('editMode').classList.remove('active');
+        document.getElementById('newMode').classList.remove('active');
+
+        // Show selected mode
+        currentMode = mode;
+        if (mode === 'view') {
+            document.getElementById('viewMode').classList.add('active');
+            populateViewMode();
+        } else if (mode === 'edit') {
+            document.getElementById('editMode').classList.add('active');
+            populateEditMode();
+        } else if (mode === 'new') {
+            document.getElementById('newMode').classList.add('active');
+            populateNewMode();
+        }
+
+        // Scroll to top
+        window.scrollTo(0, 0);
+
+        console.log('Switched to mode:', mode);
+    }
+
+    // Populate VIEW mode with JSON data
+    function populateViewMode() {
+        // Replace hardcoded values with data from appData JSON
+        // This is where you would implement data binding
+        console.log('View mode populated with:', appData);
+
+        // Example: Update title, description, etc. based on appData
+        // You can add specific implementation here
+    }
+
+    // Populate EDIT mode with JSON data
+    function populateEditMode() {
+        // Pre-fill form fields with current data
+        console.log('Edit mode populated with:', appData);
+
+        // Example: Fill form inputs with appData values
+        // You can add specific implementation here
+    }
+
+    // Initialize NEW mode
+    function populateNewMode() {
+        // Initialize empty form or default values
+        console.log('New mode initialized');
+    }
+
+    function switchTab(mode, tabId, button) {
+        const modeContainer = document.getElementById(`${mode}Mode`);
+        if (!modeContainer) return;
+
+        modeContainer.querySelectorAll('.tab-content').forEach(tab => {
+            tab.classList.remove('active');
+        });
+
+        const targetTab = modeContainer.querySelector(`#${tabId}`);
+        targetTab?.classList.add('active');
+
+        modeContainer.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.classList.remove('text-blue-600', 'border-blue-600');
+            btn.classList.add('text-gray-600', 'border-transparent');
+        });
+
+        if (button) {
+            button.classList.remove('text-gray-600', 'border-transparent');
+            button.classList.add('text-blue-600', 'border-blue-600');
+        }
+    }
+
+    // Save edit changes
+    function saveEditChanges() {
+        console.log('Saving edit changes...');
+        // Collect form data and update appData
+        // For now, just show alert and go back to view
+        alert('Changes saved successfully!');
+
+        // Update appData from form fields here
+        // appData.employeeInfo.fullName = document.getElementById('edit-employeeName').value;
+        // etc...
+
+        switchToMode('view');
+    }
+
+    // Save as draft
+    function saveAsDraft() {
+        console.log('Saving as draft...');
+        alert('Leave account saved as draft!');
+
+        // Collect form data and create new account with DRAFT status
+        // appData = { ...collected data, status: 'DRAFT' };
+
+        switchToMode('view');
+    }
+
+    // Create and activate
+    function createAndActivate() {
+        console.log('Creating and activating leave account...');
+        alert('Leave account created and activated!');
+
+        // Collect form data and create new account with ACTIVE status
+        // appData = { ...collected data, status: 'ACTIVE' };
+
+        switchToMode('view');
+    }
+
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        loadAppData();
+
+        // Re-wire buttons after a short delay to ensure DOM is ready
+        setTimeout(() => {
+            wireButtons();
+        }, 100);
+    });
+</script>
+
+</body>
+</html>

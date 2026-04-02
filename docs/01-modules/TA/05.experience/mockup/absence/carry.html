@@ -1,0 +1,2713 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Carry Over/Expiry/Reset Rule Management System</title>
+<meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>View Carry/Expire/Reset Rule - VN Annual Leave Carryover</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+    </style>
+    <style>
+        /* Mode switching styles */
+        .mode-container { display: none; }
+        .mode-container.active { display: block; }
+    </style>
+</head>
+<body>
+
+<!-- ==================== DATA CONFIGURATION (JSON) ==================== -->
+<script id="appData" type="application/json">
+{
+    "policyId": "POL-CARRY-VN-001",
+    "policyType": "CARRY_OVER_EXPIRY",
+    "name": "Vietnam Annual Leave Carry Over Rule",
+    "description": "Defines how unused annual leave carries over and expires for Vietnamese employees",
+    "version": "1.0.0",
+    "status": "ACTIVE",
+    "scope": {
+        "country": "VN",
+        "businessUnit": null,
+        "leaveType": "ANNUAL_LEAVE"
+    },
+    "effectiveDate": "2025-01-01",
+    "expiryDate": null,
+    "carryOverRules": {
+        "allowCarryOver": true,
+        "maxCarryOverDays": 10,
+        "carryOverDeadline": {
+            "type": "DAYS_FROM_YEAR_END",
+            "value": 90,
+            "specificDate": null
+        },
+        "carryOverExpiry": {
+            "enabled": true,
+            "expiryType": "DAYS_FROM_CARRY_OVER",
+            "expiryValue": 90,
+            "expiryDate": null
+        }
+    },
+    "expiryRules": {
+        "unusedLeaveExpiry": {
+            "enabled": true,
+            "expiryType": "END_OF_YEAR",
+            "gracePeriodDays": 0
+        },
+        "autoDeductExpiredLeave": true,
+        "notifyBeforeExpiry": true,
+        "notifyDaysBefore": 30
+    },
+    "resetRules": {
+        "resetFrequency": "YEARLY",
+        "resetDate": {
+            "type": "CALENDAR_YEAR_END",
+            "month": 12,
+            "day": 31
+        },
+        "resetAction": "ZERO_OUT_UNUSED",
+        "preserveCarryOver": true
+    },
+    "metadata": {
+        "createdBy": "admin@company.com",
+        "createdAt": "2025-01-10T08:00:00Z",
+        "modifiedBy": "hr.manager@company.com",
+        "modifiedAt": "2025-11-05T11:30:00Z",
+        "tags": ["vietnam", "carry-over", "expiry", "annual-leave"]
+    }
+}
+</script>
+
+<!-- ==================== VIEW MODE (ORIGINAL) ==================== -->
+<div id="viewMode" class="mode-container active">
+<!-- Top Bar -->
+    <div class="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
+        <div class="px-6 py-3">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2 text-sm">
+                    <a href="#" class="text-blue-600 hover:text-blue-700">Policies</a>
+                    <i class="fas fa-chevron-right text-gray-400 text-xs"></i>
+                    <a href="#" class="text-blue-600 hover:text-blue-700">Policy Library</a>
+                    <i class="fas fa-chevron-right text-gray-400 text-xs"></i>
+                    <span class="text-gray-900 font-medium">VN Annual Leave Carryover</span>
+                    <span class="ml-2 px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-full font-medium">VIEW MODE</span>
+                </div>
+                
+                <div class="flex items-center gap-3">
+                    <button class="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">
+                        <i class="fas fa-copy mr-2"></i>Clone
+                    </button>
+                    <button class="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">
+                        <i class="fas fa-download mr-2"></i>Export
+                    </button>
+                    <button onclick="switchToMode('edit')" class="px-5 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-sm font-medium">
+                        <i class="fas fa-pen mr-2"></i>Edit Policy
+                    </button>
+                    <button onclick="switchToMode('new')" class="px-5 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 shadow-sm font-medium">
+                        <i class="fas fa-plus mr-2"></i>New Policy
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <div class="bg-white border-b border-gray-200">
+        <div class="px-6 py-6">
+            <div class="flex items-start justify-between">
+                <div class="flex items-start gap-4">
+                    <div class="w-16 h-16 bg-gradient-to-br from-amber-500 to-amber-600 rounded-xl flex items-center justify-center shadow-lg">
+                        <i class="fas fa-recycle text-white text-2xl"></i>
+                    </div>
+                    <div>
+                        <div class="flex items-center gap-3 mb-1">
+                            <h1 class="text-2xl font-bold text-gray-900">VN Annual Leave Carryover</h1>
+                            <span class="px-3 py-1 bg-green-100 text-green-800 text-sm font-medium rounded-full">Active</span>
+                            <span class="px-3 py-1 bg-amber-100 text-amber-800 text-sm font-medium rounded-full">Carry/Expire/Reset</span>
+                        </div>
+                        <p class="text-gray-600 mb-3">Annual leave carryover policy for Vietnam - max 5 days carried forward with 3-month expiry</p>
+                        <div class="flex items-center gap-6 text-sm text-gray-500">
+                            <span class="flex items-center gap-2"><i class="fas fa-hashtag"></i>POL-CARRY-VN-001</span>
+                            <span class="flex items-center gap-2"><i class="fas fa-calendar"></i>Created: Jan 15, 2025</span>
+                            <span class="flex items-center gap-2"><i class="fas fa-pen"></i>Modified: 2 weeks ago</span>
+                            <span class="flex items-center gap-2"><i class="fas fa-user"></i>By: HR Admin</span>
+                            <span class="flex items-center gap-2"><i class="fas fa-code-branch"></i>Version: v1.2.0</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="flex items-center gap-2">
+                    <button class="p-2 text-gray-600 hover:bg-gray-100 rounded-lg" title="Share"><i class="fas fa-share-nodes"></i></button>
+                    <button class="p-2 text-gray-600 hover:bg-gray-100 rounded-lg" title="Print"><i class="fas fa-print"></i></button>
+                    <button class="p-2 text-gray-600 hover:bg-gray-100 rounded-lg" title="Bookmark"><i class="far fa-bookmark"></i></button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="px-6">
+            <div class="flex items-center gap-1 border-b border-gray-200">
+                <button onclick="switchTab('view','viewBasicInfo', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 flex items-center gap-2 text-blue-600 border-blue-600">
+                    <i class="fas fa-info-circle"></i>Basic Info
+                </button>
+                <button onclick="switchTab('view','viewConfiguration', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent flex items-center gap-2 text-gray-600 hover:text-gray-900">
+                    <i class="fas fa-sliders"></i>Configuration
+                </button>
+                <button onclick="switchTab('view','viewSimulation', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent flex items-center gap-2 text-gray-600 hover:text-gray-900">
+                    <i class="fas fa-calculator"></i>Simulation
+                </button>
+                <button onclick="switchTab('view','viewAnalytics', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent flex items-center gap-2 text-gray-600 hover:text-gray-900">
+                    <i class="fas fa-chart-bar"></i>Usage Analytics
+                    <span class="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full font-semibold">567</span>
+                </button>
+                <button onclick="switchTab('view','viewJsonEditor', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent flex items-center gap-2 text-gray-600 hover:text-gray-900">
+                    <i class="fas fa-file-code"></i>JSON Editor
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="p-6">
+        <div class="max-w-6xl mx-auto">
+            
+            <!-- TAB 1: Basic Info -->
+            <div id="viewBasicInfo" class="tab-content active">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-2 space-y-6">
+                        <!-- General Information -->
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
+                                <h3 class="text-lg font-semibold text-gray-900">General Information</h3>
+                            </div>
+                            <div class="p-6">
+                                <dl class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div>
+                                        <dt class="text-sm font-medium text-gray-500 mb-1">Policy ID</dt>
+                                        <dd class="text-sm text-gray-900 font-mono bg-gray-50 px-3 py-2 rounded">POL-CARRY-VN-001</dd>
+                                    </div>
+                                    <div>
+                                        <dt class="text-sm font-medium text-gray-500 mb-1">Policy Type</dt>
+                                        <dd><span class="px-3 py-1 bg-amber-100 text-amber-800 rounded-full text-sm font-medium">
+                                            <i class="fas fa-recycle mr-1"></i>Carry/Expire/Reset</span>
+                                        </dd>
+                                    </div>
+                                    <div class="md:col-span-2">
+                                        <dt class="text-sm font-medium text-gray-500 mb-1">Policy Name</dt>
+                                        <dd class="text-base text-gray-900 font-medium">VN Annual Leave Carryover</dd>
+                                    </div>
+                                    <div class="md:col-span-2">
+                                        <dt class="text-sm font-medium text-gray-500 mb-1">Description</dt>
+                                        <dd class="text-sm text-gray-700 bg-gray-50 p-3 rounded">
+                                            Annual leave carryover policy for Vietnam - allows up to 5 days to be carried forward to the next year with a 3-month expiration period
+                                        </dd>
+                                    </div>
+                                    <div>
+                                        <dt class="text-sm font-medium text-gray-500 mb-1">Country/Region</dt>
+                                        <dd class="text-sm text-gray-900 flex items-center gap-2"><span class="text-lg">🇻🇳</span>Vietnam</dd>
+                                    </div>
+                                    <div>
+                                        <dt class="text-sm font-medium text-gray-500 mb-1">Business Unit</dt>
+                                        <dd class="text-sm text-gray-900">All Business Units</dd>
+                                    </div>
+                                    <div>
+                                        <dt class="text-sm font-medium text-gray-500 mb-1">Status</dt>
+                                        <dd><span class="px-3 py-1 bg-green-100 text-green-800 text-sm rounded-full font-medium">
+                                            <i class="fas fa-circle text-xs mr-1"></i>Active</span>
+                                        </dd>
+                                    </div>
+                                    <div>
+                                        <dt class="text-sm font-medium text-gray-500 mb-1">Effective Period</dt>
+                                        <dd class="text-sm text-gray-900">From: <strong>Jan 1, 2025</strong><br>Until: <strong>No expiry</strong></dd>
+                                    </div>
+                                    <div class="md:col-span-2">
+                                        <dt class="text-sm font-medium text-gray-500 mb-2">Tags</dt>
+                                        <dd class="flex flex-wrap gap-2">
+                                            <span class="px-3 py-1 bg-amber-100 text-amber-800 text-sm rounded-full">vietnam</span>
+                                            <span class="px-3 py-1 bg-amber-100 text-amber-800 text-sm rounded-full">carryover</span>
+                                            <span class="px-3 py-1 bg-amber-100 text-amber-800 text-sm rounded-full">annual-leave</span>
+                                            <span class="px-3 py-1 bg-amber-100 text-amber-800 text-sm rounded-full">year-end</span>
+                                        </dd>
+                                    </div>
+                                </dl>
+                            </div>
+                        </div>
+
+                        <!-- System Information -->
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
+                                <h3 class="text-lg font-semibold text-gray-900">System Information</h3>
+                            </div>
+                            <div class="p-6">
+                                <dl class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div>
+                                        <dt class="text-sm font-medium text-gray-500 mb-1">Created</dt>
+                                        <dd class="text-sm text-gray-900">January 15, 2025 at 9:30 AM<br><span class="text-gray-600">by HR Admin</span></dd>
+                                    </div>
+                                    <div>
+                                        <dt class="text-sm font-medium text-gray-500 mb-1">Last Modified</dt>
+                                        <dd class="text-sm text-gray-900">October 28, 2025 at 4:15 PM<br><span class="text-gray-600">by System Admin</span></dd>
+                                    </div>
+                                    <div>
+                                        <dt class="text-sm font-medium text-gray-500 mb-1">Current Version</dt>
+                                        <dd class="text-sm text-gray-900 font-mono">v1.2.0</dd>
+                                    </div>
+                                    <div>
+                                        <dt class="text-sm font-medium text-gray-500 mb-1">Total Versions</dt>
+                                        <dd class="text-sm text-gray-900">3 versions</dd>
+                                    </div>
+                                </dl>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Sidebar -->
+                    <div class="space-y-6">
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-4">Carry Forward Statistics</h3>
+                            <div class="space-y-4">
+                                <div>
+                                    <div class="flex items-center justify-between text-sm mb-1">
+                                        <span class="text-gray-600">Employees Affected</span>
+                                        <span class="font-semibold text-gray-900">567</span>
+                                    </div>
+                                    <div class="w-full bg-gray-200 rounded-full h-2">
+                                        <div class="bg-amber-600 h-2 rounded-full" style="width: 100%"></div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div class="flex items-center justify-between text-sm mb-1">
+                                        <span class="text-gray-600">Total Days Carried</span>
+                                        <span class="font-semibold text-green-600">1,234</span>
+                                    </div>
+                                    <div class="w-full bg-gray-200 rounded-full h-2">
+                                        <div class="bg-green-600 h-2 rounded-full" style="width: 85%"></div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div class="flex items-center justify-between text-sm mb-1">
+                                        <span class="text-gray-600">Days Expired</span>
+                                        <span class="font-semibold text-red-600">89</span>
+                                    </div>
+                                    <div class="w-full bg-gray-200 rounded-full h-2">
+                                        <div class="bg-red-600 h-2 rounded-full" style="width: 15%"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <button class="mt-4 w-full px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg">
+                                <i class="fas fa-chart-bar mr-2"></i>View Full Analytics
+                            </button>
+                        </div>
+
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-4">Applied To</h3>
+                            <div class="space-y-2">
+                                <div class="p-3 bg-gray-50 rounded-lg">
+                                    <div class="text-sm font-medium text-gray-900">Leave Classes</div>
+                                    <div class="text-2xl font-bold text-blue-600 mt-1">8</div>
+                                </div>
+                                <div class="p-3 bg-gray-50 rounded-lg">
+                                    <div class="text-sm font-medium text-gray-900">Employees</div>
+                                    <div class="text-2xl font-bold text-purple-600 mt-1">567</div>
+                                </div>
+                            </div>
+                            <button class="mt-4 w-full px-3 py-2 text-sm text-amber-600 hover:bg-amber-50 rounded-lg border border-amber-200">
+                                View All Applications →
+                            </button>
+                        </div>
+
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-4">Recent Activity</h3>
+                            <div class="space-y-3">
+                                <div class="flex gap-3 text-sm">
+                                    <div class="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                        <i class="fas fa-pen text-blue-600 text-xs"></i>
+                                    </div>
+                                    <div>
+                                        <div class="text-gray-900 font-medium">Modified</div>
+                                        <div class="text-gray-600 text-xs">2 weeks ago by System Admin</div>
+                                    </div>
+                                </div>
+                                <div class="flex gap-3 text-sm">
+                                    <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                        <i class="fas fa-recycle text-green-600 text-xs"></i>
+                                    </div>
+                                    <div>
+                                        <div class="text-gray-900 font-medium">Carry executed</div>
+                                        <div class="text-gray-600 text-xs">Jan 1, 2025 by System</div>
+                                    </div>
+                                </div>
+                                <div class="flex gap-3 text-sm">
+                                    <div class="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                        <i class="fas fa-plus text-purple-600 text-xs"></i>
+                                    </div>
+                                    <div>
+                                        <div class="text-gray-900 font-medium">Created</div>
+                                        <div class="text-gray-600 text-xs">10 months ago by HR Admin</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <button class="mt-4 w-full px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg">View Full History</button>
+                        </div>
+
+                        <div class="bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl border border-amber-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-3">Quick Actions</h3>
+                            <div class="space-y-2">
+                                <button class="w-full px-4 py-2 bg-white hover:bg-amber-50 text-sm text-gray-700 rounded-lg flex items-center gap-2 border border-amber-200">
+                                    <i class="fas fa-pen text-amber-600"></i><span>Edit Policy</span>
+                                </button>
+                                <button class="w-full px-4 py-2 bg-white hover:bg-amber-50 text-sm text-gray-700 rounded-lg flex items-center gap-2 border border-amber-200">
+                                    <i class="fas fa-copy text-amber-600"></i><span>Clone Policy</span>
+                                </button>
+                                <button class="w-full px-4 py-2 bg-white hover:bg-amber-50 text-sm text-gray-700 rounded-lg flex items-center gap-2 border border-amber-200">
+                                    <i class="fas fa-calculator text-amber-600"></i><span>Run Simulation</span>
+                                </button>
+                                <button class="w-full px-4 py-2 bg-white hover:bg-amber-50 text-sm text-gray-700 rounded-lg flex items-center gap-2 border border-amber-200">
+                                    <i class="fas fa-download text-amber-600"></i><span>Export JSON</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 2: Configuration -->
+            <div id="viewConfiguration" class="tab-content">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-2 space-y-6">
+                        <!-- Carry Forward Rules -->
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-green-50 to-green-100">
+                                <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                    <i class="fas fa-arrow-right text-green-600"></i>
+                                    Carry Forward Configuration
+                                </h3>
+                                <p class="text-sm text-gray-600 mt-1">Rules for carrying unused leave to the next period</p>
+                            </div>
+                            <div class="p-6 space-y-6">
+                                <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+                                    <div class="flex items-center gap-2 mb-2">
+                                        <i class="fas fa-check-circle text-green-600"></i>
+                                        <span class="text-sm font-semibold text-gray-900">Carry Forward Enabled</span>
+                                    </div>
+                                    <p class="text-sm text-gray-700">Unused leave can be carried forward to the next period</p>
+                                </div>
+
+                                <dl class="space-y-6">
+                                    <div>
+                                        <dt class="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                            <i class="fas fa-calculator text-green-600"></i>
+                                            Carry Forward Amount
+                                        </dt>
+                                        <dd class="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                                            <div class="flex items-center gap-3">
+                                                <div class="text-3xl font-bold text-green-600">5</div>
+                                                <div>
+                                                    <div class="text-sm font-medium text-gray-900">Days maximum</div>
+                                                    <div class="text-xs text-gray-600">Maximum days that can be carried forward</div>
+                                                </div>
+                                            </div>
+                                        </dd>
+                                    </div>
+
+                                    <div>
+                                        <dt class="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                            <i class="fas fa-hourglass-end text-green-600"></i>
+                                            Carry Forward Expiry
+                                        </dt>
+                                        <dd class="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                                            <div class="flex items-center gap-3">
+                                                <div class="text-3xl font-bold text-amber-600">3</div>
+                                                <div>
+                                                    <div class="text-sm font-medium text-gray-900">Months expiry period</div>
+                                                    <div class="text-xs text-gray-600">Carried days must be used within this period</div>
+                                                </div>
+                                            </div>
+                                        </dd>
+                                    </div>
+
+                                    <div>
+                                        <dt class="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                            <i class="fas fa-flag text-green-600"></i>
+                                            Priority Consumption
+                                        </dt>
+                                        <dd class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                            <div class="text-sm font-medium text-gray-900 mb-2">FEFO (First Expire First Out)</div>
+                                            <div class="text-xs text-gray-700">Carried forward days are consumed first before current period days</div>
+                                        </dd>
+                                    </div>
+
+                                    <div>
+                                        <dt class="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                            <i class="fas fa-calendar-check text-green-600"></i>
+                                            Execution Timing
+                                        </dt>
+                                        <dd class="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                                            <div class="text-sm font-medium text-gray-900 mb-2">January 1st, 00:00</div>
+                                            <div class="text-xs text-gray-700">Automatically executed at the start of new year</div>
+                                        </dd>
+                                    </div>
+                                </dl>
+                            </div>
+                        </div>
+
+                        <!-- Expire Rules -->
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-red-50 to-red-100">
+                                <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                    <i class="fas fa-calendar-times text-red-600"></i>
+                                    Expiry Configuration
+                                </h3>
+                                <p class="text-sm text-gray-600 mt-1">Rules for expiring unused leave</p>
+                            </div>
+                            <div class="p-6 space-y-6">
+                                <dl class="space-y-6">
+                                    <div>
+                                        <dt class="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                            <i class="fas fa-clock text-red-600"></i>
+                                            Expiry Type
+                                        </dt>
+                                        <dd class="bg-red-50 border border-red-200 rounded-lg p-4">
+                                            <div class="text-sm font-medium text-gray-900 mb-2">Silent Expiry</div>
+                                            <div class="text-xs text-gray-700">Days expire automatically without creating adjustment movements (preferred for clean ledger)</div>
+                                        </dd>
+                                    </div>
+
+                                    <div>
+                                        <dt class="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                            <i class="fas fa-bell text-red-600"></i>
+                                            Employee Notification
+                                        </dt>
+                                        <dd class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                            <div class="flex items-center gap-2 mb-2">
+                                                <i class="fas fa-check-circle text-blue-600"></i>
+                                                <span class="text-sm font-medium text-gray-900">Notifications Enabled</span>
+                                            </div>
+                                            <div class="text-xs text-gray-700">
+                                                <strong>30 days before expiry:</strong> Warning notification<br>
+                                                <strong>7 days before expiry:</strong> Final reminder<br>
+                                                <strong>On expiry:</strong> Expiration confirmation
+                                            </div>
+                                        </dd>
+                                    </div>
+
+                                    <div>
+                                        <dt class="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                            <i class="fas fa-file-alt text-red-600"></i>
+                                            Reporting
+                                        </dt>
+                                        <dd class="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                                            <div class="flex items-center gap-2 mb-2">
+                                                <i class="fas fa-check-circle text-green-600"></i>
+                                                <span class="text-sm font-medium text-gray-900">Emit Expiry Movements</span>
+                                            </div>
+                                            <div class="text-xs text-gray-700">Create turnover movements for reporting and analytics purposes</div>
+                                        </dd>
+                                    </div>
+                                </dl>
+                            </div>
+                        </div>
+
+                        <!-- Reset Rules -->
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-purple-100">
+                                <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                    <i class="fas fa-undo text-purple-600"></i>
+                                    Reset Configuration
+                                </h3>
+                                <p class="text-sm text-gray-600 mt-1">Rules for resetting leave balances</p>
+                            </div>
+                            <div class="p-6">
+                                <div class="bg-gray-100 border border-gray-300 rounded-lg p-4">
+                                    <div class="flex items-center gap-2 mb-2">
+                                        <i class="fas fa-times-circle text-gray-500"></i>
+                                        <span class="text-sm font-semibold text-gray-700">Reset Not Applicable</span>
+                                    </div>
+                                    <p class="text-sm text-gray-600">
+                                        This policy uses carry forward. Unused days (up to the cap) are carried to the next period rather than being reset to zero.
+                                    </p>
+                                    <p class="text-xs text-gray-500 mt-2">
+                                        Days exceeding the 5-day cap will expire at year-end.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Sidebar -->
+                    <div class="space-y-6">
+                        <div class="bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl border border-amber-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                <i class="fas fa-lightbulb text-amber-600"></i>
+                                Policy Summary
+                            </h3>
+                            <ul class="space-y-2 text-sm text-gray-700">
+                                <li class="flex items-start gap-2">
+                                    <i class="fas fa-check text-green-600 mt-0.5"></i>
+                                    <span>Max <strong>5 days</strong> carried forward</span>
+                                </li>
+                                <li class="flex items-start gap-2">
+                                    <i class="fas fa-clock text-amber-600 mt-0.5"></i>
+                                    <span><strong>3 months</strong> expiry period</span>
+                                </li>
+                                <li class="flex items-start gap-2">
+                                    <i class="fas fa-flag text-blue-600 mt-0.5"></i>
+                                    <span>FEFO consumption priority</span>
+                                </li>
+                                <li class="flex items-start gap-2">
+                                    <i class="fas fa-bell text-purple-600 mt-0.5"></i>
+                                    <span>Employee notifications enabled</span>
+                                </li>
+                            </ul>
+                        </div>
+
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-3">Common Scenarios</h3>
+                            <div class="space-y-3 text-sm">
+                                <div class="p-3 bg-green-50 rounded-lg border border-green-200">
+                                    <div class="font-medium text-gray-900 mb-1">Employee with 8 unused days</div>
+                                    <div class="text-xs text-gray-600">5 days carried forward, 3 days expire</div>
+                                </div>
+                                <div class="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                                    <div class="font-medium text-gray-900 mb-1">Employee with 3 unused days</div>
+                                    <div class="text-xs text-gray-600">All 3 days carried forward</div>
+                                </div>
+                                <div class="p-3 bg-amber-50 rounded-lg border border-amber-200">
+                                    <div class="font-medium text-gray-900 mb-1">Carried days usage</div>
+                                    <div class="text-xs text-gray-600">Must be used before March 31</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-blue-50 rounded-xl border border-blue-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                <i class="fas fa-info-circle text-blue-600"></i>
+                                Did You Know?
+                            </h3>
+                            <p class="text-sm text-gray-700 leading-relaxed">
+                                This policy complies with Vietnam labor law which requires allowing unused annual leave to be carried forward for at least 3 months into the next year.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 3: Simulation -->
+            <div id="viewSimulation" class="tab-content">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-2 space-y-6">
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-purple-100">
+                                <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                    <i class="fas fa-calculator text-purple-600"></i>
+                                    Carry Forward Simulator
+                                </h3>
+                                <p class="text-sm text-gray-600 mt-1">Calculate carry forward amounts for different scenarios</p>
+                            </div>
+                            <div class="p-6 space-y-5">
+                                <div class="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                                    <div class="flex items-start gap-3">
+                                        <i class="fas fa-info-circle text-purple-600 mt-0.5"></i>
+                                        <div class="text-sm text-gray-700">
+                                            <strong class="text-gray-900">Simulate carry forward</strong> - Enter balance details to see how the policy will be applied.
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">Employee ID (Optional)</label>
+                                        <input type="text" placeholder="e.g., EMP-001234" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">Period End Date</label>
+                                        <input type="date" value="2025-12-31" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">Current Balance (Days)</label>
+                                        <input type="number" value="8.0" step="0.5" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">Balance Type</label>
+                                        <select class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent">
+                                            <option>Unused Annual Leave</option>
+                                            <option>Compensatory Leave</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <button onclick="runViewSimulation()" class="w-full px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium shadow-sm flex items-center justify-center gap-2">
+                                    <i class="fas fa-play"></i>
+                                    Run Simulation
+                                </button>
+
+                                <!-- Results -->
+                                <div id="viewSimulationResults" class="space-y-4 hidden">
+                                    <div class="bg-gradient-to-r from-blue-50 to-blue-100 border border-blue-200 rounded-lg p-6">
+                                        <h4 class="text-sm font-semibold text-gray-900 mb-4">Simulation Results</h4>
+                                        
+                                        <div class="grid grid-cols-3 gap-4 mb-4">
+                                            <div class="text-center">
+                                                <div class="text-3xl font-bold text-gray-900">8.0</div>
+                                                <div class="text-xs text-gray-600 mt-1">Current Balance</div>
+                                            </div>
+                                            <div class="text-center">
+                                                <div class="text-3xl font-bold text-green-600">5.0</div>
+                                                <div class="text-xs text-gray-600 mt-1">Will Carry Forward</div>
+                                            </div>
+                                            <div class="text-center">
+                                                <div class="text-3xl font-bold text-red-600">3.0</div>
+                                                <div class="text-xs text-gray-600 mt-1">Will Expire</div>
+                                            </div>
+                                        </div>
+
+                                        <div class="border-t border-blue-300 pt-4 space-y-3">
+                                            <div class="flex items-center justify-between text-sm">
+                                                <span class="text-gray-700">Carry Forward Cap:</span>
+                                                <span class="font-semibold text-gray-900">5 days maximum</span>
+                                            </div>
+                                            <div class="flex items-center justify-between text-sm">
+                                                <span class="text-gray-700">Carried Days Expiry:</span>
+                                                <span class="font-semibold text-amber-600">March 31, 2026</span>
+                                            </div>
+                                            <div class="flex items-center justify-between text-sm">
+                                                <span class="text-gray-700">Consumption Priority:</span>
+                                                <span class="font-semibold text-blue-600">FEFO (Carried first)</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                                        <div class="flex items-start gap-2">
+                                            <i class="fas fa-exclamation-triangle text-amber-600 mt-0.5"></i>
+                                            <div class="text-sm text-gray-700">
+                                                <strong>Important:</strong> 3 days will expire on December 31, 2025. The carried 5 days must be used by March 31, 2026, or they will expire.
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Batch Simulation -->
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-blue-100">
+                                <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                    <i class="fas fa-users text-blue-600"></i>
+                                    Batch Simulation
+                                </h3>
+                            </div>
+                            <div class="p-6">
+                                <div class="text-center py-8">
+                                    <i class="fas fa-file-excel text-blue-500 text-5xl mb-4"></i>
+                                    <h4 class="text-sm font-semibold text-gray-900 mb-2">Upload Employee List</h4>
+                                    <p class="text-sm text-gray-600 mb-4">Upload Excel or CSV to simulate carry forward for multiple employees</p>
+                                    <button class="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium">
+                                        <i class="fas fa-upload mr-2"></i>Choose File
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="space-y-6">
+                        <div class="bg-purple-50 rounded-xl border border-purple-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-3">Test Scenarios</h3>
+                            <div class="space-y-2">
+                                <button class="w-full text-left p-3 bg-white border border-purple-200 rounded-lg hover:bg-purple-50 transition-all">
+                                    <div class="text-sm font-medium text-gray-900">High Balance (12 days)</div>
+                                    <div class="text-xs text-gray-600 mt-1">Test maximum carry forward</div>
+                                </button>
+                                <button class="w-full text-left p-3 bg-white border border-purple-200 rounded-lg hover:bg-purple-50 transition-all">
+                                    <div class="text-sm font-medium text-gray-900">Low Balance (2 days)</div>
+                                    <div class="text-xs text-gray-600 mt-1">All days carried forward</div>
+                                </button>
+                                <button class="w-full text-left p-3 bg-white border border-purple-200 rounded-lg hover:bg-purple-50 transition-all">
+                                    <div class="text-sm font-medium text-gray-900">Zero Balance</div>
+                                    <div class="text-xs text-gray-600 mt-1">No carry forward</div>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-3">Simulation History</h3>
+                            <div class="space-y-2">
+                                <div class="p-3 bg-gray-50 rounded-lg">
+                                    <div class="text-sm font-medium text-gray-900">15 simulations today</div>
+                                    <div class="text-xs text-gray-600 mt-1">Last run: 10 minutes ago</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 4: Usage Analytics -->
+            <div id="viewAnalytics" class="tab-content">
+                <div class="grid grid-cols-1 gap-6">
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                        <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-indigo-50 to-indigo-100">
+                            <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                <i class="fas fa-chart-line text-indigo-600"></i>
+                                Carry Forward Analytics
+                            </h3>
+                        </div>
+                        <div class="p-6">
+                            <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+                                <div class="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-6 border border-green-200">
+                                    <div class="flex items-center justify-between mb-3">
+                                        <div class="w-12 h-12 bg-green-600 rounded-lg flex items-center justify-center">
+                                            <i class="fas fa-users text-white text-xl"></i>
+                                        </div>
+                                        <span class="text-xs text-green-700 font-medium">YEAR 2025</span>
+                                    </div>
+                                    <div class="text-3xl font-bold text-green-900">567</div>
+                                    <div class="text-sm text-green-700 mt-1">Employees Affected</div>
+                                </div>
+
+                                <div class="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-6 border border-blue-200">
+                                    <div class="flex items-center justify-between mb-3">
+                                        <div class="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center">
+                                            <i class="fas fa-arrow-right text-white text-xl"></i>
+                                        </div>
+                                        <span class="text-xs text-blue-700 font-medium">TOTAL</span>
+                                    </div>
+                                    <div class="text-3xl font-bold text-blue-900">1,234</div>
+                                    <div class="text-sm text-blue-700 mt-1">Days Carried Forward</div>
+                                </div>
+
+                                <div class="bg-gradient-to-br from-red-50 to-red-100 rounded-xl p-6 border border-red-200">
+                                    <div class="flex items-center justify-between mb-3">
+                                        <div class="w-12 h-12 bg-red-600 rounded-lg flex items-center justify-center">
+                                            <i class="fas fa-calendar-times text-white text-xl"></i>
+                                        </div>
+                                        <span class="text-xs text-red-700 font-medium">EXPIRED</span>
+                                    </div>
+                                    <div class="text-3xl font-bold text-red-900">89</div>
+                                    <div class="text-sm text-red-700 mt-1">Days Expired</div>
+                                </div>
+
+                                <div class="bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl p-6 border border-amber-200">
+                                    <div class="flex items-center justify-between mb-3">
+                                        <div class="w-12 h-12 bg-amber-600 rounded-lg flex items-center justify-center">
+                                            <i class="fas fa-percentage text-white text-xl"></i>
+                                        </div>
+                                        <span class="text-xs text-amber-700 font-medium">AVG</span>
+                                    </div>
+                                    <div class="text-3xl font-bold text-amber-900">2.2</div>
+                                    <div class="text-sm text-amber-700 mt-1">Days Per Employee</div>
+                                </div>
+                            </div>
+
+                            <!-- Distribution Chart -->
+                            <div class="border border-gray-200 rounded-lg p-6">
+                                <h4 class="text-sm font-semibold text-gray-900 mb-4">Carry Forward Distribution</h4>
+                                <div class="space-y-3">
+                                    <div>
+                                        <div class="flex items-center justify-between mb-1 text-sm">
+                                            <span class="text-gray-700">0 days carried</span>
+                                            <span class="font-semibold text-gray-900">45 employees (8%)</span>
+                                        </div>
+                                        <div class="w-full bg-gray-200 rounded-full h-2">
+                                            <div class="bg-gray-500 h-2 rounded-full" style="width: 8%"></div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div class="flex items-center justify-between mb-1 text-sm">
+                                            <span class="text-gray-700">1-2 days carried</span>
+                                            <span class="font-semibold text-gray-900">178 employees (31%)</span>
+                                        </div>
+                                        <div class="w-full bg-gray-200 rounded-full h-2">
+                                            <div class="bg-blue-500 h-2 rounded-full" style="width: 31%"></div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div class="flex items-center justify-between mb-1 text-sm">
+                                            <span class="text-gray-700">3-4 days carried</span>
+                                            <span class="font-semibold text-gray-900">234 employees (41%)</span>
+                                        </div>
+                                        <div class="w-full bg-gray-200 rounded-full h-2">
+                                            <div class="bg-green-500 h-2 rounded-full" style="width: 41%"></div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div class="flex items-center justify-between mb-1 text-sm">
+                                            <span class="text-gray-700">5 days carried (max)</span>
+                                            <span class="font-semibold text-gray-900">110 employees (19%)</span>
+                                        </div>
+                                        <div class="w-full bg-gray-200 rounded-full h-2">
+                                            <div class="bg-amber-500 h-2 rounded-full" style="width: 19%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 5: JSON Editor -->
+            <div id="viewJsonEditor" class="tab-content">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-2 space-y-6">
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-gray-700 to-gray-800 flex items-center justify-between">
+                                <div>
+                                    <h3 class="text-lg font-semibold text-white flex items-center gap-2">
+                                        <i class="fas fa-file-code"></i>JSON Configuration
+                                    </h3>
+                                    <p class="text-sm text-gray-300 mt-1">Raw carry/expire/reset configuration</p>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <button class="px-3 py-1.5 text-sm bg-gray-600 hover:bg-gray-500 text-white rounded-lg">
+                                        <i class="fas fa-copy mr-1"></i>Copy
+                                    </button>
+                                    <button class="px-3 py-1.5 text-sm bg-gray-600 hover:bg-gray-500 text-white rounded-lg">
+                                        <i class="fas fa-download mr-1"></i>Download
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="p-6">
+                                <pre class="bg-gray-900 text-gray-100 p-6 rounded-lg overflow-x-auto text-sm font-mono leading-relaxed shadow-inner"><code><span class="text-gray-500">{</span>
+  <span class="text-blue-400">"policyId"</span><span class="text-gray-500">:</span> <span class="text-green-400">"POL-CARRY-VN-001"</span><span class="text-gray-500">,</span>
+  <span class="text-blue-400">"policyType"</span><span class="text-gray-500">:</span> <span class="text-green-400">"CARRY_EXPIRE_RESET"</span><span class="text-gray-500">,</span>
+  <span class="text-blue-400">"name"</span><span class="text-gray-500">:</span> <span class="text-green-400">"VN Annual Leave Carryover"</span><span class="text-gray-500">,</span>
+  <span class="text-blue-400">"version"</span><span class="text-gray-500">:</span> <span class="text-green-400">"1.2.0"</span><span class="text-gray-500">,</span>
+  
+  <span class="text-blue-400">"carryForward"</span><span class="text-gray-500">: {</span>
+    <span class="text-blue-400">"enabled"</span><span class="text-gray-500">:</span> <span class="text-purple-400">true</span><span class="text-gray-500">,</span>
+    <span class="text-blue-400">"maxDays"</span><span class="text-gray-500">:</span> <span class="text-yellow-400">5</span><span class="text-gray-500">,</span>
+    <span class="text-blue-400">"expiryMonths"</span><span class="text-gray-500">:</span> <span class="text-yellow-400">3</span><span class="text-gray-500">,</span>
+    <span class="text-blue-400">"consumptionPriority"</span><span class="text-gray-500">:</span> <span class="text-green-400">"FEFO"</span><span class="text-gray-500">,</span>
+    <span class="text-blue-400">"executionTiming"</span><span class="text-gray-500">:</span> <span class="text-green-400">"PERIOD_START"</span>
+  <span class="text-gray-500">},</span>
+  
+  <span class="text-blue-400">"expiry"</span><span class="text-gray-500">: {</span>
+    <span class="text-blue-400">"type"</span><span class="text-gray-500">:</span> <span class="text-green-400">"SILENT"</span><span class="text-gray-500">,</span>
+    <span class="text-blue-400">"emitMovements"</span><span class="text-gray-500">:</span> <span class="text-purple-400">true</span><span class="text-gray-500">,</span>
+    <span class="text-blue-400">"notifications"</span><span class="text-gray-500">: {</span>
+      <span class="text-blue-400">"enabled"</span><span class="text-gray-500">:</span> <span class="text-purple-400">true</span><span class="text-gray-500">,</span>
+      <span class="text-blue-400">"warningDays"</span><span class="text-gray-500">:</span> <span class="text-yellow-400">30</span><span class="text-gray-500">,</span>
+      <span class="text-blue-400">"finalReminderDays"</span><span class="text-gray-500">:</span> <span class="text-yellow-400">7</span>
+    <span class="text-gray-500">}</span>
+  <span class="text-gray-500">},</span>
+  
+  <span class="text-blue-400">"reset"</span><span class="text-gray-500">: {</span>
+    <span class="text-blue-400">"enabled"</span><span class="text-gray-500">:</span> <span class="text-purple-400">false</span>
+  <span class="text-gray-500">}</span>
+<span class="text-gray-500">}</span></code></pre>
+
+                                <div class="mt-4 flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
+                                    <div class="flex items-center gap-2 text-sm text-green-800">
+                                        <i class="fas fa-check-circle"></i>
+                                        <span class="font-medium">Valid JSON</span>
+                                    </div>
+                                    <div class="flex items-center gap-4 text-xs text-green-700">
+                                        <span>28 lines</span>
+                                        <span>•</span>
+                                        <span>745 bytes</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="space-y-6">
+                        <div class="bg-gradient-to-br from-gray-700 to-gray-800 text-white rounded-xl border border-gray-600 p-5">
+                            <h3 class="text-sm font-semibold mb-3">JSON Schema Info</h3>
+                            <ul class="space-y-2 text-sm text-gray-300">
+                                <li class="flex items-center gap-2">
+                                    <i class="fas fa-code text-blue-400"></i>
+                                    <span>Schema: <strong class="text-white">v1.2</strong></span>
+                                </li>
+                                <li class="flex items-center gap-2">
+                                    <i class="fas fa-shield-check text-green-400"></i>
+                                    <span>Validation: <strong class="text-white">Passed</strong></span>
+                                </li>
+                            </ul>
+                            <button class="mt-4 w-full px-3 py-2 text-sm bg-gray-600 hover:bg-gray-500 rounded-lg">
+                                <i class="fas fa-book mr-2"></i>View Documentation
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        function runViewSimulation() {
+            document.getElementById('viewSimulationResults').classList.remove('hidden');
+            alert('Simulation completed successfully!');
+        }
+    </script>
+</div>
+
+<!-- ==================== EDIT MODE (ORIGINAL with prefix) ==================== -->
+<div id="editMode" class="mode-container">
+<!-- Top Bar -->
+    <div class="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
+        <div class="px-6 py-3">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2 text-sm">
+                    <a href="#" class="text-blue-600 hover:text-blue-700">Policies</a>
+                    <i class="fas fa-chevron-right text-gray-400 text-xs"></i>
+                    <a href="#" class="text-blue-600 hover:text-blue-700">Policy Library</a>
+                    <i class="fas fa-chevron-right text-gray-400 text-xs"></i>
+                    <span class="text-gray-900 font-medium">VN Annual Leave Carryover</span>
+                    <span class="ml-2 px-2 py-0.5 bg-yellow-100 text-yellow-800 text-xs rounded-full font-medium">EDIT MODE</span>
+                </div>
+                
+                <div class="flex items-center gap-3">
+                    <button class="px-3 py-2 text-sm text-gray-600 hover:text-gray-900">
+                        <i class="fas fa-clock-rotate-left mr-2"></i>Version History
+                    </button>
+                    <div class="h-6 w-px bg-gray-300"></div>
+                    <button class="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">
+                        Discard Changes
+                    </button>
+                    <button class="px-5 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-sm font-medium">
+                        <i class="fas fa-save mr-2"></i>Save Changes
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Unsaved Changes Banner -->
+    <div class="bg-yellow-50 border-b border-yellow-200">
+        <div class="px-6 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <i class="fas fa-exclamation-triangle text-yellow-600"></i>
+                <span class="text-sm font-medium text-yellow-900">You have unsaved changes</span>
+                <button class="text-sm text-yellow-700 underline hover:text-yellow-900">View Changes</button>
+            </div>
+            <button class="text-yellow-600 hover:text-yellow-900"><i class="fas fa-times"></i></button>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <div class="bg-white border-b border-gray-200">
+        <div class="px-6 py-6">
+            <div class="flex items-start justify-between">
+                <div class="flex items-start gap-4">
+                    <div class="w-16 h-16 bg-gradient-to-br from-amber-500 to-amber-600 rounded-xl flex items-center justify-center shadow-lg">
+                        <i class="fas fa-recycle text-white text-2xl"></i>
+                    </div>
+                    <div>
+                        <div class="flex items-center gap-3 mb-1">
+                            <h1 class="text-2xl font-bold text-gray-900">VN Annual Leave Carryover</h1>
+                            <span class="px-3 py-1 bg-green-100 text-green-800 text-sm font-medium rounded-full">Active</span>
+                            <span class="px-3 py-1 bg-amber-100 text-amber-800 text-sm font-medium rounded-full">Carry/Expire/Reset</span>
+                        </div>
+                        <p class="text-gray-600 mb-3">Annual leave carryover policy for Vietnam</p>
+                        <div class="flex items-center gap-6 text-sm text-gray-500">
+                            <span class="flex items-center gap-2"><i class="fas fa-hashtag"></i>POL-CARRY-VN-001</span>
+                            <span class="flex items-center gap-2"><i class="fas fa-calendar"></i>Created: Jan 15, 2025</span>
+                            <span class="flex items-center gap-2"><i class="fas fa-pen"></i>Modified: 2 weeks ago</span>
+                            <span class="flex items-center gap-2"><i class="fas fa-user"></i>By: HR Admin</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="flex items-center gap-2">
+                    <button class="p-2 text-gray-600 hover:bg-gray-100 rounded-lg" title="Clone"><i class="fas fa-copy"></i></button>
+                    <button class="p-2 text-gray-600 hover:bg-gray-100 rounded-lg" title="Share"><i class="fas fa-share-nodes"></i></button>
+                    <button class="p-2 text-gray-600 hover:bg-gray-100 rounded-lg" title="Export"><i class="fas fa-download"></i></button>
+                    <button class="p-2 text-red-600 hover:bg-red-50 rounded-lg" title="Delete"><i class="fas fa-trash"></i></button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="px-6">
+            <div class="flex items-center gap-1 border-b border-gray-200">
+                <button onclick="switchTab('edit','editBasicInfo', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 flex items-center gap-2 text-blue-600 border-blue-600">
+                    <i class="fas fa-info-circle"></i>Basic Info
+                </button>
+                <button onclick="switchTab('edit','editConfiguration', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent flex items-center gap-2 text-gray-600 hover:text-gray-900">
+                    <i class="fas fa-sliders"></i>Configuration
+                </button>
+                <button onclick="switchTab('edit','editSimulation', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent flex items-center gap-2 text-gray-600 hover:text-gray-900">
+                    <i class="fas fa-calculator"></i>Simulation
+                </button>
+                <button onclick="switchTab('edit','editAnalytics', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent flex items-center gap-2 text-gray-600 hover:text-gray-900">
+                    <i class="fas fa-chart-bar"></i>Usage Analytics
+                    <span class="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full font-semibold">567</span>
+                </button>
+                <button onclick="switchTab('edit','editJsonEditor', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent flex items-center gap-2 text-gray-600 hover:text-gray-900">
+                    <i class="fas fa-file-code"></i>JSON Editor
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="p-6">
+        <div class="max-w-6xl mx-auto">
+            
+            <!-- TAB 1: Basic Info -->
+            <div id="editBasicInfo" class="tab-content active">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-2 space-y-6">
+                        <div class="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                            <div class="flex items-start gap-3">
+                                <i class="fas fa-info-circle text-blue-600 mt-0.5"></i>
+                                <div class="flex-1">
+                                    <div class="text-sm font-medium text-gray-900 mb-1">Edit Mode Active</div>
+                                    <div class="text-sm text-gray-700">
+                                        Changes will create version <strong>v1.3.0</strong>. Current active version is <strong>v1.2.0</strong>.
+                                        All fields with changes will be highlighted.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- General Information -->
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
+                                <h3 class="text-lg font-semibold text-gray-900">General Information</h3>
+                            </div>
+                            <div class="p-6 space-y-5">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Policy ID</label>
+                                    <input type="text" value="POL-CARRY-VN-001" readonly class="w-full px-4 py-2.5 bg-gray-100 border border-gray-300 rounded-lg text-gray-500 cursor-not-allowed">
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                                        Policy Name <span class="text-red-500">*</span>
+                                    </label>
+                                    <input type="text" value="VN Annual Leave Carryover" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                                    <textarea rows="3" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">Annual leave carryover policy for Vietnam - allows up to 5 days to be carried forward to the next year with a 3-month expiration period</textarea>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Policy Type</label>
+                                    <div class="flex items-center gap-3 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                                        <div class="w-10 h-10 bg-amber-600 rounded-lg flex items-center justify-center">
+                                            <i class="fas fa-recycle text-white"></i>
+                                        </div>
+                                        <div>
+                                            <div class="text-sm font-medium text-gray-900">Carry/Expire/Reset</div>
+                                            <div class="text-xs text-gray-600">Cannot be changed after creation</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">Country/Region</label>
+                                        <select class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                            <option value="global">🌐 Global</option>
+                                            <option value="vn" selected>🇻🇳 Vietnam</option>
+                                            <option value="sg">🇸🇬 Singapore</option>
+                                            <option value="th">🇹🇭 Thailand</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">Business Unit</label>
+                                        <select class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                            <option value="" selected>All Business Units</option>
+                                            <option value="bu001">BU-001 - Headquarters</option>
+                                            <option value="bu002">BU-002 - Sales</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                                    <div class="flex items-center gap-4">
+                                        <label class="flex items-center gap-2 cursor-pointer p-3 border-2 border-green-500 bg-green-50 rounded-lg">
+                                            <input type="radio" name="status" value="active" checked class="w-4 h-4 text-green-600">
+                                            <div>
+                                                <div class="text-sm font-medium text-gray-900">Active</div>
+                                                <div class="text-xs text-gray-600">Currently in use</div>
+                                            </div>
+                                        </label>
+                                        <label class="flex items-center gap-2 cursor-pointer p-3 border-2 border-gray-200 rounded-lg hover:border-yellow-500">
+                                            <input type="radio" name="status" value="draft" class="w-4 h-4 text-yellow-600">
+                                            <div>
+                                                <div class="text-sm font-medium text-gray-900">Draft</div>
+                                                <div class="text-xs text-gray-600">Pause usage</div>
+                                            </div>
+                                        </label>
+                                        <label class="flex items-center gap-2 cursor-pointer p-3 border-2 border-gray-200 rounded-lg hover:border-gray-500">
+                                            <input type="radio" name="status" value="inactive" class="w-4 h-4 text-gray-600">
+                                            <div>
+                                                <div class="text-sm font-medium text-gray-900">Inactive</div>
+                                                <div class="text-xs text-gray-600">Deactivate</div>
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">Effective From</label>
+                                        <input type="date" value="2025-01-01" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">Effective Until</label>
+                                        <input type="date" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Tags</label>
+                                    <div class="flex flex-wrap gap-2 mb-2">
+                                        <span class="inline-flex items-center gap-1 px-3 py-1 bg-amber-100 text-amber-800 rounded-full text-sm">
+                                            vietnam
+                                            <button class="hover:text-amber-900"><i class="fas fa-times text-xs"></i></button>
+                                        </span>
+                                        <span class="inline-flex items-center gap-1 px-3 py-1 bg-amber-100 text-amber-800 rounded-full text-sm">
+                                            carryover
+                                            <button class="hover:text-amber-900"><i class="fas fa-times text-xs"></i></button>
+                                        </span>
+                                        <span class="inline-flex items-center gap-1 px-3 py-1 bg-amber-100 text-amber-800 rounded-full text-sm">
+                                            annual-leave
+                                            <button class="hover:text-amber-900"><i class="fas fa-times text-xs"></i></button>
+                                        </span>
+                                    </div>
+                                    <div class="flex gap-2">
+                                        <input type="text" placeholder="Add new tag..." class="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                        <button type="button" class="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">
+                                            <i class="fas fa-plus"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Sidebar -->
+                    <div class="space-y-6">
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-4">Version Information</h3>
+                            <div class="space-y-3 text-sm">
+                                <div class="flex justify-between">
+                                    <span class="text-gray-600">Current Version</span>
+                                    <span class="font-medium text-gray-900">v1.2.0</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-gray-600">Next Version</span>
+                                    <span class="font-medium text-blue-600">v1.3.0</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-gray-600">Changes Count</span>
+                                    <span class="font-medium text-yellow-600">0 fields</span>
+                                </div>
+                            </div>
+                            <button class="mt-4 w-full px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg">
+                                <i class="fas fa-clock-rotate-left mr-2"></i>View All Versions
+                            </button>
+                        </div>
+
+                        <div class="bg-amber-50 rounded-xl border border-amber-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                <i class="fas fa-exclamation-triangle text-amber-600"></i>Impact Analysis
+                            </h3>
+                            <p class="text-sm text-gray-700 mb-3">This policy is currently used by:</p>
+                            <div class="space-y-2 text-sm">
+                                <div class="flex items-center justify-between p-2 bg-white rounded">
+                                    <span class="text-gray-600">Leave Classes</span>
+                                    <span class="font-semibold text-gray-900">8</span>
+                                </div>
+                                <div class="flex items-center justify-between p-2 bg-white rounded">
+                                    <span class="text-gray-600">Affected Employees</span>
+                                    <span class="font-semibold text-gray-900">567</span>
+                                </div>
+                            </div>
+                            <button class="mt-4 w-full px-3 py-2 text-sm bg-amber-100 hover:bg-amber-200 text-amber-900 rounded-lg font-medium">
+                                View Details
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 2: Configuration (EDIT MODE) -->
+            <div id="editConfiguration" class="tab-content">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-2 space-y-6">
+                        <!-- Carry Forward Rules (Editable) -->
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-green-50 to-green-100">
+                                <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                    <i class="fas fa-arrow-right text-green-600"></i>
+                                    Carry Forward Configuration
+                                </h3>
+                                <p class="text-sm text-gray-600 mt-1">Rules for carrying unused leave to the next period</p>
+                            </div>
+                            <div class="p-6 space-y-6">
+                                <!-- Enable/Disable Toggle -->
+                                <div class="flex items-center justify-between p-4 bg-green-50 border border-green-200 rounded-lg">
+                                    <div class="flex items-center gap-3">
+                                        <i class="fas fa-check-circle text-green-600"></i>
+                                        <div>
+                                            <div class="text-sm font-semibold text-gray-900">Enable Carry Forward</div>
+                                            <div class="text-xs text-gray-600">Allow unused leave to be carried to next period</div>
+                                        </div>
+                                    </div>
+                                    <label class="relative inline-flex items-center cursor-pointer">
+                                        <input type="checkbox" checked class="sr-only peer" id="edit-carryForwardEnabled">
+                                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
+                                    </label>
+                                </div>
+
+                                <div id="edit-carryForwardFields">
+                                    <!-- Maximum Days -->
+                                    <div>
+                                        <label class="block text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                            <i class="fas fa-calculator text-green-600"></i>
+                                            Maximum Carry Forward Amount
+                                        </label>
+                                        <div class="flex gap-4">
+                                            <div class="flex-1">
+                                                <input type="number" value="5" min="0" step="0.5" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent">
+                                            </div>
+                                            <select class="w-32 px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500">
+                                                <option selected>Days</option>
+                                                <option>Hours</option>
+                                                <option>%</option>
+                                            </select>
+                                        </div>
+                                        <p class="mt-2 text-xs text-gray-500">Maximum days that can be carried forward per employee</p>
+                                    </div>
+
+                                    <!-- Expiry Period -->
+                                    <div>
+                                        <label class="block text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                            <i class="fas fa-hourglass-end text-amber-600"></i>
+                                            Carry Forward Expiry Period
+                                        </label>
+                                        <div class="flex gap-4">
+                                            <div class="flex-1">
+                                                <input type="number" value="3" min="0" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent">
+                                            </div>
+                                            <select class="w-32 px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500">
+                                                <option>Days</option>
+                                                <option selected>Months</option>
+                                                <option>Years</option>
+                                            </select>
+                                        </div>
+                                        <p class="mt-2 text-xs text-gray-500">Carried forward days must be used within this period</p>
+                                    </div>
+
+                                    <!-- Consumption Priority -->
+                                    <div>
+                                        <label class="block text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                            <i class="fas fa-flag text-blue-600"></i>
+                                            Consumption Priority
+                                        </label>
+                                        <select class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                            <option value="fefo" selected>FEFO (First Expire First Out) - Carried days consumed first</option>
+                                            <option value="fifo">FIFO (First In First Out) - Oldest days consumed first</option>
+                                            <option value="lifo">LIFO (Last In First Out) - Newest days consumed first</option>
+                                        </select>
+                                    </div>
+
+                                    <!-- Execution Timing -->
+                                    <div>
+                                        <label class="block text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                            <i class="fas fa-calendar-check text-purple-600"></i>
+                                            Execution Timing
+                                        </label>
+                                        <div class="space-y-3">
+                                            <label class="flex items-center gap-3 p-3 border-2 border-purple-500 bg-purple-50 rounded-lg cursor-pointer">
+                                                <input type="radio" name="executionTiming" value="period_start" checked class="w-4 h-4 text-purple-600">
+                                                <div>
+                                                    <div class="text-sm font-medium text-gray-900">Period Start (Recommended)</div>
+                                                    <div class="text-xs text-gray-600">Execute at the beginning of new period (e.g., Jan 1)</div>
+                                                </div>
+                                            </label>
+                                            <label class="flex items-center gap-3 p-3 border-2 border-gray-200 rounded-lg cursor-pointer hover:border-purple-300">
+                                                <input type="radio" name="executionTiming" value="period_end" class="w-4 h-4 text-purple-600">
+                                                <div>
+                                                    <div class="text-sm font-medium text-gray-900">Period End</div>
+                                                    <div class="text-xs text-gray-600">Execute at the end of period (e.g., Dec 31)</div>
+                                                </div>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Expire Rules (Editable) -->
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-red-50 to-red-100">
+                                <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                    <i class="fas fa-calendar-times text-red-600"></i>
+                                    Expiry Configuration
+                                </h3>
+                                <p class="text-sm text-gray-600 mt-1">Rules for expiring unused leave</p>
+                            </div>
+                            <div class="p-6 space-y-6">
+                                <!-- Expiry Type -->
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                        <i class="fas fa-clock text-red-600"></i>
+                                        Expiry Type
+                                    </label>
+                                    <select class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent">
+                                        <option value="silent" selected>Silent Expiry (No adjustment movements)</option>
+                                        <option value="with_movement">Expiry with Movement (Create adjustment records)</option>
+                                    </select>
+                                    <p class="mt-2 text-xs text-gray-500">Silent expiry is recommended for cleaner ledger</p>
+                                </div>
+
+                                <!-- Emit Movements -->
+                                <div class="flex items-center gap-3 p-4 bg-gray-50 rounded-lg">
+                                    <input type="checkbox" id="edit-emitMovements" checked class="w-4 h-4 text-blue-600 rounded">
+                                    <div class="flex-1">
+                                        <label for="emitMovements" class="text-sm font-medium text-gray-900 cursor-pointer">Emit Turnover Movements</label>
+                                        <p class="text-xs text-gray-600 mt-1">Create movement records for reporting and analytics (recommended)</p>
+                                    </div>
+                                </div>
+
+                                <!-- Notifications -->
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                        <i class="fas fa-bell text-blue-600"></i>
+                                        Employee Notifications
+                                    </label>
+                                    <div class="flex items-center gap-3 p-4 bg-blue-50 border border-blue-200 rounded-lg mb-3">
+                                        <input type="checkbox" id="edit-notificationsEnabled" checked class="w-4 h-4 text-blue-600 rounded">
+                                        <div class="flex-1">
+                                            <label for="notificationsEnabled" class="text-sm font-medium text-gray-900 cursor-pointer">Enable Notifications</label>
+                                            <p class="text-xs text-gray-600 mt-1">Send warnings before expiry</p>
+                                        </div>
+                                    </div>
+
+                                    <div id="edit-notificationFields" class="space-y-3 pl-4">
+                                        <div class="flex items-center gap-3">
+                                            <input type="checkbox" checked class="w-4 h-4 text-blue-600 rounded">
+                                            <label class="text-sm text-gray-700">Warning notification</label>
+                                            <input type="number" value="30" min="1" class="w-20 px-3 py-1.5 border border-gray-300 rounded text-sm">
+                                            <span class="text-sm text-gray-600">days before expiry</span>
+                                        </div>
+                                        <div class="flex items-center gap-3">
+                                            <input type="checkbox" checked class="w-4 h-4 text-blue-600 rounded">
+                                            <label class="text-sm text-gray-700">Final reminder</label>
+                                            <input type="number" value="7" min="1" class="w-20 px-3 py-1.5 border border-gray-300 rounded text-sm">
+                                            <span class="text-sm text-gray-600">days before expiry</span>
+                                        </div>
+                                        <div class="flex items-center gap-3">
+                                            <input type="checkbox" checked class="w-4 h-4 text-blue-600 rounded">
+                                            <label class="text-sm text-gray-700">Expiration confirmation (on expiry)</label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Reset Rules (Editable) -->
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-purple-100">
+                                <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                    <i class="fas fa-undo text-purple-600"></i>
+                                    Reset Configuration
+                                </h3>
+                                <p class="text-sm text-gray-600 mt-1">Rules for resetting leave balances (alternative to carry forward)</p>
+                            </div>
+                            <div class="p-6 space-y-6">
+                                <div class="flex items-center justify-between p-4 bg-gray-100 border border-gray-300 rounded-lg">
+                                    <div class="flex items-center gap-3">
+                                        <i class="fas fa-info-circle text-gray-500"></i>
+                                        <div>
+                                            <div class="text-sm font-semibold text-gray-700">Reset Balance at Period End</div>
+                                            <div class="text-xs text-gray-600">Reset all unused days to zero (cannot be used with carry forward)</div>
+                                        </div>
+                                    </div>
+                                    <label class="relative inline-flex items-center cursor-pointer">
+                                        <input type="checkbox" class="sr-only peer" id="edit-resetEnabled">
+                                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                                    </label>
+                                </div>
+
+                                <div class="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                                    <div class="flex items-start gap-2">
+                                        <i class="fas fa-exclamation-triangle text-amber-600 mt-0.5"></i>
+                                        <div class="text-sm text-gray-700">
+                                            <strong>Note:</strong> Reset and Carry Forward are mutually exclusive. Enabling reset will disable carry forward settings.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Sidebar -->
+                    <div class="space-y-6">
+                        <div class="bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl border border-amber-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                <i class="fas fa-lightbulb text-amber-600"></i>
+                                Configuration Tips
+                            </h3>
+                            <ul class="space-y-2 text-sm text-gray-700">
+                                <li class="flex items-start gap-2">
+                                    <i class="fas fa-check text-amber-600 mt-0.5"></i>
+                                    <span>Set realistic carry forward caps</span>
+                                </li>
+                                <li class="flex items-start gap-2">
+                                    <i class="fas fa-check text-amber-600 mt-0.5"></i>
+                                    <span>Enable notifications to remind employees</span>
+                                </li>
+                                <li class="flex items-start gap-2">
+                                    <i class="fas fa-check text-amber-600 mt-0.5"></i>
+                                    <span>Test configuration before saving</span>
+                                </li>
+                            </ul>
+                        </div>
+
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-3">Current Settings</h3>
+                            <div class="space-y-2 text-sm">
+                                <div class="flex justify-between items-center p-2 bg-green-50 rounded">
+                                    <span class="text-gray-700">Carry Forward</span>
+                                    <span class="font-semibold text-green-600">Enabled</span>
+                                </div>
+                                <div class="flex justify-between items-center p-2 bg-gray-50 rounded">
+                                    <span class="text-gray-700">Max Days</span>
+                                    <span class="font-semibold text-gray-900">5 days</span>
+                                </div>
+                                <div class="flex justify-between items-center p-2 bg-gray-50 rounded">
+                                    <span class="text-gray-700">Expiry Period</span>
+                                    <span class="font-semibold text-gray-900">3 months</span>
+                                </div>
+                                <div class="flex justify-between items-center p-2 bg-gray-50 rounded">
+                                    <span class="text-gray-700">Notifications</span>
+                                    <span class="font-semibold text-blue-600">Enabled</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-amber-50 rounded-xl border border-amber-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                <i class="fas fa-exclamation-triangle text-amber-600"></i>
+                                Estimated Impact
+                            </h3>
+                            <p class="text-sm text-gray-700 mb-3">Changes will affect:</p>
+                            <div class="space-y-2 text-sm">
+                                <div class="flex justify-between">
+                                    <span class="text-gray-700">Leave Classes:</span>
+                                    <span class="font-semibold text-gray-900">8</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-gray-700">Employees:</span>
+                                    <span class="font-semibold text-gray-900">567</span>
+                                </div>
+                            </div>
+                            <button class="mt-4 w-full px-3 py-2 text-sm bg-amber-100 hover:bg-amber-200 text-amber-900 rounded-lg font-medium">
+                                Calculate Impact
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 3: Simulation (same as view) -->
+            <div id="editSimulation" class="tab-content">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-2 space-y-6">
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-purple-100">
+                                <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                    <i class="fas fa-calculator text-purple-600"></i>
+                                    Test Current Configuration
+                                </h3>
+                                <p class="text-sm text-gray-600 mt-1">Test your modified settings before saving</p>
+                            </div>
+                            <div class="p-6 space-y-5">
+                                <div class="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                                    <div class="flex items-start gap-3">
+                                        <i class="fas fa-info-circle text-purple-600 mt-0.5"></i>
+                                        <div class="text-sm text-gray-700">
+                                            <strong class="text-gray-900">Preview changes</strong> - This uses your current unsaved configuration.
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">Current Balance (Days)</label>
+                                        <input type="number" value="8.0" step="0.5" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">Period End Date</label>
+                                        <input type="date" value="2025-12-31" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
+                                    </div>
+                                </div>
+
+                                <button onclick="testSimulation()" class="w-full px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium shadow-sm flex items-center justify-center gap-2">
+                                    <i class="fas fa-play"></i>Test with Current Changes
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="space-y-6">
+                        <div class="bg-purple-50 rounded-xl border border-purple-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-3">Quick Tests</h3>
+                            <div class="space-y-2">
+                                <button class="w-full text-left p-3 bg-white border border-purple-200 rounded-lg hover:bg-purple-50">
+                                    <div class="text-sm font-medium text-gray-900">High Balance Test</div>
+                                    <div class="text-xs text-gray-600 mt-1">12 days scenario</div>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 4: Usage Analytics (READ-ONLY) -->
+            <div id="editAnalytics" class="tab-content">
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-6">
+                    <div class="flex items-start gap-3">
+                        <i class="fas fa-info-circle text-blue-600 text-xl"></i>
+                        <div>
+                            <div class="text-sm font-semibold text-gray-900 mb-1">Analytics Available in View Mode</div>
+                            <div class="text-sm text-gray-700">Usage analytics are read-only. Switch to view mode to see detailed analytics.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 5: JSON Editor (EDIT MODE) -->
+            <div id="editJsonEditor" class="tab-content">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-2 space-y-6">
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-gray-700 to-gray-800 flex items-center justify-between">
+                                <div>
+                                    <h3 class="text-lg font-semibold text-white flex items-center gap-2">
+                                        <i class="fas fa-file-code"></i>Edit JSON Configuration
+                                    </h3>
+                                    <p class="text-sm text-gray-300 mt-1">Direct JSON editing for advanced users</p>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <button class="px-3 py-1.5 text-sm bg-gray-600 hover:bg-gray-500 text-white rounded-lg">
+                                        <i class="fas fa-check mr-1"></i>Validate
+                                    </button>
+                                    <button class="px-3 py-1.5 text-sm bg-gray-600 hover:bg-gray-500 text-white rounded-lg">
+                                        <i class="fas fa-undo mr-1"></i>Reset
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="p-6">
+                                <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+                                    <div class="flex items-start gap-2 text-sm text-amber-800">
+                                        <i class="fas fa-exclamation-triangle mt-0.5"></i>
+                                        <div><strong>Warning:</strong> Invalid JSON will prevent saving. Use form editor for safer editing.</div>
+                                    </div>
+                                </div>
+
+                                <textarea rows="25" class="w-full px-4 py-3 bg-gray-900 text-gray-100 border border-gray-700 rounded-lg font-mono text-sm focus:ring-2 focus:ring-blue-500 leading-relaxed" spellcheck="false">{
+  "policyId": "POL-CARRY-VN-001",
+  "policyType": "CARRY_EXPIRE_RESET",
+  "carryForward": {
+    "enabled": true,
+    "maxDays": 5,
+    "expiryMonths": 3
+  }
+}</textarea>
+
+                                <div class="mt-4 flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
+                                    <div class="flex items-center gap-2 text-sm text-green-800">
+                                        <i class="fas fa-check-circle"></i>
+                                        <span class="font-medium">Valid JSON</span>
+                                    </div>
+                                    <button class="text-green-800 underline hover:text-green-900 text-xs">Format JSON</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="space-y-6">
+                        <div class="bg-gradient-to-br from-gray-700 to-gray-800 text-white rounded-xl border border-gray-600 p-5">
+                            <h3 class="text-sm font-semibold mb-3">JSON Editor Controls</h3>
+                            <div class="space-y-2">
+                                <button class="w-full px-3 py-2 text-sm bg-gray-600 hover:bg-gray-500 rounded-lg text-left">
+                                    <i class="fas fa-check mr-2"></i>Validate JSON
+                                </button>
+                                <button class="w-full px-3 py-2 text-sm bg-gray-600 hover:bg-gray-500 rounded-lg text-left">
+                                    <i class="fas fa-paint-roller mr-2"></i>Auto Format
+                                </button>
+                                <button class="w-full px-3 py-2 text-sm bg-gray-600 hover:bg-gray-500 rounded-lg text-left">
+                                    <i class="fas fa-undo mr-2"></i>Reset Changes
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom Actions -->
+            <div class="mt-6 flex items-center justify-between p-4 bg-white rounded-xl shadow-sm border border-gray-200">
+                <button class="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">
+                    <i class="fas fa-times mr-2"></i>Discard Changes
+                </button>
+                <div class="flex items-center gap-3">
+                    <button class="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">
+                        Save as Draft
+                    </button>
+                    <button class="px-6 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-sm font-medium">
+                        <i class="fas fa-save mr-2"></i>Save Changes
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function testSimulation() {
+            alert('Simulation completed with your current configuration!');
+        }
+
+        // Toggle carry forward fields
+        document.getElementById('edit-carryForwardEnabled')?.addEventListener('change', function(e) {
+            const fields = document.getElementById('edit-carryForwardFields');
+            if (e.target.checked) {
+                fields.classList.remove('opacity-50', 'pointer-events-none');
+            } else {
+                fields.classList.add('opacity-50', 'pointer-events-none');
+            }
+        });
+
+        // Toggle notification fields
+        document.getElementById('edit-notificationsEnabled')?.addEventListener('change', function(e) {
+            const fields = document.getElementById('edit-notificationFields');
+            if (e.target.checked) {
+                fields.classList.remove('opacity-50', 'pointer-events-none');
+            } else {
+                fields.classList.add('opacity-50', 'pointer-events-none');
+            }
+        });
+
+        // Reset vs Carry Forward conflict
+        document.getElementById('edit-resetEnabled')?.addEventListener('change', function(e) {
+            const carryToggle = document.getElementById('edit-carryForwardEnabled');
+            if (e.target.checked && carryToggle.checked) {
+                if (confirm('Enabling Reset will disable Carry Forward. Continue?')) {
+                    carryToggle.checked = false;
+                    carryToggle.dispatchEvent(new Event('change'));
+                } else {
+                    e.target.checked = false;
+                }
+            }
+        });
+    </script>
+</div>
+
+<!-- ==================== NEW MODE (ORIGINAL with prefix) ==================== -->
+<div id="newMode" class="mode-container">
+<!-- Top Bar -->
+    <div class="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
+        <div class="px-6 py-3">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2 text-sm">
+                    <a href="#" class="text-blue-600 hover:text-blue-700">Policies</a>
+                    <i class="fas fa-chevron-right text-gray-400 text-xs"></i>
+                    <a href="#" class="text-blue-600 hover:text-blue-700">Policy Library</a>
+                    <i class="fas fa-chevron-right text-gray-400 text-xs"></i>
+                    <span class="text-gray-900 font-medium">New Carry/Expire/Reset Rule</span>
+                    <span class="ml-2 px-2 py-0.5 bg-blue-100 text-blue-800 text-xs rounded-full font-medium">NEW</span>
+                </div>
+                
+                <div class="flex items-center gap-3">
+                    <button onclick="switchToMode('view')" class="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+                    <button onclick="saveAsDraft()" class="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">
+                        <i class="fas fa-save mr-2"></i>Save as Draft
+                    </button>
+                    <button onclick="createAndActivate()" class="px-5 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-sm font-medium">
+                        <i class="fas fa-check mr-2"></i>Create & Activate
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <div class="bg-white border-b border-gray-200">
+        <div class="px-6 py-6">
+            <div class="flex items-start gap-4">
+                <div class="w-16 h-16 bg-gradient-to-br from-amber-500 to-amber-600 rounded-xl flex items-center justify-center shadow-lg">
+                    <i class="fas fa-recycle text-white text-2xl"></i>
+                </div>
+                <div class="flex-1">
+                    <h1 class="text-2xl font-bold text-gray-900 mb-1">Create New Carry/Expire/Reset Rule</h1>
+                    <p class="text-gray-600">Define how unused leave balances are handled at period end</p>
+                    <div class="flex items-center gap-4 mt-3 text-sm text-gray-500">
+                        <span class="flex items-center gap-2">
+                            <i class="fas fa-info-circle"></i>This will create a new reusable year-end policy
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="px-6">
+            <div class="flex items-center gap-1 border-b border-gray-200">
+                <button onclick="switchTab('new','newBasicInfo', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 flex items-center gap-2 text-blue-600 border-blue-600">
+                    <i class="fas fa-info-circle"></i>Basic Info
+                </button>
+                <button onclick="switchTab('new','newConfiguration', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent flex items-center gap-2 text-gray-600 hover:text-gray-900">
+                    <i class="fas fa-sliders"></i>Configuration
+                </button>
+                <button onclick="switchTab('new','newSimulation', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent flex items-center gap-2 text-gray-600 hover:text-gray-900">
+                    <i class="fas fa-calculator"></i>Simulation
+                </button>
+                <button onclick="switchTab('new','newJsonEditor', this)" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent flex items-center gap-2 text-gray-600 hover:text-gray-900">
+                    <i class="fas fa-file-code"></i>JSON Editor
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="p-6">
+        <div class="max-w-6xl mx-auto">
+            
+            <!-- TAB 1: Basic Info -->
+            <div id="newBasicInfo" class="tab-content active">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-2 space-y-6">
+                        <!-- Step Indicator -->
+                        <div class="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                            <div class="flex items-center gap-4">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-semibold text-sm">1</div>
+                                    <span class="text-sm font-medium text-gray-900">Basic Information</span>
+                                </div>
+                                <i class="fas fa-arrow-right text-gray-400"></i>
+                                <div class="flex items-center gap-3">
+                                    <div class="w-8 h-8 bg-gray-300 text-gray-600 rounded-full flex items-center justify-center font-semibold text-sm">2</div>
+                                    <span class="text-sm text-gray-600">Configuration</span>
+                                </div>
+                                <i class="fas fa-arrow-right text-gray-400"></i>
+                                <div class="flex items-center gap-3">
+                                    <div class="w-8 h-8 bg-gray-300 text-gray-600 rounded-full flex items-center justify-center font-semibold text-sm">3</div>
+                                    <span class="text-sm text-gray-600">Review</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- General Information -->
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
+                                <h3 class="text-lg font-semibold text-gray-900">General Information</h3>
+                                <p class="text-sm text-gray-600 mt-0.5">Basic details about this carry/expire/reset policy</p>
+                            </div>
+                            <div class="p-6 space-y-5">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Policy ID</label>
+                                    <input type="text" value="POL-CARRY-AUTO-GENERATED" readonly class="w-full px-4 py-2.5 bg-gray-100 border border-gray-300 rounded-lg text-gray-500 cursor-not-allowed">
+                                    <p class="mt-1.5 text-xs text-gray-500">
+                                        <i class="fas fa-info-circle mr-1"></i>Will be auto-generated upon saving
+                                    </p>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                                        Policy Name <span class="text-red-500">*</span>
+                                    </label>
+                                    <input type="text" placeholder="e.g., VN Annual Leave Carryover, Standard Year-End Policy" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" required>
+                                    <p class="mt-1.5 text-xs text-gray-500">Choose a descriptive name for this policy</p>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                                    <textarea rows="3" placeholder="Describe how this policy handles unused leave balances..." class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"></textarea>
+                                    <p class="mt-1.5 text-xs text-gray-500">Help others understand the purpose of this policy</p>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Policy Type <span class="text-red-500">*</span></label>
+                                    <div class="flex items-center gap-3 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                                        <div class="w-10 h-10 bg-amber-600 rounded-lg flex items-center justify-center">
+                                            <i class="fas fa-recycle text-white"></i>
+                                        </div>
+                                        <div>
+                                            <div class="text-sm font-medium text-gray-900">Carry/Expire/Reset</div>
+                                            <div class="text-xs text-gray-600">Manage unused leave at period end</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">Country/Region <span class="text-red-500">*</span></label>
+                                        <select class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" required>
+                                            <option value="">Select country...</option>
+                                            <option value="global">🌐 Global</option>
+                                            <option value="vn">🇻🇳 Vietnam</option>
+                                            <option value="sg">🇸🇬 Singapore</option>
+                                            <option value="th">🇹🇭 Thailand</option>
+                                            <option value="id">🇮🇩 Indonesia</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">Business Unit (Optional)</label>
+                                        <select class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                            <option value="">All Business Units</option>
+                                            <option value="bu001">BU-001 - Headquarters</option>
+                                            <option value="bu002">BU-002 - Sales</option>
+                                            <option value="bu003">BU-003 - Operations</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Initial Status <span class="text-red-500">*</span></label>
+                                    <div class="flex items-center gap-4">
+                                        <label class="flex items-center gap-2 cursor-pointer p-3 border-2 border-gray-200 rounded-lg hover:border-blue-500 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50">
+                                            <input type="radio" name="status" value="active" class="w-4 h-4 text-blue-600">
+                                            <div>
+                                                <div class="text-sm font-medium text-gray-900">Active</div>
+                                                <div class="text-xs text-gray-600">Ready to use immediately</div>
+                                            </div>
+                                        </label>
+                                        <label class="flex items-center gap-2 cursor-pointer p-3 border-2 border-gray-200 rounded-lg hover:border-yellow-500 has-[:checked]:border-yellow-500 has-[:checked]:bg-yellow-50">
+                                            <input type="radio" name="status" value="draft" checked class="w-4 h-4 text-yellow-600">
+                                            <div>
+                                                <div class="text-sm font-medium text-gray-900">Draft</div>
+                                                <div class="text-xs text-gray-600">Save for later completion</div>
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">Effective From <span class="text-red-500">*</span></label>
+                                        <input type="date" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" required>
+                                        <p class="mt-1.5 text-xs text-gray-500">When this policy becomes active</p>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">Effective Until (Optional)</label>
+                                        <input type="date" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                        <p class="mt-1.5 text-xs text-gray-500">Leave blank for no expiry</p>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Tags</label>
+                                    <div class="flex flex-wrap gap-2 mb-2" id="new-tagsContainer"></div>
+                                    <div class="flex gap-2">
+                                        <input type="text" id="new-tagInput" placeholder="Type and press Enter to add tags" class="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                        <button type="button" onclick="addTag()" class="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">
+                                            <i class="fas fa-plus"></i>
+                                        </button>
+                                    </div>
+                                    <p class="mt-1.5 text-xs text-gray-500">Tags help organize and find policies easily</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Sidebar -->
+                    <div class="space-y-6">
+                        <div class="bg-blue-50 rounded-xl border border-blue-200 p-5">
+                            <div class="flex items-center gap-2 mb-3">
+                                <i class="fas fa-lightbulb text-blue-600 text-lg"></i>
+                                <h3 class="text-sm font-semibold text-gray-900">Getting Started</h3>
+                            </div>
+                            <ul class="space-y-2 text-sm text-gray-700">
+                                <li class="flex items-start gap-2">
+                                    <i class="fas fa-check text-blue-600 mt-0.5"></i>
+                                    <span>Fill in basic information first</span>
+                                </li>
+                                <li class="flex items-start gap-2">
+                                    <i class="fas fa-check text-blue-600 mt-0.5"></i>
+                                    <span>Choose carry forward or reset</span>
+                                </li>
+                                <li class="flex items-start gap-2">
+                                    <i class="fas fa-check text-blue-600 mt-0.5"></i>
+                                    <span>Test the policy before activating</span>
+                                </li>
+                            </ul>
+                        </div>
+
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                <i class="fas fa-star text-yellow-500"></i>Start from Template
+                            </h3>
+                            <div class="space-y-2">
+                                <button class="w-full text-left p-3 border border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all">
+                                    <div class="text-sm font-medium text-gray-900">Standard Carryover</div>
+                                    <div class="text-xs text-gray-600 mt-0.5">5 days max, 3-month expiry</div>
+                                </button>
+                                <button class="w-full text-left p-3 border border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all">
+                                    <div class="text-sm font-medium text-gray-900">Full Reset</div>
+                                    <div class="text-xs text-gray-600 mt-0.5">No carry forward, reset to zero</div>
+                                </button>
+                                <button class="w-full text-left p-3 border border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all">
+                                    <div class="text-sm font-medium text-gray-900">Unlimited Carryover</div>
+                                    <div class="text-xs text-gray-600 mt-0.5">No cap, no expiry</div>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="bg-amber-50 rounded-xl border border-amber-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                <i class="fas fa-exclamation-triangle text-amber-600"></i>Required Fields
+                            </h3>
+                            <ul class="space-y-1.5 text-sm text-gray-700">
+                                <li class="flex items-center gap-2">
+                                    <i class="fas fa-circle text-red-500 text-xs"></i>
+                                    <span>Policy Name</span>
+                                </li>
+                                <li class="flex items-center gap-2">
+                                    <i class="fas fa-circle text-red-500 text-xs"></i>
+                                    <span>Country/Region</span>
+                                </li>
+                                <li class="flex items-center gap-2">
+                                    <i class="fas fa-circle text-red-500 text-xs"></i>
+                                    <span>Initial Status</span>
+                                </li>
+                                <li class="flex items-center gap-2">
+                                    <i class="fas fa-circle text-red-500 text-xs"></i>
+                                    <span>Effective From Date</span>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 2: Configuration (NEW MODE) -->
+            <div id="newConfiguration" class="tab-content">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-2 space-y-6">
+                        <!-- Step Indicator -->
+                        <div class="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                            <div class="flex items-center gap-4">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-8 h-8 bg-green-500 text-white rounded-full flex items-center justify-center">
+                                        <i class="fas fa-check text-sm"></i>
+                                    </div>
+                                    <span class="text-sm text-gray-600">Basic Information</span>
+                                </div>
+                                <i class="fas fa-arrow-right text-gray-400"></i>
+                                <div class="flex items-center gap-3">
+                                    <div class="w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-semibold text-sm">2</div>
+                                    <span class="text-sm font-medium text-gray-900">Configuration</span>
+                                </div>
+                                <i class="fas fa-arrow-right text-gray-400"></i>
+                                <div class="flex items-center gap-3">
+                                    <div class="w-8 h-8 bg-gray-300 text-gray-600 rounded-full flex items-center justify-center font-semibold text-sm">3</div>
+                                    <span class="text-sm text-gray-600">Review</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Policy Type Selection -->
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-amber-50 to-amber-100">
+                                <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                    <i class="fas fa-recycle text-amber-600"></i>
+                                    Choose Policy Type
+                                </h3>
+                                <p class="text-sm text-gray-600 mt-1">Select how unused leave should be handled</p>
+                            </div>
+                            <div class="p-6">
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <label class="cursor-pointer">
+                                        <input type="radio" name="policyType" value="carry" checked class="hidden peer">
+                                        <div class="p-6 border-2 border-gray-200 rounded-xl peer-checked:border-green-500 peer-checked:bg-green-50 hover:border-green-300 transition-all">
+                                            <div class="flex items-center gap-3 mb-3">
+                                                <div class="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
+                                                    <i class="fas fa-arrow-right text-green-600 text-xl"></i>
+                                                </div>
+                                                <div>
+                                                    <div class="text-base font-semibold text-gray-900">Carry Forward</div>
+                                                    <div class="text-xs text-gray-600">Most common</div>
+                                                </div>
+                                            </div>
+                                            <p class="text-sm text-gray-700">Transfer unused days to the next period with optional cap and expiry</p>
+                                        </div>
+                                    </label>
+
+                                    <label class="cursor-pointer">
+                                        <input type="radio" name="policyType" value="reset" class="hidden peer">
+                                        <div class="p-6 border-2 border-gray-200 rounded-xl peer-checked:border-purple-500 peer-checked:bg-purple-50 hover:border-purple-300 transition-all">
+                                            <div class="flex items-center gap-3 mb-3">
+                                                <div class="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
+                                                    <i class="fas fa-undo text-purple-600 text-xl"></i>
+                                                </div>
+                                                <div>
+                                                    <div class="text-base font-semibold text-gray-900">Reset to Zero</div>
+                                                    <div class="text-xs text-gray-600">Simple approach</div>
+                                                </div>
+                                            </div>
+                                            <p class="text-sm text-gray-700">Reset all unused balances to zero at period end (use-it-or-lose-it)</p>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Carry Forward Configuration -->
+                        <div id="new-carryForwardConfig" class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-green-50 to-green-100">
+                                <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                    <i class="fas fa-arrow-right text-green-600"></i>
+                                    Carry Forward Settings
+                                </h3>
+                            </div>
+                            <div class="p-6 space-y-6">
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-900 mb-3">
+                                        Maximum Carry Forward Amount <span class="text-red-500">*</span>
+                                    </label>
+                                    <div class="flex gap-4">
+                                        <input type="number" value="5" min="0" step="0.5" placeholder="e.g., 5" class="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500">
+                                        <select class="w-32 px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500">
+                                            <option selected>Days</option>
+                                            <option>Hours</option>
+                                            <option>% of Balance</option>
+                                        </select>
+                                    </div>
+                                    <p class="mt-2 text-xs text-gray-500">Maximum days that can be carried forward per employee</p>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-900 mb-3">
+                                        Expiry Period (Optional)
+                                    </label>
+                                    <div class="flex items-center gap-3 mb-3">
+                                        <input type="checkbox" id="new-hasExpiry" class="w-4 h-4 text-amber-600 rounded">
+                                        <label for="hasExpiry" class="text-sm text-gray-700">Carried days expire after a period</label>
+                                    </div>
+                                    <div id="new-expiryFields" class="flex gap-4 opacity-50 pointer-events-none">
+                                        <input type="number" value="3" min="1" placeholder="e.g., 3" class="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500">
+                                        <select class="w-32 px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500">
+                                            <option>Days</option>
+                                            <option selected>Months</option>
+                                            <option>Years</option>
+                                        </select>
+                                    </div>
+                                    <p class="mt-2 text-xs text-gray-500">Leave blank for no expiry</p>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-900 mb-3">Consumption Priority</label>
+                                    <select class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                        <option value="fefo" selected>FEFO (First Expire First Out) - Recommended</option>
+                                        <option value="fifo">FIFO (First In First Out)</option>
+                                        <option value="lifo">LIFO (Last In First Out)</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-900 mb-3">Execution Timing</label>
+                                    <div class="space-y-2">
+                                        <label class="flex items-center gap-3 p-3 border-2 border-gray-200 rounded-lg cursor-pointer hover:border-purple-300 has-[:checked]:border-purple-500 has-[:checked]:bg-purple-50">
+                                            <input type="radio" name="executionTiming" value="period_start" checked class="w-4 h-4 text-purple-600">
+                                            <div>
+                                                <div class="text-sm font-medium text-gray-900">Period Start (Recommended)</div>
+                                                <div class="text-xs text-gray-600">Execute at the beginning of new period</div>
+                                            </div>
+                                        </label>
+                                        <label class="flex items-center gap-3 p-3 border-2 border-gray-200 rounded-lg cursor-pointer hover:border-purple-300 has-[:checked]:border-purple-500 has-[:checked]:bg-purple-50">
+                                            <input type="radio" name="executionTiming" value="period_end" class="w-4 h-4 text-purple-600">
+                                            <div>
+                                                <div class="text-sm font-medium text-gray-900">Period End</div>
+                                                <div class="text-xs text-gray-600">Execute at the end of period</div>
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Expiry & Notification Settings -->
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-red-50 to-red-100">
+                                <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                    <i class="fas fa-calendar-times text-red-600"></i>
+                                    Expiry & Notification Settings
+                                </h3>
+                            </div>
+                            <div class="p-6 space-y-6">
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-900 mb-3">Expiry Type</label>
+                                    <select class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500">
+                                        <option value="silent" selected>Silent Expiry (Recommended - No adjustment movements)</option>
+                                        <option value="with_movement">Expiry with Movement (Create adjustment records)</option>
+                                    </select>
+                                </div>
+
+                                <div class="flex items-center gap-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                                    <input type="checkbox" id="new-emitMovements" checked class="w-4 h-4 text-blue-600 rounded">
+                                    <div class="flex-1">
+                                        <label for="emitMovements" class="text-sm font-medium text-gray-900 cursor-pointer">Emit Turnover Movements</label>
+                                        <p class="text-xs text-gray-600 mt-1">Create movement records for reporting (recommended)</p>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-900 mb-3">Employee Notifications</label>
+                                    <div class="flex items-center gap-3 p-4 bg-blue-50 border border-blue-200 rounded-lg mb-3">
+                                        <input type="checkbox" id="new-notificationsEnabled" checked class="w-4 h-4 text-blue-600 rounded">
+                                        <div class="flex-1">
+                                            <label for="notificationsEnabled" class="text-sm font-medium text-gray-900 cursor-pointer">Enable Notifications</label>
+                                            <p class="text-xs text-gray-600 mt-1">Send warnings before expiry</p>
+                                        </div>
+                                    </div>
+
+                                    <div id="new-notificationFields" class="space-y-3 pl-4">
+                                        <div class="flex items-center gap-3">
+                                            <input type="checkbox" checked class="w-4 h-4 text-blue-600 rounded">
+                                            <label class="text-sm text-gray-700">Warning notification</label>
+                                            <input type="number" value="30" min="1" class="w-20 px-3 py-1.5 border border-gray-300 rounded text-sm">
+                                            <span class="text-sm text-gray-600">days before expiry</span>
+                                        </div>
+                                        <div class="flex items-center gap-3">
+                                            <input type="checkbox" checked class="w-4 h-4 text-blue-600 rounded">
+                                            <label class="text-sm text-gray-700">Final reminder</label>
+                                            <input type="number" value="7" min="1" class="w-20 px-3 py-1.5 border border-gray-300 rounded text-sm">
+                                            <span class="text-sm text-gray-600">days before expiry</span>
+                                        </div>
+                                        <div class="flex items-center gap-3">
+                                            <input type="checkbox" checked class="w-4 h-4 text-blue-600 rounded">
+                                            <label class="text-sm text-gray-700">Expiration confirmation (on expiry)</label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Reset Configuration (Hidden by default) -->
+                        <div id="new-resetConfig" class="bg-white rounded-xl shadow-sm border border-gray-200 hidden">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-purple-100">
+                                <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                    <i class="fas fa-undo text-purple-600"></i>
+                                    Reset Settings
+                                </h3>
+                            </div>
+                            <div class="p-6">
+                                <div class="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-4">
+                                    <p class="text-sm text-gray-700">
+                                        All unused leave balances will be reset to zero at the end of the period. This is a "use-it-or-lose-it" policy.
+                                    </p>
+                                </div>
+
+                                <div class="flex items-center gap-3 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                                    <input type="checkbox" id="new-resetNotification" checked class="w-4 h-4 text-amber-600 rounded">
+                                    <div class="flex-1">
+                                        <label for="resetNotification" class="text-sm font-medium text-gray-900 cursor-pointer">Notify employees before reset</label>
+                                        <p class="text-xs text-gray-600 mt-1">Send reminder 30 days before period end</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Sidebar -->
+                    <div class="space-y-6">
+                        <div class="bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl border border-amber-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                <i class="fas fa-lightbulb text-amber-600"></i>
+                                Configuration Tips
+                            </h3>
+                            <ul class="space-y-2 text-sm text-gray-700">
+                                <li class="flex items-start gap-2">
+                                    <i class="fas fa-check text-amber-600 mt-0.5"></i>
+                                    <span>Consider local labor laws</span>
+                                </li>
+                                <li class="flex items-start gap-2">
+                                    <i class="fas fa-check text-amber-600 mt-0.5"></i>
+                                    <span>Set realistic carry forward caps</span>
+                                </li>
+                                <li class="flex items-start gap-2">
+                                    <i class="fas fa-check text-amber-600 mt-0.5"></i>
+                                    <span>Enable notifications to remind employees</span>
+                                </li>
+                            </ul>
+                        </div>
+
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-3">Common Settings</h3>
+                            <div class="space-y-3 text-sm">
+                                <div class="p-3 bg-green-50 rounded-lg border border-green-200">
+                                    <div class="font-medium text-gray-900 mb-1">Vietnam Standard</div>
+                                    <div class="text-xs text-gray-600">5 days max, 3-month expiry</div>
+                                </div>
+                                <div class="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                                    <div class="font-medium text-gray-900 mb-1">Singapore Standard</div>
+                                    <div class="text-xs text-gray-600">7 days max, 6-month expiry</div>
+                                </div>
+                                <div class="p-3 bg-purple-50 rounded-lg border border-purple-200">
+                                    <div class="font-medium text-gray-900 mb-1">US Standard</div>
+                                    <div class="text-xs text-gray-600">No cap, no expiry</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 3: Simulation (NEW MODE) -->
+            <div id="newSimulation" class="tab-content">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-2 space-y-6">
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-purple-100">
+                                <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                    <i class="fas fa-calculator text-purple-600"></i>
+                                    Test Your Configuration
+                                </h3>
+                                <p class="text-sm text-gray-600 mt-1">Preview how your new policy will work</p>
+                            </div>
+                            <div class="p-6 space-y-5">
+                                <div class="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                                    <div class="flex items-start gap-3">
+                                        <i class="fas fa-info-circle text-purple-600 mt-0.5"></i>
+                                        <div class="text-sm text-gray-700">
+                                            <strong class="text-gray-900">Preview before creating</strong> - Test your configuration with different scenarios.
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">Current Balance (Days)</label>
+                                        <input type="number" value="8.0" step="0.5" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">Period End Date</label>
+                                        <input type="date" value="2025-12-31" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
+                                    </div>
+                                </div>
+
+                                <button onclick="runTest()" class="w-full px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium shadow-sm flex items-center justify-center gap-2">
+                                    <i class="fas fa-play"></i>Run Test Simulation
+                                </button>
+
+                                <div id="newSimulationResults" class="space-y-4 hidden">
+                                    <div class="bg-gradient-to-r from-blue-50 to-blue-100 border border-blue-200 rounded-lg p-6">
+                                        <h4 class="text-sm font-semibold text-gray-900 mb-4">Simulation Results</h4>
+                                        <div class="grid grid-cols-3 gap-4">
+                                            <div class="text-center">
+                                                <div class="text-3xl font-bold text-gray-900">8.0</div>
+                                                <div class="text-xs text-gray-600 mt-1">Current Balance</div>
+                                            </div>
+                                            <div class="text-center">
+                                                <div class="text-3xl font-bold text-green-600">5.0</div>
+                                                <div class="text-xs text-gray-600 mt-1">Will Carry Forward</div>
+                                            </div>
+                                            <div class="text-center">
+                                                <div class="text-3xl font-bold text-red-600">3.0</div>
+                                                <div class="text-xs text-gray-600 mt-1">Will Expire</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="space-y-6">
+                        <div class="bg-purple-50 rounded-xl border border-purple-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-3">Test Scenarios</h3>
+                            <div class="space-y-2">
+                                <button class="w-full text-left p-3 bg-white border border-purple-200 rounded-lg hover:bg-purple-50">
+                                    <div class="text-sm font-medium text-gray-900">High Balance</div>
+                                    <div class="text-xs text-gray-600 mt-1">12 days unused</div>
+                                </button>
+                                <button class="w-full text-left p-3 bg-white border border-purple-200 rounded-lg hover:bg-purple-50">
+                                    <div class="text-sm font-medium text-gray-900">Low Balance</div>
+                                    <div class="text-xs text-gray-600 mt-1">2 days unused</div>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 4: JSON Editor (NEW MODE) -->
+            <div id="newJsonEditor" class="tab-content">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-2 space-y-6">
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-gray-700 to-gray-800 flex items-center justify-between">
+                                <div>
+                                    <h3 class="text-lg font-semibold text-white flex items-center gap-2">
+                                        <i class="fas fa-file-code"></i>JSON Configuration
+                                    </h3>
+                                    <p class="text-sm text-gray-300 mt-1">Advanced: Create policy from JSON</p>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <button class="px-3 py-1.5 text-sm bg-gray-600 hover:bg-gray-500 text-white rounded-lg">
+                                        <i class="fas fa-check mr-1"></i>Validate
+                                    </button>
+                                    <button class="px-3 py-1.5 text-sm bg-gray-600 hover:bg-gray-500 text-white rounded-lg">
+                                        <i class="fas fa-paint-roller mr-1"></i>Format
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="p-6">
+                                <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+                                    <div class="flex items-start gap-2 text-sm text-amber-800">
+                                        <i class="fas fa-exclamation-triangle mt-0.5"></i>
+                                        <div><strong>Advanced Mode:</strong> Use this only if you're comfortable with JSON. Use the form-based editor for easier configuration.</div>
+                                    </div>
+                                </div>
+
+                                <textarea rows="25" class="w-full px-4 py-3 bg-gray-900 text-gray-100 border border-gray-700 rounded-lg font-mono text-sm focus:ring-2 focus:ring-blue-500 leading-relaxed" spellcheck="false" placeholder='{
+  "policyType": "CARRY_EXPIRE_RESET",
+  "name": "",
+  "carryForward": {
+    "enabled": true,
+    "maxDays": 5
+  }
+}'></textarea>
+
+                                <div class="mt-4 flex items-center justify-between p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                                    <div class="flex items-center gap-2 text-sm text-gray-600">
+                                        <i class="fas fa-info-circle"></i>
+                                        <span>Start typing or paste JSON configuration</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="space-y-6">
+                        <div class="bg-gradient-to-br from-gray-700 to-gray-800 text-white rounded-xl border border-gray-600 p-5">
+                            <h3 class="text-sm font-semibold mb-3">JSON Tools</h3>
+                            <div class="space-y-2">
+                                <button class="w-full px-3 py-2 text-sm bg-gray-600 hover:bg-gray-500 rounded-lg text-left">
+                                    <i class="fas fa-check mr-2"></i>Validate JSON
+                                </button>
+                                <button class="w-full px-3 py-2 text-sm bg-gray-600 hover:bg-gray-500 rounded-lg text-left">
+                                    <i class="fas fa-paint-roller mr-2"></i>Auto Format
+                                </button>
+                                <button class="w-full px-3 py-2 text-sm bg-gray-600 hover:bg-gray-500 rounded-lg text-left">
+                                    <i class="fas fa-file-import mr-2"></i>Import File
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="bg-blue-50 rounded-xl border border-blue-200 p-5">
+                            <h3 class="text-sm font-semibold text-gray-900 mb-3">Template JSON</h3>
+                            <p class="text-sm text-gray-700 mb-3">Copy a starter template:</p>
+                            <button class="w-full px-3 py-2 text-sm bg-white hover:bg-blue-50 border border-blue-200 rounded-lg">
+                                Copy Basic Template
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom Actions -->
+            <div class="mt-6 flex items-center justify-between p-4 bg-white rounded-xl shadow-sm border border-gray-200">
+                <button onclick="switchToMode('view')" class="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">
+                    <i class="fas fa-arrow-left mr-2"></i>Back to Library
+                </button>
+                <div class="flex items-center gap-3">
+                    <button onclick="saveAsDraft()" class="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">
+                        Save as Draft
+                    </button>
+                    <button onclick="createAndActivate()" class="px-6 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-sm font-medium">
+                        <i class="fas fa-check mr-2"></i>Create & Activate
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let tags = [];
+
+        function addTag() {
+            const input = document.getElementById('new-tagInput');
+            const tag = input.value.trim();
+            if (tag && !tags.includes(tag)) {
+                tags.push(tag);
+                renderTags();
+                input.value = '';
+            }
+        }
+
+        function removeTag(tag) {
+            tags = tags.filter(t => t !== tag);
+            renderTags();
+        }
+
+        function renderTags() {
+            const container = document.getElementById('new-tagsContainer');
+            container.innerHTML = tags.map(tag => `
+                <span class="inline-flex items-center gap-1 px-3 py-1 bg-amber-100 text-amber-800 rounded-full text-sm">
+                    ${tag}
+                    <button onclick="removeTag('${tag}')" class="hover:text-amber-900">
+                        <i class="fas fa-times text-xs"></i>
+                    </button>
+                </span>
+            `).join('');
+        }
+
+        function runTest() {
+            document.getElementById('newSimulationResults').classList.remove('hidden');
+            alert('Test completed! Your configuration looks good.');
+        }
+
+        // Toggle expiry fields
+        document.getElementById('new-hasExpiry')?.addEventListener('change', function(e) {
+            const fields = document.getElementById('new-expiryFields');
+            if (e.target.checked) {
+                fields.classList.remove('opacity-50', 'pointer-events-none');
+            } else {
+                fields.classList.add('opacity-50', 'pointer-events-none');
+            }
+        });
+
+        // Toggle notification fields
+        document.getElementById('new-notificationsEnabled')?.addEventListener('change', function(e) {
+            const fields = document.getElementById('new-notificationFields');
+            if (e.target.checked) {
+                fields.classList.remove('opacity-50', 'pointer-events-none');
+            } else {
+                fields.classList.add('opacity-50', 'pointer-events-none');
+            }
+        });
+
+        // Toggle between carry forward and reset
+        document.querySelectorAll('input[name="policyType"]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                const carryConfig = document.getElementById('new-carryForwardConfig');
+                const resetConfig = document.getElementById('new-resetConfig');
+                
+                if (this.value === 'carry') {
+                    carryConfig.classList.remove('hidden');
+                    resetConfig.classList.add('hidden');
+                } else {
+                    carryConfig.classList.add('hidden');
+                    resetConfig.classList.remove('hidden');
+                }
+            });
+        });
+
+        // Enter key for tags
+        document.getElementById('new-tagInput')?.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                addTag();
+            }
+        });
+    </script>
+</div>
+
+<!-- ==================== MODE SWITCHING & DATA LOADING SCRIPT ==================== -->
+<script>
+    let appData = {};
+    let currentMode = 'view';
+
+    // Load data from JSON on page load
+    function loadAppData() {
+        const dataScript = document.getElementById('appData');
+        appData = JSON.parse(dataScript.textContent);
+        console.log('Data loaded:', appData);
+
+        // Initial population
+        populateViewMode();
+        wireButtons();
+    }
+
+    // Wire up all buttons for mode switching
+    function wireButtons() {
+        // VIEW MODE BUTTONS
+        // Find "Edit Policy" buttons in view mode and wire them
+        const viewEditButtons = document.querySelectorAll('#viewMode button');
+        viewEditButtons.forEach(btn => {
+            const btnText = btn.textContent.toLowerCase();
+            if (btnText.includes('edit') || btnText.includes('modify')) {
+                btn.onclick = () => switchToMode('edit');
+            }
+        });
+
+        // Add "New Policy" button functionality
+        const viewNewButtons = document.querySelectorAll('#viewMode button');
+        viewNewButtons.forEach(btn => {
+            const btnText = btn.textContent.toLowerCase();
+            if (btnText.includes('new') || btnText.includes('create new')) {
+                btn.onclick = () => switchToMode('new');
+            }
+        });
+
+        // EDIT MODE BUTTONS
+        const editButtons = document.querySelectorAll('#editMode button');
+        editButtons.forEach(btn => {
+            const btnText = btn.textContent.toLowerCase();
+            if (btnText.includes('save changes')) {
+                btn.onclick = (e) => {
+                    e.preventDefault();
+                    saveEditChanges();
+                };
+            } else if (btnText.includes('discard') || btnText.includes('cancel')) {
+                btn.onclick = (e) => {
+                    e.preventDefault();
+                    switchToMode('view');
+                };
+            }
+        });
+
+        // NEW MODE BUTTONS
+        const newButtons = document.querySelectorAll('#newMode button');
+        newButtons.forEach(btn => {
+            const btnText = btn.textContent.toLowerCase();
+            if (btnText.includes('cancel')) {
+                btn.onclick = (e) => {
+                    e.preventDefault();
+                    switchToMode('view');
+                };
+            } else if (btnText.includes('save as draft')) {
+                btn.onclick = (e) => {
+                    e.preventDefault();
+                    saveAsDraft();
+                };
+            } else if (btnText.includes('create') && btnText.includes('activate')) {
+                btn.onclick = (e) => {
+                    e.preventDefault();
+                    createAndActivate();
+                };
+            }
+        });
+
+        console.log('Buttons wired for mode switching');
+    }
+
+    // Switch between modes
+    function switchToMode(mode) {
+        // Hide all modes
+        document.getElementById('viewMode').classList.remove('active');
+        document.getElementById('editMode').classList.remove('active');
+        document.getElementById('newMode').classList.remove('active');
+
+        // Show selected mode
+        currentMode = mode;
+        if (mode === 'view') {
+            document.getElementById('viewMode').classList.add('active');
+            populateViewMode();
+        } else if (mode === 'edit') {
+            document.getElementById('editMode').classList.add('active');
+            populateEditMode();
+        } else if (mode === 'new') {
+            document.getElementById('newMode').classList.add('active');
+            populateNewMode();
+        }
+
+        // Scroll to top
+        window.scrollTo(0, 0);
+
+        console.log('Switched to mode:', mode);
+    }
+
+    // Populate VIEW mode with JSON data
+    function populateViewMode() {
+        // Replace hardcoded values with data from appData JSON
+        // This is where you would implement data binding
+        console.log('View mode populated with:', appData);
+
+        // Example: Update title, description, etc. based on appData
+        // You can add specific implementation here
+    }
+
+    // Populate EDIT mode with JSON data
+    function populateEditMode() {
+        // Pre-fill form fields with current data
+        console.log('Edit mode populated with:', appData);
+
+        // Example: Fill form inputs with appData values
+        // You can add specific implementation here
+    }
+
+    // Initialize NEW mode
+    function populateNewMode() {
+        // Initialize empty form or default values
+        console.log('New mode initialized');
+    }
+
+    function switchTab(mode, tabId, button) {
+        const modeContainer = document.getElementById(`${mode}Mode`);
+        if (!modeContainer) return;
+
+        modeContainer.querySelectorAll('.tab-content').forEach(tab => {
+            tab.classList.remove('active');
+        });
+
+        const targetTab = modeContainer.querySelector(`#${tabId}`);
+        targetTab?.classList.add('active');
+
+        modeContainer.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.classList.remove('text-blue-600', 'border-blue-600');
+            btn.classList.add('text-gray-600', 'border-transparent');
+        });
+
+        if (button) {
+            button.classList.remove('text-gray-600', 'border-transparent');
+            button.classList.add('text-blue-600', 'border-blue-600');
+        }
+    }
+
+    // Save edit changes
+    function saveEditChanges() {
+        console.log('Saving edit changes...');
+        // Collect form data and update appData
+        // For now, just show alert and go back to view
+        alert('Changes saved successfully!');
+
+        // Update appData from form fields here
+        // appData.name = document.getElementById('edit-policyName').value;
+        // etc...
+
+        switchToMode('view');
+    }
+
+    // Save as draft
+    function saveAsDraft() {
+        console.log('Saving as draft...');
+        alert('Policy saved as draft!');
+
+        // Collect form data and create new policy with DRAFT status
+        // appData = { ...collected data, status: 'DRAFT' };
+
+        switchToMode('view');
+    }
+
+    // Create and activate
+    function createAndActivate() {
+        console.log('Creating and activating policy...');
+        alert('Policy created and activated!');
+
+        // Collect form data and create new policy with ACTIVE status
+        // appData = { ...collected data, status: 'ACTIVE' };
+
+        switchToMode('view');
+    }
+
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        loadAppData();
+
+        // Re-wire buttons after a short delay to ensure DOM is ready
+        setTimeout(() => {
+            wireButtons();
+        }, 100);
+    });
+</script>
+
+</body>
+</html>

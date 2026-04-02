@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Movement Viewer - Leave Movements</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .modal { display: none; }
+        .modal.active { display: flex; }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <!-- Top Bar -->
+    <div class="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
+        <div class="px-6 py-3">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2 text-sm">
+                    <a href="#" class="text-blue-600 hover:text-blue-700">Leave Management</a>
+                    <i class="fas fa-chevron-right text-gray-400 text-xs"></i>
+                    <span class="text-gray-900 font-medium">Movement Viewer</span>
+                </div>
+                
+                <div class="flex items-center gap-3">
+                    <button class="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">
+                        <i class="fas fa-filter mr-2"></i>Advanced Filters
+                    </button>
+                    <button class="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">
+                        <i class="fas fa-download mr-2"></i>Export
+                    </button>
+                    <button onclick="showModal('bulkActionsModal')" class="px-5 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-sm font-medium">
+                        <i class="fas fa-bolt mr-2"></i>Bulk Actions
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <div class="bg-white border-b border-gray-200">
+        <div class="px-6 py-6">
+            <div class="flex items-start justify-between">
+                <div class="flex items-start gap-4">
+                    <div class="w-16 h-16 bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl flex items-center justify-center shadow-lg">
+                        <i class="fas fa-exchange-alt text-white text-2xl"></i>
+                    </div>
+                    <div>
+                        <div class="flex items-center gap-3 mb-1">
+                            <h1 class="text-2xl font-bold text-gray-900">Leave Movement Viewer</h1>
+                            <span class="px-3 py-1 bg-orange-100 text-orange-800 text-sm font-medium rounded-full">HR SUPERUSER</span>
+                        </div>
+                        <p class="text-gray-600 mb-3">View, analyze, and manage all leave movements across the organization</p>
+                        <div class="flex items-center gap-6 text-sm text-gray-500">
+                            <span class="flex items-center gap-2"><i class="fas fa-database"></i>24,567 movements (Nov 2025)</span>
+                            <span class="flex items-center gap-2"><i class="fas fa-filter"></i>Filtered: 3,456 shown</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="flex items-center gap-2">
+                    <button class="p-2 text-gray-600 hover:bg-gray-100 rounded-lg" title="Refresh"><i class="fas fa-sync-alt"></i></button>
+                    <button class="p-2 text-gray-600 hover:bg-gray-100 rounded-lg" title="Settings"><i class="fas fa-cog"></i></button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="px-6">
+            <div class="flex items-center gap-1 border-b border-gray-200">
+                <button onclick="switchTab('movements')" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 flex items-center gap-2 text-blue-600 border-blue-600">
+                    <i class="fas fa-list"></i>All Movements
+                    <span class="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full font-semibold">3,456</span>
+                </button>
+                <button onclick="switchTab('analytics')" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent flex items-center gap-2 text-gray-600 hover:text-gray-900">
+                    <i class="fas fa-chart-bar"></i>Analytics
+                </button>
+                <button onclick="switchTab('adminActions')" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent flex items-center gap-2 text-gray-600 hover:text-gray-900">
+                    <i class="fas fa-tools"></i>Admin Actions
+                </button>
+                <button onclick="switchTab('audit')" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent flex items-center gap-2 text-gray-600 hover:text-gray-900">
+                    <i class="fas fa-history"></i>Audit Trail
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="p-6">
+        <div class="max-w-7xl mx-auto">
+            
+            <!-- TAB 1: All Movements (Main View) -->
+            <div id="movements" class="tab-content active">
+                <div class="space-y-6">
+                    <!-- Quick Stats -->
+                    <div class="grid grid-cols-5 gap-4">
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+                            <div class="text-xs text-gray-600 mb-1">Total Movements</div>
+                            <div class="text-2xl font-bold text-gray-900">3,456</div>
+                            <div class="text-xs text-gray-500 mt-1">Nov 2025</div>
+                        </div>
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+                            <div class="text-xs text-gray-600 mb-1">Credits (+)</div>
+                            <div class="text-2xl font-bold text-green-600">2,890</div>
+                            <div class="text-xs text-gray-500 mt-1">83.6%</div>
+                        </div>
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+                            <div class="text-xs text-gray-600 mb-1">Debits (-)</div>
+                            <div class="text-2xl font-bold text-red-600">566</div>
+                            <div class="text-xs text-gray-500 mt-1">16.4%</div>
+                        </div>
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+                            <div class="text-xs text-gray-600 mb-1">Total Quantity</div>
+                            <div class="text-2xl font-bold text-purple-600">+4,234.5</div>
+                            <div class="text-xs text-gray-500 mt-1">days</div>
+                        </div>
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+                            <div class="text-xs text-gray-600 mb-1">Pending Review</div>
+                            <div class="text-2xl font-bold text-amber-600">12</div>
+                            <div class="text-xs text-gray-500 mt-1">Need action</div>
+                        </div>
+                    </div>
+
+                    <!-- Filters Bar -->
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+                        <div class="grid grid-cols-6 gap-4">
+                            <div>
+                                <label class="block text-xs font-medium text-gray-700 mb-1">Date Range</label>
+                                <select class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                    <option value="this_month" selected>This Month</option>
+                                    <option value="last_month">Last Month</option>
+                                    <option value="this_year">This Year</option>
+                                    <option value="custom">Custom Range</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-700 mb-1">Movement Type</label>
+                                <select class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                    <option value="all">All Types</option>
+                                    <option value="ACCRUAL">Accrual</option>
+                                    <option value="USAGE">Usage</option>
+                                    <option value="ADJUSTMENT">Adjustment</option>
+                                    <option value="CARRY">Carry Forward</option>
+                                    <option value="GRANT">Grant</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-700 mb-1">Event Code</label>
+                                <select class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                    <option value="all">All Events</option>
+                                    <option value="ACCRUAL">ACCRUAL</option>
+                                    <option value="REQUEST">REQUEST</option>
+                                    <option value="ADJUSTMENT">ADJUSTMENT</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-700 mb-1">Leave Class</label>
+                                <select class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                    <option value="all">All Classes</option>
+                                    <option value="annual">Annual Leave</option>
+                                    <option value="sick">Sick Leave</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-700 mb-1">Status</label>
+                                <select class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                    <option value="all">All Status</option>
+                                    <option value="POSTED">Posted</option>
+                                    <option value="PENDING">Pending</option>
+                                    <option value="REVERSED">Reversed</option>
+                                </select>
+                            </div>
+                            <div class="flex items-end">
+                                <button class="w-full px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm">
+                                    <i class="fas fa-search mr-1"></i>Apply
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Movements Table -->
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                        <div class="px-6 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <input type="checkbox" class="w-4 h-4 text-blue-600 rounded">
+                                <h3 class="text-lg font-semibold text-gray-900">Leave Movements</h3>
+                                <span class="text-sm text-gray-600">(3,456 records)</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <button class="px-3 py-1.5 text-xs bg-gray-600 text-white rounded hover:bg-gray-700">
+                                    <i class="fas fa-columns mr-1"></i>Columns
+                                </button>
+                                <button class="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
+                                    <i class="fas fa-download mr-1"></i>Export
+                                </button>
+                            </div>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm">
+                                <thead class="bg-gray-50 border-b border-gray-200">
+                                    <tr>
+                                        <th class="px-4 py-3 text-left">
+                                            <input type="checkbox" class="w-4 h-4 text-blue-600 rounded">
+                                        </th>
+                                        <th class="px-4 py-3 text-left font-semibold text-gray-900">Movement ID</th>
+                                        <th class="px-4 py-3 text-left font-semibold text-gray-900">Date</th>
+                                        <th class="px-4 py-3 text-left font-semibold text-gray-900">Employee</th>
+                                        <th class="px-4 py-3 text-left font-semibold text-gray-900">Leave Class</th>
+                                        <th class="px-4 py-3 text-center font-semibold text-gray-900">Event</th>
+                                        <th class="px-4 py-3 text-center font-semibold text-gray-900">Type</th>
+                                        <th class="px-4 py-3 text-center font-semibold text-gray-900">Quantity</th>
+                                        <th class="px-4 py-3 text-center font-semibold text-gray-900">Balance After</th>
+                                        <th class="px-4 py-3 text-center font-semibold text-gray-900">Status</th>
+                                        <th class="px-4 py-3 text-right font-semibold text-gray-900">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-200">
+                                    <!-- Accrual Movement -->
+                                    <tr class="hover:bg-gray-50">
+                                        <td class="px-4 py-3">
+                                            <input type="checkbox" class="w-4 h-4 text-blue-600 rounded">
+                                        </td>
+                                        <td class="px-4 py-3 font-mono text-xs text-gray-900">MOV-2025-345678</td>
+                                        <td class="px-4 py-3 text-gray-700">Nov 30, 2025</td>
+                                        <td class="px-4 py-3">
+                                            <div class="text-sm text-gray-900">Nguyen Van A</div>
+                                            <div class="text-xs text-gray-600">EMP-001234</div>
+                                        </td>
+                                        <td class="px-4 py-3 text-sm text-gray-700">VN Annual Leave</td>
+                                        <td class="px-4 py-3 text-center">
+                                            <span class="px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded-full">ACCRUAL</span>
+                                        </td>
+                                        <td class="px-4 py-3 text-center">
+                                            <span class="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">Credit</span>
+                                        </td>
+                                        <td class="px-4 py-3 text-center">
+                                            <span class="text-green-600 font-semibold">+1.75</span>
+                                        </td>
+                                        <td class="px-4 py-3 text-center font-semibold text-gray-900">21.0</td>
+                                        <td class="px-4 py-3 text-center">
+                                            <span class="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">Posted</span>
+                                        </td>
+                                        <td class="px-4 py-3 text-right">
+                                            <button onclick="showModal('movementDetailModal')" class="text-blue-600 hover:text-blue-800 text-xs mr-2">
+                                                <i class="fas fa-eye mr-1"></i>View
+                                            </button>
+                                            <button onclick="showActionMenu(event)" class="text-gray-600 hover:text-gray-800 text-xs">
+                                                <i class="fas fa-ellipsis-v"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+
+                                    <!-- Usage Movement -->
+                                    <tr class="hover:bg-gray-50">
+                                        <td class="px-4 py-3">
+                                            <input type="checkbox" class="w-4 h-4 text-blue-600 rounded">
+                                        </td>
+                                        <td class="px-4 py-3 font-mono text-xs text-gray-900">MOV-2025-345679</td>
+                                        <td class="px-4 py-3 text-gray-700">Nov 25, 2025</td>
+                                        <td class="px-4 py-3">
+                                            <div class="text-sm text-gray-900">Tran Thi B</div>
+                                            <div class="text-xs text-gray-600">EMP-005678</div>
+                                        </td>
+                                        <td class="px-4 py-3 text-sm text-gray-700">VN Annual Leave</td>
+                                        <td class="px-4 py-3 text-center">
+                                            <span class="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">REQUEST</span>
+                                        </td>
+                                        <td class="px-4 py-3 text-center">
+                                            <span class="px-2 py-1 bg-red-100 text-red-800 text-xs rounded-full">Debit</span>
+                                        </td>
+                                        <td class="px-4 py-3 text-center">
+                                            <span class="text-red-600 font-semibold">-2.0</span>
+                                        </td>
+                                        <td class="px-4 py-3 text-center font-semibold text-gray-900">15.5</td>
+                                        <td class="px-4 py-3 text-center">
+                                            <span class="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">Posted</span>
+                                        </td>
+                                        <td class="px-4 py-3 text-right">
+                                            <button onclick="showModal('movementDetailModal')" class="text-blue-600 hover:text-blue-800 text-xs mr-2">
+                                                <i class="fas fa-eye mr-1"></i>View
+                                            </button>
+                                            <button onclick="showActionMenu(event)" class="text-gray-600 hover:text-gray-800 text-xs">
+                                                <i class="fas fa-ellipsis-v"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+
+                                    <!-- Adjustment Movement -->
+                                    <tr class="hover:bg-gray-50 bg-amber-50">
+                                        <td class="px-4 py-3">
+                                            <input type="checkbox" class="w-4 h-4 text-blue-600 rounded">
+                                        </td>
+                                        <td class="px-4 py-3 font-mono text-xs text-gray-900">MOV-2025-345680</td>
+                                        <td class="px-4 py-3 text-gray-700">Nov 20, 2025</td>
+                                        <td class="px-4 py-3">
+                                            <div class="text-sm text-gray-900">Le Van C</div>
+                                            <div class="text-xs text-gray-600">EMP-009999</div>
+                                        </td>
+                                        <td class="px-4 py-3 text-sm text-gray-700">VN Annual Leave</td>
+                                        <td class="px-4 py-3 text-center">
+                                            <span class="px-2 py-1 bg-amber-100 text-amber-800 text-xs rounded-full">ADJUSTMENT</span>
+                                        </td>
+                                        <td class="px-4 py-3 text-center">
+                                            <span class="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">Credit</span>
+                                        </td>
+                                        <td class="px-4 py-3 text-center">
+                                            <span class="text-green-600 font-semibold">+3.0</span>
+                                        </td>
+                                        <td class="px-4 py-3 text-center font-semibold text-gray-900">18.0</td>
+                                        <td class="px-4 py-3 text-center">
+                                            <span class="px-2 py-1 bg-amber-100 text-amber-800 text-xs rounded-full">Pending Review</span>
+                                        </td>
+                                        <td class="px-4 py-3 text-right">
+                                            <button onclick="showModal('movementDetailModal')" class="text-blue-600 hover:text-blue-800 text-xs mr-2">
+                                                <i class="fas fa-eye mr-1"></i>View
+                                            </button>
+                                            <button onclick="showActionMenu(event)" class="text-gray-600 hover:text-gray-800 text-xs">
+                                                <i class="fas fa-ellipsis-v"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
+                            <div class="text-sm text-gray-600">Showing 1-25 of 3,456 movements</div>
+                            <div class="flex items-center gap-2">
+                                <button class="px-3 py-1.5 border border-gray-300 rounded hover:bg-gray-50 text-sm">Previous</button>
+                                <button class="px-3 py-1.5 bg-blue-600 text-white rounded text-sm">1</button>
+                                <button class="px-3 py-1.5 border border-gray-300 rounded hover:bg-gray-50 text-sm">2</button>
+                                <button class="px-3 py-1.5 border border-gray-300 rounded hover:bg-gray-50 text-sm">3</button>
+                                <button class="px-3 py-1.5 border border-gray-300 rounded hover:bg-gray-50 text-sm">Next</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 2: Analytics -->
+            <div id="analytics" class="tab-content">
+                <div class="space-y-6">
+                    <!-- Chart placeholders -->
+                    <div class="grid grid-cols-2 gap-6">
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                            <h3 class="text-lg font-semibold text-gray-900 mb-4">Movement Trends (Nov 2025)</h3>
+                            <div class="h-64 bg-gray-100 rounded flex items-center justify-center text-gray-500">
+                                <i class="fas fa-chart-line text-4xl"></i>
+                            </div>
+                        </div>
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                            <h3 class="text-lg font-semibold text-gray-900 mb-4">Movement Types Distribution</h3>
+                            <div class="h-64 bg-gray-100 rounded flex items-center justify-center text-gray-500">
+                                <i class="fas fa-chart-pie text-4xl"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 3: Admin Actions (CRITICAL) -->
+            <div id="adminActions" class="tab-content">
+                <div class="space-y-6">
+                    <div class="bg-red-50 border border-red-200 rounded-xl p-4">
+                        <div class="flex items-start gap-3">
+                            <i class="fas fa-exclamation-triangle text-red-600 mt-0.5"></i>
+                            <div class="text-sm text-gray-700">
+                                <strong class="text-gray-900">HR Superuser Actions</strong> - These operations directly modify leave balances. Use with caution and ensure proper authorization.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Action Cards Grid -->
+                    <div class="grid grid-cols-3 gap-6">
+                        <!-- Manual Adjustment -->
+                        <div class="bg-white rounded-xl shadow-sm border-2 border-blue-300 p-6 hover:shadow-lg transition-shadow">
+                            <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
+                                <i class="fas fa-edit text-blue-600 text-xl"></i>
+                            </div>
+                            <h3 class="text-lg font-semibold text-gray-900 mb-2">Manual Adjustment</h3>
+                            <p class="text-sm text-gray-600 mb-4">Adjust leave balance for individual employees (add or deduct days)</p>
+                            <button onclick="showModal('adjustmentModal')" class="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium">
+                                <i class="fas fa-plus mr-2"></i>Create Adjustment
+                            </button>
+                        </div>
+
+                        <!-- Reversal -->
+                        <div class="bg-white rounded-xl shadow-sm border-2 border-red-300 p-6 hover:shadow-lg transition-shadow">
+                            <div class="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center mb-4">
+                                <i class="fas fa-undo text-red-600 text-xl"></i>
+                            </div>
+                            <h3 class="text-lg font-semibold text-gray-900 mb-2">Reversal</h3>
+                            <p class="text-sm text-gray-600 mb-4">Reverse an incorrect movement (creates counter-movement)</p>
+                            <button onclick="showModal('reversalModal')" class="w-full px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-medium">
+                                <i class="fas fa-undo mr-2"></i>Reverse Movement
+                            </button>
+                        </div>
+
+                        <!-- Hold/Reservation -->
+                        <div class="bg-white rounded-xl shadow-sm border-2 border-amber-300 p-6 hover:shadow-lg transition-shadow">
+                            <div class="w-12 h-12 bg-amber-100 rounded-lg flex items-center justify-center mb-4">
+                                <i class="fas fa-lock text-amber-600 text-xl"></i>
+                            </div>
+                            <h3 class="text-lg font-semibold text-gray-900 mb-2">Hold/Reservation</h3>
+                            <p class="text-sm text-gray-600 mb-4">Place hold on balance for pending requests or reservations</p>
+                            <button onclick="showModal('holdModal')" class="w-full px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 text-sm font-medium">
+                                <i class="fas fa-lock mr-2"></i>Create Hold
+                            </button>
+                        </div>
+
+                        <!-- Bulk Grant -->
+                        <div class="bg-white rounded-xl shadow-sm border-2 border-green-300 p-6 hover:shadow-lg transition-shadow">
+                            <div class="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4">
+                                <i class="fas fa-users text-green-600 text-xl"></i>
+                            </div>
+                            <h3 class="text-lg font-semibold text-gray-900 mb-2">Bulk Grant</h3>
+                            <p class="text-sm text-gray-600 mb-4">Grant leave days to multiple employees at once (CSV upload)</p>
+                            <button onclick="showModal('bulkGrantModal')" class="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium">
+                                <i class="fas fa-users mr-2"></i>Bulk Grant
+                            </button>
+                        </div>
+
+                        <!-- Bonus Grant -->
+                        <div class="bg-white rounded-xl shadow-sm border-2 border-purple-300 p-6 hover:shadow-lg transition-shadow">
+                            <div class="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mb-4">
+                                <i class="fas fa-gift text-purple-600 text-xl"></i>
+                            </div>
+                            <h3 class="text-lg font-semibold text-gray-900 mb-2">Bonus Grant</h3>
+                            <p class="text-sm text-gray-600 mb-4">Grant bonus leave days (awards, company policy, special cases)</p>
+                            <button onclick="showModal('bonusGrantModal')" class="w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm font-medium">
+                                <i class="fas fa-gift mr-2"></i>Grant Bonus
+                            </button>
+                        </div>
+
+                        <!-- Grant Lots (Batch) -->
+                        <div class="bg-white rounded-xl shadow-sm border-2 border-indigo-300 p-6 hover:shadow-lg transition-shadow">
+                            <div class="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center mb-4">
+                                <i class="fas fa-layer-group text-indigo-600 text-xl"></i>
+                            </div>
+                            <h3 class="text-lg font-semibold text-gray-900 mb-2">Grant Lots</h3>
+                            <p class="text-sm text-gray-600 mb-4">Create grant lots with expiry tracking (quarterly grants, etc.)</p>
+                            <button onclick="showModal('grantLotsModal')" class="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium">
+                                <i class="fas fa-layer-group mr-2"></i>Create Lot
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Recent Admin Actions -->
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                        <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
+                            <h3 class="text-lg font-semibold text-gray-900">Recent Admin Actions</h3>
+                        </div>
+                        <div class="p-6">
+                            <div class="space-y-3">
+                                <div class="flex items-center gap-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                                    <i class="fas fa-edit text-blue-600"></i>
+                                    <div class="flex-1">
+                                        <div class="text-sm font-medium text-gray-900">Manual Adjustment (+3.0 days)</div>
+                                        <div class="text-xs text-gray-600">EMP-009999 • Nov 20, 2025 by admin@company.com</div>
+                                    </div>
+                                    <button class="text-blue-600 hover:text-blue-800 text-xs">View</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 4: Audit Trail -->
+            <div id="audit" class="tab-content">
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                    <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
+                        <h3 class="text-lg font-semibold text-gray-900">Movement Audit Trail</h3>
+                        <p class="text-sm text-gray-600 mt-0.5">Complete history of all movement modifications</p>
+                    </div>
+                    <div class="p-6">
+                        <div class="space-y-3">
+                            <div class="p-4 border border-gray-200 rounded-lg hover:bg-gray-50">
+                                <div class="flex items-start gap-3">
+                                    <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                                        <i class="fas fa-edit text-blue-600"></i>
+                                    </div>
+                                    <div class="flex-1">
+                                        <div class="text-sm font-medium text-gray-900">Movement MOV-2025-345680 Created</div>
+                                        <div class="text-sm text-gray-600 mt-1">Manual adjustment created by admin@company.com</div>
+                                        <div class="text-xs text-gray-500 mt-2">Nov 20, 2025, 10:30 AM</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- MODALS -->
+
+    <!-- Movement Detail Modal -->
+    <div id="movementDetailModal" class="modal fixed inset-0 bg-black bg-opacity-50 items-center justify-center z-50">
+        <div class="bg-white rounded-xl shadow-xl max-w-3xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                <h3 class="text-xl font-semibold text-gray-900">Movement Details</h3>
+                <button onclick="hideModal('movementDetailModal')" class="text-gray-400 hover:text-gray-600">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            <div class="p-6">
+                <dl class="grid grid-cols-2 gap-6">
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500 mb-1">Movement ID</dt>
+                        <dd class="text-sm text-gray-900 font-mono">MOV-2025-345678</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500 mb-1">Status</dt>
+                        <dd><span class="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">Posted</span></dd>
+                    </div>
+                    <!-- More fields... -->
+                </dl>
+            </div>
+        </div>
+    </div>
+
+    <!-- Manual Adjustment Modal -->
+    <div id="adjustmentModal" class="modal fixed inset-0 bg-black bg-opacity-50 items-center justify-center z-50">
+        <div class="bg-white rounded-xl shadow-xl max-w-2xl w-full mx-4">
+            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-blue-100">
+                <h3 class="text-xl font-semibold text-gray-900">Create Manual Adjustment</h3>
+            </div>
+            <div class="p-6 space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Select Employee</label>
+                    <input type="text" placeholder="Search employee..." class="w-full px-4 py-2.5 border border-gray-300 rounded-lg">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Adjustment Type</label>
+                    <div class="grid grid-cols-2 gap-3">
+                        <label class="flex items-center gap-2 p-3 border-2 border-green-300 bg-green-50 rounded-lg cursor-pointer">
+                            <input type="radio" name="adjType" value="add" checked class="w-4 h-4">
+                            <span class="text-sm font-medium">Add Days (+)</span>
+                        </label>
+                        <label class="flex items-center gap-2 p-3 border-2 border-gray-200 rounded-lg cursor-pointer">
+                            <input type="radio" name="adjType" value="deduct" class="w-4 h-4">
+                            <span class="text-sm font-medium">Deduct Days (-)</span>
+                        </label>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Quantity (days)</label>
+                    <input type="number" step="0.5" placeholder="0.0" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Reason</label>
+                    <select class="w-full px-4 py-2.5 border border-gray-300 rounded-lg">
+                        <option>Correction</option>
+                        <option>Policy Change</option>
+                        <option>Error Fix</option>
+                        <option>Other</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Notes (Required)</label>
+                    <textarea rows="3" placeholder="Detailed explanation..." class="w-full px-4 py-2.5 border border-gray-300 rounded-lg"></textarea>
+                </div>
+            </div>
+            <div class="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
+                <button onclick="hideModal('adjustmentModal')" class="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+                <button class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Create Adjustment</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Reversal Modal -->
+    <div id="reversalModal" class="modal fixed inset-0 bg-black bg-opacity-50 items-center justify-center z-50">
+        <div class="bg-white rounded-xl shadow-xl max-w-2xl w-full mx-4">
+            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-red-50 to-red-100">
+                <h3 class="text-xl font-semibold text-gray-900">Reverse Movement</h3>
+            </div>
+            <div class="p-6 space-y-4">
+                <div class="p-4 bg-red-50 border border-red-200 rounded-lg">
+                    <div class="text-sm text-red-900">
+                        <strong>Warning:</strong> Reversing a movement will create a counter-movement with opposite quantity. This action cannot be undone.
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Movement ID to Reverse</label>
+                    <input type="text" placeholder="MOV-2025-XXXXXX" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Reversal Reason</label>
+                    <select class="w-full px-4 py-2.5 border border-gray-300 rounded-lg">
+                        <option>Data Entry Error</option>
+                        <option>Duplicate Movement</option>
+                        <option>Policy Violation</option>
+                        <option>System Error</option>
+                        <option>Other</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Explanation (Required)</label>
+                    <textarea rows="3" placeholder="Why is this reversal needed?" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg"></textarea>
+                </div>
+            </div>
+            <div class="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
+                <button onclick="hideModal('reversalModal')" class="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+                <button class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">Reverse Movement</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bulk Grant Modal -->
+    <div id="bulkGrantModal" class="modal fixed inset-0 bg-black bg-opacity-50 items-center justify-center z-50">
+        <div class="bg-white rounded-xl shadow-xl max-w-2xl w-full mx-4">
+            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-green-50 to-green-100">
+                <h3 class="text-xl font-semibold text-gray-900">Bulk Grant Leave</h3>
+            </div>
+            <div class="p-6 space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Upload CSV File</label>
+                    <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+                        <i class="fas fa-file-csv text-4xl text-gray-400 mb-3"></i>
+                        <div class="text-sm text-gray-600 mb-2">Drop CSV file here or click to browse</div>
+                        <button class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm">
+                            <i class="fas fa-upload mr-2"></i>Choose File
+                        </button>
+                    </div>
+                    <p class="mt-2 text-xs text-gray-500">
+                        CSV format: EmployeeID, LeaveClassID, Quantity, Reason, Notes
+                    </p>
+                </div>
+                <div>
+                    <a href="#" class="text-sm text-blue-600 hover:text-blue-800">
+                        <i class="fas fa-download mr-1"></i>Download CSV Template
+                    </a>
+                </div>
+            </div>
+            <div class="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
+                <button onclick="hideModal('bulkGrantModal')" class="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+                <button class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">Process Bulk Grant</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Similar modals for: holdModal, bonusGrantModal, grantLotsModal, bulkActionsModal -->
+
+    <script>
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.getElementById(tabName).classList.add('active');
+            
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('text-blue-600', 'border-blue-600');
+                btn.classList.add('text-gray-600', 'border-transparent');
+            });
+            
+            event.target.closest('.tab-btn').classList.remove('text-gray-600', 'border-transparent');
+            event.target.closest('.tab-btn').classList.add('text-blue-600', 'border-blue-600');
+        }
+
+        function showModal(modalId) {
+            document.getElementById(modalId).classList.add('active');
+        }
+
+        function hideModal(modalId) {
+            document.getElementById(modalId).classList.remove('active');
+        }
+
+        function showActionMenu(event) {
+            event.stopPropagation();
+            // Show context menu with actions
+        }
+    </script>
+</body>
+</html>
