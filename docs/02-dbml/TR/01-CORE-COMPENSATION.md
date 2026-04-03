@@ -145,33 +145,81 @@ erDiagram
 | `frequency` | varchar(20) | `HOURLY` \| `MONTHLY` \| `ANNUAL` |
 | `currency` | char(3) | ISO 4217 currency code |
 | `allow_components` | boolean | Allow additional components? |
-| `country_code` | char(2) | ISO country code (NULL = global) |
-| `legal_entity_id` | uuid | Specific legal entity (NULL = all) |
-| `config_scope_id` | uuid | Advanced scope reference |
+| `country_code` | char(2) | **UI filter only** — ISO country code (NULL = global). Does NOT decide assignment. |
+| `legal_entity_id` | uuid | **UI filter only** — Specific legal entity (NULL = all). Does NOT decide assignment. |
+| `config_scope_id` | uuid | **UI filter only** — Advanced scope reference. Does NOT decide assignment. |
+| `eligibility_profile_id` | uuid | **Eligibility Central** — Defines WHO is eligible (domain=`COMPENSATION`). NULL = globally eligible. **Changed 03Apr2026** |
 | `effective_start` | date | Start of validity |
 | `effective_end` | date | End of validity (NULL = current) |
 
-### Multi-Country Scoping
+### Scoping vs Eligibility — Separation of Concerns
+
+> [!IMPORTANT]
+> **Scoping** (`country_code`, `legal_entity_id`, `config_scope_id`) chỉ để **admin UI lọc/gom nhóm**. `eligibility_profile_id` mới là thứ **quyết định** employee nào eligible.
+
+| Concern | Fields | Purpose |
+|---------|--------|---------|
+| **Admin grouping** | `country_code`, `legal_entity_id`, `config_scope_id` | "Show all VN salary bases" — UI filter, không phải rule |
+| **Assignment eligibility** | `eligibility_profile_id` | Centralized engine đánh giá `rule_json` → decides WHO is eligible |
+
+### Scoping Resolution (admin UI only)
 
 ```mermaid
 graph LR
-    subgraph "Resolution Order"
+    subgraph "Admin UI Filter Resolution"
         A[1. config_scope_id] --> B{Populated?}
-        B -->|Yes| C[Use resolved scope]
+        B -->|Yes| C[Use resolved scope in UI]
         B -->|No| D[2. country_code + legal_entity_id]
         D --> E{Populated?}
-        E -->|Yes| F[Use inline scope]
-        E -->|No| G[3. Global scope]
+        E -->|Yes| F[Use inline scope in UI]
+        E -->|No| G[3. Global — show everywhere]
     end
 ```
 
+### Eligibility Assignment Flow
+
+```mermaid
+sequenceDiagram
+    participant E as Employee
+    participant EE as Eligibility Engine
+    participant EM as eligibility_member
+    participant HR as HR User
+    participant CB as compensation.basis
+
+    Note over E: Data change (hire/promote/transfer)
+    EE->>EM: Evaluate employee against salary_basis.eligibility_profile_id
+    EM->>EM: Cache: employee ∈ profile (end_date IS NULL)
+    HR->>HR: Open "Assign Salary" for employee
+    HR->>EM: Query eligible salary_bases
+    Note over HR: SELECT sb.* FROM salary_basis sb<br/>JOIN eligibility_member em ON em.profile_id = sb.eligibility_profile_id<br/>WHERE em.employee_id = :id AND em.end_date IS NULL
+    HR->>CB: Create compensation.basis with salary_basis_id + amounts
+```
+
+### Auto-expiry When Eligibility Lost
+
+Khi employee chuyển scope (country/LE transfer):
+
+```
+Old Contract closes → work_relationship ends → new work_relationship + assignment
+   ↓
+Eligibility engine re-evaluates
+   ↓ (employee no longer eligible for old salary_basis)
+compensation.basis auto-expires:
+   is_current_flag = false
+   effective_end_date = new work_relationship start date
+   ↓
+HR notified → create new compensation.basis with eligible salary_basis
+```
+
+**Mechanism**: Workflow lifecycle (contract close) triggers expiry. Scheduler fallback nếu workflow thiếu.
+
 ### Example Data
 
-| code | name | frequency | currency | country_code | legal_entity_id |
-|------|------|-----------|----------|--------------|-----------------|
-| `MONTHLY_VN` | Monthly Vietnam | MONTHLY | VND | VN | NULL |
-| `HOURLY_US` | Hourly US | HOURLY | USD | US | NULL |
-| `MONTHLY_SG_TECH` | Monthly Singapore Tech | MONTHLY | SGD | SG | uuid-tech-le |
+| code | name | frequency | currency | country_code | eligibility_profile_id | Note |
+|------|------|-----------|----------|------|------|------|
+| `MONTHLY_VN` | Monthly Vietnam | MONTHLY | VND | VN (UI only) | `ELIG_VN_FULLTIME` | VN full-time only |
+| `HOURLY_US` | Hourly US | HOURLY | USD | US (UI only) | `ELIG_US_HOURLY` | US hourly workers |
+| `MONTHLY_SG_TECH` | Monthly SG Tech | MONTHLY | SGD | SG (UI only) | `ELIG_SG_TECHBV` | SG Tech LE only |
 
 ---
 

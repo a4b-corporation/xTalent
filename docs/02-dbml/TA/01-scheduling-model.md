@@ -468,11 +468,25 @@ classDiagram
 
 ---
 
-## Level 5: Schedule Assignment (Work Schedule Rule)
+## Level 5: Schedule Assignment (Work Schedule Rule) — Hybrid Eligibility Architecture
 
 ### Business Purpose
 
 **ScheduleAssignment** kết nối Pattern với Calendar và Rotation Offset, xác định **WHO gets WHICH pattern**.
+
+**[Change 30 – 03Apr2026]** Level 5 đã được refactor sang **Hybrid Eligibility Architecture**: thay vì gán thủ công `employee_id / employee_group_id / position_id`, hệ thống nay dùng `eligibility_profile_id` từ **Core Eligibility Engine** để tự động xác định WHO.
+
+```
+BEFORE (Manual Assignment):
+  schedule_assignment.employee_id = "EMP001"          ← Phải tạo 1 record/người
+  schedule_assignment.employee_group_id = "TEAM_A"    ← Phải update khi đổi team
+  schedule_assignment.position_id = "POS_GUARD"       ← Không tự động
+
+AFTER (Hybrid Eligibility):
+  schedule_assignment.eligibility_profile_id →
+    eligibility_profile.rule_json = {"departments":["PRODUCTION"],"employee_types":["FULLTIME"]}
+    eligibility_member: auto-cached, auto-updated khi employee data thay đổi
+```
 
 ### Entity Structure
 
@@ -486,40 +500,76 @@ classDiagram
         +uuid holiday_calendar_id
         +date start_reference_date
         +int offset_days
-        +uuid employee_id
-        +uuid employee_group_id
-        +uuid position_id
+        +uuid eligibility_profile_id
+        +uuid employee_override_id
         +date effective_start
         +date effective_end
     }
     
+    class EligibilityProfile {
+        +uuid id
+        +string code
+        +string domain
+        +jsonb rule_json
+    }
+
+    class EligibilityMember {
+        +uuid profile_id
+        +uuid employee_id
+        +date start_date
+        +string evaluation_source
+    }
+    
     ScheduleAssignment "1" --> "1" PatternTemplate : "uses"
     ScheduleAssignment "0..1" --> "0..1" HolidayCalendar : "references"
+    ScheduleAssignment "0..1" --> "1" EligibilityProfile : "[NEW] WHO via"
+    EligibilityProfile "1" --> "*" EligibilityMember : "cached members"
 ```
 
 ### Key Concepts
 
-**1. Start Reference Date (Rotation Anchor):**
+**1. WHO — via Eligibility Engine (Change 30)**
+
+Thay vì assign thủ công, hệ thống đọc `eligibility_member` để lấy danh sách nhân viên thuộc profile:
+
+```json
+// eligibility_profile (domain = 'SCHEDULING')
+{
+  "code": "ELIG_PROD_SCHEDULE_5X8",
+  "rule_json": {
+    "departments": ["PRODUCTION", "ASSEMBLY"],
+    "employee_types": ["FULLTIME"],
+    "countries": ["VN"]
+  }
+}
+// → eligibility_member auto-caches WHO is eligible
+// → Khi EMP001 transfer từ PRODUCTION → SALES → tự out; ngược lại auto-in
+```
+
+**2. Start Reference Date (Rotation Anchor)**
+
 - Điểm mốc để tính ngày trong cycle
 - Example: 2025-01-01 (Monday) = Day 0 of pattern
 
-**2. Offset Days (Rotation Offset):**
-- Dịch chuyển pattern cho từng crew
-- Critical cho rotating shifts
+**3. Offset Days (Rotation Offset)**
 
-**3. Assignment Scope:**
-- `employee_id` - Individual employee
-- `employee_group_id` - Team/department
-- `position_id` - Position-based
+- Dịch chuyển pattern cho từng crew
+- Critical cho rotating shifts: cùng 1 pattern, offset khác nhau → crew làm ca khác nhau
+
+**4. employee_override_id — Edge-case override**
+
+Dành cho trường hợp đặc biệt cần gán lịch toàn phần cho 1 người (CEO, expat, nhân viên đặc biệt):
+- Không dùng eligibility rule
+- Tồn tại song song với eligibility-based assignments
 
 ### Rotation Offset Example
 
 ```
 Pattern: 21-day cycle [Day×7 · Off×7 · Evening×7]
 
-Crew A: offset=0  → Week 1: Day Shift
-Crew B: offset=7  → Week 1: Off
-Crew C: offset=14 → Week 1: Evening Shift
+eligibility_profile: ELIG_CREW_A → offset=0  → Week 1: Day Shift
+eligibility_profile: ELIG_CREW_B → offset=7  → Week 1: Off
+eligibility_profile: ELIG_CREW_C → offset=14 → Week 1: Evening Shift
 
 Week 2: Crew A=Off, Crew B=Evening, Crew C=Day (automatic rotation)
 Week 3: Crew A=Evening, Crew B=Day, Crew C=Off (automatic)
@@ -527,50 +577,79 @@ Week 3: Crew A=Evening, Crew B=Day, Crew C=Off (automatic)
 
 ### Sample Data
 
-**Individual Assignment:**
+**Schedule for Production Team (via Eligibility):**
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440050",
-  "code": "EMP001_5X8",
-  "name": "Nguyen Van A - Standard Schedule",
+  "code": "PROD_5X8_VN",
+  "name": "Production Vietnam — 5×8 Standard",
   "pattern_id": "550e8400-e29b-41d4-a716-446655440040",
   "holiday_calendar_id": "VN_CALENDAR_2026",
   "start_reference_date": "2025-01-01",
   "offset_days": 0,
-  "employee_id": "EMP001",
+  "eligibility_profile_id": "ELIG_PROD_SCHEDULE_5X8",
+  "employee_override_id": null,
   "effective_start": "2025-01-01"
 }
 ```
 
-**Team Assignment with Rotation:**
+**24/7 Rotating Schedule — Crew A (via Eligibility):**
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440051",
-  "code": "PRODUCTION_LINE_A",
-  "name": "Production Line A - 24/7 Rotation",
+  "code": "24_7_CREW_A",
+  "name": "24/7 Rotation — Crew A (Offset 0)",
   "pattern_id": "550e8400-e29b-41d4-a716-446655440041",
   "holiday_calendar_id": "VN_CALENDAR_2026",
   "start_reference_date": "2025-01-01",
   "offset_days": 0,
-  "employee_group_id": "TEAM_LINE_A",
+  "eligibility_profile_id": "ELIG_SHIFT_CREW_A",
+  "employee_override_id": null,
   "effective_start": "2025-01-01"
 }
 ```
 
-**Crew B with 7-day offset:**
+**Crew B (Offset +7):**
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440052",
-  "code": "PRODUCTION_LINE_B",
-  "name": "Production Line B - 24/7 Rotation (Offset +7)",
+  "code": "24_7_CREW_B",
+  "name": "24/7 Rotation — Crew B (Offset +7)",
   "pattern_id": "550e8400-e29b-41d4-a716-446655440041",
   "holiday_calendar_id": "VN_CALENDAR_2026",
   "start_reference_date": "2025-01-01",
   "offset_days": 7,
-  "employee_group_id": "TEAM_LINE_B",
+  "eligibility_profile_id": "ELIG_SHIFT_CREW_B",
+  "employee_override_id": null,
   "effective_start": "2025-01-01"
 }
 ```
+
+**CEO — Individual Override (edge case):**
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440053",
+  "code": "CEO_SPECIAL",
+  "name": "CEO — Special Schedule",
+  "pattern_id": "550e8400-e29b-41d4-a716-446655440040",
+  "holiday_calendar_id": "VN_CALENDAR_2026",
+  "start_reference_date": "2025-01-01",
+  "offset_days": 0,
+  "eligibility_profile_id": null,
+  "employee_override_id": "EMP_CEO_001",
+  "effective_start": "2025-01-01"
+}
+```
+
+### Benefits của Hybrid Architecture
+
+| Lợi ích | Mô tả |
+|---------|-------|
+| **Auto-assign** | Transfer team → eligibility membership tự update → schedule mới auto-apply |
+| **Không cần manual record/người** | 1 schedule_assignment phục vụ toàn bộ Production team |
+| **Cross-module nhất quán** | Cùng `eligibility_profile_id` pattern với Absence, TR Benefits, Payroll |
+| **Audit trail** | `eligibility_evaluation` log lý do tại sao employee được/mất schedule |
+| **Override preserved** | `employee_override_id` cho edge cases không phá vỡ model chung |
 
 ---
 

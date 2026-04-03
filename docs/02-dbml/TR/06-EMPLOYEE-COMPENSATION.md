@@ -51,7 +51,7 @@ Employee Compensation Records lưu trữ:
 | `adjustment_percentage` | decimal(5,2) | % change |
 | `previous_basis_id` | uuid | Link to previous record |
 | `contract_id` | uuid | FK to employment.contract |
-| `salary_basis_id` | uuid | FK to comp_core.salary_basis |
+| `salary_basis_id` | uuid | FK to `comp_core.salary_basis` — must be one where employee is an active `eligibility_member` (**Fixed FK 03Apr2026**) |
 | `approval_status` | varchar(20) | `PENDING` \| `APPROVED` \| `REJECTED` |
 | `approved_by` | uuid | Approver |
 | `approval_date` | timestamp | Approval timestamp |
@@ -117,6 +117,41 @@ Basis V1:
   basis_amount: 10,000,000
   previous_basis_id: NULL
 ```
+
+---
+
+### Eligibility Integration (Changed 03Apr2026)
+
+**`compensation.basis.salary_basis_id`** must reference a `salary_basis` for which the employee is an active `eligibility_member`. The eligibility engine (`eligibility.eligibility_profile` with `domain='COMPENSATION'`) determines eligible salary bases.
+
+```mermaid
+graph LR
+    subgraph "Config"
+        SB[salary_basis<br/>eligibility_profile_id]
+        EP[eligibility_profile<br/>domain=COMPENSATION]
+        SB -->|FK| EP
+    end
+    subgraph "Engine"
+        EM[eligibility_member<br/>cached: employee ∈ profile]
+    end
+    subgraph "Instance"
+        CB[compensation.basis<br/>salary_basis_id FK]
+    end
+    EP -->|evaluates| EM
+    EM -->|HR selects eligible basis| CB
+    SB -->|salary_basis_id| CB
+    style EM fill:#e8f5e9,stroke:#2e7d32
+    style EP fill:#f3e5f5,stroke:#7b1fa2
+    style CB fill:#fff3e0,stroke:#e65100
+```
+
+**Auto-expiry Rule**: Khi employee chuyển scope (country/LE transfer):
+- Old contract closes → `work_relationship` ends → new `work_relationship` + `assignment`
+- Eligibility engine re-evaluates → employee no longer eligible for old `salary_basis`
+- `compensation.basis` auto-expires: `is_current_flag=false`, `effective_end_date = change date`
+- HR notified → create new `compensation.basis` with appropriate `salary_basis`
+
+**Note on pay_component_def**: Components do NOT have individual eligibility. Employee eligible for `salary_basis` → automatically eligible for all components via `salary_basis_component_map`.
 
 ---
 

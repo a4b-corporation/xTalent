@@ -1,7 +1,117 @@
 # xTalent Database Design – Changelog
 
 
+## [03Apr2026-b] – v5.5: Fix Pay Eligibility Mapping — Salary Basis + Centralized Eligibility (Change 31)
+
+> Context: Phân tích kiến trúc mapping Employee ↔ Fix Pay Config phát hiện `comp_core.salary_basis` THIẾU `eligibility_profile_id` — trái ngược với mọi entity cùng level (`comp_plan`, `bonus_plan`, `benefit_plan`, `pay_element`) đều đã tích hợp Eligibility Central. Ngoài ra `compensation.basis.salary_basis_id` thiếu FK constraint (chỉ là uuid trống, không reference table nào).
+> Architecture Decision: Thêm `eligibility_profile_id` vào `salary_basis` (pattern 1:1 direct FK, nhất quán với G5/G6). Scoping fields (country_code, legal_entity_id, config_scope_id) giữ nguyên nhưng làm rõ chỉ để admin UI lọc/gom nhóm — KHÔNG quyết định assignment. Fix FK on `compensation.basis.salary_basis_id`. Không cần bảng mapping mới — `compensation.basis` IS the assignment record.
+
+### 4.TotalReward.V5.dbml
+
+**Change 31a – `comp_core.salary_basis`: Thêm `eligibility_profile_id`**
+
+| Action | Field | Detail |
+|--------|-------|--------|
+| ADD | `eligibility_profile_id uuid [null]` | FK → `eligibility.eligibility_profile.id`. domain='COMPENSATION'. NULL = globally eligible. |
+| ADD | Index | `(eligibility_profile_id)` — eligibility lookup |
+| ADD | Note block | Documenting Scoping vs Eligibility separation + Assignment Flow + Auto-expiry rule |
+| UPDATE | Comments on `country_code`, `legal_entity_id`, `config_scope_id` | Clarify "For UI filtering only — does NOT determine assignment" |
+
+**Design rationale — Separation of Concerns:**
+| Concern | Fields | Purpose |
+|---------|--------|---------|
+| **Admin grouping / UI filter** | `country_code`, `legal_entity_id`, `config_scope_id` | "Show all VN salary bases" — không phải business rule |
+| **Assignment eligibility** | `eligibility_profile_id` | Centralized engine evaluates rule_json → determines WHO is eligible |
+
+**Consistency với toàn bộ TR/PR entities sử dụng Eligibility Central:**
+
+| Module | Entity | `eligibility_profile_id` |
+|--------|--------|--------------------------|
+| TR | `comp_core.comp_plan` (G6) | ✅ |
+| TR | `comp_incentive.bonus_plan` (G6) | ✅ |
+| TR | `benefit.benefit_plan` (G5) | ✅ |
+| TR | **`comp_core.salary_basis` (Change 31)** | ✅ **NEW** |
+| PR | `pay_master.pay_element` (G7) | ✅ |
+| TA | `ta.schedule_assignment` (Change 30) | ✅ |
+| TA | `absence.leave_class` (existing) | ✅ |
+
+**Change 31b – `compensation.basis.salary_basis_id`: Fixed FK constraint**
+
+| Action | Before | After |
+|--------|--------|-------|
+| FIX FK | `salary_basis_id uuid [null]` (no ref) | `salary_basis_id uuid [null, ref: > comp_core.salary_basis.id]` |
+| ADD | Comments | App-layer validation note: should reference eligible salary_basis |
+| ADD | Auto-expiry note | Flow: scope change → contract close → work_relationship mới → auto-expire |
+
+**Auto-expiry Rule (Q2 answer):**
+- Trigger: Employee chuyển country/LE → hợp đồng cũ đóng → `work_relationship` mới → `assignment` mới
+- Effect: `compensation.basis` cũ expire tự động (`is_current_flag=false`, `effective_end_date = change date`)
+- Mechanism: Workflow lifecycle (contract close) → trigger expiry. Scheduler fallback nếu workflow thiếu.
+- Post-expiry: HR notify → tạo `compensation.basis` mới với `salary_basis` eligible mới
+
+**Decisions documented:**
+- `pay_component_def` KHÔNG cần `eligibility_profile_id` riêng — eligibility chỉ ở `salary_basis` level.
+  Employee eligible cho `salary_basis` → automatically eligible cho tất cả components qua `salary_basis_component_map`.
+
+---
+
+## [03Apr2026] – v5.4: Scheduling Level 5 — Hybrid Eligibility Architecture (Change 30)
+
+> Context: Phân tích kiến trúc scheduling 6-level phát hiện Level 5 (`ta.schedule_assignment`) đang dùng manual `employee_id / employee_group_id / position_id` để xác định WHO. Cách này không nhất quán với Core eligibility engine đã được áp dụng cho Absence (`leave_class`), Total Rewards (`comp_plan`, `bonus_plan`, `benefit_plan`), và Payroll (`pay_element`). Đề xuất refactor Level 5 sang Hybrid Architecture.
+> Architecture Decision: **Hybrid Model** — WHO via `eligibility_profile_id` (dynamic, auto-updated), WHAT via pattern/calendar/offset (unchanged). Level 6 (`ta.generated_roster`) **vẫn giữ nguyên** — không thể thay bằng dynamic calculation.
+
+### TA-database-design-v5.dbml
+
+**Change 30 – `ta.schedule_assignment`: WHO refactored to Centralized Eligibility Engine**
+
+| Action | Field | Detail |
+|--------|-------|--------|
+| ADD | `eligibility_profile_id` uuid | FK → `eligibility.eligibility_profile.id`. Replaces manual WHO assignment. domain='SCHEDULING' |
+| ADD | `employee_override_id` uuid | FK → `employment.employee.id`. Edge-case override cho CEO/expat/đặc biệt |
+| DEPRECATED (commented) | `employee_id` | Thay bằng `eligibility_profile_id`. Giữ backward compat đến v6.0 |
+| DEPRECATED (commented) | `employee_group_id` | Thay bằng `eligibility_profile_id`. Giữ backward compat đến v6.0 |
+| DEPRECATED (commented) | `position_id` | Thay bằng `eligibility_profile_id`. Giữ backward compat đến v6.0 |
+| ADD | Indexes | `(eligibility_profile_id, effective_start)`, `(employee_override_id, effective_start)` |
+| UPDATE | Note | Documenting architecture change + rationale |
+
+**Lý do Hybrid (không full-dynamic):**
+
+| Vấn đề nếu bỏ Level 6 | Giải pháp phải giữ Level 6 |
+|------------------------|---------------------------|
+| Override từng ngày từng người không có chỗ lưu | `schedule_override` + `generated_roster.is_override` |
+| Status lifecycle per-day (SCHEDULED→CONFIRMED) không có | `generated_roster.status_code` |
+| Holiday đã resolved không được cache | `generated_roster.is_holiday + holiday_id` |
+| Config thay đổi mid-month → lịch lịch sử sai | Frozen rows trong `generated_roster` |
+| `clock_event` không biết scheduled shift để check trễ | JOIN `generated_roster` O(1) |
+| Payroll export end-of-period re-calc không ổn định | Reads frozen `generated_roster` rows |
+
+**Roster Generation Flow (Updated):**
+```
+eligibility_member.find_active(profile_id)  →  WHO list (O(1) cached)
+schedule_assignment.pattern_id              →  WHAT pattern
+cycle calculation + holiday check           →  per-day resolution
+→ INSERT generated_roster (Level 6)         →  frozen, per employee × per day
+```
+
+**Consistency với các module khác:**
+
+| Module | Entity | Sử dụng eligibility_profile_id |
+|--------|--------|-------------------------------|
+| TA | `ta.schedule_assignment` (Change 30) | ✅ |
+| TA | `absence.leave_class` (existing) | ✅ |
+| TR | `comp_core.comp_plan` (G6) | ✅ |
+| TR | `comp_incentive.bonus_plan` (G6) | ✅ |
+| TR | `benefit.benefit_plan` (G5) | ✅ |
+| PR | `pay_master.pay_element` (G7) | ✅ |
+
+**Documentation updated:**
+- `01-scheduling-model.md` — Level 5 section updated with eligibility integration explanation
+- `01.1-scheduling-levels-explained.md` — Updated hybrid architecture section
+
+---
+
 ## [01Apr2026-b] – v5.3: Migrate Missing v4 Tables + Replace leave_accrual_run
+
 
 > Context: Phân tích đối chiếu v4 vs v5 — phát hiện note "8-12. Giữ nguyên các bảng v4 khác" thực ra có 4 tables chưa được migrate. Thực tế chỉ 3 tables còn thiếu thực sự; 1 table (leave_event_run) tồn tại nhưng đã được redesign thành leave_accrual_run (Change 17) — nay thay lại bằng generalized version.
 

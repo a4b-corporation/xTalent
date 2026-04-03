@@ -112,12 +112,33 @@ Table comp_core.salary_basis {
   allow_components boolean [default:true]
   
   // changed 26Mar2026: Multi-country/LE scoping (Option 1 + 2)
+  // PURPOSE: Admin UI filtering / grouping ONLY — does NOT determine which salary_basis
+  //          is assigned to an employee. Use eligibility_profile_id for assignment decisions.
   // PHASE 1 (Light Touch): Use these inline fields directly. NULL = global.
-  country_code    char(2) [null]                     // changed 26Mar2026: ISO country code. NULL = global (all countries)
-  legal_entity_id uuid [null]                        // changed 26Mar2026: specific LE. NULL = all LEs
+  country_code    char(2) [null]                     // changed 26Mar2026: ISO country code. NULL = global (all countries). For UI filtering only.
+  legal_entity_id uuid [null]                        // changed 26Mar2026: specific LE. NULL = all LEs. For UI filtering only.
   // PHASE 2 (Config Scope): Use config_scope_id for advanced scope hierarchy.
   // If config_scope_id is populated, it takes precedence over inline fields.
-  config_scope_id uuid [ref: > comp_core.config_scope.id, null]  // changed 26Mar2026: Option 2 - scope group reference
+  config_scope_id uuid [ref: > comp_core.config_scope.id, null]  // changed 26Mar2026: Option 2 - scope group reference. For UI filtering only.
+  
+  // changed 03Apr2026: NEW — Eligibility Central integration.
+  // PURPOSE: Defines WHO is eligible for this salary basis.
+  //          Evaluated by the centralized eligibility engine (eligibility.eligibility_profile).
+  //          domain = 'COMPENSATION' in eligibility_profile.
+  //          NULL = globally eligible (all employees are eligible).
+  // CRITICAL SEPARATION:
+  //   - eligibility_profile_id → DECIDES assignment eligibility (business rule, evaluated by engine)
+  //   - country_code / legal_entity_id / config_scope_id → admin UI filter/grouping ONLY
+  //   - These two concerns are orthogonal: an employee in VN can be eligible via rule_json,
+  //     independent of what country_code is set on this salary_basis.
+  // EXPIRY RULE (03Apr2026): When an employee's work_relationship changes scope
+  //   (e.g., country transfer → new employment.contract + new work_relationship + new assignment),
+  //   eligibility engine re-evaluates. If employee is NO LONGER eligible:
+  //   → compensation.basis auto-expires (is_current_flag=false, effective_end_date = change date).
+  //   → HR is notified to create a new compensation.basis with the appropriate salary_basis.
+  //   Note: Expiry is triggered by the work record lifecycle (contract close → scope change),
+  //   not just by scoping fields on this table.
+  eligibility_profile_id uuid [null, ref: > eligibility.eligibility_profile.id]  // changed 03Apr2026: FK to centralized eligibility.eligibility_profile
   
   metadata        jsonb
   effective_start date
@@ -132,9 +153,31 @@ Table comp_core.salary_basis {
     (code, country_code),                        // changed 26Mar2026: country-scoped lookup
     (country_code, legal_entity_id),             // changed 26Mar2026: scope filter
     (config_scope_id),                           // changed 26Mar2026: scope group lookup
+    (eligibility_profile_id),                    // changed 03Apr2026: eligibility lookup
     (frequency),
     (effective_start, effective_end)
   }
+  
+  Note: '''
+    changed 03Apr2026: Added eligibility_profile_id (domain=COMPENSATION).
+    Consistent with comp_plan, bonus_plan, benefit_plan, pay_element (all use centralized eligibility).
+    
+    Scoping vs Eligibility — Separation of Concerns:
+      country_code / legal_entity_id / config_scope_id → Admin UI filtering ONLY.
+        Example: HR filters "show all VN salary bases" using country_code=VN.
+      eligibility_profile_id → Business rule: WHO is eligible.
+        Example: rule_json {"countries":["VN"],"employee_class":["FULL_TIME"]} → only VN full-time eligible.
+    
+    Assignment Flow:
+      1. Engine evaluates employee against eligibility_profile → populates eligibility_member.
+      2. HR opens "Assign Salary" — UI queries eligible salary_bases for this employee.
+         Query: JOIN salary_basis sb ON sb.eligibility_profile_id = em.profile_id
+                WHERE em.employee_id = :id AND em.end_date IS NULL
+      3. HR selects salary_basis + enters amounts → creates compensation.basis.
+    
+    Auto-expiry: compensation.basis expires when employee loses eligibility due to
+    work record lifecycle change (contract close / scope transfer). See compensation.basis Note.
+  '''
 }
 
 
@@ -1656,7 +1699,14 @@ Table compensation.basis {                     // mức lương hiệu lực (he
   
   // References
   contract_id             uuid        [ref: > employment.contract.id, null]  // source contract (for LEGAL_BASE)
-  salary_basis_id         uuid        [null]                                 // link to comp_core.salary_basis config
+  // changed 03Apr2026: Added FK ref to comp_core.salary_basis.id.
+  // VALIDATION (app-layer): salary_basis_id chosen here should be one where employee is an
+  // active eligibility_member (eligibility.eligibility_member.end_date IS NULL).
+  // Kept nullable: (a) backward compat with records pre-eligibility, (b) edge-case manual salary.
+  // AUTO-EXPIRY: Khi employee chuyển scope (country/LE) → work_relationship mới → assignment mới
+  //   → compensation.basis cũ được expire tự động (is_current_flag=false, effective_end_date = change date).
+  //   Flow: Workflow close hợp đồng cũ → trigger expiry. Nếu workflow thiếu → scheduler tự expire.
+  salary_basis_id         uuid        [null, ref: > comp_core.salary_basis.id]  // changed 03Apr2026: FK to comp_core.salary_basis config
   
   // Approval Workflow
   approval_status         varchar(20) [null]                            // PENDING, APPROVED, REJECTED
@@ -1704,6 +1754,22 @@ Table compensation.basis {                     // mức lương hiệu lực (he
       - unit_rate_amount: rate per unit of output
       - guaranteed_minimum: minimum guaranteed pay when output-based < threshold
       Use case: Lương khoán sản phẩm, lương theo bài giảng, etc.
+    
+    changed 03Apr2026: Fixed salary_basis_id FK (now ref: > comp_core.salary_basis.id).
+    AUTO-EXPIRY RULE:
+    - Trigger: employee chuyển scope (country/LE transfer) → đóng hợp đồng cũ → work_relationship mới
+      → assignment mới.
+    - Effect: compensation.basis hiện tại được expire:
+        is_current_flag = false
+        effective_end_date = ngày bắt đầu work_relationship mới
+    - Mechanism Priority:
+        1. Workflow lifecycle (contract close workflow) — triggers expiry explicitly.
+        2. Scheduler fallback — nếu workflow thiếu, scheduler phát hiện và expire.
+    - After expiry: HR được notify → tạo compensation.basis mới với salary_basis phù hợp
+      (chọn từ danh sách eligible theo eligibility_member của salary_basis_id mới).
+    - Note: pay_component_def KHÔNG có eligibility riêng — eligibility chỉ ở salary_basis level.
+      Employee eligible cho salary_basis → tự động eligible cho tất cả components trong basis đó
+      (qua salary_basis_component_map).
   '''
 }
 

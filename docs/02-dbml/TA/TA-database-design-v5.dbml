@@ -328,27 +328,63 @@ Table ta.pattern_day {
 
 //===============================================================
 //  LEVEL 5: WORK SCHEDULE RULE
+//  [03Apr2026 – Change 30] Hybrid Architecture: Eligibility Engine Integration
+//
+//  BEFORE: WHO was determined by manual employee_id / employee_group_id / position_id
+//  AFTER:  WHO is determined dynamically by eligibility_profile_id (Core eligibility engine)
+//
+//  Architecture pattern (same as TA/TR/Payroll already use for leave/benefits/comp):
+//    eligibility_profile (rule_json: {"depts":["PROD"],"types":["FT"]})
+//      → eligibility_member (cached O(1) membership, auto-updated on employee change)
+//        → schedule_assignment reads eligibility_member to get WHO
+//          → generate Level 6 GeneratedRoster for each eligible employee
+//
+//  Benefits:
+//  - Auto-assign: employee transfer Dept A → B → eligibility re-evaluates → new schedule auto-applies
+//  - No manual ScheduleAssignment per employee/team → reduced HR admin burden
+//  - Cross-module consistency: same eligibility profile used for TA schedule, Absence leave_class, TR benefits
+//  - employee_override_id preserved for VIP/CEO/special cases needing individual override
+//
+//  Why Level 6 (GeneratedRoster) is STILL needed (not replaced by dynamic calculation):
+//  - Override storage: per-day per-employee ad-hoc changes (schedule_override)
+//  - Status lifecycle: SCHEDULED → CONFIRMED → COMPLETED → CANCELLED (persistent state)
+//  - Holiday resolution: holiday calendar already merged into each daily row
+//  - Point-in-time accuracy: if config changes mid-month, historical roster rows are frozen
+//  - Attendance join: clock_event needs O(1) lookup of scheduled shift for late/early detection
+//  - Payroll export: end-of-period export reads frozen roster data, not re-calculated
 //===============================================================
 
 // [v5] ENHANCED: Added rotation logic, calendar integration, and offset
+// [03Apr2026 Change 30] REFACTORED: WHO now via eligibility engine (not manual employee_id)
 Table ta.schedule_assignment {
   id                uuid [pk]
   code              varchar(50) [unique]
   name              varchar(100)
   
+  // WHAT: Which pattern, calendar, and rotation offset
   pattern_id        uuid [ref: > ta.pattern_template.id]
-  
-  // Calendar integration
-  holiday_calendar_id uuid [ref: > absence.holiday_calendar.id, null] // [v5] NEW: Link to holiday calendar
+  holiday_calendar_id uuid [ref: > absence.holiday_calendar.id, null] // [v5] Link to holiday calendar
   
   // Rotation anchor
   start_reference_date date                     // [v5] RENAMED: from rotation_start
-  offset_days       int [default:0]             // [v5] RENAMED: from rotation_anchor
+  offset_days       int [default:0]             // [v5] RENAMED: from rotation_anchor; for rotating crew shifts
   
-  // Applicable groupings
-  employee_id       uuid [ref: > employment.employee.id, null]
-  employee_group_id uuid [ref: > org_bu.unit.id, null]
-  position_id       uuid [null]                 // [v5] NEW: Assign by position
+  // WHO (via Centralized Eligibility Engine — Change 30)
+  // [03Apr2026 Change 30] ADDED: replaces employee_id / employee_group_id / position_id
+  // Eligibility profile defines the organizational scope via rule_json
+  // Examples: {"departments":["PRODUCTION"],"employee_types":["FULLTIME"],"countries":["VN"]}
+  // WHO is resolved at roster-generation time via eligibility.eligibility_member cache
+  eligibility_profile_id uuid [ref: > eligibility.eligibility_profile.id, null]
+  
+  // DEPRECATED (Change 30): Use eligibility_profile_id instead
+  // Kept for backward compatibility; will remove in v6.0
+  // employee_id       uuid [ref: > employment.employee.id, null]       // DEPRECATED Change 30
+  // employee_group_id uuid [ref: > org_bu.unit.id, null]              // DEPRECATED Change 30
+  // position_id       uuid [null]                                      // DEPRECATED Change 30
+  
+  // Edge-case override: for individual employees needing a specific schedule
+  // regardless of their eligibility group (e.g., CEO, expat, special shift worker)
+  employee_override_id uuid [ref: > employment.employee.id, null] // [Change 30] NEW: individual override
   
   // Validity
   effective_start   date
@@ -358,7 +394,12 @@ Table ta.schedule_assignment {
   created_at        timestamptz [default:`now()`]
   updated_at        timestamptz [null]
   
-  Note: 'Combines pattern with calendar and rotation offset. Defines WHO gets WHICH pattern.'
+  Indexes {
+    (eligibility_profile_id, effective_start)
+    (employee_override_id, effective_start)
+  }
+  
+  Note: 'Change 30 (03Apr2026): Refactored WHO from manual employee_id/group/position to centralized eligibility_profile_id. Pattern config (WHAT) unchanged. Level 6 GeneratedRoster still required for per-day materialization, overrides, status lifecycle, and attendance integration.'
 }
 
 //===============================================================
