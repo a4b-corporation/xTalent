@@ -1,6 +1,52 @@
 # xTalent Database Design – Changelog
 
 
+## [03Apr2026-c] – v5.6: `compensation.basis_line` Structural Fix — Mandatory `pay_component_def_id` (Change 32)
+
+> Context: Phân tích `compensation.basis_line` phát hiện 2 vấn đề: (1) không có FK đến `pay_component_def` → payroll engine không thể đọc `tax_treatment`, `is_subject_to_si`, `calculation_method` của từng phụ cấp → line bị bỏ qua khi tính lương. (2) `component_name varchar` (free-text) + `OTHER` type cho phép ad-hoc allowance không link về config → không tham gia được payroll → vô nghĩa.
+> Decision: **Xóa `component_name` và `OTHER` type. Thêm `pay_component_def_id NOT NULL FK`.** Mọi phụ cấp phải được định nghĩa trước trong `pay_component_def` + cho phép trong `salary_basis_component_map`.
+
+### 4.TotalReward.V5.dbml
+
+**Change 32 – `compensation.basis_line`: Structural fix**
+
+| Action | Field | Detail |
+|--------|-------|--------|
+| ADD | `pay_component_def_id uuid [not null]` | FK → `comp_core.pay_component_def.id`. NOT NULL — bắt buộc để payroll engine có calc rules. |
+| REMOVE | `component_name varchar(100)` | Ad-hoc free-text bị xóa. Dùng `pay_component_def.name` thay thế. |
+| REMOVE | `OTHER` from `component_type_code` enum | `OTHER` không link về config → không tham gia payroll → vô nghĩa. |
+| ADD | App-layer constraint | `pay_component_def_id` phải nằm trong `salary_basis_component_map` cho parent `salary_basis_id`. |
+| UPDATE | Indexes | `(basis_id, component_type_code, effective_start_date)` → `(basis_id, pay_component_def_id) [unique]` + `(basis_id, pay_component_def_id, effective_start_date) [unique]` |
+| ADD | Note block | Document rationale + constraint + workflow cho phụ cấp mới |
+
+**Lý do xóa `OTHER`:**
+- `OTHER` không có `pay_component_def` → không có `tax_treatment` / `is_subject_to_si` / `calculation_method`
+- Payroll engine không biết cách tính → line bị skip
+- Nếu cần phụ cấp mới: Admin thêm `pay_component_def` record trước → mới được phép dùng
+
+**Valid `component_type_code` sau Change 32:**
+`MEAL | HOUSING | TRANSPORTATION | RESPONSIBILITY | SENIORITY | TOXICITY | PHONE`
+*(thêm code mới = thêm pay_component_def tương ứng)*
+
+**Constraint validation flow (app-layer):**
+```
+HR adds basis_line with pay_component_def_id = X
+→ App validates:
+    EXISTS (SELECT 1 FROM salary_basis_component_map
+            WHERE salary_basis_id = compensation.basis.salary_basis_id
+            AND component_id = X)
+→ REJECT if not found
+```
+
+**Quy trình thêm phụ cấp mới:**
+```
+1. Admin tạo pay_component_def (SPECIAL_DUTY_ALLOWANCE, tax_treatment=FULLY_TAXABLE, is_subject_to_si=false)
+2. Admin thêm vào salary_basis_component_map cho salary_basis liên quan
+3. HR mới được phép tạo basis_line với component đó
+```
+
+---
+
 ## [03Apr2026-b] – v5.5: Fix Pay Eligibility Mapping — Salary Basis + Centralized Eligibility (Change 31)
 
 > Context: Phân tích kiến trúc mapping Employee ↔ Fix Pay Config phát hiện `comp_core.salary_basis` THIẾU `eligibility_profile_id` — trái ngược với mọi entity cùng level (`comp_plan`, `bonus_plan`, `benefit_plan`, `pay_element`) đều đã tích hợp Eligibility Central. Ngoài ra `compensation.basis.salary_basis_id` thiếu FK constraint (chỉ là uuid trống, không reference table nào).

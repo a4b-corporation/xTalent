@@ -90,10 +90,12 @@ graph TB
 
 ```mermaid
 erDiagram
-    config_scope ||--o{ salary_basis : "scopes"
-    config_scope ||--o{ pay_component_def : "scopes"
+    config_scope ||--o{ salary_basis : "scopes (UI filter)"
+    config_scope ||--o{ pay_component_def : "scopes (UI filter)"
     config_scope ||--o{ comp_plan : "scopes"
     config_scope ||--o{ config_scope : "parent"
+    
+    eligibility_profile ||--o{ salary_basis : "eligibility_profile_id (WHO eligible)"
     
     salary_basis ||--o{ salary_basis_component_map : "has"
     pay_component_def ||--o{ salary_basis_component_map : "in"
@@ -123,6 +125,9 @@ erDiagram
     country_config ||--o{ holiday_calendar : "has holidays"
     calculation_rule_def ||--o{ calculation_rule_def : "previous version"
 ```
+
+> [!NOTE]
+> **`compensation.basis_line.pay_component_def_id`** (NOT NULL FK, Change 32) — Mỗi phụ cấp trong `basis_line` phải link về `pay_component_def` AND nằm trong `salary_basis_component_map` của parent `salary_basis`. Đây là điều kiện để payroll engine đọc được `tax_treatment`, `is_subject_to_si`, `calculation_method`.
 
 ---
 

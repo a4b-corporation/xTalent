@@ -1777,10 +1777,31 @@ Table compensation.basis_line {                // chi tiết phụ cấp cố đ
   id                      uuid        [pk, default: `gen_random_uuid()`]
   basis_id                uuid        [ref: > compensation.basis.id, not null]  // header
   
-  // Component Type
-  component_type_code     varchar(50) [not null]                        // MEAL, HOUSING, TRANSPORTATION, RESPONSIBILITY, SENIORITY, TOXICITY, PHONE, OTHER
-                                                                        // Lookup: common.code_list(COMP_COMPONENT_TYPE)
-  component_name          varchar(100) [null]                           // tên phụ cấp (nếu type = OTHER)
+  // Component Link — changed 03Apr2026: Thêm pay_component_def_id (NOT NULL, FK enforced)
+  // RATIONALE: basis_line phải tham chiếu về pay_component_def để có:
+  //   - tax_treatment / tax_exempt_threshold (dùng để tính thuế TNCN)
+  //   - is_subject_to_si / si_calculation_basis (dùng để tính BHXH)
+  //   - calculation_method / proration_method (dùng khi payroll tính toán)
+  // Không có FK → line không tham gia được vào payroll engine → vô nghĩa.
+  //
+  // CONSTRAINT (app-layer):
+  //   pay_component_def_id MUST exist in comp_core.salary_basis_component_map
+  //   WHERE salary_basis_id = (SELECT salary_basis_id FROM compensation.basis WHERE id = basis_id)
+  //   Tức là: chỉ được dùng component đã được cấu hình trong salary_basis của parent basis.
+  //
+  // REMOVED 03Apr2026: component_name varchar (ad-hoc free-text) — bị xóa vì:
+  //   - Nếu không link về pay_component_def → không có calc rules → không tham gia payroll.
+  //   - Mọi component phải được định nghĩa trước trong pay_component_def.
+  //   - Tên component dùng pay_component_def.name thay thế.
+  pay_component_def_id    uuid        [not null, ref: > comp_core.pay_component_def.id]  // changed 03Apr2026: FK NOT NULL
+  
+  // Component Type — changed 03Apr2026: Xóa 'OTHER'
+  // Tất cả component phải được typed và link về pay_component_def.
+  // Lookup: common.code_list(COMP_COMPONENT_TYPE)
+  // Valid codes: MEAL | HOUSING | TRANSPORTATION | RESPONSIBILITY | SENIORITY | TOXICITY | PHONE
+  // REMOVED: OTHER — nếu cần loại phụ cấp mới, thêm pay_component_def record + enum code trước.
+  component_type_code     varchar(50) [not null]  // MEAL | HOUSING | TRANSPORTATION | RESPONSIBILITY | SENIORITY | TOXICITY | PHONE
+                                                   // Must match pay_component_def.component_type = 'ALLOWANCE'
   
   // Amount
   amount                  decimal(15,2) [not null]                      // số tiền phụ cấp
@@ -1788,7 +1809,7 @@ Table compensation.basis_line {                // chi tiết phụ cấp cố đ
   
   // Source
   source_code             varchar(30) [not null, default: 'FIXED']      // FIXED = chốt cứng riêng, OVERRIDE = override từ plan
-                                                                        // (Phụ cấp tính từ plan sẽ KHÔNG ở đây, do Compensation Plan xử lý)
+                                                                         // (Phụ cấp tính từ plan sẽ KHÔNG ở đây, do Compensation Plan xử lý)
   reason_code             varchar(50) [null]                            // lý do phụ cấp (HIRE, ROLE_CHANGE, SPECIAL, etc.)
   
   // Effective Dating
@@ -1809,12 +1830,35 @@ Table compensation.basis_line {                // chi tiết phụ cấp cố đ
   updated_by              uuid        [ref: > person.worker.id, null]
   
   Indexes {
-    (basis_id, component_type_code, effective_start_date) [unique]      // unique per basis + type + date
+    (basis_id, pay_component_def_id) [unique]                          // changed 03Apr2026: unique per basis + component_def (replaced component_type_code)
+    (basis_id, pay_component_def_id, effective_start_date) [unique]    // changed 03Apr2026: unique per basis + def + date
     (basis_id, is_current_flag)                                         // current lines per basis
-    (component_type_code, is_current_flag)                              // reporting by type
+    (pay_component_def_id, is_current_flag)                            // changed 03Apr2026: reporting by component def
   }
-  
 
+  Note: '''
+    changed 03Apr2026: Structural fix — Mandatory pay_component_def_id.
+    
+    BEFORE: basis_line dùng component_type_code (enum) + component_name (free-text).
+    AFTER:  basis_line dùng pay_component_def_id (FK NOT NULL) + component_type_code (còn giữ để filter/display).
+    
+    Lý do bắt buộc pay_component_def_id NOT NULL:
+    - pay_component_def chứa tax_treatment, is_subject_to_si, calculation_method, proration_method.
+    - Payroll engine đọc từ đây để tính thuế/BHXH/proration cho từng phụ cấp.
+    - Nếu basis_line không link về pay_component_def → engine không biết cách tính → line bị bỏ qua.
+    - "Other" type bị xóa: mọi phụ cấp mới phải được phê duyệt qua pay_component_def trước.
+    
+    Constraint validation (app-layer):
+    - pay_component_def_id phải nằm trong salary_basis_component_map
+      cho salary_basis_id của parent compensation.basis.
+    - Tức là: chỉ được dùng component đã được phép trong salary basis template.
+    
+    Quy trình khi cần phụ cấp mới:
+      1. Admin tạo pay_component_def mới (e.g., SPECIAL_DUTY_ALLOWANCE)
+      2. Admin thêm vào salary_basis_component_map cho salary_basis liên quan
+      3. HR mới được phép thêm basis_line với component đó
+  '''
+}
 
 //***************************************************
 // * 11. RELATIONSHIPS & ADDITIONAL NOTES

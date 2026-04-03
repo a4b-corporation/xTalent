@@ -247,8 +247,8 @@ graph TB
 |-------|------|-------------|
 | `id` | uuid | Primary key |
 | `basis_id` | uuid | FK to compensation.basis |
-| `component_type_code` | varchar(50) | Component type |
-| `component_name` | varchar(100) | Component name (if OTHER) |
+| `pay_component_def_id` | uuid | **FK NOT NULL** to `comp_core.pay_component_def` — bắt buộc để payroll engine có calc rules. **Changed 03Apr2026** |
+| `component_type_code` | varchar(50) | Component type (for display/filter). Must match `pay_component_def`. |
 | `amount` | decimal(15,2) | Allowance amount |
 | `currency_code` | char(3) | Currency |
 | `source_code` | varchar(30) | `FIXED` \| `OVERRIDE` |
@@ -261,6 +261,9 @@ graph TB
 | `notes` | text | Notes |
 | `metadata` | jsonb | Additional info |
 
+> [!IMPORTANT]
+> **`component_name` đã bị xóa (Change 32)**. Dùng `pay_component_def.name` thay thế. `OTHER` type cũng bị xóa — mọi phụ cấp phải link về `pay_component_def` để payroll engine tính được thuế/BHXH.
+
 ### Component Types
 
 | component_type_code | Description | VN Example |
@@ -272,16 +275,43 @@ graph TB
 | `SENIORITY` | Seniority | Phụ cấp thâm niên |
 | `TOXICITY` | Toxic environment | Phụ cấp độc hại |
 | `PHONE` | Phone allowance | Phụ cấp điện thoại |
-| `OTHER` | Other allowances | Khác |
 
-### Source Codes
+> [!NOTE]
+> **`OTHER` đã bị xóa (Change 32)**. Nếu cần loại phụ cấp mới: Admin tạo `pay_component_def` record mới + thêm vào `salary_basis_component_map` → HR mới được phép dùng.
 
-| source_code | Description |
-|-------------|-------------|
-| `FIXED` | Fixed allowance, standalone |
-| `OVERRIDE` | Override from compensation plan |
+### Constraint: Component phải thuộc `salary_basis_component_map`
 
-**Note**: Allowances calculated from compensation plan are NOT stored here. They're handled by Comp Cycle.
+```sql
+-- App-layer validation khi tạo basis_line:
+EXISTS (
+  SELECT 1
+  FROM comp_core.salary_basis_component_map sbcm
+  JOIN compensation.basis cb ON cb.salary_basis_id = sbcm.salary_basis_id
+  WHERE cb.id = :basis_id
+    AND sbcm.component_id = :pay_component_def_id
+)
+-- REJECT nếu không tìm thấy → component không được phép trong salary_basis này
+```
+
+### Workflow: Thêm loại phụ cấp mới
+
+```
+1. Admin → tạo pay_component_def mới
+     code: SPECIAL_DUTY_ALLOWANCE
+     component_type: ALLOWANCE
+     tax_treatment: FULLY_TAXABLE
+     is_subject_to_si: false
+     calculation_method: FIXED
+
+2. Admin → thêm vào salary_basis_component_map
+     salary_basis_id: MONTHLY_VN
+     component_id: SPECIAL_DUTY_ALLOWANCE
+
+3. HR → tạo basis_line
+     pay_component_def_id: SPECIAL_DUTY_ALLOWANCE  ← validated against map
+     component_type_code: RESPONSIBILITY  ← for display
+     amount: 2,000,000
+```
 
 ---
 
