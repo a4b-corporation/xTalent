@@ -2,7 +2,10 @@ id: https://xtalent.io/ta/attendance/model
 name: xtalent-ta-attendance
 description: >
   Domain model for Time & Absence — Time & Attendance (ta.attendance).
-  xTalent HCM | ODSA Step 3 | 2026-03-24.
+  xTalent HCM | ODSA Step 3 | 2026-03-24. Updated 2026-04-03 for DBML v5.3 alignment.
+  New entities: AttendanceRecord, TimeTypeElementMap (Change 26), TimeException,
+  EvalRule, EvalResult. Deprecations: Shift (superseded by ta.scheduling.ShiftDef),
+  ShiftAssignment (superseded by ta.scheduling.ScheduleAssignment + GeneratedRoster).
   Implements: ADR-TA-001 (immutable punch records), ADR-TA-004 (no raw biometric),
   H-P0-002 (comp time expiry), H-P0-003 (manager OT skip-level routing),
   H8 (offline sync: Punch.sync_status), Vietnam OT caps (40h/month, 300h/year).
@@ -44,6 +47,11 @@ classes:
 
   Shift:
     description: >
+      ⚠️ DEPRECATED in v5.3: The Shift class is superseded by `ta.scheduling.ShiftDef`,
+      which adds the shift_type discriminator (ELAPSED/PUNCH/FLEX) and composition model
+      via TimeSegments. The ta.attendance context references ShiftDef from ta.scheduling
+      rather than maintaining its own shift definitions.
+
       A named, reusable work schedule template defining when employees are expected
       to be present. Shifts are configuration objects referenced by ShiftAssignments.
       Break duration is excluded from worked hours calculation.
@@ -82,6 +90,11 @@ classes:
 
   ShiftAssignment:
     description: >
+      ⚠️ DEPRECATED in v5.3: Direct ShiftAssignment is replaced by the
+      `ta.scheduling.ScheduleAssignment` + `ta.scheduling.GeneratedRoster` architecture.
+      The attendance context reads GeneratedRoster as the authoritative scheduled shift
+      for each employee-date.
+
       Assignment of a specific Shift to a specific employee for a date range.
       An employee may have multiple non-overlapping ShiftAssignments (e.g., for
       rotating shift patterns). The assignment must not overlap with any existing
@@ -368,6 +381,171 @@ classes:
       work_date:
         required: true
       regular_hours:
+        required: true
+
+  # ── AttendanceRecord ────────────────────────────────────────────────────────
+
+  AttendanceRecord:
+    class_uri: xta:attendance_record
+    description: >
+      The processed and validated daily attendance summary for one employee on one
+      work_date. Derived from matched Punch pairs, validated against GeneratedRoster.
+      Authoritative status for payroll and reporting.
+      Invariant: one record per (employee_id, work_date).
+    is_a: TenantScoped
+    in_subset:
+      - high_stability
+    slots:
+      - attendance_record_id
+      - employee_id
+      - work_date
+      - attendance_status
+      - check_in_time
+      - check_out_time
+      - scheduled_start_time
+      - scheduled_end_time
+      - late_minutes
+      - early_departure_minutes
+      - total_worked_minutes
+      - regular_minutes
+      - ot_minutes
+      - processed_at
+    slot_usage:
+      attendance_record_id:
+        required: true
+        identifier: true
+      employee_id:
+        required: true
+      work_date:
+        required: true
+      attendance_status:
+        required: true
+      tenant_id:
+        required: true
+
+  # ── TimeTypeElementMap ──────────────────────────────────────────────────────
+
+  TimeTypeElementMap:
+    class_uri: xta:time_type_element_map
+    description: >
+      Explicit integration contract between TA time-type codes (REG, OT1.5, NIGHT_PREM)
+      and Payroll module element codes. Change 26 replaces implicit hardcoded mappings.
+      Must be populated before payroll export.
+    is_a: TenantScoped
+    in_subset:
+      - medium_stability
+    slots:
+      - time_type_code
+      - pay_element_code
+      - rate_source
+      - effective_date
+      - tenant_id
+    slot_usage:
+      time_type_code:
+        required: true
+        identifier: true
+      pay_element_code:
+        required: true
+      rate_source:
+        required: true
+      effective_date:
+        required: true
+      tenant_id:
+        required: true
+
+  # ── TimeException ───────────────────────────────────────────────────────────
+
+  TimeException:
+    class_uri: xta:time_exception
+    description: >
+      A flagged attendance anomaly requiring HR or manager resolution. Created
+      automatically by attendance processing engine. Blocks timesheet submission
+      until RESOLVED or EXCUSED.
+    is_a: TenantScoped
+    in_subset:
+      - medium_stability
+    slots:
+      - exception_id
+      - employee_id
+      - work_date
+      - exception_code
+      - exception_status
+      - reason
+      - resolved_by
+      - resolved_at
+    slot_usage:
+      exception_id:
+        required: true
+        identifier: true
+      employee_id:
+        required: true
+      work_date:
+        required: true
+      exception_code:
+        required: true
+      exception_status:
+        required: true
+      tenant_id:
+        required: true
+
+  # ── EvalRule ────────────────────────────────────────────────────────────────
+
+  EvalRule:
+    class_uri: xta:eval_rule
+    description: >
+      A DSL-defined calculation rule for OT classification, night differential,
+      and premium pay. Rules are tenant-configurable without code deployment.
+      Stored as JSON expression.
+    is_a: TenantScoped
+    in_subset:
+      - medium_stability
+    slots:
+      - eval_rule_id
+      - code
+      - name
+      - rule_json
+      - is_active
+    slot_usage:
+      eval_rule_id:
+        required: true
+        identifier: true
+      rule_json:
+        required: true
+      tenant_id:
+        required: true
+
+  # ── EvalResult ──────────────────────────────────────────────────────────────
+
+  EvalResult:
+    class_uri: xta:eval_result
+    description: >
+      Output of EvalRule execution for a specific employee-date-rule combination.
+      EvalResults are the computed time-type quantities that populate TimesheetLine
+      entries.
+    is_a: TenantScoped
+    in_subset:
+      - medium_stability
+    slots:
+      - eval_result_id
+      - employee_id
+      - work_date
+      - eval_rule_id
+      - time_type_code
+      - qty_hours
+      - source_clock_event_id
+    slot_usage:
+      eval_result_id:
+        required: true
+        identifier: true
+      employee_id:
+        required: true
+      work_date:
+        required: true
+      time_type_code:
+        required: true
+      qty_hours:
+        required: true
+      tenant_id:
         required: true
 
 #
@@ -756,6 +934,144 @@ slots:
     range: string
     multivalued: true
 
+  # ── AttendanceRecord attributes ────────────────────────────────────────────
+  attendance_record_id:
+    description: Unique identifier for an AttendanceRecord
+    range: string
+
+  attendance_status:
+    description: >
+      Six-way daily attendance classification for an employee.
+      Determined by comparing actual punches against the scheduled shift
+      from GeneratedRoster.
+    range: AttendanceStatus
+
+  check_in_time:
+    description: Actual clock-in timestamp for the day (null if absent or on leave)
+    range: datetime
+
+  check_out_time:
+    description: Actual clock-out timestamp for the day (null if absent or miss-punch)
+    range: datetime
+
+  scheduled_start_time:
+    description: Expected start time derived from GeneratedRoster for this employee-date
+    range: datetime
+
+  scheduled_end_time:
+    description: Expected end time derived from GeneratedRoster for this employee-date
+    range: datetime
+
+  late_minutes:
+    description: >
+      Minutes past scheduled_start_time that the employee clocked in.
+      Zero if employee was on time or early.
+    range: integer
+
+  early_departure_minutes:
+    description: >
+      Minutes before scheduled_end_time that the employee clocked out.
+      Zero if employee stayed until or past scheduled end.
+    range: integer
+
+  total_worked_minutes:
+    description: Total net working minutes for the day after break deductions
+    range: integer
+
+  regular_minutes:
+    description: Working minutes within the scheduled shift window (non-OT)
+    range: integer
+
+  ot_minutes:
+    description: Working minutes beyond the scheduled shift window (OT)
+    range: integer
+
+  processed_at:
+    description: Timestamp when this AttendanceRecord was computed by the processing engine
+    range: datetime
+
+  # ── TimeTypeElementMap attributes ─────────────────────────────────────────
+  time_type_code:
+    description: >
+      TA time-type code (e.g., REG, OT1.5, NIGHT_PREM). Acts as the identifier
+      key in the TimeTypeElementMap integration contract.
+    range: string
+
+  pay_element_code:
+    description: Corresponding Payroll module element code mapped from the TA time-type
+    range: string
+
+  rate_source:
+    description: Determines where the rate for this time-type is sourced from
+    range: RateSource
+
+  effective_date:
+    description: Date from which this mapping is in effect
+    range: date
+
+  # ── TimeException attributes ───────────────────────────────────────────────
+  exception_id:
+    description: Unique identifier for a TimeException record
+    range: string
+
+  exception_code:
+    description: Classification of the attendance anomaly detected
+    range: ExceptionCode
+
+  exception_status:
+    description: Current resolution state of the TimeException
+    range: ExceptionStatus
+
+  resolved_by:
+    description: Employee ID of the HR or manager who resolved or excused this exception
+    range: string
+
+  resolved_at:
+    description: Timestamp when this exception was resolved or excused
+    range: datetime
+
+  # ── EvalRule attributes ────────────────────────────────────────────────────
+  eval_rule_id:
+    description: Unique identifier for an EvalRule
+    range: string
+
+  code:
+    description: Short unique code for the evaluation rule (e.g., OT_WEEKDAY_1_5)
+    range: string
+
+  name:
+    description: Human-readable name for the evaluation rule
+    range: string
+
+  rule_json:
+    description: >
+      DSL expression stored as a JSON string defining the calculation logic
+      for OT classification, night differential, or premium pay.
+    range: string
+
+  is_active:
+    description: Whether this EvalRule is currently active and applied during processing
+    range: boolean
+
+  # ── EvalResult attributes ──────────────────────────────────────────────────
+  eval_result_id:
+    description: Unique identifier for an EvalResult record
+    range: string
+
+  eval_rule_id:
+    description: Reference to the EvalRule that produced this result
+    range: string
+
+  qty_hours:
+    description: Computed quantity of hours for this time-type from the EvalRule execution
+    range: float
+
+  source_clock_event_id:
+    description: >
+      Reference to the originating Punch or WorkedPeriod that provided the raw
+      clock data for this EvalResult computation.
+    range: string
+
 #
 # ─── ENUMS ───────────────────────────────────────────────────────────────────
 #
@@ -857,6 +1173,38 @@ enums:
         description: Automatic cash-out; balance amount transferred to PayrollExportPackage
       FORFEITURE:
         description: Balance set to zero; CompTimeExpired event logged; no payment
+
+  AttendanceStatus:
+    description: Six-way daily attendance classification for an employee
+    permissible_values:
+      PRESENT: {}
+      ABSENT: {}
+      LATE: {}
+      EARLY_DEPARTURE: {}
+      HALF_DAY: {}
+      ON_LEAVE: {}
+
+  ExceptionCode:
+    description: Classification of an attendance anomaly flagged as a TimeException
+    permissible_values:
+      LATE: {}
+      MISS_PUNCH: {}
+      ABSENT: {}
+      EARLY_DEPARTURE: {}
+
+  ExceptionStatus:
+    description: Resolution state of a TimeException
+    permissible_values:
+      OPEN: {}
+      RESOLVED: {}
+      EXCUSED: {}
+
+  RateSource:
+    description: Determines where the pay rate for a time-type is sourced from
+    permissible_values:
+      FIXED: {}
+      CONTRACT: {}
+      FORMULA: {}
 
 #
 # ─── TYPES ───────────────────────────────────────────────────────────────────

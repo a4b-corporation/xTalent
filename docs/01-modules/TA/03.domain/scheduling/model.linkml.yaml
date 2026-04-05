@@ -1,0 +1,862 @@
+id: https://xtalent.io/ta/scheduling/model
+name: xtalent-ta-scheduling
+description: >
+  Domain model for Time & Absence — Schedule Management (ta.scheduling).
+  xTalent HCM | ODSA Step 3 | 2026-04-03.
+  Implements 6-level hierarchical scheduling (TimeSegment → ShiftDef → DayModel →
+  PatternTemplate → ScheduleAssignment → GeneratedRoster), centralized eligibility
+  (Change 30), and offline-first roster materialization.
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  xta: https://xtalent.io/ta/
+  xtsch: https://xtalent.io/ta/scheduling/
+
+default_range: string
+default_prefix: xtsch
+
+imports:
+  - linkml:types
+
+subsets:
+  high_stability:
+    description: Entities that change rarely; define precisely before implementation
+  medium_stability:
+    description: Core attributes defined; some attributes may evolve
+
+#
+# ─── CLASSES ─────────────────────────────────────────────────────────────────
+#
+
+classes:
+
+  # ── TimeSegment ────────────────────────────────────────────────────────────
+
+  TimeSegment:
+    description: >
+      Atomic building block for shifts. Represents a work block, break, meal period,
+      or transfer. Can be reused across multiple ShiftDefs. Offsets are relative to
+      the shift reference start time in minutes. A TimeSegment is tenant-configuration:
+      it does not change day-to-day once defined.
+    in_subset:
+      - high_stability
+    slots:
+      - segment_id
+      - code
+      - name
+      - segment_type
+      - start_offset_min
+      - end_offset_min
+      - duration_minutes
+      - is_paid
+      - is_mandatory
+      - cost_center_code
+      - effective_start
+      - effective_end
+    slot_usage:
+      segment_id:
+        required: true
+        identifier: true
+      code:
+        required: true
+      name:
+        required: true
+      segment_type:
+        required: true
+      duration_minutes:
+        required: true
+
+  # ── ShiftDef ───────────────────────────────────────────────────────────────
+
+  ShiftDef:
+    description: >
+      Typed shift definition with 3 modes: ELAPSED (fixed window — total elapsed time
+      counts as hours, used in manufacturing), PUNCH (actual clock-in/out punches
+      determine bounds — used for field/sales staff), FLEX (core required hours plus
+      flexible start/end window — used for knowledge workers). Supersedes the legacy
+      Shift entity in ta.attendance. A ShiftDef is composed of one or more TimeSegments
+      via ShiftSegment junction records and may include explicit ShiftBreaks.
+    in_subset:
+      - high_stability
+    slots:
+      - shift_def_id
+      - code
+      - name
+      - shift_type
+      - reference_start_time
+      - reference_end_time
+      - total_work_hours
+      - total_break_hours
+      - cross_midnight
+      - grace_in_minutes
+      - grace_out_minutes
+      - rounding_interval_min
+      - rounding_mode
+      - color
+      - active
+    slot_usage:
+      shift_def_id:
+        required: true
+        identifier: true
+      code:
+        required: true
+      name:
+        required: true
+      shift_type:
+        required: true
+
+  # ── ShiftSegment ───────────────────────────────────────────────────────────
+
+  ShiftSegment:
+    description: >
+      Ordered composition of TimeSegments within a ShiftDef. Each record maps one
+      TimeSegment into a specific position within the shift's timeline.
+      sequence_order must be unique within a shift (no two segments share the same
+      position). Optional overrides allow a ShiftDef to customize duration or pay
+      status for a specific segment without mutating the shared TimeSegment definition.
+    slots:
+      - shift_def_id
+      - segment_id
+      - sequence_order
+      - override_duration_min
+      - override_is_paid
+    slot_usage:
+      shift_def_id:
+        required: true
+      segment_id:
+        required: true
+      sequence_order:
+        required: true
+
+  # ── ShiftBreak ─────────────────────────────────────────────────────────────
+
+  ShiftBreak:
+    description: >
+      Break specification within a ShiftDef. The break window (start_offset_hours +
+      duration_hours) must fall entirely within the shift window defined by
+      reference_start_time and reference_end_time. A single ShiftDef may have
+      multiple ShiftBreaks (e.g., a morning tea break and a lunch break). Paid
+      breaks count toward total_work_hours; unpaid breaks do not.
+    slots:
+      - break_id
+      - shift_def_id
+      - name
+      - start_offset_hours
+      - duration_hours
+      - is_paid
+      - is_mandatory
+    slot_usage:
+      break_id:
+        required: true
+        identifier: true
+      shift_def_id:
+        required: true
+      duration_hours:
+        required: true
+
+  # ── DayModel ───────────────────────────────────────────────────────────────
+
+  DayModel:
+    description: >
+      Represents one day's work arrangement within a schedule pattern. Either references
+      a ShiftDef (when day_type is WORK or HALF_DAY) or marks the day as off/holiday
+      without requiring a shift assignment.
+      Invariant: shift_def_id MUST be null when day_type is OFF or HOLIDAY.
+      This decoupling means "what kind of day is this?" (DayModel) and "what is the
+      detailed shift specification?" (ShiftDef) are managed independently.
+    in_subset:
+      - high_stability
+    slots:
+      - day_model_id
+      - code
+      - name
+      - day_type
+      - shift_def_id
+      - is_half_day
+      - half_day_period
+      - active
+    slot_usage:
+      day_model_id:
+        required: true
+        identifier: true
+      code:
+        required: true
+      name:
+        required: true
+      day_type:
+        required: true
+
+  # ── PatternTemplate ────────────────────────────────────────────────────────
+
+  PatternTemplate:
+    description: >
+      A repeating cycle of DayModels of a configured length. The cycle repeats
+      continuously from an anchor date. Supports standard 5-day/7-day weekly patterns,
+      bi-weekly (14-day) patterns, and industrial rotations such as 8-day 4-on-4-off
+      or 28-day 14/14 offshore patterns.
+      Invariant: the number of PatternDay records linked to this template MUST equal
+      cycle_length_days. Every day position in the cycle (1 to cycle_length_days)
+      must be mapped to exactly one DayModel.
+    in_subset:
+      - high_stability
+    slots:
+      - pattern_template_id
+      - code
+      - name
+      - cycle_length_days
+      - rotation_type
+      - description
+      - active
+    slot_usage:
+      pattern_template_id:
+        required: true
+        identifier: true
+      code:
+        required: true
+      name:
+        required: true
+      cycle_length_days:
+        required: true
+      rotation_type:
+        required: true
+
+  # ── PatternDay ─────────────────────────────────────────────────────────────
+
+  PatternDay:
+    description: >
+      Maps a position in the pattern cycle (1-based day_number) to a specific DayModel.
+      day_number must be unique within a PatternTemplate (no two PatternDay records for
+      the same template share the same day_number). The full set of PatternDay records
+      for a PatternTemplate constitutes the repeating work schedule cycle.
+    slots:
+      - pattern_template_id
+      - day_number
+      - day_model_id
+    slot_usage:
+      pattern_template_id:
+        required: true
+      day_number:
+        required: true
+      day_model_id:
+        required: true
+
+  # ── ScheduleAssignment ─────────────────────────────────────────────────────
+
+  ScheduleAssignment:
+    description: >
+      Binds a PatternTemplate to an employee population via centralized eligibility
+      (Change 30). The eligibility_profile_id references an external EligibilityProfile
+      engine that resolves which employees qualify for this assignment at any given
+      effective date. The start_reference_date combined with offset_days determines
+      the starting position within the pattern cycle for each employee, enabling
+      staggered team rotations.
+      When two ScheduleAssignments apply to the same employee (overlapping effective
+      dates), the one with the highest specificity eligibility profile wins.
+    in_subset:
+      - medium_stability
+    slots:
+      - schedule_assignment_id
+      - code
+      - name
+      - pattern_template_id
+      - holiday_calendar_id
+      - start_reference_date
+      - offset_days
+      - eligibility_profile_id
+      - effective_start
+      - effective_end
+      - active
+    slot_usage:
+      schedule_assignment_id:
+        required: true
+        identifier: true
+      code:
+        required: true
+      name:
+        required: true
+      pattern_template_id:
+        required: true
+      start_reference_date:
+        required: true
+      eligibility_profile_id:
+        required: true
+
+  # ── GeneratedRoster ────────────────────────────────────────────────────────
+
+  GeneratedRoster:
+    description: >
+      Pre-computed, materialized per-employee per-day schedule record. Composite
+      primary key: (employee_id, work_date) — exactly one GeneratedRoster record
+      exists per employee per working calendar day. Functions as an O(1) lookup table:
+      attendance processing, time validation, and reporting always read from
+      GeneratedRoster and never re-compute from PatternTemplate at query time.
+      When a ScheduleOverride is applied, the override replaces the relevant fields
+      in the GeneratedRoster record and sets is_override = true, preserving the
+      original fields for audit purposes (stored in the ScheduleOverride record).
+      Roster materialization runs as a batch job on schedule assignment change or
+      for a rolling future horizon (typically 90 days forward).
+    slots:
+      - employee_id
+      - work_date
+      - schedule_assignment_id
+      - pattern_template_id
+      - day_model_id
+      - shift_def_id
+      - override_id
+      - is_override
+      - is_holiday
+      - roster_status
+    slot_usage:
+      employee_id:
+        required: true
+      work_date:
+        required: true
+
+  # ── ScheduleOverride ───────────────────────────────────────────────────────
+
+  ScheduleOverride:
+    description: >
+      An ad-hoc, one-time change to the GeneratedRoster for a specific date. Used
+      when a single employee or group deviates from their assigned pattern — e.g., a
+      shift swap, an emergency working day on a day-off, or a one-off public holiday
+      substitution. Either shift_def_id (replacing the shift with a different one) or
+      day_type_override (changing the day classification, e.g., to OFF or HOLIDAY)
+      must be set, but not both simultaneously.
+      An override triggers re-materialization of the affected GeneratedRoster records.
+      Override does not modify the PatternTemplate or ScheduleAssignment.
+    slots:
+      - override_id
+      - employee_id
+      - employee_group_id
+      - work_date
+      - shift_def_id
+      - day_type_override
+      - reason_code
+      - notes
+      - created_by
+    slot_usage:
+      override_id:
+        required: true
+        identifier: true
+      work_date:
+        required: true
+
+#
+# ─── SLOTS ───────────────────────────────────────────────────────────────────
+#
+
+slots:
+
+  # ── Identity ───────────────────────────────────────────────────────────────
+
+  segment_id:
+    description: Unique identifier for a TimeSegment
+    range: string
+
+  shift_def_id:
+    description: Unique identifier for a ShiftDef, or foreign key reference to a ShiftDef
+    range: string
+
+  break_id:
+    description: Unique identifier for a ShiftBreak
+    range: string
+
+  day_model_id:
+    description: Unique identifier for a DayModel, or foreign key reference to a DayModel
+    range: string
+
+  pattern_template_id:
+    description: Unique identifier for a PatternTemplate, or foreign key reference to a PatternTemplate
+    range: string
+
+  schedule_assignment_id:
+    description: Unique identifier for a ScheduleAssignment
+    range: string
+
+  override_id:
+    description: Unique identifier for a ScheduleOverride, or foreign key reference to an override
+    range: string
+
+  employee_id:
+    description: Reference to the employee in Employee Central (external system)
+    range: string
+
+  employee_group_id:
+    description: >
+      Optional reference to an employee group. When set on a ScheduleOverride,
+      the override applies to all current members of the group on that work_date.
+    range: string
+
+  holiday_calendar_id:
+    description: >
+      Reference to a HolidayCalendar in ta.shared. When a date in the generated
+      roster falls on a public holiday in this calendar, the DayModel is superseded
+      and the day is classified as HOLIDAY.
+    range: string
+
+  eligibility_profile_id:
+    description: >
+      Reference to a centralized EligibilityProfile (Change 30). Resolved by the
+      shared eligibility engine to determine which employees qualify for this
+      ScheduleAssignment at any given effective date. Owned by ta.shared, not
+      ta.scheduling.
+    range: string
+
+  # ── Shared / Common ────────────────────────────────────────────────────────
+
+  code:
+    description: Short, unique system code within the tenant for this entity
+    range: string
+
+  name:
+    description: Human-readable display name
+    range: string
+
+  description:
+    description: Optional human-readable description or notes
+    range: string
+
+  active:
+    description: Whether this configuration record is currently active (soft delete support)
+    range: boolean
+
+  effective_start:
+    description: Inclusive start date from which this entity is valid
+    range: date
+
+  effective_end:
+    description: Inclusive end date after which this entity is superseded (null = open-ended)
+    range: date
+
+  # ── TimeSegment attributes ─────────────────────────────────────────────────
+
+  segment_type:
+    description: >
+      Classification of what this segment represents within a shift timeline.
+      WORK: productive working time; BREAK: short rest period;
+      MEAL: meal break (lunch/dinner); TRANSFER: travel or site-transfer time.
+    range: SegmentType
+
+  start_offset_min:
+    description: >
+      Start of this segment expressed as minutes from the shift reference_start_time.
+      A value of 0 means the segment starts at the same time as the shift.
+      A value of 240 means the segment starts 4 hours after shift start.
+      May be null for segments that begin immediately after the previous one.
+    range: integer
+
+  end_offset_min:
+    description: >
+      End of this segment expressed as minutes from the shift reference_start_time.
+      Must be greater than start_offset_min. May be null if duration_minutes is set.
+    range: integer
+
+  duration_minutes:
+    description: Duration of this segment in minutes. Must be greater than zero.
+    range: integer
+
+  is_paid:
+    description: >
+      Whether time within this segment counts as paid hours.
+      Paid segments contribute to total_work_hours on the ShiftDef.
+      Unpaid segments (e.g., an unpaid lunch break) do not.
+    range: boolean
+
+  is_mandatory:
+    description: >
+      Whether attendance in this segment is mandatory.
+      Mandatory segments are enforced during attendance validation.
+      Non-mandatory segments (e.g., optional prayer breaks) are tracked but
+      not flagged as exceptions if missed.
+    range: boolean
+
+  cost_center_code:
+    description: >
+      Optional cost center override for hours worked in this segment.
+      When null, the employee's default cost center applies.
+      Used for segments like TRANSFER where cost may differ from the base shift.
+    range: string
+
+  # ── ShiftDef attributes ────────────────────────────────────────────────────
+
+  shift_type:
+    description: >
+      The operational mode of the shift. Determines how attendance time is calculated.
+      ELAPSED: total elapsed time from shift start to shift end counts as hours (manufacturing).
+      PUNCH: actual clock-in/out punches define the work window (field staff, sales).
+      FLEX: a core hours window is required; start/end may vary within flex bounds (knowledge workers).
+    range: ShiftType
+
+  reference_start_time:
+    description: >
+      Nominal start time of the shift in HH:MM format (24-hour). For ELAPSED shifts,
+      this is the hard start boundary. For PUNCH shifts, it is the expected start time
+      used for tardiness calculation. For FLEX shifts, it defines the earliest
+      permitted flex start time.
+    range: string
+
+  reference_end_time:
+    description: >
+      Nominal end time of the shift in HH:MM format (24-hour). For shifts crossing
+      midnight (cross_midnight = true), this time is on the following calendar day.
+    range: string
+
+  total_work_hours:
+    description: >
+      Expected total paid work hours for this shift, excluding unpaid breaks.
+      Computed as the sum of durations of all paid TimeSegments (or ShiftBreaks marked
+      is_paid = true). Stored explicitly to avoid re-computation at query time.
+    range: decimal
+
+  total_break_hours:
+    description: >
+      Total break hours included within the shift window (both paid and unpaid).
+      Computed as sum of all ShiftBreak durations. Informational.
+    range: decimal
+
+  cross_midnight:
+    description: >
+      Indicates that this shift spans midnight (i.e., reference_end_time is on the
+      calendar day after reference_start_time). When true, attendance records and
+      GeneratedRoster entries must account for the date boundary.
+    range: boolean
+
+  grace_in_minutes:
+    description: >
+      Number of minutes after reference_start_time within which a clock-in is not
+      considered late. Default: 0. Example: grace_in_minutes = 5 means clock-in at
+      08:05 on an 08:00 shift is not flagged as a tardiness exception.
+    range: integer
+
+  grace_out_minutes:
+    description: >
+      Number of minutes before reference_end_time within which a clock-out is not
+      considered early departure. Default: 0.
+    range: integer
+
+  rounding_interval_min:
+    description: >
+      Rounding granularity for actual punch times, in minutes. Common values:
+      1 (no rounding), 5, 6, 10, 15, 30. Applied before attendance duration calculation.
+      Null means no rounding (treat raw punch time as exact).
+    range: integer
+
+  rounding_mode:
+    description: >
+      Direction of rounding applied to actual punch times when rounding_interval_min > 1.
+      NEAREST: round to the nearest interval. ROUND_UP: always round up (employee-favorable).
+      ROUND_DOWN: always round down (employer-favorable).
+    range: RoundingMode
+
+  color:
+    description: >
+      Hex color code (e.g., "#4A90E2") used to visually distinguish this shift on
+      the scheduling UI roster grid. Optional; defaults to tenant-configured default
+      shift color.
+    range: string
+
+  # ── ShiftSegment attributes ────────────────────────────────────────────────
+
+  segment_id:
+    description: Reference to the TimeSegment included in this ShiftDef position
+    range: string
+
+  sequence_order:
+    description: >
+      1-based position of this TimeSegment within the ShiftDef timeline.
+      Must be unique within a given shift_def_id. Determines the order in which
+      segments are displayed and validated.
+    range: integer
+
+  override_duration_min:
+    description: >
+      Optional: overrides the TimeSegment's default duration_minutes for this specific
+      ShiftDef context only. Does not modify the shared TimeSegment definition.
+      Null means use the TimeSegment's default duration.
+    range: integer
+
+  override_is_paid:
+    description: >
+      Optional: overrides the TimeSegment's default is_paid flag for this specific
+      ShiftDef context only. Null means use the TimeSegment's default.
+    range: boolean
+
+  # ── ShiftBreak attributes ──────────────────────────────────────────────────
+
+  start_offset_hours:
+    description: >
+      Hours from the shift reference_start_time at which this break begins.
+      Example: 4.0 means the break starts 4 hours after shift start.
+    range: decimal
+
+  duration_hours:
+    description: Duration of this break in hours. Must be greater than zero.
+    range: decimal
+
+  # ── DayModel attributes ────────────────────────────────────────────────────
+
+  day_type:
+    description: >
+      Classification of the day's work arrangement.
+      WORK: a regular working day with an assigned ShiftDef.
+      OFF: a non-working rest day with no shift.
+      HOLIDAY: a public or company holiday day with no shift.
+      HALF_DAY: a partial working day with an assigned ShiftDef and half_day_period set.
+    range: DayType
+
+  is_half_day:
+    description: >
+      Indicates that only half of the shift's hours are worked on this day.
+      Must be true when day_type is HALF_DAY. Ignored when day_type is WORK, OFF, or HOLIDAY.
+    range: boolean
+
+  half_day_period:
+    description: >
+      Specifies which half of the day is worked when is_half_day = true.
+      MORNING: first half (e.g., 08:00–12:00 for an 8-hour shift).
+      AFTERNOON: second half (e.g., 13:00–17:00).
+      Required when is_half_day = true; must be null otherwise.
+    range: HalfDayPeriod
+
+  # ── PatternTemplate attributes ─────────────────────────────────────────────
+
+  cycle_length_days:
+    description: >
+      Total number of days in one complete rotation cycle. Must equal the number of
+      PatternDay records linked to this template.
+      Common values: 7 (weekly), 14 (bi-weekly), 8 (4-on-4-off), 28 (14/14 offshore).
+    range: integer
+
+  rotation_type:
+    description: >
+      The structural behavior of the rotation.
+      FIXED: pattern repeats from a fixed calendar anchor (e.g., always Monday = day 1).
+      ROTATING: pattern is offset per employee or per team using offset_days on
+      ScheduleAssignment, enabling staggered shift rotations across the workforce.
+    range: RotationType
+
+  # ── PatternDay attributes ──────────────────────────────────────────────────
+
+  day_number:
+    description: >
+      1-based position within the pattern cycle. Must be in the range
+      [1, cycle_length_days]. Must be unique within a given pattern_template_id.
+      Day 1 corresponds to the start_reference_date on the ScheduleAssignment
+      (after applying offset_days).
+    range: integer
+
+  # ── ScheduleAssignment attributes ─────────────────────────────────────────
+
+  start_reference_date:
+    description: >
+      The calendar date that aligns to day_number 1 of the PatternTemplate cycle
+      (before applying offset_days). This anchors the pattern in calendar time.
+      All GeneratedRoster entries for employees under this assignment are computed
+      by finding which day_number corresponds to each target work_date using:
+      day_number = ((work_date - start_reference_date - offset_days) mod cycle_length_days) + 1.
+    range: date
+
+  offset_days:
+    description: >
+      Number of days to shift the pattern start for this assignment relative to
+      start_reference_date. Enables staggered rotations: Team A offset 0, Team B
+      offset 4 (on an 8-day cycle) start the pattern at different positions even
+      with the same start_reference_date. Default: 0.
+    range: integer
+
+  # ── GeneratedRoster attributes ─────────────────────────────────────────────
+
+  work_date:
+    description: >
+      Calendar date for this roster entry. Together with employee_id forms the
+      composite primary key. ISO 8601 format (YYYY-MM-DD).
+    range: date
+
+  is_override:
+    description: >
+      True when this GeneratedRoster record has been modified by a ScheduleOverride.
+      When true, override_id is populated with the source ScheduleOverride.
+      Allows audit queries to distinguish pattern-generated from manually adjusted entries.
+    range: boolean
+
+  is_holiday:
+    description: >
+      True when this work_date falls on a public holiday in the linked HolidayCalendar.
+      When true, the roster entry's day_type is effectively HOLIDAY regardless of what
+      the PatternTemplate specifies. Refreshed when HolidayCalendarPublished event is received.
+    range: boolean
+
+  roster_status:
+    description: >
+      Lifecycle state of this roster entry.
+      SCHEDULED: materialized from pattern; future date; not yet confirmed.
+      CONFIRMED: attendance for this date has been processed and agreed.
+      COMPLETED: period closed; this record is immutable.
+      CANCELLED: entry cancelled (e.g., employee on extended leave, no attendance expected).
+    range: RosterStatus
+
+  # ── ScheduleOverride attributes ────────────────────────────────────────────
+
+  day_type_override:
+    description: >
+      When set, replaces the DayModel's day_type classification for this specific date.
+      Must not be set simultaneously with shift_def_id.
+      Common use: marking a pattern WORK day as OFF or HOLIDAY for a specific employee.
+    range: DayType
+
+  reason_code:
+    description: >
+      Short code identifying the reason for the override. Examples:
+      SHIFT_SWAP, EMERGENCY_WORK, HOLIDAY_SUB, ILLNESS, MANAGEMENT_REQUEST.
+      Tenant-configurable lookup table.
+    range: string
+
+  notes:
+    description: Optional free-text explanation for the override, provided by the creator.
+    range: string
+
+  created_by:
+    description: Employee ID or system actor ID that created this override record.
+    range: string
+
+#
+# ─── ENUMS ───────────────────────────────────────────────────────────────────
+#
+
+enums:
+
+  SegmentType:
+    description: Classification of what a TimeSegment represents within a shift
+    permissible_values:
+      WORK:
+        description: Productive working time that contributes to paid hours
+      BREAK:
+        description: Short rest period between work blocks (e.g., 10-minute morning break)
+      MEAL:
+        description: Meal period — typically 30–60 minutes; may be paid or unpaid per policy
+      TRANSFER:
+        description: >
+          Travel or site-transfer time between locations within a shift.
+          May have a different cost center than the base work segment.
+
+  ShiftType:
+    description: >
+      Operational mode of a ShiftDef. Determines how attendance time is bounded and
+      how actual hours are computed from raw punch data.
+    permissible_values:
+      ELAPSED:
+        description: >
+          Fixed time-window shift. The total elapsed time from shift start to shift end
+          is counted as hours worked, regardless of exact punch times (subject to grace
+          and rounding). Typical for factory or production floor workers where the machine
+          line starts and stops at fixed times.
+      PUNCH:
+        description: >
+          Punch-bounded shift. Actual clock-in and clock-out timestamps define the work
+          window. Hours are calculated from raw punches (after rounding). Typical for
+          field staff, sales representatives, or service workers where start/end times
+          vary per day.
+      FLEX:
+        description: >
+          Flexible-start shift. Employees must work a defined number of core hours but
+          may start and end within a configured flex window (e.g., start between 07:00
+          and 10:00, end between 15:00 and 19:00). Core hours are mandatory; flex window
+          is optional. Typical for technology and professional knowledge workers.
+
+  RoundingMode:
+    description: Direction of punch-time rounding applied when rounding_interval_min is set
+    permissible_values:
+      NEAREST:
+        description: >
+          Round actual punch time to the nearest rounding_interval_min boundary.
+          Example with 15-min interval: 08:07 → 08:00; 08:08 → 08:15.
+      ROUND_UP:
+        description: >
+          Always round up to the next rounding_interval_min boundary.
+          Favors the employee for clock-out; favors the employer for clock-in.
+          Example with 15-min interval: 08:01 → 08:15.
+      ROUND_DOWN:
+        description: >
+          Always round down to the previous rounding_interval_min boundary.
+          Favors the employee for clock-in; favors the employer for clock-out.
+          Example with 15-min interval: 08:14 → 08:00.
+
+  DayType:
+    description: Classification of a day's work arrangement within a DayModel or ScheduleOverride
+    permissible_values:
+      WORK:
+        description: Regular working day — an assigned ShiftDef applies; attendance expected
+      OFF:
+        description: Rest day — no shift; no attendance expected; overtime rules apply if worked
+      HOLIDAY:
+        description: >
+          Public or company holiday — no regular shift; premium pay rates apply if worked
+          (per statutory rules in ta.shared)
+      HALF_DAY:
+        description: Partial working day — half of the shift's hours are worked; is_half_day and half_day_period must be set
+
+  HalfDayPeriod:
+    description: Which half of the working day is observed when DayModel.is_half_day is true
+    permissible_values:
+      MORNING:
+        description: First half of the shift window (e.g., 08:00–12:00 for an 08:00–17:00 shift)
+      AFTERNOON:
+        description: Second half of the shift window (e.g., 13:00–17:00 for an 08:00–17:00 shift)
+
+  RotationType:
+    description: Structural behavior of a PatternTemplate's cycle anchor
+    permissible_values:
+      FIXED:
+        description: >
+          The pattern cycle aligns to a fixed calendar point for all employees (e.g.,
+          every Monday is always day 1 of the cycle). No per-employee or per-team offset
+          is applied. Typical for standard office 5-day or retail 7-day patterns.
+      ROTATING:
+        description: >
+          The pattern cycle start is staggered across teams using offset_days on the
+          ScheduleAssignment. Enables multiple teams to cover 24/7 operations while each
+          following the same PatternTemplate but starting at different cycle positions.
+          Typical for industrial shift rotations (4-on-4-off, continental shifts, etc.).
+
+  RosterStatus:
+    description: Lifecycle state of a GeneratedRoster entry
+    permissible_values:
+      SCHEDULED:
+        description: >
+          Entry has been materialized from the PatternTemplate and ScheduleAssignment.
+          Represents a future or current day that has not yet been through attendance processing.
+      CONFIRMED:
+        description: >
+          Attendance for this date has been processed, reviewed, and agreed upon.
+          The record reflects actual hours worked as validated against the planned schedule.
+      COMPLETED:
+        description: >
+          The payroll period covering this date has been closed. The record is immutable
+          and contributes to the payroll export package. No further changes permitted.
+      CANCELLED:
+        description: >
+          The roster entry has been cancelled — typically because the employee is on extended
+          leave, has been transferred, or employment has been terminated. No attendance
+          is expected or tracked for this entry.
+
+#
+# ─── TYPES ───────────────────────────────────────────────────────────────────
+#
+
+types:
+  DecimalHours:
+    description: >
+      Decimal hours value for shift and segment durations. Supports quarter-hour
+      precision (0.25 increments) and half-day precision (0.5).
+    uri: linkml:Float
+    base: float
+
+  ISODate:
+    description: Calendar date in ISO 8601 format (YYYY-MM-DD)
+    uri: linkml:Date
+    base: str
+
+  HHMMTime:
+    description: Wall-clock time in HH:MM 24-hour format (local timezone)
+    uri: linkml:String
+    base: str
