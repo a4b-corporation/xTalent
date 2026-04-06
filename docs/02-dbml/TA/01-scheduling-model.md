@@ -535,9 +535,10 @@ classDiagram
         +uuid id
         +string code
         +string name
-        +string description
         +int cycle_length_days
+        +smallint cycle_anchor_weekday
         +string rotation_type
+        +smallint num_crews
         +jsonb pattern_json
     }
     
@@ -545,32 +546,43 @@ classDiagram
         +uuid pattern_id
         +int day_number
         +uuid day_model_id
+        +string group_label
     }
     
     PatternTemplate "1" --> "*" PatternDay : "defines sequence"
     PatternDay "*" --> "1" DayModel : "references"
 ```
 
-### Rotation Types
+### Rotation Types (v5.9)
 
-| Type | Description |
-|------|-------------|
-| `FIXED` | Same pattern for everyone |
-| `ROTATING` | Pattern rotates with offset for different crews |
+| rotation_type | Cơ chế | Offset ở Level 5 | Industry |
+|---------------|--------|:----------------:|----------|
+| `FIXED` | Mọi người chạy cùng cycle từ Day 1. cycle_anchor_weekday nên set. | Tất cả offset=0 | Văn phòng 5x8, 2-2-3 retail |
+| `ROTATING` | Cùng pattern, các crew bắt đầu từ offset_days khác nhau. | Crew A=0, B=N, C=2N... | Nhà máy 3 ca, bảo vệ 4-on-4-off, bệnh viện |
+| `FLEX` | Không có cycle cứng. pattern_day là template gợi ý. HR fill Level 6 thủ công. | N/A | Bán lẻ roster, hospitality, casual |
 
-### Common Patterns
+**Cycle Calculation Algorithm (Schedule Engine):**
+```
+day_index  = ((target_date − start_reference_date) + offset_days) % cycle_length_days
+day_number = day_index + 1  ← 1-indexed lookup into ta.pattern_day
+```
+Where `start_reference_date` và `offset_days` là fields từ `ta.schedule_assignment` (Level 5).
 
-| Pattern | Cycle | Structure | Industry |
-|---------|:-----:|-----------|----------|
-| **5x8** | 7 days | Work×5 + Off×2 | Office |
-| **4on-4off** | 8 days | Work×4 + Off×4 | Security, hospitals |
-| **2-2-3** | 7 days | Work×2 + Off×2 + Work×3 | Retail, call center |
-| **3-shift rotation** | 21 days | Day×7 + Off×7 + Evening×7 | Manufacturing 24/7 |
-| **14/14 offshore** | 28 days | Work×14 + Off×14 | Oil & gas |
+### Common Patterns (v5.9)
+
+| Pattern | Cycle | rotation_type | cycle_anchor_weekday | num_crews | Industry |
+|---------|:-----:|:-------------:|:--------------------:|:---------:|----------|
+| **5×8 Standard** | 7 days | FIXED | 1 (Monday) | null | Office |
+| **4-on-4-off** | 8 days | ROTATING | null | 2 | Security, hospitals |
+| **2-2-3** | 7 days | FIXED | 1 (Monday) | null | Retail, call center |
+| **3-shift rotation** | 21 days | ROTATING | null | 3 | Manufacturing 24/7 |
+| **14/14 offshore** | 28 days | ROTATING | null | 2 | Oil & gas (short) |
+| **90/30 offshore** | 120 days | ROTATING | null | 2 | Oil & gas (long) |
+| **Retail weekly** | 7 days | FLEX | null | null | Retail, hospitality |
 
 ### Sample Data
 
-**5x8 Standard Pattern:**
+**5×8 Standard Pattern (FIXED, anchor=Monday):**
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440040",
@@ -578,45 +590,56 @@ classDiagram
   "name": "5x8 Standard Week",
   "description": "Standard 5-day work week with weekend off",
   "cycle_length_days": 7,
+  "cycle_anchor_weekday": 1,
   "rotation_type": "FIXED",
-  "pattern_json": {
-    "days": [
-      {"day_number": 1, "day_model_id": "550e8400-e29b-41d4-a716-446655440030"},
-      {"day_number": 2, "day_model_id": "550e8400-e29b-41d4-a716-446655440030"},
-      {"day_number": 3, "day_model_id": "550e8400-e29b-41d4-a716-446655440030"},
-      {"day_number": 4, "day_model_id": "550e8400-e29b-41d4-a716-446655440030"},
-      {"day_number": 5, "day_model_id": "550e8400-e29b-41d4-a716-446655440030"},
-      {"day_number": 6, "day_model_id": "550e8400-e29b-41d4-a716-446655440031"},
-      {"day_number": 7, "day_model_id": "550e8400-e29b-41d4-a716-446655440031"}
-    ]
-  }
+  "num_crews": null,
+  "pattern_json": null
 }
 ```
+*Comment: `cycle_anchor_weekday=1` đảm bảo `start_reference_date` ở Level 5 phải là thứ Hai. System validate khi tạo ScheduleAssignment.*
 
-**24/7 3-Shift Rotation:**
+**pattern_day cho 5×8:**
+```json
+[
+  {"day_number": 1, "day_model_id": "[OFFICE_WORKDAY]", "group_label": "Ngày làm việc"},
+  {"day_number": 2, "day_model_id": "[OFFICE_WORKDAY]", "group_label": "Ngày làm việc"},
+  {"day_number": 3, "day_model_id": "[OFFICE_WORKDAY]", "group_label": "Ngày làm việc"},
+  {"day_number": 4, "day_model_id": "[OFFICE_WORKDAY]", "group_label": "Ngày làm việc"},
+  {"day_number": 5, "day_model_id": "[OFFICE_WORKDAY]", "group_label": "Ngày làm việc"},
+  {"day_number": 6, "day_model_id": "[WEEKEND_OFF]", "group_label": "Cuối tuần"},
+  {"day_number": 7, "day_model_id": "[WEEKEND_OFF]", "group_label": "Cuối tuần"}
+]
+```
+
+**24/7 3-Shift Rotation (ROTATING, floating, 3 crews):**
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440041",
   "code": "3SHIFT_ROTATION",
   "name": "24/7 Three-Shift Rotation",
-  "description": "21-day cycle: 7 days Day Shift, 7 days Off, 7 days Evening Shift",
+  "description": "21-day cycle: 7 Morning + 7 Off + 7 Evening. Repeat every 3 crews.",
   "cycle_length_days": 21,
+  "cycle_anchor_weekday": null,
   "rotation_type": "ROTATING",
-  "pattern_json": {
-    "days": [
-      // Days 1-7: Day Shift
-      {"day_number": 1, "day_model_id": "DAY_SHIFT_MODEL"},
-      // ... (days 2-7 same)
-      // Days 8-14: Off
-      {"day_number": 8, "day_model_id": "OFF_DAY_MODEL"},
-      // ... (days 9-14 same)
-      // Days 15-21: Evening Shift
-      {"day_number": 15, "day_model_id": "EVENING_SHIFT_MODEL"}
-      // ... (days 16-21 same)
-    ]
-  }
+  "num_crews": 3
 }
 ```
+*Comment: `num_crews=3` → UI gợi ý tạo 3 ScheduleAssignment với offset 0, 7, 14. `cycle_anchor_weekday=null` vì nhà máy không cần neo ngày thứ.*
+
+**Offshore 90/30 Pattern (ROTATING, floating, 2 crews):**
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440042",
+  "code": "OFFSHORE_90_30",
+  "name": "Offshore 90-Day On / 30-Day Off",
+  "description": "120-day cycle: 90 days on-site + 30 days off. 2 crews alternate.",
+  "cycle_length_days": 120,
+  "cycle_anchor_weekday": null,
+  "rotation_type": "ROTATING",
+  "num_crews": 2
+}
+```
+*Comment: pattern_day có 90 rows OFFSHORE_WORKDAY (Day 1–90, group_label='On Period') + 30 rows OFF (Day 91–120, group_label='Off Period'). Crew A offset=0, Crew B offset=60 → lúc nào cũng có 1 crew on-site.*
 
 ---
 

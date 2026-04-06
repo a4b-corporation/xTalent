@@ -1,6 +1,53 @@
 # xTalent Database Design – Changelog
 
 
+## [06Apr2026] – v5.9: TA Level 4 — PatternTemplate Schema Refinement (Change 36)
+
+> **Context:** Phân tích Level 4 cho 3 ngành + trường hợp dầu khí phát hiện 4 gaps: (1) `pattern_json` JSONB là legacy v4 đang tồn tại song song với `ta.pattern_day` normalized — cần deprecate; (2) `rotation_type` thiếu `FLEX` cho retail/hospitality không có cycle cứng; (3) Không có field biểu thị "Day 1 phải là thứ mấy trong tuần" dẫn đến pattern 5x8 có thể bị set sai anchor day; (4) ROTATING pattern không lưu số crew expected khiến HR admin không biết cần tạo bao nhiêu Level 5 assignments.
+
+### TA-database-design-v5.dbml
+
+**Change 36 – `ta.pattern_template`: 4 schema changes**
+
+| Action | Field | Detail |
+|--------|-------|--------|
+| DEPRECATE | `pattern_json jsonb` | v4 legacy. Authoritative source là `ta.pattern_day`. Kept for backward compat. **Remove in v6.0.** Migration: Ensure all apps read from `ta.pattern_day` before v6.0 upgrade. |
+| ADD enum value | `rotation_type = FLEX` | Pattern không có cycle cứng. HR builds schedule per period. cycle_length_days = planning horizon only. Dùng cho retail, hospitality, casual workforce. |
+| ADD field | `cycle_anchor_weekday smallint [null]` | ISO weekday (1=Mon...7=Sun) mà Day 1 phải rơi vào. `null` = floating (không ràng buộc weekday). Level 5 `start_reference_date` phải khớp với weekday này. |
+| ADD field | `num_crews smallint [null]` | Số crew dự kiến cho ROTATING pattern. UI hint: offset/crew = cycle_length / num_crews. Không enforce DB constraint. |
+
+**Change 36 – `ta.pattern_day`: 1 field mới**
+
+| Action | Field | Detail |
+|--------|-------|--------|
+| ADD field | `group_label varchar(50) [null]` | Label hiển thị cho nhóm ngày liên tiếp trong UI calendar. Ví dụ: "Week 1 – Morning Shift", "Off Period (Day 91–120)". Không ảnh hưởng tính toán. Display only. |
+
+**Final `ta.pattern_template` field summary (v5.9):**
+
+| Field | Type | v5.9 Change |
+|-------|------|-------------|
+| `cycle_length_days` | int [null] | Type changed to nullable (null = FLEX) |
+| `cycle_anchor_weekday` | smallint [null] | **NEW** — ISO weekday anchor |
+| `rotation_type` | varchar(20) | **UPDATED** — added FLEX |
+| `pattern_json` | jsonb [null] | **DEPRECATED** — remove v6.0 |
+| `num_crews` | smallint [null] | **NEW** — UI crew hint |
+
+**Cycle calculation algorithm (documented in Table Note):**
+```
+day_index  = ((target_date − start_reference_date) + offset_days) % cycle_length_days
+day_number = day_index + 1  (1-indexed lookup into ta.pattern_day)
+```
+
+**Oil & Gas approach (Option B — confirmed):**
+- `cycle_length_days = 120`, `rotation_type = ROTATING`, `cycle_anchor_weekday = null`
+- `pattern_day`: day 1–90 → WORKDAY, day 91–120 → OFF
+- `group_label`: "On Period (Day 1–90)", "Off Period (Day 91–120)"
+- HR adjusts `start_reference_date` per contract renewal if schedule shifts
+
+**Migration note:** `pattern_json` will be removed in v6.0. SQL to verify no app dependency: `SELECT id, code FROM ta.pattern_template WHERE pattern_json IS NOT NULL;`
+
+---
+
 ## [06Apr2026] – v5.9: TA Level 3 — DayModel day_type Enum Refinement (Change 35)
 
 > **Context:** Phân tích Level 3 DayModel cho 3 use cases ngành (manufacturing, retail, healthcare) phát hiện 2 gaps:

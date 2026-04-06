@@ -373,18 +373,40 @@ Table ta.day_model {
 //===============================================================
 
 // [v5] ENHANCED: Updated to use day_models instead of raw JSON
+// [v5.9] UPDATED: Deprecate pattern_json; add FLEX rotation_type; add num_crews, cycle_anchor_weekday
 Table ta.pattern_template {
   id                uuid [pk]
   code              varchar(50) [unique]
   name              varchar(100)
   description       text [null]
   
-  cycle_length_days int                         // [v5] NEW: Explicit cycle length
+  cycle_length_days int [null]                 // Number of days in one full cycle
+                                               // null only when rotation_type = FLEX (no fixed cycle)
+                                               // Examples: 7 (weekly 5x8), 8 (4-on-4-off), 21 (3-shift), 28 (14/14 offshore)
+                                               //           120 (oil&gas: 90 WORKDAY + 30 OFF)
   
-  rotation_type     varchar(20)                 // [v5] NEW: FIXED | ROTATING
+  cycle_anchor_weekday smallint [null]         // [v5.9] NEW: ISO weekday that Day 1 of the cycle MUST fall on
+                                               // ISO 8601: 1=Monday, 2=Tuesday, ..., 7=Sunday
+                                               // null = floating (no weekday constraint)
+                                               // Example: 5x8 office → 1 (Day 1 must be Monday)
+                                               //          4-on-4-off  → null (Day 1 = crew start date, any weekday)
+                                               //          3-shift 21d → null (floating)
+                                               // Validation: start_reference_date at Level 5 MUST fall on this weekday
   
-  // Pattern definition (sequence of day models)
-  pattern_json      jsonb                       // [v5] UPDATED: Uses dayModelId instead of raw shift codes
+  rotation_type     varchar(20)                // [v5.9] UPDATED: FIXED | ROTATING | FLEX
+                                               //   FIXED    — same pattern for everyone; all start from Day 1 (offset=0)
+                                               //   ROTATING — crews share the same pattern but with different offset_days at L5
+                                               //   FLEX     — no fixed repeating cycle; HR builds schedule per planning period
+                                               //              cycle_length_days = planning horizon (7=weekly, 14=bi-weekly)
+  
+  // [v5.9 DEPRECATED] pattern_json — Authoritative source is ta.pattern_day. Remove in v6.0.
+  pattern_json      jsonb [null]               // [v4 legacy, v5.9 DEPRECATED] Use ta.pattern_day instead.
+                                               // Kept only for backward compatibility. Will be dropped in v6.0.
+  
+  num_crews         smallint [null]            // [v5.9] NEW: Hint for ROTATING patterns — expected number of crews
+                                               // Crew offset_days = (crew_index × cycle_length_days) / num_crews
+                                               // Example: 21-day pattern, num_crews=3 → offsets: 0, 7, 14
+                                               // Informational only — UI wizard uses this to guide Level 5 assignment creation
   
   metadata          jsonb
   is_active         boolean [default:true]
@@ -394,20 +416,76 @@ Table ta.pattern_template {
   created_at        timestamptz [default:`now()`]
   updated_at        timestamptz [null]
   
-  Note: 'Cycle of day models. E.g., 5x8 (5 days work, 8 hours), 4on-4off, 14/14 rotation.'
+  Note: '''
+    Level 4 — Defines a reusable cycle of DayModels that repeats over time.
+    Linked from ta.schedule_assignment (Level 5) which anchors it to employees and a start date.
+    
+    rotation_type enum (v5.9):
+      FIXED    : All employees share the same cycle from Day 1. offset_days=0 at L5.
+                 Typical: 5×8 office, 2-2-3 retail, standard 9-to-5.
+      ROTATING : Multiple crews use the same pattern with different offset_days at L5.
+                 Crew separation: offset = crew_index × (cycle_length_days / num_crews)
+                 Typical: 24/7 manufacturing (21-day 3-shift), 4-on-4-off security, hospital ward rotation.
+      FLEX     : No fixed repeating cycle. pattern_day rows are default day templates only.
+                 HR fills actual schedule per period directly into Level 6 (GeneratedRoster).
+                 cycle_length_days = planning horizon, not a rigid cycle.
+                 Typical: retail roster, hospitality, casual/on-call workforce.
+    
+    cycle_anchor_weekday (v5.9):
+      Set to ISO weekday (1=Mon...7=Sun) for week-aligned patterns.
+        → Level 5 start_reference_date MUST land on this weekday.
+        → Schedule engine validates on assignment creation.
+      Set to null for floating cycles (manufacturing, oil&gas, security).
+        → No weekday constraint; any date can be Day 1.
+    
+    num_crews (v5.9):
+      For ROTATING patterns: crew_offset = crew_index × (cycle_length_days / num_crews)
+      Example: 21-day 3-crew → offsets 0, 7, 14.
+      UI wizard uses num_crews to prompt creating N ScheduleAssignment records at Level 5.
+    
+    Oil & Gas / Long-cycle contracts:
+      Use cycle_length_days = fixed days (e.g. 120 = 90 WORKDAY + 30 OFF in pattern_day).
+      cycle_anchor_weekday = null (floating). set rotation_type = ROTATING.
+      HR adjusts start_reference_date per contract renewal if schedule shifts.
+  '''
 }
 
 // Pattern-DayModel relationship (ordered sequence)
 Table ta.pattern_day {
   pattern_id        uuid [ref: > ta.pattern_template.id]
-  day_number        int                         // 1, 2, 3... (position in cycle)
+  day_number        int                         // 1-indexed position in cycle (1 to cycle_length_days)
   day_model_id      uuid [ref: > ta.day_model.id]
+  
+  group_label       varchar(50) [null]          // [v5.9] NEW: Optional display label for grouping days in UI
+                                                // Example (21-day): "Week 1 – Morning", "Week 2 – Rest", "Week 3 – Evening"
+                                                // Example (120-day): "On Period (Day 1–90)", "Off Period (Day 91–120)"
   
   pk ((pattern_id, day_number))
   
   Indexes { (pattern_id, day_number) }
   
-  Note: 'Defines which day model applies to each day in the pattern cycle.'
+  Note: '''
+    Ordered sequence of DayModels composing the pattern cycle (1-indexed day_number).
+    
+    Cycle Day Calculation (Schedule Engine core algorithm):
+      day_index  = ((target_date - start_reference_date) + offset_days) % cycle_length_days
+      day_number = day_index + 1   (convert 0-indexed to 1-indexed)
+    
+    Where:
+      target_date          = the calendar date being resolved
+      start_reference_date = anchor date from ta.schedule_assignment (Level 5); Day 1 of the cycle
+      offset_days          = crew offset from ta.schedule_assignment (Level 5); 0 for base crew
+      cycle_length_days    = from ta.pattern_template
+    
+    Example (3-shift, 21-day, Crew B, offset=7):
+      target_date = 2026-04-07, start_ref = 2026-01-05, offset = 7
+      day_index  = ((2026-04-07 - 2026-01-05) + 7) % 21 = (96 + 7) % 21 = 103 % 21 = 19
+      day_number = 20 → lookup pattern_day WHERE day_number=20 → DayModel → ShiftDef
+    
+    group_label (v5.9):
+      Optional grouping hint for calendar UI. Multiple consecutive rows share same group_label.
+      Not used in schedule calculation — display only.
+  '''
 }
 
 //===============================================================
