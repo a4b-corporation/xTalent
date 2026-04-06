@@ -1,6 +1,45 @@
 # xTalent Database Design – Changelog
 
 
+## [06Apr2026] – v5.9: TA Level 5 — ScheduleAssignment Refinement (Change 37)
+
+> **Context:** Phân tích Level 5 sau khi hoàn thiện Level 1–4 phát hiện 3 vấn đề cần giải quyết: (1) `employee_override_id` tạo ra ambiguity semantic — không rõ là "override ngoài group" hay "chỉ dành cho cá nhân này"; (2) `crew_label` bị thiếu khiến nhiều ScheduleAssignment cùng pattern không phân biệt được; (3) Thiếu validation rule ghi nhận ràng buộc `start_reference_date` phải khớp `cycle_anchor_weekday` của Pattern.
+
+### TA-database-design-v5.dbml
+
+**Change 37 – `ta.schedule_assignment`: 4 changes**
+
+| Action | Field/Area | Detail |
+|--------|-----------|--------|
+| REMOVE | `employee_override_id` | **Decision:** Tất cả trường hợp (group và cá nhân đặc biệt như CEO, expat) đều giải quyết qua `eligibility_profile_id`. CEO/expat → tạo eligibility_profile riêng với `rule_json` scoped đến cá nhân đó (`{"employee_ids":["<uuid>"]}`). Không bypass eligibility engine. |
+| ADD | `crew_label varchar(100) [null]` | Human-readable label cho crew/rotation group. Dùng khi nhiều assignments share cùng `pattern_id` (ROTATING). Ví dụ: "Morning Team" (offset=0), "Evening Team" (offset=7), "Night Team" (offset=14). null cho FIXED single-crew. |
+| ADD | Validation comment `start_reference_date` | `IF pattern.cycle_anchor_weekday IS NOT NULL THEN WEEKDAY(start_reference_date) MUST EQUAL cycle_anchor_weekday`. Validated by Schedule Engine (không phải DB constraint). |
+| DOCUMENT | Temporal model | Confirmed: `effective_start` + `effective_end` only. **NOT SCD Type 2.** Rationale: Level 6 GeneratedRoster là frozen historical record. Dev lead có thể thêm `is_current_flag` tại implementation layer nếu cần — đây là quyết định infra. |
+| ADD | `pattern_id nullable` | `pattern_id [null]` thay vì required — cho phép ad-hoc/FLEX scheduling không có pattern cứng. |
+| DOCUMENT | `eligibility_profile_id [not null]` | Field này now required (previously nullable). Mọi assignment phải có eligibility profile. |
+
+**Field summary (v5.9):**
+
+| Field | Type | Change |
+|-------|------|--------|
+| `pattern_id` | uuid [null] | **UPDATED** — now nullable (FLEX support) |
+| `start_reference_date` | date | Added validation comment |
+| `offset_days` | int [default:0] | Added ROTATING/FIXED/FLEX semantics |
+| `crew_label` | varchar(100) [null] | **NEW** |
+| `eligibility_profile_id` | uuid [not null] | **UPDATED** — now required (was nullable) |
+| `employee_override_id` | — | **REMOVED** |
+| `effective_start` + `effective_end` | date + date[null] | Confirmed non-SCD2 |
+
+**Validation rules (Schedule Engine, not DB):**
+```
+1. WEEKDAY(start_reference_date) == pattern.cycle_anchor_weekday  (if not null)
+2. offset_days = 0  when rotation_type IN (FIXED, FLEX)
+3. offset_days in [0..cycle_length_days)  when rotation_type = ROTATING
+4. IF pattern_id IS NULL → FLEX mode; Level 6 filled manually
+```
+
+---
+
 ## [06Apr2026] – v5.9: TA Level 4 — PatternTemplate Schema Refinement (Change 36)
 
 > **Context:** Phân tích Level 4 cho 3 ngành + trường hợp dầu khí phát hiện 4 gaps: (1) `pattern_json` JSONB là legacy v4 đang tồn tại song song với `ta.pattern_day` normalized — cần deprecate; (2) `rotation_type` thiếu `FLEX` cho retail/hospitality không có cycle cứng; (3) Không có field biểu thị "Day 1 phải là thứ mấy trong tuần" dẫn đến pattern 5x8 có thể bị set sai anchor day; (4) ROTATING pattern không lưu số crew expected khiến HR admin không biết cần tạo bao nhiêu Level 5 assignments.

@@ -491,66 +491,90 @@ Table ta.pattern_day {
 //===============================================================
 //  LEVEL 5: WORK SCHEDULE RULE
 //  [03Apr2026 – Change 30] Hybrid Architecture: Eligibility Engine Integration
+//  [06Apr2026 – Change 37] Removed employee_override_id; added crew_label; validation rules
 //
-//  BEFORE: WHO was determined by manual employee_id / employee_group_id / position_id
-//  AFTER:  WHO is determined dynamically by eligibility_profile_id (Core eligibility engine)
+//  WHO is determined entirely by eligibility_profile_id (Core eligibility engine)
+//  Special cases (CEO, expat, specific individual) — create a dedicated eligibility profile
+//  with rule_json scoped to that individual. No exceptions bypass eligibility.
 //
-//  Architecture pattern (same as TA/TR/Payroll already use for leave/benefits/comp):
-//    eligibility_profile (rule_json: {"depts":["PROD"],"types":["FT"]})
-//      → eligibility_member (cached O(1) membership, auto-updated on employee change)
-//        → schedule_assignment reads eligibility_member to get WHO
+//  Architecture:
+//    eligibility_profile (rule_json: {"departments":["PROD"],"employee_types":["FT"]})
+//      → eligibility_member (cached O(1) membership, auto-updated on employee data change)
+//        → schedule_assignment reads eligibility_member to resolve WHO
 //          → generate Level 6 GeneratedRoster for each eligible employee
 //
-//  Benefits:
-//  - Auto-assign: employee transfer Dept A → B → eligibility re-evaluates → new schedule auto-applies
-//  - No manual ScheduleAssignment per employee/team → reduced HR admin burden
-//  - Cross-module consistency: same eligibility profile used for TA schedule, Absence leave_class, TR benefits
-//  - employee_override_id preserved for VIP/CEO/special cases needing individual override
+//  Temporal model: effective_start + effective_end (simple temporal, NOT SCD Type 2)
+//    Rationale: Level 6 (GeneratedRoster) already serves as frozen historical snapshot.
+//    Double-versioning at Level 5 (SCD2) would be redundant.
+//    Note: If specific use-cases require SCD2 at this level, dev lead may add
+//    is_current_flag at implementation time — this is an infra-layer decision.
 //
-//  Why Level 6 (GeneratedRoster) is STILL needed (not replaced by dynamic calculation):
-//  - Override storage: per-day per-employee ad-hoc changes (schedule_override)
-//  - Status lifecycle: SCHEDULED → CONFIRMED → COMPLETED → CANCELLED (persistent state)
-//  - Holiday resolution: holiday calendar already merged into each daily row
-//  - Point-in-time accuracy: if config changes mid-month, historical roster rows are frozen
-//  - Attendance join: clock_event needs O(1) lookup of scheduled shift for late/early detection
-//  - Payroll export: end-of-period export reads frozen roster data, not re-calculated
+//  Why Level 6 (GeneratedRoster) is STILL required after Level 5 + Eligibility:
+//    - Per-day per-employee override storage (schedule_override)
+//    - Status lifecycle: SCHEDULED → CONFIRMED → COMPLETED → CANCELLED
+//    - Holiday resolution already materialized into each daily row
+//    - Point-in-time accuracy: historical roster rows are frozen even if config changes
+//    - Attendance join: clock_event O(1) lookup of scheduled shift
+//    - Payroll export: reads frozen roster, not re-calculated
 //===============================================================
 
 // [v5] ENHANCED: Added rotation logic, calendar integration, and offset
-// [03Apr2026 Change 30] REFACTORED: WHO now via eligibility engine (not manual employee_id)
+// [Change 30 - 03Apr2026] REFACTORED: WHO now via eligibility engine (removed manual employee_id/group/position)
+// [Change 37 - 06Apr2026] UPDATED: Removed employee_override_id; added crew_label; added validation notes
 Table ta.schedule_assignment {
   id                uuid [pk]
   code              varchar(50) [unique]
   name              varchar(100)
   
-  // WHAT: Which pattern, calendar, and rotation offset
-  pattern_id        uuid [ref: > ta.pattern_template.id]
-  holiday_calendar_id uuid [ref: > absence.holiday_calendar.id, null] // [v5] Link to holiday calendar
+  // ================================================================
+  // WHAT: Pattern + Calendar + Rotation
+  // ================================================================
+  pattern_id        uuid [ref: > ta.pattern_template.id, null]   // null for ad-hoc/FLEX scheduling (no fixed pattern)
+  holiday_calendar_id uuid [ref: > absence.holiday_calendar.id, null]
   
-  // Rotation anchor
-  start_reference_date date                     // [v5] RENAMED: from rotation_start
-  offset_days       int [default:0]             // [v5] RENAMED: from rotation_anchor; for rotating crew shifts
+  // Rotation anchor (used by Schedule Engine cycle calculation)
+  start_reference_date date                     // Day 1 of the pattern cycle for this assignment
+                                                // Validation: if pattern.cycle_anchor_weekday IS NOT NULL,
+                                                //   then WEEKDAY(start_reference_date) MUST equal cycle_anchor_weekday
+                                                // Example: pattern 5x8 has cycle_anchor_weekday=1 (Monday)
+                                                //   → start_reference_date must be a Monday, or Schedule Engine rejects
   
-  // WHO (via Centralized Eligibility Engine — Change 30)
-  // [03Apr2026 Change 30] ADDED: replaces employee_id / employee_group_id / position_id
-  // Eligibility profile defines the organizational scope via rule_json
-  // Examples: {"departments":["PRODUCTION"],"employee_types":["FULLTIME"],"countries":["VN"]}
-  // WHO is resolved at roster-generation time via eligibility.eligibility_member cache
-  eligibility_profile_id uuid [ref: > eligibility.eligibility_profile.id, null]
+  offset_days       int [default:0]             // Crew offset for ROTATING patterns
+                                                // offset = crew_index × (cycle_length / num_crews)
+                                                // Example: 3-shift 21-day, 3 crews → offsets: 0, 7, 14
+                                                // For FIXED patterns: always 0
+                                                // For FLEX patterns: not used (set to 0)
   
-  // DEPRECATED (Change 30): Use eligibility_profile_id instead
-  // Kept for backward compatibility; will remove in v6.0
-  // employee_id       uuid [ref: > employment.employee.id, null]       // DEPRECATED Change 30
-  // employee_group_id uuid [ref: > org_bu.unit.id, null]              // DEPRECATED Change 30
-  // position_id       uuid [null]                                      // DEPRECATED Change 30
+  crew_label        varchar(100) [null]         // [Change 37] Human-readable label for this crew/rotation group
+                                                // Used when multiple ScheduleAssignments share the same pattern_id
+                                                // Example: "Morning Team", "Evening Crew", "Night Squad", "Offshore Crew A"
+                                                // null for FIXED patterns with single assignment per pattern
   
-  // Edge-case override: for individual employees needing a specific schedule
-  // regardless of their eligibility group (e.g., CEO, expat, special shift worker)
-  employee_override_id uuid [ref: > employment.employee.id, null] // [Change 30] NEW: individual override
+  // ================================================================
+  // WHO: Centralized Eligibility Engine
+  // ================================================================
+  // All cases (group AND individual) resolved via eligibility_profile_id
+  // For CEO, expat, individual special cases: create a dedicated eligibility_profile
+  //   with rule_json scoped to that individual (e.g., {"employee_ids":["<uuid>"]}).
+  // No employee_id / override mechanism at this level.
+  eligibility_profile_id uuid [ref: > eligibility.eligibility_profile.id]
+                                                // Required. No bypass via individual employee_id.
+                                                // eligibility.domain = 'SCHEDULING'
+                                                // eligibility_member cache provides O(1) employee list
   
-  // Validity
-  effective_start   date
-  effective_end     date [null]
+  // [Change 37 REMOVED] employee_override_id has been removed.
+  //   Rationale: Individual overrides handled by creating a dedicated eligibility_profile.
+  //   This eliminates ambiguity between group and individual assignment semantics.
+  // [Change 30 REMOVED] employee_id, employee_group_id, position_id — superseded by eligibility engine
+  
+  // ================================================================
+  // TEMPORAL: Simple effective date range (NOT SCD Type 2)
+  // ================================================================
+  effective_start   date [not null]             // Assignment takes effect from this date
+  effective_end     date [null]                 // null = open-ended (no planned end)
+                                                // NOTE: SCD Type 2 (is_current_flag) intentionally omitted.
+                                                // Rationale: Level 6 GeneratedRoster is the frozen historical record.
+                                                // Dev lead may add is_current_flag at implementation if required.
   
   metadata          jsonb
   created_at        timestamptz [default:`now()`]
@@ -558,10 +582,49 @@ Table ta.schedule_assignment {
   
   Indexes {
     (eligibility_profile_id, effective_start)
-    (employee_override_id, effective_start)
+    (pattern_id, effective_start)
+    (crew_label, pattern_id)                    // [Change 37] Fast crew lookup
   }
   
-  Note: 'Change 30 (03Apr2026): Refactored WHO from manual employee_id/group/position to centralized eligibility_profile_id. Pattern config (WHAT) unchanged. Level 6 GeneratedRoster still required for per-day materialization, overrides, status lifecycle, and attendance integration.'
+  Note: '''
+    Level 5 — Connects WHO (employees via eligibility) to WHAT (pattern + calendar + offset).
+    
+    WHO resolution:
+      All employee targeting is done through eligibility_profile_id.
+      eligibility_profile.rule_json defines organizational criteria (departments, types, grades, countries).
+      eligibility_member is auto-cached and updated when employee data changes (transfers, promotions, etc.).
+      Special individuals (CEO, expat) get their own dedicated eligibility_profile, not bypassed.
+    
+    Validation rules (enforced at Schedule Engine level, not DB constraint):
+      1. start_reference_date weekday:
+         IF pattern.cycle_anchor_weekday IS NOT NULL
+         THEN WEEKDAY(start_reference_date) MUST EQUAL pattern.cycle_anchor_weekday
+         ELSE any date is valid.
+         Example: 5×8 pattern (cycle_anchor_weekday=1=Monday)
+           → start_reference_date=2026-01-05(Mon) ✔  start_reference_date=2026-01-06(Tue) ✘
+      
+      2. offset_days sanity:
+         IF pattern.rotation_type = FIXED THEN offset_days = 0
+         IF pattern.rotation_type = FLEX  THEN offset_days = 0 (not used in cycle calc)
+         IF pattern.rotation_type = ROTATING THEN offset_days in [0..cycle_length_days)
+      
+      3. pattern_id nullable:
+         IF pattern_id IS NULL THEN rotation_type is implicitly FLEX.
+         Level 6 roster must be filled manually or by scheduler algorithm.
+    
+    Temporal model:
+      Simple effective date range: effective_start ≤ date ≤ COALESCE(effective_end, ’infinity’).
+      NOT SCD Type 2 — no is_current_flag at this layer.
+      Level 6 GeneratedRoster rows serve as point-in-time frozen records.
+    
+    crew_label usage (ROTATING patterns):
+      When multiple assignments share the same pattern_id (different crews),
+      crew_label distinguishes them in UI and reports.
+      Example: 3-shift pattern → 3 assignments:
+        crew_label="Morning Team",  offset_days=0
+        crew_label="Evening Team",  offset_days=7
+        crew_label="Night Team",    offset_days=14
+  '''
 }
 
 //===============================================================
