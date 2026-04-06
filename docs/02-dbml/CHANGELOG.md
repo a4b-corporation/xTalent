@@ -1,7 +1,68 @@
 # xTalent Database Design – Changelog
 
 
+## [06Apr2026] – v5.7: TA Level 1 — Segment Type Expansion + OT/Geofence Control Fields (Change 33)
+
+> Context: Phân tích coverage của 4 segment types hiện tại (WORK, BREAK, MEAL, TRANSFER) cho thấy 2 gaps nghiêm trọng:
+> (1) **STANDBY** — Không có type cho trực ca (on-call), phổ biến trong manufacturing, healthcare, security. WORK không thể model đúng vì rate khác biệt, geofence rule khác, không tính OT base.
+> (2) **TRAINING** — Không có type cho đào tạo. Nếu dùng WORK: costing sai (charge Production thay vì L&D budget), không extract được compliance report training hours, OT calculation sai.
+> Architecture Decision: Nâng từ 4 → 6 types. Thêm 2 control fields `counts_toward_ot` và `geofence_exempt` thay vì hard-code logic trong application layer.
+
+### TA-database-design-v5.dbml
+
+**Change 33 – `ta.time_segment`: Extended segment_type + 2 new control fields**
+
+| Action | Field / Change | Detail |
+|--------|---------------|--------|
+| ADD enum value | `STANDBY` to `segment_type` | On-call/standby duty. Paid at rate via `premium_code`. `counts_toward_ot=false`, `geofence_exempt=true` by default. |
+| ADD enum value | `TRAINING` to `segment_type` | Training/education/onboarding. Paid, count attendance, but `counts_toward_ot=false`. `cost_center_code` → L&D budget. |
+| ADD field | `counts_toward_ot boolean [default:true]` | Controls whether segment hours count toward OT threshold. System-forced false for STANDBY/TRAINING. HR-configurable for WORK/TRANSFER. |
+| ADD field | `geofence_exempt boolean [default:false]` | When true (STANDBY), ATT-M-002 geofence validation is skipped for this segment. Employee does not need to clock-in biometrically. |
+| UPDATE comment | `segment_type` inline documentation | Expanded comment block explaining all 6 values with paid/OT/geofence defaults. |
+| UPDATE Note | Table Note block | Rewritten as multi-line note with default matrix per segment_type. |
+| UPDATE comment | `cost_center_code` | Added note: TRAINING segments should reference L&D cost center (CC-LND-xxx). |
+| UPDATE comment | `premium_code` | Added STANDBY_RATE as example premium code. |
+
+**Updated `segment_type` default behavior matrix:**
+
+| segment_type | is_paid default | counts_toward_ot | geofence_exempt | OT Rate |
+|-------------|:---:|:---:|:---:|---------|
+| `WORK` | true | true | false | Standard / Premium via premium_code |
+| `BREAK` | false | false | false | N/A |
+| `MEAL` | false | false | false | N/A |
+| `TRANSFER` | true | true | false | Standard (travel time) |
+| `STANDBY` | true | **false** | **true** | Flat/reduced — via `premium_code = STANDBY_RATE` |
+| `TRAINING` | true | **false** | false | Standard (training time) |
+
+**Why STANDBY needs its own type (cannot use WORK):**
+- Rate model: flat/reduced rate (not hourly work rate) — payroll engine treats differently
+- Geofence: employee may be at home (remote standby) — geofence check must be skipped
+- OT Impact: standby hours excluded from OT threshold in most labor policies (VLC + enterprise)
+- Attendance: no biometric clock-in required; start/end logged as a block
+
+**Why TRAINING needs its own type (cannot use WORK):**
+- Costing: always charged to Training/L&D budget, not Production cost center
+- OT policy: most policies exclude training hours from OT base
+- Compliance reporting: training hours must be extractable for audit (safety training, onboarding)
+- L&D analytics: `segment_type = TRAINING` enables direct query without requiring `premium_code` pattern matching
+
+**Modeling patterns documented (use WORK + premium_code, no new type needed):**
+- Handover: `WORK` + `premium_code = "HANDOVER"`
+- Prep/Setup: `WORK` + `premium_code = "PREP"`
+- Unpaid travel: `TRANSFER` + `is_paid = false`
+
+**Related documentation updated:**
+- `TA/01-scheduling-model.md` — Level 1 Segment Types table expanded to 6 rows + 2 sample data records added (ONCALL_NIGHT, ORIENTATION)
+- `SCH-M-001-time-segment-config.spec.md` — Segment Types table, filter chips, form radio group, Section 3 pay & attendance rules, BR-SCH-011, BR-SCH-012, Validation Matrix (2 new rows)
+
+**New business rules triggered:**
+- `BR-SCH-011`: STANDBY auto-sets `counts_toward_ot=false` + geofence exempt. Active work during standby = separate WORK segment.
+- `BR-SCH-012`: TRAINING auto-sets `counts_toward_ot=false`. Missing `cost_center_code` = non-blocking warning.
+
+---
+
 ## [03Apr2026-c] – v5.6: `compensation.basis_line` Structural Fix — Mandatory `pay_component_def_id` (Change 32)
+
 
 > Context: Phân tích `compensation.basis_line` phát hiện 2 vấn đề: (1) không có FK đến `pay_component_def` → payroll engine không thể đọc `tax_treatment`, `is_subject_to_si`, `calculation_method` của từng phụ cấp → line bị bỏ qua khi tính lương. (2) `component_name varchar` (free-text) + `OTHER` type cho phép ad-hoc allowance không link về config → không tham gia được payroll → vô nghĩa.
 > Decision: **Xóa `component_name` và `OTHER` type. Thêm `pay_component_def_id NOT NULL FK`.** Mọi phụ cấp phải được định nghĩa trước trong `pay_component_def` + cho phép trong `salary_basis_component_map`.

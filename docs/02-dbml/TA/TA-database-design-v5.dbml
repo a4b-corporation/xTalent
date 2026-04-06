@@ -157,12 +157,19 @@ Enum period_type {
 //===============================================================
 
 // [v5] NEW TABLE: Level 1 Atomic Unit (replaces hardcoded segments)
+// [v5.7] UPDATED: segment_type expanded from 4 to 6 values (Change 33)
 Table ta.time_segment {
   id                uuid [pk]
   code              varchar(50) [unique]
   name              varchar(100)
   
-  segment_type      varchar(20)                 // WORK | BREAK | MEAL | TRANSFER
+  segment_type      varchar(20)                 // WORK | BREAK | MEAL | TRANSFER | STANDBY | TRAINING
+                                                //   WORK     : Productive work time. Paid, count attendance, count OT base.
+                                                //   BREAK    : Short rest (< 30 min). Unpaid, no attendance count.
+                                                //   MEAL     : Meal break (≥ 30 min). Unpaid, no attendance count.
+                                                //   TRANSFER : Travel between sites. Paid, count attendance, count OT base.
+                                                //   STANDBY  : On-call/standby duty. Paid (via premium_code), NOT OT base, geofence exempt.
+                                                //   TRAINING : Training/education. Paid, count attendance, NOT OT base. Cost to L&D budget.
   
   // Timing (relative or absolute)
   start_offset_min  int [null]                  // Minutes from shift start (relative)
@@ -174,10 +181,14 @@ Table ta.time_segment {
   is_paid           boolean [default:false]
   is_mandatory      boolean [default:true]
   
+  // [v5.7] NEW: OT and attendance control flags
+  counts_toward_ot  boolean [default:true]      // For STANDBY/TRAINING: system-forced false. For WORK/TRANSFER: default true, HR-configurable.
+  geofence_exempt   boolean [default:false]     // For STANDBY: true (no geofence check required). Controlled by ATT-M-002 policy.
+  
   // Attributes for payroll/costing
-  cost_center_code  varchar(50) [null]
+  cost_center_code  varchar(50) [null]          // TRAINING segments: should reference L&D cost center (CC-LND-xxx)
   job_code          varchar(50) [null]
-  premium_code      varchar(50) [null]          // Night shift, hazard, etc.
+  premium_code      varchar(50) [null]          // Night shift, hazard, STANDBY_RATE, etc.
   
   metadata          jsonb
   is_active         boolean [default:true]
@@ -187,7 +198,19 @@ Table ta.time_segment {
   created_at        timestamptz [default:`now()`]
   updated_at        timestamptz [null]
   
-  Note: 'Atomic building block. Can be relative (offset) or absolute (time).'
+  Note: '''
+    Atomic building block for 6-Level Scheduling Hierarchy (Level 1).
+    Segments compose into Shift Definitions (Level 2).
+    
+    segment_type defaults by type:
+      WORK/TRANSFER : is_paid=true,  counts_toward_ot=true,  geofence_exempt=false
+      BREAK/MEAL    : is_paid=false, counts_toward_ot=false, geofence_exempt=false  
+      STANDBY       : is_paid=true,  counts_toward_ot=false, geofence_exempt=true   -- rate via premium_code
+      TRAINING      : is_paid=true,  counts_toward_ot=false, geofence_exempt=false  -- cost to L&D budget
+    
+    Timing: RELATIVE (offset from shift start) or ABSOLUTE (fixed clock time).
+    Change 33 (06Apr2026): Added STANDBY + TRAINING types + counts_toward_ot + geofence_exempt fields.
+  '''
 }
 
 //===============================================================

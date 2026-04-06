@@ -71,12 +71,27 @@ classDiagram
 
 ### Segment Types
 
-| Type | Description | Paid? | Use Case |
-|------|-------------|:-----:|----------|
-| `WORK` | Productive work time | ✅ | Main work periods |
-| `BREAK` | Short rest period | ❌ | Coffee breaks, rest periods |
-| `MEAL` | Meal break | ❌ | Lunch, dinner breaks |
-| `TRANSFER` | Travel between locations | ✅ | Field work, multi-site |
+| Type | Description | Paid Default | Count Attendance | Count OT Base | Use Case |
+|------|-------------|:---:|:---:|:---:|----------|
+| `WORK` | Productive work time | ✅ | ✅ | ✅ | Main work periods |
+| `BREAK` | Short rest period (< 30 min) | ❌ | ❌ | ❌ | Coffee breaks, rest periods |
+| `MEAL` | Meal break (≥ 30 min) | ❌ | ❌ | ❌ | Lunch, dinner breaks |
+| `TRANSFER` | Paid travel between work sites | ✅ | ✅ | ✅ | Field work, multi-site |
+| `STANDBY` | On-call / standby duty; rate via `premium_code` | ✅* | ⚠️ Policy | ❌ | Manufacturing watch, healthcare on-call |
+| `TRAINING` | Training, education, onboarding; costing to L&D | ✅ | ✅ | ❌ | Safety training, orientation |
+
+> **STANDBY**: Paid but at reduced/flat rate defined by `premium_code` (e.g., `STANDBY_RATE`). Exempt from geofence validation. If employee is called to active duty during standby, the active time is logged as a WORK segment with applicable OT rate.
+>
+> **TRAINING**: Excluded from OT base. `cost_center_code` should reference the Training/L&D cost center, not the Production cost center.
+
+**Modeling patterns for other use cases (no additional type needed):**
+
+| Use Case | Pattern |
+|----------|---------|
+| Shift handover | `WORK` + `premium_code = "HANDOVER"` |
+| Prep / Setup time | `WORK` + `premium_code = "PREP"` |
+| Unpaid travel (home → site) | `TRANSFER` + `is_paid = false` |
+| Medical check during shift | `WORK` + `premium_code = "HEALTH_CHECK"` |
 
 ### Timing Definition
 
@@ -151,6 +166,42 @@ TimeSegment có thể được định nghĩa theo 2 cách:
   "is_paid": true,
   "is_mandatory": true,
   "premium_code": "NIGHT_DIFF",
+  "metadata": {}
+}
+```
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440004",
+  "code": "ONCALL_NIGHT",
+  "name": "On-Call Night Standby",
+  "segment_type": "STANDBY",
+  "start_time": "22:00:00",
+  "end_time": "06:00:00",
+  "duration_minutes": 480,
+  "is_paid": true,
+  "is_mandatory": true,
+  "premium_code": "STANDBY_RATE",
+  "counts_toward_ot": false,
+  "geofence_exempt": true,
+  "metadata": {}
+}
+```
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440005",
+  "code": "ORIENTATION",
+  "name": "New Employee Orientation",
+  "segment_type": "TRAINING",
+  "start_offset_min": 0,
+  "end_offset_min": 480,
+  "duration_minutes": 480,
+  "is_paid": true,
+  "is_mandatory": true,
+  "premium_code": null,
+  "counts_toward_ot": false,
+  "cost_center_code": "CC-LND-001",
   "metadata": {}
 }
 ```
