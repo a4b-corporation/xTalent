@@ -25,7 +25,7 @@ Scheduling model sử dụng **6-Level Hierarchical Architecture** - một diffe
 ## The 6 Levels
 
 ```
-Level 1: TimeSegment      ← Atomic unit (WORK, BREAK, MEAL, TRANSFER)
+Level 1: TimeSegment      ← Atomic unit (WORK, BREAK, MEAL, TRANSFER, STANDBY, TRAINING)
     ↓ compose
 Level 2: ShiftDefinition  ← Combination of segments = 1 shift
     ↓ link
@@ -846,12 +846,20 @@ For each employee:
 **Step 1: Create Time Segments**
 ```sql
 -- Work 8h segment
-INSERT INTO ta.time_segment (code, name, segment_type, duration_minutes, is_paid)
-VALUES ('WORK_8H', 'Work 8 Hours', 'WORK', 480, true);
+INSERT INTO ta.time_segment (code, name, segment_type, duration_minutes, is_paid, counts_toward_ot)
+VALUES ('WORK_8H', 'Work 8 Hours', 'WORK', 480, true, true);
 
 -- Short break 30min
-INSERT INTO ta.time_segment (code, name, segment_type, duration_minutes, is_paid)
-VALUES ('BREAK_30M', 'Short Break', 'BREAK', 30, false);
+INSERT INTO ta.time_segment (code, name, segment_type, duration_minutes, is_paid, counts_toward_ot)
+VALUES ('BREAK_30M', 'Short Break', 'BREAK', 30, false, false);
+
+-- On-call standby 8h (e.g., night watch)
+INSERT INTO ta.time_segment (code, name, segment_type, duration_minutes, is_paid, counts_toward_ot, geofence_exempt, premium_code)
+VALUES ('ONCALL_8H', 'On-Call Standby 8h', 'STANDBY', 480, true, false, true, 'STANDBY_RATE');
+
+-- Safety training 4h
+INSERT INTO ta.time_segment (code, name, segment_type, duration_minutes, is_paid, counts_toward_ot, cost_center_code)
+VALUES ('SAFETY_TRAINING_4H', 'Safety Training 4h', 'TRAINING', 240, true, false, 'CC-LND-001');
 ```
 
 **Step 2: Create Shifts**
@@ -891,16 +899,17 @@ VALUES ('3SHIFT_21DAY', '3-Shift 21-Day Rotation', 21, 'ROTATING');
 **Step 5: Assign to Crews**
 ```sql
 -- Crew A: offset=0
-INSERT INTO ta.schedule_assignment (code, pattern_id, offset_days, employee_group_id)
-VALUES ('CREW_A_RULE', '3SHIFT_21DAY_ID', 0, 'CREW_A_ID');
+-- NOTE: employee_group_id is DEPRECATED (Change 30). Use eligibility_profile_id instead.
+INSERT INTO ta.schedule_assignment (code, pattern_id, offset_days, eligibility_profile_id)
+VALUES ('CREW_A_RULE', '3SHIFT_21DAY_ID', 0, 'ELIG_SHIFT_CREW_A');
 
 -- Crew B: offset=7
-INSERT INTO ta.schedule_assignment (code, pattern_id, offset_days, employee_group_id)
-VALUES ('CREW_B_RULE', '3SHIFT_21DAY_ID', 7, 'CREW_B_ID');
+INSERT INTO ta.schedule_assignment (code, pattern_id, offset_days, eligibility_profile_id)
+VALUES ('CREW_B_RULE', '3SHIFT_21DAY_ID', 7, 'ELIG_SHIFT_CREW_B');
 
 -- Crew C: offset=14
-INSERT INTO ta.schedule_assignment (code, pattern_id, offset_days, employee_group_id)
-VALUES ('CREW_C_RULE', '3SHIFT_21DAY_ID', 14, 'CREW_C_ID');
+INSERT INTO ta.schedule_assignment (code, pattern_id, offset_days, eligibility_profile_id)
+VALUES ('CREW_C_RULE', '3SHIFT_21DAY_ID', 14, 'ELIG_SHIFT_CREW_C');
 ```
 
 **Step 6: Generate Roster**
