@@ -104,13 +104,19 @@ Enum movement_type {
   CASHOUT [note: "Encashment — converted to payroll payment"]
 }
 
+// [Change 40 - 06Apr2026] UPDATED: Unified status enum (merged DBML draft + doc statuses)
+// Previous DBML had: DRAFT, PENDING, APPROVED, REJECTED, WITHDRAWN, CANCELLED
+// Previous Doc had:  SUBMITTED, UNDER_REVIEW, APPROVED, REJECTED, CANCELLATION_PENDING, CANCELLED
+// Resolution: Full lifecycle merge — product standard from 06Apr2026
 Enum leave_request_status {
-  SUBMITTED            [note: "Balance reservation placed; routing pending"]
-  UNDER_REVIEW         [note: "At least one approval level pending"]
-  APPROVED             [note: "All approvals complete; deduction on leave start"]
-  REJECTED             [note: "Any approver rejected; reservation released"]
-  CANCELLATION_PENDING [note: "Post-deadline cancel awaiting manager"]
-  CANCELLED            [note: "Cancellation complete; balance fully restored"]
+  DRAFT                [note: "Employee saved draft, not yet submitted. No balance hold."]
+  SUBMITTED            [note: "Employee submitted. Balance RESERVATION placed (hold_qty). Routing to approver."]
+  UNDER_REVIEW         [note: "At least one approval level pending. Reservation maintained."]
+  APPROVED             [note: "All approval levels complete. Reservation → USE movement triggered on leave start date."]
+  REJECTED             [note: "Any approver rejected. RELEASE movement created. Balance restored."]
+  CANCELLATION_PENDING [note: "Cancellation requested after deadline. Awaiting manager approval. Reservation maintained."]
+  CANCELLED            [note: "Cancellation complete. Balance fully restored. RELEASE movement created."]
+  WITHDRAWN            [note: "Employee withdrew before any approver action (pre-UNDER_REVIEW). RELEASE movement created."]
 }
 
 Enum reservation_status {
@@ -1590,6 +1596,8 @@ Table absence.leave_movement {
 
 
 /*----------- 5. Leave Request (Giữ, bổ sung status) -----------*/
+// [Change 40 - 06Apr2026] UPDATED: Unified status_code enum, added holiday_calendar_id FK,
+//   added certificate_doc_id, cancelled_at, withdrawn_at
 Table absence.leave_request {
   id            uuid [pk]
   employee_id   uuid [ref: > employment.employee.id]
@@ -1598,34 +1606,66 @@ Table absence.leave_request {
   start_dt      timestamp
   end_dt        timestamp
   
-  total_days    decimal(6,2) [null]             // 2025-12-01 NEW: calculated working days
+  total_days    decimal(6,2) [null]             // Calculated working days (excludes weekends & holidays per holiday_calendar)
   
-  is_half_day   boolean [default:false]         // 2025-12-01 NEW
-  half_day_period varchar(10) [null]            // 2025-12-01 NEW: MORNING, AFTERNOON
+  is_half_day   boolean [default:false]
+  half_day_period varchar(10) [null]            // MORNING | AFTERNOON — only valid when is_half_day=true and leave_type.allows_half_day=true
   
   qty_hours_req decimal(6,2) [null]
   
-  status_code   varchar(20)                     // DRAFT, PENDING, APPROVED, REJECTED, WITHDRAWN, CANCELLED
-  // workflow_state jsonb  [null]   // DEPRECATED 27Mar2026 → Temporal workflow engine
+  // [Change 40] UPDATED: Unified status lifecycle enum
+  // See Enum leave_request_status for full transitions.
+  // Balance effects:
+  //   DRAFT             → no hold
+  //   SUBMITTED         → RESERVE movement placed
+  //   UNDER_REVIEW      → hold maintained
+  //   APPROVED          → USE movement on leave start
+  //   REJECTED/WITHDRAWN/CANCELLED → RELEASE movement
+  //   CANCELLATION_PENDING → hold maintained pending manager decision
+  status_code   varchar(20) [default:'DRAFT']   // See Enum leave_request_status
+  
   reason        text [null]
   
-  instant_id    uuid [null, ref: > absence.leave_instant.id]
+  instant_id    uuid [null, ref: > absence.leave_instant.id]  // LeaveInstant for this employee×class
   
-  submitted_at  timestamptz [null]              // 2025-12-01 NEW; 27Mar2026: changed (Change 10)
-  approved_by   uuid [ref: > employment.employee.id, null] // 2025-12-01 NEW
-  approved_at   timestamptz [null]              // 2025-12-01 NEW; 27Mar2026: changed (Change 10)
-  rejection_reason text [null]                  // 2025-12-01 NEW
+  // [Change 40 NEW] holiday_calendar_id — FK to record WHICH calendar was used for total_days calculation.
+  // Critical for audit/retro: allows re-verifying total_days without re-running calendar logic.
+  // Source: resolved at submit time from leave_class.bu_id/le_id → nearest matching holiday_calendar.
+  holiday_calendar_id uuid [null, ref: > absence.holiday_calendar.id]
   
-  // escalation_level smallint [default:0]  // DEPRECATED 27Mar2026 → Temporal workflow engine
+  // [Change 40 NEW] certificate_doc_id — Optional medical/legal certificate.
+  // Refs person.document (Core DMS integration). VLC Art. 114: sick > 2 days requires doctor cert.
+  // null = no certificate required (depends on leave_type.requires_certificate rule in leave_policy)
+  certificate_doc_id uuid [null]               // Soft ref: person.document.id (no FK — cross-module boundary)
+  
+  submitted_at  timestamptz [null]
+  approved_by   uuid [ref: > employment.employee.id, null]
+  approved_at   timestamptz [null]
+  rejection_reason text [null]
+  cancelled_at  timestamptz [null]              // [Change 40 NEW] When CANCELLED state was entered
+  withdrawn_at  timestamptz [null]              // [Change 40 NEW] When WITHDRAWN state was entered
   
   metadata      jsonb
   created_at    timestamptz [default:`now()`]
-  updated_at    timestamptz [null]                // 2025-12-01 NEW
+  updated_at    timestamptz [null]
   
   Indexes {
     (employee_id, status_code)
     (class_id, start_dt)
+    (holiday_calendar_id)                       // [Change 40] fast lookup by calendar
   }
+  
+  Note: '''
+    [Change 40 - 06Apr2026] Unified status enum (see Enum leave_request_status).
+    holiday_calendar_id: Frozen at submission time — records which public holiday calendar
+      was used to calculate total_days. Enables accurate retroactive audit.
+    certificate_doc_id: Soft-reference to core.person.document (DMS). Not FK to avoid
+      cross-schema hard dependency. Enforced at application layer.
+    half_day_period: Only valid when leave_type.allows_half_day=true. App-layer validation.
+    WITHDRAWN vs CANCELLED:
+      WITHDRAWN = employee self-action before any approver acts (no deadline concern)
+      CANCELLED = either self-cancel (before cancellation_deadline_days) or manager-approved cancel
+  '''
 }
 
 // 2025-12-01 CHANGED:
@@ -1888,7 +1928,21 @@ Table ta.comp_time_balance {
     (expiry_date)                                 // Query soon-to-expire balances
   }
   
-  Note: 'Compensatory time off balance. VLC Art. 98: OT comp-time in lieu of payment. Flow: overtime_request(comp_time_elected=true) → approved → earned_hours increments.'
+  Note: '''
+    Compensatory time off balance. VLC Art. 98: OT comp-time in lieu of cash OT payment.
+    Flow: overtime_request(comp_time_elected=true) → approved → earned_hours increments here.
+
+    [06Apr2026 NOTE] Bridge approach:
+    This table maintains the raw earned/used/available balance for fast lookup.
+    To integrate comp-time leave into the unified absence system (e.g., employee submits
+    a "Comp-Time Leave" request), create a dedicated LeaveClass with type=COMP_TIME.
+    When an overtime_request is approved with comp_time_elected=true:
+      1. earned_hours increments in this table (source of truth for OT audit)
+      2. A EARN LeaveMovement is posted to the COMP_TIME LeaveInstant (drive from here)
+    This two-table design maintains both OT audit trail AND absence request workflow.
+    COMP_TIME LeaveType should NOT be bundled into Annual Leave — it has different
+    accrual triggers (OT approval), different expiry rules, and needs separate payroll integration.
+  '''
 }
 
 
@@ -1926,6 +1980,58 @@ Table absence.termination_balance_record {
   }
   
   Note: 'Leave balance snapshot at termination. VLC Art. 21: auto-deduction from final pay requires written employee consent. Cross-module: Payroll pay_master.termination_pay_config handles the payment element.'
+}
+
+
+//===============================================================
+//  NEW TABLES — 06Apr2026 (Change 40-41)
+//  Change 40: leave_request unified status, holiday_calendar_id FK, certificate_doc_id
+//  Change 41: leave_blackout_period (config table — prevent leave submission in blocked dates)
+//===============================================================
+
+/*----------- Leave Blackout Period (NEW 06Apr2026, Change 41) --*/
+// Prevents leave submission during system-locked periods (e.g., payroll finalization,
+// year-end close, peak production season).
+// Note: blocks NEW submissions only — does not affect already-approved leave.
+Table absence.leave_blackout_period {
+  id                uuid [pk]
+
+  // ── SCOPE ──
+  org_unit_id       uuid [null]               // null = company-wide; set to specific org_bu.unit.id for team-level block
+  leave_type_code   varchar(50) [null, ref: > absence.leave_type.code]  // null = all types; set to restrict specific type only
+
+  // ── DATE RANGE ──
+  start_date        date [not null]
+  end_date          date [not null]
+
+  // ── CONFIGURATION ──
+  name              varchar(100) [not null]   // "Year-End Payroll Close Q4 2026", "Peak Production Week"
+  reason            text [null]               // Admin explanation shown to employee on rejection
+  is_hard_block     boolean [default: true]   // true = system rejects; false = warning only (requires escalation)
+  escalation_level  smallint [default: 2]     // approval level required to override when is_hard_block=false
+
+  is_active         boolean [default: true]
+  created_by        uuid [ref: > employment.employee.id]
+  created_at        timestamptz [default: `now()`]
+  updated_at        timestamptz [null]
+
+  Indexes {
+    (start_date, end_date)                    // Date-range lookup
+    (org_unit_id, start_date, end_date)       // Org-scoped lookup
+    (leave_type_code, start_date)             // Type-scoped lookup
+  }
+
+  Note: '''
+    NEW 06Apr2026 (Change 41). Prevents new leave_request submission during blocked date ranges.
+    Applied at leave_request submission (DRAFT → SUBMITTED transition):
+      System checks: any active blackout_period WHERE:
+        (org_unit_id IS NULL OR org_unit_id = employee.org_unit_id) AND
+        (leave_type_code IS NULL OR leave_type_code = request.class.type_code) AND
+        start_date <= request.start_dt AND end_date >= request.start_dt
+      is_hard_block=true  → reject with reason message
+      is_hard_block=false → warning, requires escalation_level approval to proceed
+    Does NOT affect already APPROVED/SUBMITTED requests in the blocked period.
+  '''
 }
 
 
@@ -2134,7 +2240,7 @@ TableGroup ta_absence {
   absence.leave_movement
   absence.leave_request
   absence.leave_reservation
-  absence.leave_reservation_line            // NEW 30Mar2026 (Change 16)
+  absence.leave_reservation_line            // NEW 30Mar2026 (Change 16) — dev not yet implemented
   absence.leave_event_def
   absence.leave_class_event                 // NEW 01Apr2026 (Change 26)
   absence.leave_period                      // NEW 01Apr2026 (Change 27)
@@ -2145,6 +2251,7 @@ TableGroup ta_absence {
   // absence.absence_rule                   // DEPRECATED 01Apr2026 (Change 19)
   absence.class_policy_assignment           // 01Apr2026 FIX (Change 22)
   absence.leave_event_run                   // REPLACES leave_accrual_run (Change 29)
+  absence.leave_blackout_period             // NEW 06Apr2026 (Change 41)
 }
 
 TableGroup ta_operational {

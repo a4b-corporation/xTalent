@@ -1,9 +1,26 @@
 # Absence Model - Leave Management & Balance Tracking
 
 **Bounded Context:** `ta.absence`  
-**Tables:** 18  
+**Tables:** 19 (including `leave_blackout_period` — Change 41)  
 **Source:** TA-database-design-v5.dbml (v5.3)  
-**Last Updated:** 2026-04-01
+**Last Updated:** 2026-04-06
+
+---
+
+## Entity Detail Documents (3.x Series)
+
+Mỗi entity có tài liệu riêng với đầy đủ schema, business rules, sample data, và gotchas:
+
+| # | Document | Scope |
+|---|---------|-------|
+| 3.1 | [03.1-leave-type.md](./03.1-leave-type.md) | `absence.leave_type` — Định nghĩa loại nghỉ phép |
+| 3.2 | [03.2-leave-class.md](./03.2-leave-class.md) | `absence.leave_class` — Balance account theo nhóm nhân viên |
+| 3.3 | [03.3-leave-policy.md](./03.3-leave-policy.md) | `absence.leave_policy` + `absence.class_policy_assignment` — Rule engine |
+| 3.4 | [03.4-leave-instant.md](./03.4-leave-instant.md) | `absence.leave_instant` — Balance snapshot per employee × class |
+| 3.5 | [03.5-leave-instant-detail.md](./03.5-leave-instant-detail.md) | `absence.leave_instant_detail` — FEFO lot tracking |
+| 3.6 | [03.6-leave-movement.md](./03.6-leave-movement.md) | `absence.leave_movement` — Immutable ledger |
+| 3.7 | [03.7-leave-request.md](./03.7-leave-request.md) | `absence.leave_request` — Workflow (unified status enum) |
+| 3.8 | [03.8-leave-reservation.md](./03.8-leave-reservation.md) | `absence.leave_reservation` + `absence.leave_reservation_line` |
 
 ---
 
@@ -12,10 +29,10 @@
 Absence model quản lý toàn bộ lifecycle của leave (nghỉ phép), bao gồm:
 - **Leave Configuration**: Types, Classes, Policies
 - **Leave Balance**: Immutable ledger tracking với FEFO
-- **Leave Request**: Workflow từ submit đến approve/reject
+- **Leave Request**: Workflow từ submit đến approve/reject (8-state unified enum)
 - **Event Processing**: Generalized batch event execution
 - **Period Hierarchy**: YEAR → QUARTER → MONTH structure
-- **Staffing Rules**: Team leave limits
+- **Staffing Rules**: Team leave limits + Blackout periods
 
 ---
 
