@@ -1,6 +1,43 @@
 # xTalent Database Design – Changelog
 
 
+## [06Apr2026] – v5.9: TA Level 3 — DayModel day_type Enum Refinement (Change 35)
+
+> **Context:** Phân tích Level 3 DayModel cho 3 use cases ngành (manufacturing, retail, healthcare) phát hiện 2 gaps:
+> 1. `day_type = WORK` gây nhầm lẫn với `segment_type = WORK` ở Level 1 (TimeSegment). Mặc dù 2 field khác nhau, trong ngữ cảnh tài liệu và UX training, người đọc dễ confuse giữa "khoảng thời gian làm việc trong ca" vs "loại ngày đi làm".
+> 2. Không có type riêng cho ngày nghỉ bù bắt buộc (BLLĐ VN Điều 109/115), dẫn đến không thể phân biệt giữa nghỉ thường trong pattern (có thể recall) và nghỉ bù pháp lý (không thể override). Đặc biệt quan trọng cho healthcare và manufacturing với ca đêm/OT thường xuyên.
+
+### TA-database-design-v5.dbml
+
+**Change 35 – `ta.day_model`: day_type enum refinement**
+
+| Action | Detail |
+|--------|--------|
+| RENAME enum value | `WORK` → `WORKDAY` in `day_type`. Rationale: disambiguate from `segment_type=WORK` (Level 1). `WORKDAY` reads as "a day when work happens" vs `WORK` which reads as "work activity". |
+| ADD enum value | `COMPENSATORY_OFF` — Mandatory compensatory rest day. Triggered after OT/night shift. Protected by BLLĐ VN Art.109 (≥12h rest after night shift) and Art.115 (OT on public holiday must be compensated). `shift_id=null`. Cannot be overridden by scheduler to recall employee. |
+| UPDATE field comment | `shift_id` — clarified: required for WORKDAY/HALF_DAY; null for OFF/HOLIDAY/COMPENSATORY_OFF. Added HALF_DAY constraint: shift must be a half-duration ShiftDef. |
+| UPDATE field `variant_selection_rule` | Documented JSONB schema: `holiday_class_handling` (OVERRIDE_TO_OFF \| KEEP_AS_WORK \| USE_HOLIDAY_SHIFT), `holiday_shift_id`, `ot_rate_override`. |
+| UPDATE Table Note | Rewritten as multi-line note with full enum descriptions and 3 industry usage patterns. |
+
+**Final `day_type` enum (v5.9):**
+
+| Value | Hành vi | shift_id | Recall-able? | Labor law ref |
+|-------|---------|:--------:|:------------:|---------------|
+| `WORKDAY` | Ngày làm bình thường | Required | N/A | — |
+| `OFF` | Nghỉ trong pattern (cuối tuần) | null | ✅ (với OT rate) | — |
+| `HOLIDAY` | Ngày lễ quốc gia/công ty | null | ✅ (với holiday rate) | BLL Đ VN Điều 112 |
+| `HALF_DAY` | Nửa ngày làm | Required (half-shift) | N/A | — |
+| `COMPENSATORY_OFF` | Nghỉ bù pháp lý | null | ❌ protected | BLLĐ VN Điều 109, 115 |
+
+**Industry usage patterns:**
+- **Manufacturing 3-shift:** 3 WORKDAY DayModels (MORNING/EVENING/NIGHT) + COMPENSATORY_OFF after consecutive night shifts
+- **Healthcare 24/7:** WORKDAY references ONCALL or STANDBY ShiftDef; COMPENSATORY_OFF after duty nights
+- **Retail PUNCH:** WORKDAY + PUNCH-type shift; actual hours flex by attendance; no COMPENSATORY_OFF needed by default
+
+**Migration note:** `day_type='WORK'` → `day_type='WORKDAY'` requires a data migration. SQL: `UPDATE ta.day_model SET day_type='WORKDAY' WHERE day_type='WORK';`
+
+---
+
 ## [06Apr2026] – v5.8: TA Level 2 — Day Breaker Model + Night Work Bracket (Change 34)
 
 > **Context:** Analysis of cross-midnight shift handling revealed a capability downgrade in v5: `day_breaker_min` (integer) from v4 was replaced by a simple `cross_midnight boolean`. While the flag correctly identifies that a shift spans two calendar dates, it provides **no guidance on how to attribute hours across those dates** — a gap that causes incorrect OT calculation, erroneous attendance reporting, and non-compliance with night-work premium requirements.

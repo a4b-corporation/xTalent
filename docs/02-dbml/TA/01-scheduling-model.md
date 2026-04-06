@@ -399,46 +399,74 @@ classDiagram
         +string half_day_period
     }
     
-    DayModel "0..1" --> "0..1" ShiftDef : "links to (if WORK)"
+    DayModel "0..1" --> "0..1" ShiftDef : "links to (WORKDAY/HALF_DAY only)"
 ```
 
-### Day Types
+### Day Types (v5.9)
 
-| Type | Shift? | Description |
-|------|:------:|-------------|
-| `WORK` | ✅ | Regular work day |
-| `OFF` | ❌ | Rest day (weekend) |
-| `HOLIDAY` | ❌ | Public/company holiday |
-| `HALF_DAY` | ✅ | Half-day work |
+| Type | shift_id | Có thể recall? | Ý nghĩa |
+|------|:--------:|:--------------:|----------|
+| `WORKDAY` | Required | N/A | Ngày làm bình thường. Trỏ đến ShiftDef phù hợp. |
+| `OFF` | null | ✅ (với OT rate) | Nghỉ trong pattern (cuối tuần, planned rest). |
+| `HOLIDAY` | null | ✅ (với holiday rate) | Ngày lễ quốc gia/công ty. Xử lý qua `variant_selection_rule`. |
+| `HALF_DAY` | Required (half-shift) | N/A | Nửa ngày làm. `shift_id` PHẢI trỏ đến half-duration ShiftDef (4h). |
+| `COMPENSATORY_OFF` | null | ❌ protected | Nghỉ bù bắt buộc sau OT/ca đêm. BLLĐ VN Điều 109/115. |
 
-### Sample Data
-
+**WORKDAY — Ca ngày văn phòng:**
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440030",
-  "code": "WORK_DAY",
+  "code": "OFFICE_WORKDAY",
   "name": "Standard Work Day",
-  "day_type": "WORK",
+  "day_type": "WORKDAY",
   "shift_id": "550e8400-e29b-41d4-a716-446655440010",
   "is_half_day": false
 }
 ```
 
+**WORKDAY — Ca đêm nhà máy:**
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440034",
+  "code": "FACTORY_NIGHT_DAY",
+  "name": "Factory Night Shift Day",
+  "day_type": "WORKDAY",
+  "shift_id": "550e8400-e29b-41d4-a716-446655440012",
+  "is_half_day": false
+}
+```
+*Comment: `shift_id` trỏ đến NIGHT_SHIFT (22:00→06:00, cross_midnight=true). Cùng `day_type=WORKDAY` nhưng shift khác → DayModel khác. Nhà máy 3 ca tạo 3 DayModel WORKDAY riêng.*
+
+**WORKDAY — Ca trực y tế (ONCALL + STANDBY):**
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440035",
+  "code": "NURSE_ONCALL_DAY",
+  "name": "Nurse On-Call Day",
+  "day_type": "WORKDAY",
+  "shift_id": "550e8400-e29b-41d4-a716-446655440013",
+  "is_half_day": false
+}
+```
+*Comment: `shift_id` trỏ đến ONCALL_MEDICAL (19:00→07:00, ANCHOR_END, có STANDBY segments). Vẫn là WORKDAY vì nhân viên được schedule — loại ca được định nghĩa ở ShiftDef, không phải DayModel.*
+
+**OFF — Nghỉ cuối tuần:**
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440031",
-  "code": "OFF_DAY",
-  "name": "Rest Day",
+  "code": "WEEKEND_OFF",
+  "name": "Weekend Rest Day",
   "day_type": "OFF",
   "shift_id": null,
   "is_half_day": false
 }
 ```
 
+**HOLIDAY — Ngày lễ, xử lý override về OFF:**
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440032",
-  "code": "HOLIDAY_DAY",
+  "code": "PUBLIC_HOLIDAY",
   "name": "Public Holiday",
   "day_type": "HOLIDAY",
   "shift_id": null,
@@ -448,17 +476,48 @@ classDiagram
 }
 ```
 
+**HOLIDAY — Ngày lễ, nhà máy tiếp tục chạy với OT rate x3:**
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440036",
+  "code": "FACTORY_HOLIDAY_WORK",
+  "name": "Factory Holiday (Production Continues)",
+  "day_type": "HOLIDAY",
+  "shift_id": null,
+  "variant_selection_rule": {
+    "holiday_class_handling": "KEEP_AS_WORK",
+    "ot_rate_override": 3.0
+  }
+}
+```
+*Comment: Nhà máy không dừng sản xuất vào ngày lễ. DayModel HOLIDAY với `KEEP_AS_WORK` → Schedule engine giữ ngày đó là làm việc nhưng kích hoạt OT rate x3 (BLLĐ VN Điều 98 khoản 1c).*
+
+**HALF_DAY — Thứ 7 làm sáng:**
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440033",
-  "code": "HALF_DAY_AM",
-  "name": "Half Day Morning",
+  "code": "SATURDAY_MORNING",
+  "name": "Saturday Half Day Morning",
   "day_type": "HALF_DAY",
-  "shift_id": "550e8400-e29b-41d4-a716-446655440010",
+  "shift_id": "550e8400-e29b-41d4-a716-446655440040",
   "is_half_day": true,
   "half_day_period": "MORNING"
 }
 ```
+*Comment: `shift_id` trỏ đến MORNING_4H shift (08:00→12:00, total_work_hours=4.00). KHÔNG được trỏ đến full shift 8h — validation rule bắt buộc.*
+
+**COMPENSATORY_OFF — Nghỉ bù bắt buộc:**
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440037",
+  "code": "POST_NIGHT_COMP_OFF",
+  "name": "Compensatory Rest After Night Shift",
+  "day_type": "COMPENSATORY_OFF",
+  "shift_id": null,
+  "is_half_day": false
+}
+```
+*Comment: Bác sĩ/y tá sau ca đêm 23:00→07:00 bắt buộc nghỉ ngày hôm sau theo BLLĐ VN Điều 109 (≥12h liên tục sau ca đêm). Khác với OFF thường: scheduler KHÔNG thể override DayModel này để recall nhân viên. Nếu force recall → vi phạm pháp luật → hệ thống phải reject.*
 
 ---
 

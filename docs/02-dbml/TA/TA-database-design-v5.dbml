@@ -308,21 +308,35 @@ Table ta.shift_segment {
 //===============================================================
 
 // [v5] NEW TABLE: Level 3 Daily Schedule (abstracts shift from pattern)
+// [v5.9] UPDATED: day_type WORK renamed to WORKDAY; COMPENSATORY_OFF added
 Table ta.day_model {
   id                uuid [pk]
   code              varchar(50) [unique]
   name              varchar(100)
   
-  day_type          varchar(20)                 // WORK | OFF | HOLIDAY | HALF_DAY
+  day_type          varchar(20)                 // [v5.9] WORKDAY | OFF | HOLIDAY | HALF_DAY | COMPENSATORY_OFF
+                                                //   WORKDAY          — normal working day; requires shift_id
+                                                //   OFF              — rest day in pattern (weekend, planned off); shift_id=null
+                                                //   HOLIDAY          — public/company holiday; handled via holiday calendar
+                                                //   HALF_DAY         — half working day; shift_id MUST reference a half-duration shift (e.g. 4h)
+                                                //   COMPENSATORY_OFF — mandatory rest after OT/night shift (BLLĐ VN Art.109/115); shift_id=null; cannot be recalled
   
-  shift_id          uuid [ref: > ta.shift_def.id, null] // null for OFF/HOLIDAY
+  shift_id          uuid [ref: > ta.shift_def.id, null]
+                                                // Required for WORKDAY and HALF_DAY; null for OFF/HOLIDAY/COMPENSATORY_OFF
+                                                // HALF_DAY constraint: must reference a half-duration ShiftDef, not a full-day shift
   
   // Variant handling for holidays
-  variant_selection_rule jsonb [null]           // Rules for holiday class handling
+  // Controls how this DayModel behaves when the calendar date is flagged as a public holiday
+  variant_selection_rule jsonb [null]           // JSONB schema:
+                                                //   { "holiday_class_handling": "OVERRIDE_TO_OFF"
+                                                //                             | "KEEP_AS_WORK"        (work with holiday OT rate)
+                                                //                             | "USE_HOLIDAY_SHIFT",  (swap to a dedicated holiday shift)
+                                                //     "holiday_shift_id": "<uuid>",                  // only when USE_HOLIDAY_SHIFT
+                                                //     "ot_rate_override": 2.0 }                      // optional: override OT multiplier
   
   // Half-day specifics
-  is_half_day       boolean [default:false]
-  half_day_period   varchar(10) [null]          // MORNING | AFTERNOON
+  is_half_day       boolean [default:false]     // true when day_type = HALF_DAY
+  half_day_period   varchar(10) [null]          // MORNING | AFTERNOON (which half of the day)
   
   metadata          jsonb
   is_active         boolean [default:true]
@@ -332,8 +346,27 @@ Table ta.day_model {
   created_at        timestamptz [default:`now()`]
   updated_at        timestamptz [null]
   
-  Note: 'Represents one day in a work schedule. Links to a shift or marks as OFF/HOLIDAY.'
-}
+  Note: '''
+    Level 3 — Represents one named day configuration in a work pattern.
+    
+    day_type enum (v5.9):
+      WORKDAY          : Normal working day. shift_id required.
+      OFF              : Scheduled rest day (e.g. weekend). shift_id = null.
+      HOLIDAY          : Public or company holiday. Handled by holiday calendar.
+                         variant_selection_rule controls behavior when day falls on a holiday.
+      HALF_DAY         : Half working day. shift_id must point to a half-duration ShiftDef.
+                         half_day_period = MORNING | AFTERNOON.
+      COMPENSATORY_OFF : Mandatory compensatory rest. shift_id = null.
+                         Cannot be overridden to recall an employee (protected by BLLĐ VN Art.109).
+    
+    Usage patterns:
+      Manufacturing 3-shift: Create one WORKDAY DayModel per shift type (MORNING/EVENING/NIGHT).
+        Pattern cycles through them with crew-specific offsets.
+      Healthcare 24/7: WORKDAY DayModels reference ONCALL or STANDBY shifts.
+        COMPENSATORY_OFF follows mandatory post-night-shift rest.
+      Retail PUNCH: WORKDAY DayModel references PUNCH-type ShiftDef.
+        Actual hours determined at attendance time, not at DayModel config.
+  '''
 
 //===============================================================
 //  LEVEL 4: PATTERN (Period Work Schedule)
