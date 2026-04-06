@@ -1,6 +1,50 @@
 # xTalent Database Design – Changelog
 
 
+## [06Apr2026] – v5.8: TA Level 2 — Day Breaker Model + Night Work Bracket (Change 34)
+
+> **Context:** Analysis of cross-midnight shift handling revealed a capability downgrade in v5: `day_breaker_min` (integer) from v4 was replaced by a simple `cross_midnight boolean`. While the flag correctly identifies that a shift spans two calendar dates, it provides **no guidance on how to attribute hours across those dates** — a gap that causes incorrect OT calculation, erroneous attendance reporting, and non-compliance with night-work premium requirements.
+>
+> **Problem statement:**
+> Ca đêm 22:00 (07/04) → 06:00 (08/04): 2h thuộc ngày 07, 6h thuộc ngày 08. Nếu 08/04 là ngày lễ → 6h đó cần tính OT rate ngày lễ khác hoàn toàn. Với `cross_midnight=true` thuần túy, hệ thống không thể phân biệt.
+>
+> **Solution:** Restore and extend day_breaker concept as a 4-mode flexible model (`day_split_mode`), add `day_breaker_hour` for site-specific boundaries, and introduce `night_work_start/end` for legal night-work premium isolation.
+
+### TA-database-design-v5.dbml
+
+**Change 34 – `ta.shift_def`: Day Breaker Model + Night Work Bracket**
+
+| Action | Field | Detail |
+|--------|-------|--------|
+| UPDATE | `cross_midnight` comment | Clarified: flags presence of date span, must be combined with `day_split_mode` |
+| ADD field | `day_split_mode varchar(20) [default:'ANCHOR_START']` | Controls how hours of a cross-midnight shift are attributed to calendar dates. 4 modes: `ANCHOR_START`, `ANCHOR_END`, `SPLIT_MIDNIGHT`, `SPLIT_AT_HOUR` |
+| ADD field | `day_breaker_hour time [null]` | Effective only when `day_split_mode = SPLIT_AT_HOUR`. Sets the custom split point (e.g., `04:00:00` for manufacturing sites). |
+| ADD field | `night_work_start time [default:'22:00:00']` | Start of night-work bracket for legal premium pay. Default: 22:00 (VLC 2019 Điều 105). |
+| ADD field | `night_work_end time [default:'06:00:00']` | End of night-work bracket. Cross-midnight assumed when `end < start`. |
+| UPDATE | Table `Note` | Extended multi-line note documenting all 4 `day_split_mode` values and their use cases. |
+
+**`day_split_mode` decision guide:**
+
+| Mode | Khi nào dùng | Ví dụ |
+|------|-------------|-------|
+| `ANCHOR_START` | Default. Ca rate không đổi qua đêm. Không cần tách theo ngày. | Ca đêm nhà kho, bảo vệ (flat rate) |
+| `ANCHOR_END` | Y tế / điều dưỡng — ca "thuộc" ngày kết thúc (ngày làm về sáng) | Ca trực 19:00→07:00 tính là ca ngày 07+1 |
+| `SPLIT_MIDNIGHT` | Cần tính đúng OT rate từng ngày (ngày lễ, ngày thường khác nhau) | Nhà máy cần tách OT ngày lễ |
+| `SPLIT_AT_HOUR` | Site quy định ranh giới ngày tại giờ cụ thể (không phải 00:00) | Nhà máy dùng 04:00 làm day boundary |
+
+**Impact trên các modules khi `day_split_mode != ANCHOR_START`:**
+- **Attendance engine**: cần tách clock events theo boundary → compute hours-per-date
+- **OT engine**: apply OT rate của đúng ngày cho từng portion
+- **Payroll export**: split `night_work_hours` (22:00–06:00) để tính phụ cấp ≥30% (BLLĐ VN)
+- **Leave engine**: leave request spanning cross-midnight shift cần respect day boundary
+
+**Validation rules:**
+- `day_breaker_hour` must be non-null when `day_split_mode = 'SPLIT_AT_HOUR'`
+- `day_split_mode` other than `ANCHOR_START` is only meaningful when `cross_midnight = true`; system should warn if configured on a non-cross-midnight shift
+- `night_work_end < night_work_start` is valid (implies cross-midnight bracket, e.g., 22:00→06:00)
+
+---
+
 ## [06Apr2026] – v5.7: TA Level 1 — Segment Type Expansion + OT/Geofence Control Fields (Change 33)
 
 > Context: Phân tích coverage của 4 segment types hiện tại (WORK, BREAK, MEAL, TRANSFER) cho thấy 2 gaps nghiêm trọng:

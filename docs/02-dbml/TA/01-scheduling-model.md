@@ -229,6 +229,10 @@ classDiagram
         +decimal total_break_hours
         +decimal total_paid_hours
         +boolean cross_midnight
+        +string day_split_mode
+        +time day_breaker_hour
+        +time night_work_start
+        +time night_work_end
         +int grace_in_minutes
         +int grace_out_minutes
         +int rounding_interval_min
@@ -259,14 +263,26 @@ classDiagram
 ### Shift Attributes
 
 **For ELAPSED shifts:**
-- `reference_start_time`, `reference_end_time` - Fixed schedule
-- `cross_midnight` - Overnight shifts (e.g., 22:00 → 06:00)
+- `reference_start_time`, `reference_end_time` — Fixed schedule boundaries
+- `cross_midnight` — Flags shift as spanning two calendar dates (e.g., 22:00 → 06:00)
+
+**Day Breaker / Shift Boundary (v5.8 — Change 34):**
+`cross_midnight=true` alone is insufficient. Use `day_split_mode` to control hour attribution:
+
+| day_split_mode | Behavior | Khi dùng |
+|---------------|---------|----------|
+| `ANCHOR_START` *(default)* | All hours → shift start date | Ca đêm flat-rate (bảo vệ, kho) |
+| `ANCHOR_END` | All hours → shift end date | Ca y tế (trực về sáng, tính ngày hôm sau) |
+| `SPLIT_MIDNIGHT` | Split at 00:00, each portion to its date | Nhà máy cần đúng OT rate ngày lễ |
+| `SPLIT_AT_HOUR` | Split at `day_breaker_hour` | Site dùng 04:00 làm ranh giới ngày |
+
+`night_work_start` / `night_work_end`: Xác định khung giờ đêm để tính phụ cấp ca đêm. Default 22:00–06:00 (VLC 2019 Điều 105 — phụ cấp tối thiểu 30%).
 
 **For PUNCH shifts:**
-- `grace_in_minutes` - Tolerance for late arrival
-- `grace_out_minutes` - Tolerance for early departure
-- `rounding_interval_min` - Time rounding (default: 15 min)
-- `rounding_mode` - NEAREST, UP, DOWN
+- `grace_in_minutes` — Tolerance for late arrival
+- `grace_out_minutes` — Tolerance for early departure
+- `rounding_interval_min` — Time rounding (default: 15 min)
+- `rounding_mode` — NEAREST, UP, DOWN
 
 ### Sample Data
 
@@ -303,7 +319,7 @@ classDiagram
 }
 ```
 
-**Overnight Shift:**
+**Overnight Shift (with Day Breaker config):**
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440012",
@@ -314,9 +330,35 @@ classDiagram
   "reference_end_time": "06:00:00",
   "total_work_hours": 8.00,
   "cross_midnight": true,
+  "day_split_mode": "SPLIT_MIDNIGHT",
+  "day_breaker_hour": null,
+  "night_work_start": "22:00:00",
+  "night_work_end": "06:00:00",
   "color": "#9013FE"
 }
 ```
+
+*Comment: `day_split_mode=SPLIT_MIDNIGHT` → 2h (22:00–00:00) tính cho ngày bắt đầu, 6h (00:00–06:00) tính cho ngày tiếp theo. Payroll engine dùng `night_work_start/end` để tách và tính phụ cấp 30%.*
+
+**On-Call Medical Shift (cross-midnight, ANCHOR_END):**
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440013",
+  "code": "ONCALL_MEDICAL",
+  "name": "On-Call Medical Shift",
+  "shift_type": "ELAPSED",
+  "reference_start_time": "19:00:00",
+  "reference_end_time": "07:00:00",
+  "total_work_hours": 12.00,
+  "cross_midnight": true,
+  "day_split_mode": "ANCHOR_END",
+  "night_work_start": "22:00:00",
+  "night_work_end": "06:00:00",
+  "color": "#E74C3C"
+}
+```
+
+*Comment: Ca trực bắt đầu 19:00 ngày 07, kết thúc 07:00 ngày 08. `ANCHOR_END` → toàn bộ 12h tính cho ngày 08 (ngày bác sĩ "về"). `night_work_start/end` tách 8h từ 22:00–06:00 để tính phụ cấp đêm.*
 
 ### Shift Breaks (ta.shift_break)
 

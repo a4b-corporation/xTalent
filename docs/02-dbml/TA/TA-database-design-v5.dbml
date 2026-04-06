@@ -234,7 +234,21 @@ Table ta.shift_def {
   total_break_hours decimal(5,2) [default:0]    // [v5] NEW
   total_paid_hours  decimal(5,2)                // [v5] NEW
   
-  cross_midnight    boolean [default:false]     // [v5] REPLACES: day_breaker_min
+  cross_midnight    boolean [default:false]     // [v5] Flag: ca có qua nửa đêm; dùng kết hợp với day_split_mode
+  
+  // Day Breaker / Shift Boundary Rule (for cross-midnight shifts)
+  // [v5.8] NEW: Replaces the removed day_breaker_min from v4 with a flexible model
+  day_split_mode    varchar(20) [default:'ANCHOR_START']  // How cross-midnight hours are attributed to a calendar date:
+                                                           //   ANCHOR_START  — all hours belong to the shift start date (most common)
+                                                           //   ANCHOR_END    — all hours belong to the shift end date
+                                                           //   SPLIT_MIDNIGHT — split at 00:00 (portion each side to respective date)
+                                                           //   SPLIT_AT_HOUR  — split at day_breaker_hour (factory/site-specific boundary)
+  day_breaker_hour  time [null]                           // Only used when day_split_mode = SPLIT_AT_HOUR. e.g. '04:00:00'
+  
+  // Night work definition (for payroll compliance)
+  // [v5.8] NEW: Required to isolate night-work hours for premium pay (VLC 2019 Art.105: 22:00-06:00, min +30%)
+  night_work_start  time [default:'22:00:00']             // Start of night-work bracket per labor law/policy
+  night_work_end    time [default:'06:00:00']             // End of night-work bracket; cross-midnight assumed if end < start
   
   // Grace periods (for PUNCH type)
   grace_in_minutes  int [default:0]             // [v5] NEW
@@ -255,7 +269,21 @@ Table ta.shift_def {
   created_at        timestamptz [default:`now()`]
   updated_at        timestamptz [null]
   
-  Note: 'Composition of time segments. Three types: ELAPSED (fixed), PUNCH (flexible), FLEX (hybrid).'
+  Note: '''
+    Level 2 — Composition of time segments. Three shift types:
+      ELAPSED : Fixed schedule; attendance compared against reference_start/end_time.
+      PUNCH   : Flexible; hours = actual clock-out minus clock-in, then rounded.
+      FLEX    : Hybrid; core hours (reference window) mandatory, rest flexible.
+    
+    Cross-midnight shifts:
+      cross_midnight = true flags the shift as spanning two calendar dates.
+      day_split_mode controls which calendar date the hours are attributed to:
+        ANCHOR_START  → 100% to start date (default — simplest; ok for fixed-rate shifts)
+        ANCHOR_END    → 100% to end date (rare; useful for medical handover)
+        SPLIT_MIDNIGHT → split at 00:00, each portion to its own date (for OT/holiday precision)
+        SPLIT_AT_HOUR  → split at day_breaker_hour (e.g. 04:00 — manufacturing sites)
+      night_work_start/end sets the bracket for legal night-work premium calculation.
+  '''
 }
 
 // Shift-Segment relationship (ordered composition)
