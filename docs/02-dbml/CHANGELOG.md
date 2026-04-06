@@ -1,6 +1,48 @@
 # xTalent Database Design – Changelog
 
 
+## [06Apr2026] – v5.9: TA Level 6 — GeneratedRoster & ScheduleOverride Field Audit (Change 38)
+
+> **Context:** Phân tích Level 6 từ góc độ **operational data table** (không phải master data) phát hiện: (1) thiếu `day_type` denormalized — field critical nhất mà tất cả downstream modules (OT, Payroll, Attendance) cần; (2) thiếu `generated_at` tracking; (3) `holiday_id` thiếu FK ref constraint; (4) `schedule_override.day_type_override` enum cũ chưa bao gồm các loại ngày mới từ Level 3 Change 35; (5) group expansion logic cho `employee_group_id` chưa được document.
+
+### TA-database-design-v5.dbml
+
+**Change 38 — `ta.generated_roster`: 4 changes**
+
+| Action | Field | Detail |
+|--------|-------|--------|
+| ADD | `day_type varchar(30) [not null]` | Denormalized từ `day_model.day_type` tại thời điểm generate. Frozen — không update nếu day_model thay đổi sau. Enum: `WORKDAY \| OFF \| HOLIDAY \| COMPENSATORY_OFF \| HALF_DAY \| SPECIAL_WORK_DAY`. Used by OT (rate 150/200/300%), Payroll (day count), Attendance (absence detect). |
+| ADD | `generated_at timestamptz [default:now()]` | Operational metadata — khi nào row được generate/re-generate. Dùng cho debugging, batch tracking, audit ("lịch này generate trước hay sau khi assignment thay đổi?"). |
+| FIX | `holiday_id uuid [ref: > absence.holiday_calendar_day.id, null]` | Thêm FK ref constraint — trước đây là bare `uuid [null]` không có FK, gây orphaned reference risk. |
+| ADD | `(work_date, day_type)` index | Fast query cho Payroll/OT day-type aggregation per period. |
+| ADD | `(work_date, status_code)` index | Fast query cho "all SCHEDULED rows pending confirmation". |
+| REORDER | Override/Holiday fields | Grouped vào sections rõ ràng với comments. |
+
+**Change 38 — `ta.schedule_override`: 3 changes**
+
+| Action | Field | Detail |
+|--------|-------|--------|
+| UPDATE | `day_type_override varchar(30)` | Enum mở rộng từ `OFF \| HOLIDAY` → `OFF \| HOLIDAY \| COMPENSATORY_OFF \| HALF_DAY \| SPECIAL_WORK_DAY \| WORKDAY`. Align với Level 3 day_type enum (Change 35). |
+| DOCUMENT | `employee_group_id` | Ghi rõ Group Expansion Rule: expand tại apply-time, NOT retroactive khi group member changes sau đó. Constraint: `employee_id XOR employee_group_id`. |
+| ADD | `(employee_group_id, work_date)` index | Fast group override lookup. |
+
+**Why `day_type` is the most important addition:**
+```
+Before Change 38 — OT module cần tính rate:
+  SELECT gr.employee_id, dm.day_type  ← phải JOIN
+  FROM ta.generated_roster gr
+  JOIN ta.day_model dm ON gr.day_model_id = dm.id
+  WHERE gr.work_date BETWEEN :start AND :end
+
+After Change 38:
+  SELECT employee_id, day_type         ← 1 table, index hit
+  FROM ta.generated_roster
+  WHERE work_date BETWEEN :start AND :end
+```
+
+---
+
+
 ## [06Apr2026] – v5.9: TA Level 5 — ScheduleAssignment Refinement (Change 37)
 
 > **Context:** Phân tích Level 5 sau khi hoàn thiện Level 1–4 phát hiện 3 vấn đề cần giải quyết: (1) `employee_override_id` tạo ra ambiguity semantic — không rõ là "override ngoài group" hay "chỉ dành cho cá nhân này"; (2) `crew_label` bị thiếu khiến nhiều ScheduleAssignment cùng pattern không phân biệt được; (3) Thiếu validation rule ghi nhận ràng buộc `start_reference_date` phải khớp `cycle_anchor_weekday` của Pattern.

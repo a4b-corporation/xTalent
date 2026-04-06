@@ -632,52 +632,116 @@ Table ta.schedule_assignment {
 //===============================================================
 
 // [v5] ENHANCED: Added full lineage tracking (schedule -> pattern -> day -> shift)
+// [Change 38 - 06Apr2026] UPDATED: Added day_type, generated_at; fixed holiday_id FK ref
 Table ta.generated_roster {
   employee_id       uuid [ref: > employment.employee.id]
   work_date         date
   
-  // Source tracking
-  schedule_rule_id  uuid [ref: > ta.schedule_assignment.id] // [v5] RENAMED: from source_sched_id
-  pattern_id        uuid [ref: > ta.pattern_template.id]    // [v5] NEW: Direct link
-  day_model_id      uuid [ref: > ta.day_model.id]           // [v5] NEW: Direct link
-  shift_id          uuid [ref: > ta.shift_def.id, null]
+  // ================================================================
+  // Lineage (point-in-time snapshot of config at generation time)
+  // These FKs capture WHAT was active when the row was generated.
+  // If Level 2-5 config changes later, lineage still reflects original state.
+  // ================================================================
+  schedule_rule_id  uuid [ref: > ta.schedule_assignment.id]  // Lineage → L5: which assignment rule produced this row
+  pattern_id        uuid [ref: > ta.pattern_template.id, null]  // Lineage → L4: null for FLEX assignments
+  day_model_id      uuid [ref: > ta.day_model.id]             // Lineage → L3: which day model applied
+  shift_id          uuid [ref: > ta.shift_def.id, null]       // Lineage → L2: null for OFF/HOLIDAY days
   
+  // ================================================================
+  // Denormalized values (frozen snapshot — do NOT update if source changes)
+  // Critical for downstream modules to avoid runtime JOINs
+  // ================================================================
+  day_type          varchar(30) [not null]  // [Change 38] Denorm from day_model.day_type at generation time
+                                            // WORKDAY | OFF | HOLIDAY | COMPENSATORY_OFF | HALF_DAY | SPECIAL_WORK_DAY
+                                            // Used by: OT module (rate 150%/200%/300%), Payroll (day count),
+                                            //          Attendance (detect unauthorized absence), Timesheet
+                                            // MUST be frozen: do not sync if day_model changes after generation
+  
+  // ================================================================
   // Override handling
-  override_id       uuid [ref: > ta.schedule_override.id, null]
-  is_override       boolean [default:false]
+  // ================================================================
+  is_override       boolean [default:false]  // Denorm flag: true iff override_id IS NOT NULL (fast query support)
+  override_id       uuid [ref: > ta.schedule_override.id, null]  // FK to explicit manual override record
   
+  // ================================================================
   // Holiday handling
-  is_holiday        boolean [default:false]
-  holiday_id        uuid [null]
+  // ================================================================
+  is_holiday        boolean [default:false]  // Denorm flag for payroll/OT holiday count queries
+  holiday_id        uuid [ref: > absence.holiday_calendar_day.id, null]  // [Change 38] Added FK ref (was bare uuid [null])
+                                            // Nullable: null when is_holiday=false or holiday not in calendar table
   
-  // Status
-  status_code       varchar(20) [default:'SCHEDULED'] // SCHEDULED | CONFIRMED | COMPLETED | CANCELLED
+  // ================================================================
+  // Status lifecycle
+  // ================================================================
+  status_code       varchar(20) [default:'SCHEDULED']
+                                            // SCHEDULED  → system generated, pending manager review
+                                            // CONFIRMED  → manager approved the schedule for this period
+                                            // COMPLETED  → date has passed, attendance reconciled
+                                            // CANCELLED  → cancelled (emergency leave, force majeure, etc.)
+                                            // NOTE: CANCELLED rows are NOT deleted — kept for audit trail
   
-  metadata          jsonb
+  // ================================================================
+  // Operational metadata
+  // ================================================================
+  generated_at      timestamptz [default:`now()`]  // [Change 38] When this row was generated/last re-generated
+                                            // Used for: debugging wrong schedules, batch tracking, re-generate detection
+                                            // Update on every re-generate (upsert overwrites this)
+  metadata          jsonb                   // Optional: store generation batch_id, shift snapshot, etc.
   
   Indexes { 
-    (employee_id, work_date) [unique]
-    (schedule_rule_id, work_date)
+    (employee_id, work_date) [unique]       // PK: 1 employee × 1 day = 1 row only
+    (schedule_rule_id, work_date)           // Re-generate by assignment
+    (work_date, day_type)                   // [Change 38] Payroll/OT queries by day type
+    (work_date, status_code)               // Status-based queries (SCHEDULED pending confirmation)
     (work_date)
   }
   
-  Note: 'Materialized roster. Generated from schedule rules + pattern + calendar. One row per employee per day.'
+  Note: '''
+    Operational table — materialized roster for per-employee per-day execution.
+    Generated from: schedule_assignment (L5) + eligibility_member + pattern cycle + holiday calendar.
+    
+    Key design decisions:
+    1. Frozen: config changes at L2-L4 do NOT backfill historical rows.
+       COMPLETED/CONFIRMED rows are immutable. Only future SCHEDULED rows are re-generated.
+    2. Denormalized day_type: reflects day_model.day_type at generation time.
+       Critical for Attendance, OT, Payroll — avoids runtime JOIN to day_model.
+    3. generated_at: tracks when this row was last written. Useful for debugging and batch auditing.
+    4. is_override + is_holiday: denorm boolean flags for fast filtering; semantically redundant
+       with override_id IS NOT NULL and holiday_id IS NOT NULL, but retained for query performance.
+    5. Pattern: NEVER backfill. on_eligibility_member_change only re-generates from max(today, event_date) onward.
+  '''
 }
 
 //===============================================================
 //  SUPPORTING TABLES
 //===============================================================
 
-/*----------- Schedule Override (Ad-hoc changes) ----------------*/
+// [Change 38 - 06Apr2026] UPDATED: day_type_override enum expanded; group expansion logic documented
 Table ta.schedule_override {
   id                uuid [pk]
-  employee_id       uuid [ref: > employment.employee.id, null]
-  employee_group_id uuid [ref: > org_bu.unit.id, null]
+  employee_id       uuid [ref: > employment.employee.id, null]   // Individual override target
+  employee_group_id uuid [ref: > org_bu.unit.id, null]           // Group override target
+                                                                  // EXPANSION RULE: When employee_group_id is set,
+                                                                  //   the Override Engine expands the group at apply-time:
+                                                                  //   Step 1: Resolve all active employees in org_bu.unit
+                                                                  //   Step 2: Upsert generated_roster for each member
+                                                                  //   Step 3: Set is_override=true, override_id=this.id
+                                                                  //   Note: Group membership is resolved at apply-time only.
+                                                                  //   If group members change after apply → NOT retroactive.
+                                                                  //   Constraint: employee_id XOR employee_group_id (not both)
   work_date         date
   
-  // Override with specific shift or mark as OFF
-  shift_id          uuid [ref: > ta.shift_def.id, null]
-  day_type_override varchar(20) [null]          // OFF | HOLIDAY
+  // What to override
+  shift_id          uuid [ref: > ta.shift_def.id, null]  // New shift (null = mark day as non-working)
+  day_type_override varchar(30) [null]                    // [Change 38] Override the day type in generated_roster
+                                                          // Supported values (aligned with Level 3 day_type enum):
+                                                          //   OFF                → forced day off
+                                                          //   HOLIDAY            → treat as public holiday (OT 300%)
+                                                          //   COMPENSATORY_OFF   → earned comp-off day
+                                                          //   HALF_DAY           → half working day
+                                                          //   SPECIAL_WORK_DAY   → working day with special rules
+                                                          //   WORKDAY            → force back to regular workday
+                                                          // null = keep existing day_type, only change shift_id
   
   reason_code       varchar(50)
   notes             text [null]
@@ -687,9 +751,27 @@ Table ta.schedule_override {
   
   metadata          jsonb
   
-  Indexes { (employee_id, work_date) }
+  Indexes { 
+    (employee_id, work_date)
+    (employee_group_id, work_date)  // [Change 38] Added for group override lookup
+  }
   
-  Note: 'Ad-hoc changes to generated roster. Overrides pattern-based schedule.'
+  Note: '''
+    Ad-hoc changes to generated_roster rows. Supports both individual and group overrides.
+    
+    Individual override (employee_id set, employee_group_id null):
+      Directly updates the single generated_roster row for that employee + work_date.
+    
+    Group override (employee_group_id set, employee_id null):
+      Override Engine expands the group at apply-time to all active members.
+      Each member gets their generated_roster row updated: is_override=true, override_id=this.id.
+      IMPORTANT: Group expansion is a point-in-time operation. New members added to the group
+      after override is applied are NOT automatically affected.
+    
+    day_type_override semantics:
+      When set, overwrites day_type in generated_roster (e.g., force a WORKDAY to HOLIDAY).
+      Payroll and OT modules read day_type from generated_roster directly — no re-lookup needed.
+  '''
 }
 
 /*----------- Open Shift Pool (Unfilled shifts) -----------------*/
