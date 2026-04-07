@@ -1,7 +1,11 @@
 /////////////////////////////////////////////////////////////
 //  PAYROLL V4  –  Engine Separation + Management Layer
 //  CHANGED 27Mar2026: Tách Payroll Engine thành sub-module độc lập
-//  Xem review-03-payroll-engine-separation.md để biết chi tiết
+//  CHANGED 07Apr2026: Design Gap Resolution (3 pay_master tables enriched)
+//    - pay_formula: script text → script_json jsonb (language-agnostic, MVEL/Groovy)
+//    - pay_deduction_policy: opaque deduction_json → explicit typed columns (Option B)
+//    - pay_benefit_link: soft ref → explicit FK columns (Option B)
+//    Xem CHANGELOG.md [07Apr2026] và implementation_plan.md để biết chi tiết.
 //
 //  STRUCTURE:
 //  - pay_master:  Configuration / Master Data (giữ nguyên từ V3)
@@ -11,6 +15,15 @@
 //  - pay_audit:   Audit (giữ nguyên)
 //  - pay_mgmt:    [NEW 27Mar2026] Payroll Management / Orchestration
 //  - pay_engine:  [NEW 27Mar2026] Payroll Calculation Engine
+//
+//  pay_master TABLES (22 entities):
+//  STRUCTURE (4): pay_frequency, pay_calendar, pay_group, pay_profile_map
+//  CORE (3): pay_element, pay_profile, statutory_rule
+//  PROFILE BINDINGS (2): pay_profile_element, pay_profile_rule
+//  RATES (3): pay_profile_rate_config, worker_rate_override, piece_rate_config
+//  SUPPORT (10): balance_def, costing_rule, gl_mapping, validation_rule,
+//                payslip_template, pay_formula, pay_deduction_policy,
+//                pay_adjust_reason, termination_pay_config, pay_benefit_link
 /////////////////////////////////////////////////////////////
 
 //---------------- pay_master  ----------------
@@ -443,17 +456,49 @@ Table pay_master.payslip_template { // CHANGED JUL 2025
   Note: 'CHANGED JUL 2025. Mẫu phiếu lương tuỳ chỉnh.'
 }
 
-Table pay_master.pay_formula { // CHANGED JUL 2025
+// changed 07Apr2026: ENRICHED — AQ-Formula: script text → script_json jsonb
+// Cho phép lưu kèm metadata (lang, engine_version, params) mà không cần commit enum tại DB.
+// Application layer tự quyết định lang runtime (MVEL, Groovy, etc.).
+Table pay_master.pay_formula { // CHANGED JUL 2025, ENRICHED 07Apr2026
   id uuid [pk, default: `gen_random_uuid()`]
   code varchar(50) [unique]
   name varchar(255)
-  script text
+
+  // changed 07Apr2026: script text → script_json jsonb
+  // Cấu trúc gợi ý (không ràng buộc bởi DB, application tự enforce):
+  // {
+  //   "lang": "MVEL",          -- e.g. MVEL | GROOVY (application decides)
+  //   "content": "amount * rate * coeff",  -- actual expression / script code
+  //   "engine_version": "mvel-2.4",         -- optional: pin runtime version
+  //   "params": {"coeff": 0.105}            -- optional: default parameter values
+  // }
+  // MVEL: simple expression, 95% của formula (e.g. amount * rate, basic_salary / 26 * days_worked)
+  // GROOVY: full Groovy script cho complex logic (if/loop, external data lookup)
+  //         Chọn sau khi stakeholder reject DROOLS 8; MVEL cho formula layer.
+  script_json jsonb [not null]
+
+  // Scope gợi ý (optional, không ràng buộc)
+  scope varchar(20) [null]  // ELEMENT | PROFILE | STATUTORY | ANY
+
   description text [null]
   version_no int [default: 1]
   is_active boolean [default: true]
   created_at timestamp [default: `now()`]
   updated_at timestamp [null]
-  Note: 'CHANGED JUL 2025. Kho công thức tính toán payroll dùng chung.'
+
+  Indexes {
+    (code)
+    (scope) [where: "scope IS NOT NULL"]
+  }
+
+  Note: '''
+    CHANGED JUL 2025. ENRICHED 07Apr2026 — script text → script_json jsonb.
+    Lý do: MVEL (formula layer) và Groovy (engine layer) cần metadata khác nhau;
+    jsonb flexible hơn text, không cần commit enum tại DB level.
+    Application layer (Groovy engine) tự parse script_json.lang và route đến executor.
+    Backward compat: nếu migration từ text, wrap trong {"lang":"MVEL","content":"<old_script>"}.
+    Không có script_type enum column — application quyết định lang hỗ trợ.
+  '''
 }
 
 
@@ -603,17 +648,60 @@ Table pay_master.pay_adjust_reason { // CHANGED JUL 2025
   Note: 'CHANGED JUL 2025. Master lý do điều chỉnh lương (adjustment reason).'
 }
 
-// Chính sách deduction (Deduction Policy)
-Table pay_master.pay_deduction_policy { // CHANGED JUL 2025
+// changed 07Apr2026: ENRICHED — AQ-Deduction: Option B explicit columns + deduction_json kept
+// Per-worker installment state: managed by application via pay_mgmt.manual_adjust series.
+//   HR pre-schedules N manual_adjust records (status=PENDING) for each installment period.
+//   Engine picks up PENDING records in batch → applies → marks APPLIED.
+//   No new worker_deduction_enrollment table needed.
+Table pay_master.pay_deduction_policy { // CHANGED JUL 2025, ENRICHED 07Apr2026
   id              uuid [pk, default: `gen_random_uuid()`]
   code            varchar(50) [unique]
   name            varchar(100)
   description     text [null]
-  deduction_json  jsonb [null] // Quy tắc deduction (làm theo country/market/policy)
-  is_active       boolean [default: true]
-  created_at      timestamp [default: `now()`]
-  updated_at      timestamp [null]
-  Note: 'CHANGED JUL 2025. Chính sách deduction, quản lý deduction logic cho payroll.'
+
+  // changed 07Apr2026: NEW explicit columns (Option B) — replaces opaque deduction_json
+  deduction_type    varchar(30) [not null]                          // FIXED | PERCENTAGE | INSTALLMENT | BENEFIT_PREMIUM | ADVANCE_RECOVERY
+  // FIXED: khấu trừ tuyệt đối (VD: phí công đoàn = 50,000 VND/tháng)
+  // PERCENTAGE: % của basis (VD: đóng góp từ thiện = 1% gross)
+  // INSTALLMENT: trả góp theo kỳ (VD: hoàn vay nội bộ = 1,000,000/tháng × 6 tháng)
+  // BENEFIT_PREMIUM: phần đóng của NLĐ cho benefit plan (linked qua pay_benefit_link)
+  // ADVANCE_RECOVERY: hoàn tạm ứng lương theo lịch đã thoả thuận
+
+  deduction_amount  decimal(18,2) [null]                            // nếu FIXED: số tiền tuyệt đối (VND)
+  deduction_pct     decimal(5,2) [null]                             // nếu PERCENTAGE: % (e.g. 1.00 = 1%)
+  recovery_basis    varchar(20) [null]                              // basis tính % — GROSS | NET | BASIC_SALARY
+  max_deduction_pct decimal(5,2) [null]                             // trần % tối đa (bảo vệ NLĐ, e.g. 30% net)
+  installment_count smallint [null]                                 // nếu INSTALLMENT: số kỳ mặc định (e.g. 6)
+
+  // Giữ cho extra params hoặc backward compat
+  deduction_json    jsonb [null]                                    // extra params / legacy
+
+  is_active         boolean [default: true]
+  created_at        timestamp [default: `now()`]
+  updated_at        timestamp [null]
+
+  Indexes {
+    (code)
+    (deduction_type)
+    (is_active) [where: "is_active = true"]
+  }
+
+  Note: '''
+    CHANGED JUL 2025. ENRICHED 07Apr2026 — Option B: explicit columns thay opaque JSON.
+    
+    Per-worker installment tracking (INSTALLMENT / ADVANCE_RECOVERY):
+    → Không có worker_deduction_enrollment table riêng.
+    → Application tạo series pay_mgmt.manual_adjust (status=PENDING) cho từng kỳ:
+       e.g. worker A hoàn vay 6 tháng → 6 manual_adjust records, 1 per period.
+    → Engine picks up PENDING records → apply deduction → mark APPLIED.
+    → Application queries manual_adjust để track balance/progress.
+    
+    max_deduction_pct: bảo vệ NLĐ khỏi bị khấu trừ quá mức (BLLĐ 2019).
+    Ví dụ:
+      FIXED: {code: UNION_FEE, deduction_type: FIXED, amount: 50000}
+      PERCENTAGE: {code: CHARITY, deduction_type: PERCENTAGE, pct: 1.00, basis: GROSS}
+      INSTALLMENT: {code: LOAN_001, deduction_type: INSTALLMENT, amount: 1000000, count: 6}
+  '''
 }
 
 // changed 27Mar2026: NEW — AQ-10 Option D: Termination Pay Configuration
@@ -875,18 +963,48 @@ Table pay_master.piece_rate_config {
 }
 
 
-// Mapping element ↔ benefit/allowance (for advanced/linked policy)
-Table pay_master.pay_benefit_link { // CHANGED JUL 2025
+// changed 07Apr2026: ENRICHED — AQ-BenefitLink: Option B explicit FKs + backward compat
+// Thêm FK columns rõ ràng thay vì soft reference thuần túy.
+Table pay_master.pay_benefit_link { // CHANGED JUL 2025, ENRICHED 07Apr2026
   id              uuid [pk, default: `gen_random_uuid()`]
-  pay_element_id  uuid [ref: > pay_master.pay_element.id]
-  benefit_policy_code varchar(50)
-  benefit_type    varchar(50)      // ALLOWANCE | BENEFIT | BONUS
-  valid_from      date
+  pay_element_id  uuid [ref: > pay_master.pay_element.id, not null]
+
+  // changed 07Apr2026: NEW — explicit FK columns (Option B)
+  // Ưu tiên dùng explicit FKs; benefit_policy_code giữ cho backward compat / custom cases.
+  // Constraint (enforced by application): ít nhất 1 trong 3 field dưới phải NOT NULL.
+  benefit_plan_id   uuid [ref: > benefit.benefit_plan.id, null]             // Target = benefit.benefit_plan
+  pay_component_id  uuid [ref: > comp_core.pay_component_def.id, null]      // Target = comp_core.pay_component_def
+  benefit_policy_code varchar(50) [null]                                     // changed 07Apr2026: now OPTIONAL (soft ref, kept for backward compat / custom policy codes)
+  benefit_source    varchar(30) [null]                                        // NEW 07Apr2026 — BENEFIT_PLAN | PAY_COMPONENT | CUSTOM (chỉ FK/field nào được dùng)
+
+  benefit_type    varchar(50) [not null]   // ALLOWANCE | BENEFIT | BONUS
+  valid_from      date [not null]
   valid_to        date [null]
   metadata        jsonb [null]
   created_at      timestamp [default: `now()`]
   updated_at      timestamp [null]
-  Note: 'CHANGED JUL 2025. Mapping element với policy benefit/allowance, cho phép linked policy.'
+
+  Indexes {
+    (pay_element_id)
+    (benefit_plan_id) [where: "benefit_plan_id IS NOT NULL"]
+    (pay_component_id) [where: "pay_component_id IS NOT NULL"]
+    (benefit_type)
+  }
+
+  Note: '''
+    CHANGED JUL 2025. ENRICHED 07Apr2026 — Option B: explicit FK columns.
+    
+    Usage pattern:
+      BENEFIT_PREMIUM: pay_element(HEALTH_PREMIUM_EMP) → benefit_plan_id = benefit.benefit_plan(HEALTH_PVI)
+                       benefit_source = BENEFIT_PLAN
+      ALLOWANCE_LINKED: pay_element(MEAL_ALLOWANCE) → pay_component_id = comp_core.pay_component_def(MEAL)
+                        benefit_source = PAY_COMPONENT
+      CUSTOM: benefit_policy_code = "INTERNAL_WELFARE_FUND" (no FK, external system)
+              benefit_source = CUSTOM
+    
+    Application layer enforces: at least one of (benefit_plan_id, pay_component_id, benefit_policy_code) IS NOT NULL.
+    benefit_policy_code kept for backward compat and external/custom policy code references.
+  '''
 }
 
 

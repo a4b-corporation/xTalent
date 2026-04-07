@@ -1,6 +1,79 @@
 # xTalent Database Design – Changelog
 
 
+## [07Apr2026] – v4.1 PR: pay_master Design Gap Resolution (Changes 39–41)
+
+> **Context:** Phân tích kiến trúc `pay_master` sau khi cross-check toàn bộ 3 schema (CO, TR, PR) phát hiện 3 design gaps cần close trước khi viết 22 entity documents:
+> 1. `pay_formula.script text` — opaque, không rõ engine language (MVEL vs Groovy vs other)
+> 2. `pay_deduction_policy.deduction_json` — toàn bộ logic nhét vào 1 JSONB blob, không queryable, không validatable
+> 3. `pay_benefit_link.benefit_policy_code` — soft reference duy nhất, không có FK constraint, referential integrity chỉ ở application level
+>
+> **Engine decision documented:** Stakeholder reject DROOLS 8 → chọn **Groovy** cho engine layer, **MVEL** cho formula layer (simple expression). Không có DB enum constraint — application layer quyết định runtime.
+>
+> **2 gaps không cần DBML change:** PIT dependent (`tax.dependent_registration` đã đủ trong CO) → application inject. OT cap enforcement → TA module owns enforcement, PR chỉ light-check qua `validation_rule`.
+
+### 5.Payroll.V4.dbml
+
+**Change 39 — `pay_master.pay_formula`: `script text` → `script_json jsonb`**
+
+| Action | Field | Detail |
+|--------|-------|--------|
+| CHANGE type | `script text` → `script_json jsonb [not null]` | Thay opaque text bằng structured jsonb. Structure gợi ý: `{"lang":"MVEL","content":"amount*rate","engine_version":"mvel-2.4","params":{}}`. Không có DB enum — application tự route đến executor. |
+| ADD field | `scope varchar(20) [null]` | Gợi ý scope dùng: `ELEMENT \| PROFILE \| STATUTORY \| ANY`. Không ràng buộc, optional hint cho admin UI. |
+| ADD indexes | `(code)`, `(scope) WHERE NOT NULL` | Index hỗ trợ lookup theo scope. |
+| UPDATE Note | Multi-line note | Document MVEL vs Groovy decision + backward compat migration path. |
+
+**Backward compat migration:** `script text` cũ → `{"lang":"MVEL","content":"<old_script>"}` trong `script_json`.
+
+**Change 40 — `pay_master.pay_deduction_policy`: Explicit columns (Option B)**
+
+| Action | Field | Detail |
+|--------|-------|--------|
+| ADD | `deduction_type varchar(30) [not null]` | Enum: `FIXED \| PERCENTAGE \| INSTALLMENT \| BENEFIT_PREMIUM \| ADVANCE_RECOVERY`. DB-enforced discriminator. |
+| ADD | `deduction_amount decimal(18,2) [null]` | Nếu `FIXED`: số tiền tuyệt đối (VND). |
+| ADD | `deduction_pct decimal(5,2) [null]` | Nếu `PERCENTAGE`: phần trăm (e.g. `1.00` = 1%). |
+| ADD | `recovery_basis varchar(20) [null]` | Basis tính %: `GROSS \| NET \| BASIC_SALARY`. |
+| ADD | `max_deduction_pct decimal(5,2) [null]` | Trần tối đa — bảo vệ NLĐ (BLLĐ 2019, không quá 30% net). |
+| ADD | `installment_count smallint [null]` | Nếu `INSTALLMENT`: số kỳ mặc định (e.g. 6 tháng). |
+| KEEP | `deduction_json jsonb [null]` | Giữ cho extra params / backward compat. |
+| ADD indexes | `(code)`, `(deduction_type)`, `(is_active) WHERE TRUE` | Fast filter theo type & active status. |
+
+**Per-worker installment tracking decision:**
+- **Không cần** `worker_deduction_enrollment` table riêng.
+- INSTALLMENT/ADVANCE_RECOVERY per-worker state → HR tạo series `pay_mgmt.manual_adjust` (status=`PENDING`), 1 record/period.
+- Engine picks up PENDING → apply → mark `APPLIED`.
+- Application queries `manual_adjust` để track progress/balance.
+
+**Change 41 — `pay_master.pay_benefit_link`: Explicit FK columns (Option B)**
+
+| Action | Field | Detail |
+|--------|-------|--------|
+| ADD | `benefit_plan_id uuid [ref: > benefit.benefit_plan.id, null]` | FK tường minh khi target = `benefit.benefit_plan`. |
+| ADD | `pay_component_id uuid [ref: > comp_core.pay_component_def.id, null]` | FK tường minh khi target = `comp_core.pay_component_def`. |
+| ADD | `benefit_source varchar(30) [null]` | Chỉ rõ FK nào đang được dùng: `BENEFIT_PLAN \| PAY_COMPONENT \| CUSTOM`. |
+| CHANGE | `benefit_policy_code varchar(50)` → `[null]` (was implicit not null) | Now optional — backward compat cho external/custom policy codes. |
+| CHANGE | `pay_element_id` | Thêm `[not null]` — đảm bảo mọi link đều có element. |
+| ADD indexes | `(pay_element_id)`, `(benefit_plan_id) WHERE NOT NULL`, `(pay_component_id) WHERE NOT NULL`, `(benefit_type)` | Selective partial indexes cho FK lookups. |
+
+**Application constraint (not DB):** ít nhất 1 trong 3 (`benefit_plan_id`, `pay_component_id`, `benefit_policy_code`) phải NOT NULL.
+
+### Không thay đổi DBML (resolved by convention)
+
+| Gap | Resolution |
+|-----|-----------|
+| PIT Dependent data contract | Application layer inject `PIT_DEPENDENT_COUNT` từ `tax.dependent_registration` (CO schema). `tax.dependent_registration` đã đầy đủ. |
+| OT cap enforcement | TA module owns enforcement tại timesheet validation. PR chỉ second-check nhẹ qua `pay_master.validation_rule`. |
+
+### Summary
+
+| Change | Table | Type | Fields Added/Changed |
+|--------|-------|------|----------------------|
+| 39 | `pay_master.pay_formula` | MODIFIED | `script` → `script_json jsonb`, +`scope` |
+| 40 | `pay_master.pay_deduction_policy` | ENRICHED | +6 explicit columns, keep `deduction_json` |
+| 41 | `pay_master.pay_benefit_link` | ENRICHED | +`benefit_plan_id`, +`pay_component_id`, +`benefit_source`, `benefit_policy_code` now nullable |
+
+---
+
 ## [06Apr2026] – v5.9: TA Level 6 — GeneratedRoster & ScheduleOverride Field Audit (Change 38)
 
 > **Context:** Phân tích Level 6 từ góc độ **operational data table** (không phải master data) phát hiện: (1) thiếu `day_type` denormalized — field critical nhất mà tất cả downstream modules (OT, Payroll, Attendance) cần; (2) thiếu `generated_at` tracking; (3) `holiday_id` thiếu FK ref constraint; (4) `schedule_override.day_type_override` enum cũ chưa bao gồm các loại ngày mới từ Level 3 Change 35; (5) group expansion logic cho `employee_group_id` chưa được document.
