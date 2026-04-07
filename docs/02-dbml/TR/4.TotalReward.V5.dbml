@@ -366,12 +366,20 @@ Table comp_core.grade_ladder_step {
 
   Note: '''
     CHANGED 27Mar2026: AQ-14 Option D — Dual Pay Scale Mode.
-    Supports two modes selected by PR pay_profile.grade_step_mode:
+    Supports two modes selected by pay_master.pay_profile.grade_step_mode (PR domain):
       TABLE_LOOKUP: salary = step_amount (set directly by HR)
       COEFFICIENT_FORMULA: salary = coefficient × VN_LUONG_CO_SO (statutory base)
+    Cross-ref: pay_master.pay_profile.grade_step_mode (5.Payroll.V4.dbml, line ~475)
+               Only applicable when pay_master.pay_profile.pay_method = GRADE_STEP.
     Domain boundary: coefficient + step_amount = TR projected (Gross)
                      VN_LUONG_CO_SO = PR statutory_rule (actual Net calc)
     Step progression: months_to_next_step + auto_advance = TR HR-policy rule
+    
+    ORPHAN CONSTRAINT (changed 06Apr2026):
+    Direct FKs (ladder_id, grade_v_id) are supplementary for query performance.
+    Application layer MUST verify: grade_ladder_grade(ladder_id, grade_v_id) record
+    exists BEFORE creating a step for the same pair.
+    Rule: No grade_ladder_step without a corresponding grade_ladder_grade entry.
   '''
 }
 
@@ -382,7 +390,7 @@ Table comp_core.pay_range {
   id              uuid [pk]
   grade_v_id      uuid [ref: > comp_core.grade_v.id]
   scope_type      varchar(20)                     // GLOBAL | LEGAL_ENTITY | BUSINESS_UNIT | POSITION
-  scope_uuid      uuid                            // dynamic FK
+  scope_uuid      uuid                            // dynamic FK — see scope resolution Note below
   currency        char(3)
   // REM 21Nov2025: min_amount      decimal(18,2)
   // REM 21Nov2025: mid_amount      decimal(18,2)
@@ -406,6 +414,19 @@ Table comp_core.pay_range {
     (scope_type, scope_uuid),                              // ADDED 21Nov2025: scope queries
     (effective_start, effective_end)                       // ADDED 21Nov2025: temporal queries
   }
+  
+  Note: '''
+    changed 06Apr2026: scope_uuid is a dynamic FK — application layer enforces referential integrity.
+    Resolution table (scope_type → target):
+      GLOBAL       → scope_uuid = NULL (applies to all)
+      LEGAL_ENTITY → scope_uuid → org_legal.entity.id
+      BUSINESS_UNIT→ scope_uuid → org.business_unit.id
+      POSITION     → scope_uuid → org.position.id
+    Priority: POSITION(40) > BUSINESS_UNIT(30) > LEGAL_ENTITY(20) > GLOBAL(0)
+    Resolution: most specific (highest priority) scope wins for a given employee.
+    Compa-ratio = (employee current salary / mid_amount) × 100.
+    range_spread_pct = (max_amount - min_amount) / mid_amount × 100 (computed, stored for query).
+  '''
 }
 
 
@@ -494,7 +515,10 @@ Table comp_core.comp_adjustment {
   rationale_code  varchar(50) [null]    // ADDED 21Nov2025: standardized reason codes
   // REM 21Nov2025: note            text [null]
   rationale_text  text [null]           // CHANGED 21Nov2025: renamed from note for clarity
-  approval_status varchar(20) [default:'PENDING']  // DRAFT | PENDING | APPROVED | REJECTED | WITHDRAWN
+  // changed 06Apr2026: default changed from PENDING → DRAFT. Added SUBMITTED state.
+  // Workflow detail (chain, level, SLA) → Temporal Workflow Engine — NOT stored here.
+  // DB stores final outcome only: approval_status + decision_note + decision_date.
+  approval_status varchar(20) [default:'DRAFT']  // DRAFT | SUBMITTED | PENDING | APPROVED | REJECTED | WITHDRAWN
   // workflow_state  jsonb [null]    // DEPRECATED 27Mar2026 → Temporal workflow engine
   submitted_date  timestamp [null]      // ADDED 21Nov2025: when submitted for approval
   submitted_by    uuid [null]           // ADDED 21Nov2025: who submitted
@@ -568,6 +592,17 @@ Table comp_core.budget_allocation {
     (cycle_id),
     (scope_type, scope_uuid)
   }
+  
+  Note: '''
+    changed 06Apr2026: scope_uuid is a dynamic FK — application layer enforces referential integrity.
+    Resolution table (scope_type → target):
+      GLOBAL       → scope_uuid = NULL
+      LEGAL_ENTITY → scope_uuid → org_legal.entity.id
+      BUSINESS_UNIT→ scope_uuid → org.business_unit.id
+      DEPARTMENT   → scope_uuid → org.department.id
+      TEAM         → scope_uuid → org.team.id
+    utilization_pct = (utilized_amount / allocated_amount) × 100 (computed, stored for reporting).
+  '''
 }
 
 
@@ -1582,6 +1617,12 @@ Table comp_core.country_config {
 }
 
 
+// changed 06Apr2026: DEPRECATED — holiday_calendar belongs to TA team (absence.holiday_calendar is AUTHORITATIVE).
+// History: should have been in Core but TA team implemented it first.
+// TR reads via cross-schema soft reference: SELECT * FROM absence.holiday_calendar
+//   WHERE country_code = :cc AND year = :year.
+// DO NOT add new records here. DO NOT create new FKs to this table.
+// Kept for backward compatibility only. Will be removed in a future version.
 Table comp_core.holiday_calendar {
   id              uuid [pk]
   country_code    char(2) [ref: > comp_core.country_config.country_code, not null]
@@ -1606,11 +1647,11 @@ Table comp_core.holiday_calendar {
   }
   
   Note: '''
-  25Nov2025: Holiday calendar per country/jurisdiction
-  - Used for OT multiplier determination
-  - Used for proration calculations (exclude holidays from working days)
-  - Links to country_config via country_code
-  Example: VN 2025 → Tết Nguyên Đán, Quốc Khánh, etc.
+  25Nov2025: Holiday calendar per country/jurisdiction.
+  changed 06Apr2026: DEPRECATED. Use absence.holiday_calendar (authoritative source).
+  - TR reads holiday data via: absence.holiday_calendar WHERE country_code + year
+  - TA team owns and maintains the authoritative absence.holiday_calendar table
+  - This table exists for backward compatibility only — do not add new records here
   '''
 }
 
