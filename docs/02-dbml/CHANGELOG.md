@@ -1,6 +1,129 @@
 # xTalent Database Design – Changelog
 
 
+## [13Apr2026] – v4.2 PR: pay_master Doc-DBML Gap Resolution (Changes 42–47)
+
+> **Context:** Sau khi review cross-check toàn bộ 22 entity documents (02.1 → 02.22) với `5.Payroll.V4.dbml`,
+> phát hiện 7 bảng có GAP giữa thiết kế tài liệu và schema thực tế. Phân tích kết luận:
+> - 3 bảng: Document là nguồn hợp lý hơn → UPDATE DBML
+> - 4 bảng: Hybrid — cả 2 bên thiếu fields của nhau → UPDATE cả DBML + DOC
+> - 2 doc: DBML đúng hơn về naming/type → UPDATE DOC
+>
+> **Nguyên tắc quyết định:**
+> 1. Explicit columns > opaque jsonb (consistent với Change 40 pay_deduction_policy)
+> 2. Business domain concepts trong Doc thắng DB-trigger patterns trong DBML
+> 3. Hard FK > soft reference về referential integrity
+
+### 5.Payroll.V4.dbml
+
+**Change 42 — `pay_master.validation_rule`: REDESIGN — DB-constraint model → payroll-native validation engine**
+
+| Action | Field | Detail |
+|--------|-------|--------|
+| REMOVE | `rule_code varchar(50)` | Rename → `code` (naming convention align với toàn schema) |
+| REMOVE | `rule_name varchar(255)` | Rename → `name` |
+| REMOVE | `target_table varchar(50)` | Xóa — DB trigger pattern, không phù hợp payroll engine |
+| REMOVE | `field_name varchar(50)` | Xóa — xem target_table |
+| REMOVE | `rule_expression text` | Xóa — replace bằng condition_json jsonb |
+| ADD | `rule_type varchar(30) [not null]` | `INPUT_CHECK \| RESULT_CHECK \| CROSS_MODULE \| STATUTORY_CAP` — phân biệt phase execution |
+| ADD | `severity varchar(10) [not null]` | `ERROR` (block run) `\| WARNING` (alert only, operator có thể override) |
+| ADD | `element_id uuid FK [null]` | Scope validation về specific element; null = toàn run |
+| ADD | `condition_json jsonb [null]` | Flexible condition expression (replaces rule_expression) |
+| CHANGE SIZE | `error_message varchar(255)` → `varchar(500)` | Business messages cần nhiều space hơn |
+| ADD indexes | `(rule_type)`, `(severity, is_active)`, `(element_id) WHERE NOT NULL` | Fast filter theo phase và element scope |
+
+> **Rationale:** DBML cũ dùng target_table+field_name+rule_expression — design của DB trigger, không phù hợp
+> cho payroll business rule engine. Doc đã redesign đúng hướng với rule_type và severity.
+> severity=ERROR/WARNING là concept bắt buộc phải có để engine quyết định block hay alert only.
+
+**Change 43 — `pay_master.gl_mapping`: ENRICHED — add multi-entity accounting fields**
+
+| Action | Field | Detail |
+|--------|-------|--------|
+| ADD | `legal_entity_id uuid FK [null]` | Multi-entity scoping (VN vs SG dùng chart of accounts khác nhau). null = global |
+| ADD | `country_code char(2) [null]` | Country scoping. null = global; priority: LE > country > global |
+| ADD | `gl_account_name varchar(255) [null]` | Tên tài khoản cho reporting/audit |
+| ADD | `debit_credit char(1) [not null]` | **CỰC KỲ QUAN TRỌNG** — 'D' Debit / 'C' Credit; engine cần để generate journal entries |
+| ADD | `cost_center_code varchar(50) [null]` | Default cost center cho element này |
+| ADD | `description text [null]` | Mô tả mapping rule |
+| CHANGE SIZE | `gl_account_code varchar(105)` → `varchar(50)` | VN chart of accounts: 3-10 ký tự; 105 là lỗi |
+| CHANGE | `element_id` | Thêm `[not null]` — bắt buộc phải có element |
+| ADD indexes | `(element_id, debit_credit)`, `(element_id, legal_entity_id, country_code)`, partial LE/country | Hỗ trợ dual-entry lookup và priority resolution |
+
+> **Rationale:** Không có `debit_credit` → engine không thể biết journal entry phía Debit hay Credit.
+> Thiếu `legal_entity_id` và `country_code` → không support multi-entity GL mapping.
+
+**Change 44 — `pay_master.costing_rule`: ENRICHED — opaque mapping_json → explicit columns**
+
+| Action | Field | Detail |
+|--------|-------|--------|
+| RENAME | `level_scope varchar(20)` → `costing_level varchar(30) [not null]` | Enum mới: `EMPLOYEE \| DEPARTMENT \| COST_CENTER \| PROJECT` (thay `LE \| BU \| EMP \| ELEMENT`) |
+| ADD | `split_method varchar(20) [not null, default: 'EQUAL']` | `EQUAL \| MANUAL_PCT \| TIME_BASED` — cách chia tỷ lệ chi phí |
+| ADD | `gl_account_code varchar(50) [null]` | Default GL account cho costing rule |
+| ADD | `cost_center_id uuid [null]` | Cost center chỉ định (null = derive từ employee) |
+| ADD | `allocation_pct decimal(5,2) [null]` | % phân bổ cho MANUAL_PCT. App constraint: tổng = 100% |
+| ADD | `description text [null]` | Mô tả |
+| ADD | `is_active boolean [default: true]` | Operational flag |
+| CHANGE | `mapping_json jsonb` | Keep as `[null]` — backward compat / complex multi-CC splits |
+
+> **Rationale:** Tương tự Change 40 (07Apr2026) cho `pay_deduction_policy`. Pattern nhất quán:
+> explicit columns > opaque JSON cho queryability và validation. Enum mới align đúng costing domain.
+> App constraint: tổng allocation_pct của tất cả records cho cùng employee × period = 100%.
+
+**Change 45 — `pay_master.balance_def`: ENRICHED — add element tracking + operational fields**
+
+| Action | Field | Detail |
+|--------|-------|--------|
+| ADD | `element_id uuid FK [null]` | Track element nào. null = multi-element computed balance |
+| ADD | `description text [null]` | Mô tả balance definition |
+| ADD | `is_active boolean [default: true]` | Operational flag |
+| CHANGE | `metadata jsonb` | Giữ nguyên `[null]` — không replace bằng description; cả 2 tồn tại |
+| ADD | `created_at / updated_at` | Standard audit fields |
+| ADD indexes | `(balance_type)`, `(element_id) WHERE NOT NULL`, `(is_active) WHERE TRUE` | Performance |
+
+> **Rationale:** element_id là field quan trọng — balance_def cần biết track element nào.
+> YTD_PIT phải link element_id → PIT_WITHHOLD_VN để engine biết cộng dồn đúng.
+> metadata jsonb giữ theo user comment — cả 2 cùng tồn tại với description.
+
+**Change 46 — `pay_master.pay_benefit_link`: ENRICHED — add direction + operational fields**
+
+| Action | Field | Detail |
+|--------|-------|--------|
+| ADD | `direction varchar(20) [not null]` | **CỰC KỲ QUAN TRỌNG** — `ADDS_TO_GROSS \| ADDS_DEDUCTION \| EMPLOYER_ONLY \| INFORMATION_ONLY` |
+| ADD | `is_active boolean [default: true]` | Operational flag |
+| ADD | `description text [null]` | Mô tả link |
+| CHANGE | `benefit_type varchar(50)` | Align enum: `HEALTH_INSURANCE \| LIFE_INSURANCE \| PENSION \| STOCK_OPTION \| CAR_ALLOWANCE \| MEAL_SUBSIDY \| EDUCATION_AID \| COMPENSATION_COMPONENT` |
+| ADD index | `(direction) WHERE is_active = true` | Engine filter by direction at runtime |
+
+> **Rationale:** Không có `direction` → engine không biết benefit link này tác động payroll thế nào.
+> ADDS_TO_GROSS vs ADDS_DEDUCTION vs EMPLOYER_ONLY là 3 hành vi hoàn toàn khác nhau về tính toán.
+
+### Documents Updated (02.xx-*.md)
+
+**Change 47 — Align field names/types trong 5 documents theo DBML:**
+
+| Document | Change | Detail |
+|----------|--------|--------|
+| `02.15-gl-mapping.md` | ADD field | `is_active boolean` vào field table |
+| `02.17-payslip-template.md` | RENAME + ADD | `locale` → `locale_code`; thêm `template_type`, `logo_url`, `header_text`, `footer_text`, `description`, SCD-2 fields; `name` varchar(100) → varchar(255) |
+| `02.10-pay-profile-rate-config.md` | RENAME | `base_rate` → `base_rate_amount decimal(15,4)`; `formula_code varchar(50)` → `formula_id uuid FK`; thêm `currency_code char(3)` |
+| `02.18-pay-formula.md` | RENAME | `version smallint` → `version_no int`; `name` varchar(100) → varchar(255) |
+| `02.21-termination-pay-config.md` | ADD fields | `is_mandatory boolean NOT NULL`, `description text`, `effective_start/end_date` |
+| `02.22-pay-benefit-link.md` | ADD fields | `valid_from/valid_to` note; `direction [NOT NULL]`; `is_active`; `description` — Updated Changed header |
+
+### Summary
+
+| Change | Table/Doc | Type | Fields Added/Changed |
+|--------|-----------|------|----------------------|
+| 42 | `pay_master.validation_rule` | REDESIGNED | Xóa 3 DB-trigger fields; +`rule_type`, +`severity`, +`element_id`, +`condition_json`; `error_message` varchar(500) |
+| 43 | `pay_master.gl_mapping` | ENRICHED | +`legal_entity_id`, +`country_code`, +`gl_account_name`, +`debit_credit`, +`cost_center_code`, +`description`; fix varchar(105)→varchar(50) |
+| 44 | `pay_master.costing_rule` | ENRICHED | Rename `level_scope`→`costing_level` (new enum); +`split_method`, +`cost_center_id`, +`allocation_pct`, +`gl_account_code`, +`description`, +`is_active` |
+| 45 | `pay_master.balance_def` | ENRICHED | +`element_id FK [null]`, +`description`, +`is_active`; keep `metadata jsonb` |
+| 46 | `pay_master.pay_benefit_link` | ENRICHED | +`direction [not null]`, +`is_active`, +`description`; enum update `benefit_type` |
+| 47 | 5 documents | DOC ALIGN | Field names/types aligned to DBML; SCD-2 notes added |
+
+---
+
 ## [07Apr2026] – v4.1 PR: pay_master Design Gap Resolution (Changes 39–41)
 
 > **Context:** Phân tích kiến trúc `pay_master` sau khi cross-check toàn bộ 3 schema (CO, TR, PR) phát hiện 3 design gaps cần close trước khi viết 22 entity documents:

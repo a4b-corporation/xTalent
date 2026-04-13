@@ -111,29 +111,116 @@ Table pay_master.pay_element {
   }
 }
 
-Table pay_master.balance_def {
-  id              uuid [pk]
-  code            varchar(50) [unique]      // GROSS, NET, YTD_INC
-  name            varchar(100)
-  balance_type    varchar(20)               // RUN | QTD | YTD | LTD
-  formula_json    jsonb   [null]
+// changed 13Apr2026: ENRICHED — Change 45: Doc-DBML Gap Resolution
+// - Thêm element_id FK [null]: track element cụ thể (null = multi-element computed balance)
+// - Thêm is_active boolean: operational flag để deactivate old balances
+// - Thêm description text: mô tả balance definition
+// - Keep formula_json: cho computed balances aggregate nhiều elements (YTD_GROSS = SUM của EARNING)
+// - Keep metadata jsonb: extra params (không thay thế bằng description, cả 2 tồn tại cùng)
+Table pay_master.balance_def { // CHANGED JUL 2025, ENRICHED 13Apr2026
+  id              uuid [pk, default: `gen_random_uuid()`]
+  code            varchar(50) [unique, not null]  // GROSS, NET, YTD_INC
+  name            varchar(100) [not null]
+  balance_type    varchar(20)  [not null]          // RUN | QTD | YTD | LTD
+
+  // NEW 13Apr2026: element_id — null = multi-element computed balance
+  // NOT NULL: balance track 1 element cụ thể (YTD_PIT → PIT_WITHHOLD_VN)
+  // NULL: balance aggregate nhiều elements; dùng formula_json để compute
+  element_id      uuid [ref: > pay_master.pay_element.id, null]  // NEW 13Apr2026
+
+  formula_json    jsonb [null]                      // tùy chọn: aggregate formula (multi-element balances)
   reset_freq_code varchar(20) [ref: > pay_master.pay_frequency.code, null]
-  metadata        jsonb
-  effective_start_date date    // SCD2 // CHANGED JUL 2025
-  effective_end_date date [null] // SCD2 // CHANGED JUL 2025
-  is_current_flag boolean [default: true] // SCD2 // CHANGED JUL 2025
+  description     text [null]                       // NEW 13Apr2026 — mô tả balance
+  is_active       boolean [default: true]           // NEW 13Apr2026 — operational flag
+  metadata        jsonb [null]                      // extra params (giữ nguyên)
+  effective_start_date date                         // SCD2
+  effective_end_date date [null]                    // SCD2
+  is_current_flag boolean [default: true]           // SCD2
+  created_at      timestamp [default: `now()`]
+  updated_at      timestamp [null]
+
+  Indexes {
+    (code)
+    (balance_type)
+    (element_id) [where: "element_id IS NOT NULL"]  // NEW 13Apr2026 — element-scoped lookup
+    (is_active)  [where: "is_active = true"]         // NEW 13Apr2026 — active-only filter
+  }
+
+  Note: '''
+    CHANGED JUL 2025. ENRICHED 13Apr2026 — Change 45: Doc-DBML Gap Resolution.
+    balance_type: RUN = trong 1 run; QTD = quarter-to-date; YTD = year-to-date; LTD = life-to-date.
+    element_id NOT NULL: single-element tracking (e.g. YTD_PIT_WITHHELD → PIT_WITHHOLD_VN element).
+    element_id NULL: aggregate multi-element balance; formula_json chứa computation logic.
+    reset_freq_code: khi nào reset về 0 (ANNUAL, QUARTERLY, null = không reset / LTD).
+    is_active: cho phép deactivate old balance definitions mà không xóa lịch sử.
+    Actual accumulated values → pay_engine.cumulative_balance; balance_def chỉ là definition.
+    Mandatory: YTD_PIT_WITHHELD (element_id → PIT_WITHHOLD) + YTD_SI_BASE cho VN compliance.
+  '''
 }
 
-Table pay_master.costing_rule {
-  id              uuid [pk]
-  code            varchar(50) [unique]
-  name            varchar(100)
-  level_scope     varchar(20)               // LE | BU | EMP | ELEMENT
-  mapping_json    jsonb
-  metadata        jsonb
-  effective_start_date date    // SCD2 // CHANGED JUL 2025
-  effective_end_date date [null] // SCD2 // CHANGED JUL 2025
-  is_current_flag boolean [default: true] // SCD2 // CHANGED JUL 2025
+// changed 13Apr2026: ENRICHED — Change 44: Doc-DBML Gap Resolution
+// Refactor costing_rule từ opaque mapping_json sang explicit columns
+// (tương tự Change 40 cho pay_deduction_policy, 07Apr2026)
+// - level_scope (LE|BU|EMP|ELEMENT) → costing_level (EMPLOYEE|DEPARTMENT|COST_CENTER|PROJECT)
+//   enum mới align đúng với costing domain terminology
+// - Thêm split_method: EQUAL | MANUAL_PCT | TIME_BASED — cách chia tỷ lệ chi phí
+// - Thêm cost_center_id FK: referential integrity thay vì free-text trong mapping_json
+// - Thêm allocation_pct: explicit thay vì ẩn trong mapping_json
+// - Thêm gl_account_code và description
+// - Thêm is_active: operational flag
+// - Keep mapping_json [null]: backward compat / complex multi-CC override cases
+// - Keep metadata jsonb: extra params không cần explicit column
+Table pay_master.costing_rule { // CHANGED JUL 2025, ENRICHED 13Apr2026
+  id              uuid [pk, default: `gen_random_uuid()`]
+  code            varchar(50) [unique, not null]
+  name            varchar(100) [not null]
+  description     text [null]                       // NEW 13Apr2026
+
+  // changed 13Apr2026: level_scope → costing_level, enum redesigned
+  // EMPLOYEE: per-person, no split (default, most common)
+  // DEPARTMENT: theo phòng ban của employee
+  // COST_CENTER: theo cost center chỉ định (multi-CC allocation)
+  // PROJECT: theo project code (project-based billing)
+  costing_level   varchar(30) [not null]            // changed 13Apr2026: was level_scope (LE|BU|EMP|ELEMENT)
+
+  // NEW 13Apr2026: explicit split config (replaces opaque mapping_json for common cases)
+  // EQUAL: chia đều cho tất cả cost centers
+  // MANUAL_PCT: % do admin config (allocation_pct column)
+  // TIME_BASED: split theo % thời gian thực từ TA timesheet
+  split_method    varchar(20) [not null, default: 'EQUAL']  // NEW 13Apr2026
+
+  gl_account_code varchar(50) [null]                // NEW 13Apr2026 — default GL account cho costing rule
+  cost_center_id  uuid [null]                       // NEW 13Apr2026 — cost center chỉ định (null = derive từ employee)
+  allocation_pct  decimal(5,2) [null]               // NEW 13Apr2026 — % phân bổ cho MANUAL_PCT (e.g. 60.00 = 60%)
+  // App constraint: tổng allocation_pct cho cùng employee × period = 100%
+
+  mapping_json    jsonb [null]   // giữ cho backward compat / complex multi-CC splits ngoài explicit fields
+  metadata        jsonb [null]   // extra params
+  is_active       boolean [default: true]           // NEW 13Apr2026
+  effective_start_date date                         // SCD2
+  effective_end_date date [null]                    // SCD2
+  is_current_flag boolean [default: true]           // SCD2
+  created_at      timestamp [default: `now()`]
+  updated_at      timestamp [null]
+
+  Indexes {
+    (code)
+    (costing_level)                                            // NEW 13Apr2026
+    (split_method)                                             // NEW 13Apr2026
+    (cost_center_id) [where: "cost_center_id IS NOT NULL"]    // NEW 13Apr2026
+    (is_active) [where: "is_active = true"]                   // NEW 13Apr2026
+  }
+
+  Note: '''
+    CHANGED JUL 2025. ENRICHED 13Apr2026 — Change 44: Doc-DBML Gap Resolution.
+    Refactor từ opaque mapping_json sang explicit columns (pattern tương tự Change 40: pay_deduction_policy).
+    costing_level mới: EMPLOYEE|DEPARTMENT|COST_CENTER|PROJECT (thay LE|BU|EMP|ELEMENT).
+    split_method: EQUAL = chia đều; MANUAL_PCT = dùng allocation_pct; TIME_BASED = pull từ TA timesheet.
+    TIME_BASED: engine PHẢI pull timesheet trước costing step — block nếu TA data chưa available.
+    App constraint: tổng allocation_pct của tất cả records cho cùng employee × period phải = 100%.
+    mapping_json giữ cho complex multi-CC splits chưa cover bởi explicit fields.
+    Output: pay_engine.costing table. GL posting là bước riêng của accounting module (qua pay_gateway).
+  '''
 }
 
 // =============================================================
@@ -409,34 +496,123 @@ Table pay_master.statutory_rule { // CHANGED JUL 2025, ENRICHED 27Mar2026
   '''
 }
 
-Table pay_master.gl_mapping { // CHANGED JUL 2025
-  id uuid [pk, default: `gen_random_uuid()`]
-  element_id uuid [ref: > pay_master.pay_element.id]
-  gl_account_code varchar(105)
-  effective_start_date date
-  effective_end_date date [null]
-  is_current_flag boolean [default: true]
+// changed 13Apr2026: ENRICHED — Change 43: Doc-DBML Gap Resolution
+// Thêm các fields cần thiết cho multi-entity GL accounting:
+// - debit_credit char(1): CỰC KỲ QUAN TRỌNG — mỗi element tạo 2 journal entries (D + C);
+//   không có field này engine không biết post vào bên nào
+// - legal_entity_id: multi-entity scoping (VN vs SG dùng chart of accounts khác nhau)
+// - country_code: country scoping (null = global mapping)
+// - gl_account_name: tên tài khoản cho reporting/audit
+// - cost_center_code: default cost center cho element này
+// - description: mô tả mapping rule
+// - Fix varchar(105) → varchar(50) (VN chart of accounts: 6-10 ký tự; 105 là lỗi)
+Table pay_master.gl_mapping { // CHANGED JUL 2025, ENRICHED 13Apr2026
+  id              uuid [pk, default: `gen_random_uuid()`]
+  element_id      uuid [ref: > pay_master.pay_element.id, not null]
+  legal_entity_id uuid [ref: > org_legal.entity.id, null]  // NEW 13Apr2026 — null = global mapping
+  country_code    char(2) [null]        // NEW 13Apr2026 — null = global; 'VN', 'SG' for country-specific
+  gl_account_code varchar(50) [not null]  // changed 13Apr2026: varchar(105) → varchar(50)
+  gl_account_name varchar(255) [null]   // NEW 13Apr2026 — tên tài khoản cho reporting/audit
+  debit_credit    char(1) [not null]    // NEW 13Apr2026 — 'D' (Debit) hoặc 'C' (Credit)
+  // Debit/Credit convention:
+  //   EARNING elements: D=Chi phí (6xx account), C=Phải trả NLĐ (334)
+  //   DEDUCTION elements: D=Phải trả NLĐ (334), C=Phải nộp (3383/3335)
+  //   Employer contributions: D=Chi phí (6xx), C=Phải nộp (3383)
+  cost_center_code varchar(50) [null]   // NEW 13Apr2026 — default cost center cho element
+  description     text [null]           // NEW 13Apr2026 — mô tả mapping rule
+  effective_start_date date             // SCD2
+  effective_end_date date [null]        // SCD2
+  is_current_flag boolean [default: true]  // SCD2
   is_active boolean [default: true]
   created_at timestamp [default: `now()`]
   updated_at timestamp [null]
-  Note: 'CHANGED JUL 2025. Mapping element với tài khoản kế toán (GL).'
+
+  Indexes {
+    (element_id, debit_credit)                                  // fast dual-entry lookup
+    (element_id, legal_entity_id, country_code)                 // NEW 13Apr2026 — priority resolution
+    (legal_entity_id) [where: "legal_entity_id IS NOT NULL"]   // NEW 13Apr2026 — LE filter
+    (country_code)    [where: "country_code IS NOT NULL"]       // NEW 13Apr2026 — country filter
+  }
+
+  Note: '''
+    CHANGED JUL 2025. ENRICHED 13Apr2026 — Change 43: Doc-DBML Gap Resolution.
+    Priority resolution: LE-specific > country-specific > global (element_id only).
+    Mỗi element thường cần 2 records: 1 Debit (chi phí 6xx) + 1 Credit (phải trả 334).
+    Ví dụ BASIC_SALARY: D=622001 (Chi phí lương CN), C=334 (Phải trả NLĐ).
+    Ví dụ BHXH_EE_VN: D=334 (Trừ vào lương NLĐ), C=3383 (BHXH phải nộp phần NLĐ).
+    Ví dụ BHXH_ER_VN: D=622002 (Chi phí BHXH chủ SD), C=3383 (BHXH phải nộp phần CSDLĐ).
+    debit_credit BẮT BUỘC — engine dùng để generate đúng bên trong journal entries.
+    GL mapping ≠ GL posting: table này chỉ là config rules.
+    Actual journal entries tạo bởi accounting module sau payroll confirm, dựa trên pay_engine.costing.
+  '''
 }
 
-Table pay_master.validation_rule { // CHANGED JUL 2025
+// changed 13Apr2026: REDESIGNED — Change 42: Doc-DBML Gap Resolution
+// Redesign từ DB-constraint model sang payroll-native validation engine:
+// - Xóa target_table/field_name/rule_expression: đây là pattern của DB trigger,
+//   không phù hợp cho payroll business rule engine
+// - Thêm rule_type: phân biệt phase validation
+//   INPUT_CHECK (pre-calc) | RESULT_CHECK (post-calc) | CROSS_MODULE (TA/absence) | STATUTORY_CAP (legal)
+// - Thêm severity: quyết định run có bị block không
+//   ERROR = block run (must fix before confirm) | WARNING = alert only, operator có thể override
+// - Thêm element_id FK: scope validation về specific element (null = toàn run)
+// - Thêm condition_json: flexible condition expression thay rule_expression cứng
+// - Tăng error_message varchar(255) → varchar(500) cho business messages đủ dài
+Table pay_master.validation_rule { // CHANGED JUL 2025, REDESIGNED 13Apr2026
   id uuid [pk, default: `gen_random_uuid()`]
-  rule_code varchar(50) [unique]
-  rule_name varchar(255)
-  target_table varchar(50)
-  field_name varchar(50)
-  rule_expression text
-  error_message varchar(255)
-  effective_start_date date    // SCD2 // CHANGED JUL 2025
-  effective_end_date date [null] // SCD2 // CHANGED JUL 2025
-  is_current_flag boolean [default: true] // SCD2 // CHANGED JUL 2025
+  code varchar(50) [unique, not null]   // changed 13Apr2026: rule_code → code
+  name varchar(255) [not null]          // changed 13Apr2026: rule_name → name
+
+  // NEW 13Apr2026: rule_type phân biệt phase của validation
+  rule_type varchar(30) [not null]      // INPUT_CHECK | RESULT_CHECK | CROSS_MODULE | STATUTORY_CAP
+  // INPUT_CHECK: validate input data trước khi tính (e.g. missing hours, negative base salary)
+  // RESULT_CHECK: validate sau khi tính (e.g. net_pay < 0, deduction > 30% net)
+  // CROSS_MODULE: validate data cross-module (e.g. TA hours confirmed before payroll run)
+  // STATUTORY_CAP: check legal caps (e.g. OT <= 300h/year, SI base <= 20x base salary)
+
+  // NEW 13Apr2026: severity quyết định run có bị block không
+  severity varchar(10) [not null]       // ERROR | WARNING
+  // ERROR: block run — phải fix trước khi confirm payroll
+  // WARNING: alert only — operator có thể acknowledge và tiếp tục
+
+  element_id uuid [ref: > pay_master.pay_element.id, null]  // NEW 13Apr2026 — null = toàn run
+  // element_id NULL: validation áp dụng cho toàn run (net_pay, total_deductions)
+  // element_id NOT NULL: scoped về specific element (PIT, BHXH, OT_PAY...)
+
+  condition_json jsonb [null]           // NEW 13Apr2026 — flexible condition expression
+  // Replaces rule_expression text. Application-validated structure, engine interprets theo rule_type.
+  // Example: {"field": "net_pay", "operator": ">=", "value": 0}
+  // Example: {"balance_code": "YTD_OT_HOURS", "operator": "<=", "cap_source": "STATUTORY"}
+
+  error_message varchar(500) [not null]  // changed 13Apr2026: varchar(255) → varchar(500)
+  effective_start_date date              // SCD2
+  effective_end_date date [null]         // SCD2
+  is_current_flag boolean [default: true]  // SCD2
   is_active boolean [default: true]
   created_at timestamp [default: `now()`]
   updated_at timestamp [null]
-  Note: 'CHANGED JUL 2025. Rule kiểm tra validate dữ liệu payroll.'
+
+  Indexes {
+    (code)
+    (rule_type)                                             // NEW 13Apr2026 — filter by phase
+    (severity, is_active) [where: "is_active = true"]      // NEW 13Apr2026 — active rules by severity
+    (element_id) [where: "element_id IS NOT NULL"]         // NEW 13Apr2026 — element-scoped rules
+  }
+
+  Note: '''
+    CHANGED JUL 2025. REDESIGNED 13Apr2026 — Change 42: Doc-DBML Gap Resolution.
+    Redesign từ DB-constraint model sang payroll-native validation engine.
+    rule_type phân biệt phase:
+      INPUT_CHECK   → pre-calculation: missing data, negative base, zero hours
+      RESULT_CHECK  → post-calculation: net_pay < 0, deduction > 30% net (BLLĐ 2019)
+      CROSS_MODULE  → data từ TA/Absence phải confirmed trước payroll
+      STATUTORY_CAP → legal caps: OT <= 300h/year (BLLĐ Điều 107), SI base <= ceiling
+    severity: ERROR blocks run entirely; WARNING emits alert — operator must acknowledge.
+    element_id: NULL = global run-level rule; NOT NULL = element-scoped (only runs when element in run).
+    condition_json: application evaluates structure; engine interprets per rule_type context.
+    execution: engine loads all active rules (is_active=true, is_current_flag=true) at run start;
+      processes INPUT_CHECK first, then RESULT_CHECK, then STATUTORY_CAP.
+  '''
 }
 
 Table pay_master.payslip_template { // CHANGED JUL 2025
@@ -965,45 +1141,63 @@ Table pay_master.piece_rate_config {
 
 // changed 07Apr2026: ENRICHED — AQ-BenefitLink: Option B explicit FKs + backward compat
 // Thêm FK columns rõ ràng thay vì soft reference thuần túy.
-Table pay_master.pay_benefit_link { // CHANGED JUL 2025, ENRICHED 07Apr2026
+// changed 13Apr2026: ENRICHED — Change 46: Doc-DBML Gap Resolution
+// - Thêm direction varchar(20): CỰC KỲ QUAN TRỌNG — engine cần biết link này tác động payroll thế nào
+//   ADDS_TO_GROSS | ADDS_DEDUCTION | EMPLOYER_ONLY | INFORMATION_ONLY
+// - Thêm is_active boolean: operational flag
+// - Thêm description text: mô tả link này
+Table pay_master.pay_benefit_link { // CHANGED JUL 2025, ENRICHED 07Apr2026, ENRICHED 13Apr2026
   id              uuid [pk, default: `gen_random_uuid()`]
   pay_element_id  uuid [ref: > pay_master.pay_element.id, not null]
 
   // changed 07Apr2026: NEW — explicit FK columns (Option B)
   // Ưu tiên dùng explicit FKs; benefit_policy_code giữ cho backward compat / custom cases.
   // Constraint (enforced by application): ít nhất 1 trong 3 field dưới phải NOT NULL.
-  benefit_plan_id   uuid [ref: > benefit.benefit_plan.id, null]             // Target = benefit.benefit_plan
-  pay_component_id  uuid [ref: > comp_core.pay_component_def.id, null]      // Target = comp_core.pay_component_def
-  benefit_policy_code varchar(50) [null]                                     // changed 07Apr2026: now OPTIONAL (soft ref, kept for backward compat / custom policy codes)
-  benefit_source    varchar(30) [null]                                        // NEW 07Apr2026 — BENEFIT_PLAN | PAY_COMPONENT | CUSTOM (chỉ FK/field nào được dùng)
+  benefit_plan_id   uuid [ref: > benefit.benefit_plan.id, null]         // Target = benefit.benefit_plan
+  pay_component_id  uuid [ref: > comp_core.pay_component_def.id, null]  // Target = comp_core.pay_component_def
+  benefit_policy_code varchar(50) [null]   // changed 07Apr2026: now OPTIONAL (backward compat / custom policy codes)
+  benefit_source    varchar(30) [null]     // NEW 07Apr2026 — BENEFIT_PLAN | PAY_COMPONENT | CUSTOM
 
-  benefit_type    varchar(50) [not null]   // ALLOWANCE | BENEFIT | BONUS
-  valid_from      date [not null]
-  valid_to        date [null]
+  benefit_type    varchar(50) [not null]   // HEALTH_INSURANCE | LIFE_INSURANCE | PENSION | STOCK_OPTION
+                                           // CAR_ALLOWANCE | MEAL_SUBSIDY | EDUCATION_AID | COMPENSATION_COMPONENT
+
+  // NEW 13Apr2026: direction — cách link ảnh hưởng đến payroll (bắt buộc engine cần biết)
+  direction       varchar(20) [not null]   // NEW 13Apr2026
+  // ADDS_TO_GROSS: benefit làm tăng gross taxable income (benefit in-kind, non-cash — TT78/2014)
+  // ADDS_DEDUCTION: benefit tạo khấu trừ từ lương NLĐ (employee premium, phí bảo hiểm NLĐ đóng)
+  // EMPLOYER_ONLY: chỉ ảnh hưởng chi phí chủ SD, không ảnh hưởng net NLĐ
+  // INFORMATION_ONLY: chỉ hiển thị trên payslip, không tính toán
+
+  valid_from      date [not null]          // thời điểm link bắt đầu hiệu lực
+  valid_to        date [null]              // null = đang active
+  is_active       boolean [default: true]  // NEW 13Apr2026 — operational flag
+  description     text [null]             // NEW 13Apr2026 — mô tả link
   metadata        jsonb [null]
   created_at      timestamp [default: `now()`]
   updated_at      timestamp [null]
 
   Indexes {
     (pay_element_id)
-    (benefit_plan_id) [where: "benefit_plan_id IS NOT NULL"]
-    (pay_component_id) [where: "pay_component_id IS NOT NULL"]
+    (benefit_plan_id)    [where: "benefit_plan_id IS NOT NULL"]
+    (pay_component_id)   [where: "pay_component_id IS NOT NULL"]
     (benefit_type)
+    (direction)          [where: "is_active = true"]  // NEW 13Apr2026 — engine filter by direction
   }
 
   Note: '''
-    CHANGED JUL 2025. ENRICHED 07Apr2026 — Option B: explicit FK columns.
-    
-    Usage pattern:
-      BENEFIT_PREMIUM: pay_element(HEALTH_PREMIUM_EMP) → benefit_plan_id = benefit.benefit_plan(HEALTH_PVI)
-                       benefit_source = BENEFIT_PLAN
-      ALLOWANCE_LINKED: pay_element(MEAL_ALLOWANCE) → pay_component_id = comp_core.pay_component_def(MEAL)
-                        benefit_source = PAY_COMPONENT
-      CUSTOM: benefit_policy_code = "INTERNAL_WELFARE_FUND" (no FK, external system)
-              benefit_source = CUSTOM
-    
-    Application layer enforces: at least one of (benefit_plan_id, pay_component_id, benefit_policy_code) IS NOT NULL.
-    benefit_policy_code kept for backward compat and external/custom policy code references.
+    CHANGED JUL 2025. ENRICHED 07Apr2026 (Option B: explicit FKs). ENRICHED 13Apr2026 — Change 46.
+    direction là field CỰC KỲ QUAN TRỌNG:
+      ADDS_TO_GROSS: cộng giá trị benefit vào taxable income — dùng cho benefits in-kind (TT78/2014)
+      ADDS_DEDUCTION: tạo deduction entry = premium amount — dùng cho phí bảo hiểm NLĐ đóng
+      EMPLOYER_ONLY: không ảnh hưởng net NLĐ — chỉ ghi nhận employer cost
+      INFORMATION_ONLY: chỉ hiển thị trên payslip, engine không tính vào net/gross
+    benefit_source discriminator: BENEFIT_PLAN | PAY_COMPONENT | CUSTOM
+      → BENEFIT_PLAN: dùng benefit_plan_id FK
+      → PAY_COMPONENT: dùng pay_component_id FK
+      → CUSTOM: dùng benefit_policy_code (soft ref — no referential integrity, application validates)
+    App constraint: at least one of (benefit_plan_id, pay_component_id, benefit_policy_code) IS NOT NULL.
+    valid_from/valid_to: temporal validity của link (≠ pay_element validity).
+    benefit_policy_code (CUSTOM) không có referential integrity — migrate sang explicit FK khi có thể.
   '''
 }
 
