@@ -170,11 +170,20 @@ Table pay_master.balance_def { // CHANGED JUL 2025, ENRICHED 13Apr2026
 // - Thêm is_active: operational flag
 // - Keep mapping_json [null]: backward compat / complex multi-CC override cases
 // - Keep metadata jsonb: extra params không cần explicit column
-Table pay_master.costing_rule { // CHANGED JUL 2025, ENRICHED 13Apr2026
+Table pay_master.costing_rule { // CHANGED JUL 2025, ENRICHED 13Apr2026, ENRICHED 14Apr2026
   id              uuid [pk, default: `gen_random_uuid()`]
   code            varchar(50) [unique, not null]
   name            varchar(100) [not null]
   description     text [null]                       // NEW 13Apr2026
+
+  // NEW 14Apr2026 (Change 50): element_id scoping
+  // null = rule này là DEFAULT cho tất cả elements trong run
+  // not null = rule này chỉ áp dụng cho element cụ thể
+  // Use case: BASIC_SALARY → split 60% Department + 40% Project;
+  //           BHXH_ER → 100% Department (không split theo project)
+  //           OT_PAY → 100% Project cost center
+  // Resolution priority: element-scoped rule > default rule (element_id IS NULL)
+  element_id      uuid [ref: > pay_master.pay_element.id, null]  // NEW 14Apr2026
 
   // changed 13Apr2026: level_scope → costing_level, enum redesigned
   // EMPLOYEE: per-person, no split (default, most common)
@@ -205,6 +214,7 @@ Table pay_master.costing_rule { // CHANGED JUL 2025, ENRICHED 13Apr2026
 
   Indexes {
     (code)
+    (element_id) [where: "element_id IS NOT NULL"]             // NEW 14Apr2026 — element-scoped lookup
     (costing_level)                                            // NEW 13Apr2026
     (split_method)                                             // NEW 13Apr2026
     (cost_center_id) [where: "cost_center_id IS NOT NULL"]    // NEW 13Apr2026
@@ -213,11 +223,14 @@ Table pay_master.costing_rule { // CHANGED JUL 2025, ENRICHED 13Apr2026
 
   Note: '''
     CHANGED JUL 2025. ENRICHED 13Apr2026 — Change 44: Doc-DBML Gap Resolution.
+    ENRICHED 14Apr2026 — Change 50: Thêm element_id scoping.
     Refactor từ opaque mapping_json sang explicit columns (pattern tương tự Change 40: pay_deduction_policy).
     costing_level mới: EMPLOYEE|DEPARTMENT|COST_CENTER|PROJECT (thay LE|BU|EMP|ELEMENT).
     split_method: EQUAL = chia đều; MANUAL_PCT = dùng allocation_pct; TIME_BASED = pull từ TA timesheet.
     TIME_BASED: engine PHẢI pull timesheet trước costing step — block nếu TA data chưa available.
     App constraint: tổng allocation_pct của tất cả records cho cùng employee × period phải = 100%.
+    element_id resolution: element-scoped rule (NOT NULL) override default rule (NULL) cho cùng employee.
+    Ví dụ: BASIC_SALARY → PROJECT+DEPARTMENT split; BHXH_ER → DEPARTMENT only (2 rules khác nhau).
     mapping_json giữ cho complex multi-CC splits chưa cover bởi explicit fields.
     Output: pay_engine.costing table. GL posting là bước riêng của accounting module (qua pay_gateway).
   '''
@@ -1226,8 +1239,9 @@ Table pay_audit.audit_log {                      // NEW JUL 2025
 }
 // ================================================================
 //  IMPORT JOB  – theo dõi upload file CSV thủ công
+//  changed 14Apr2026 (Change 53): Thêm schema prefix pay_gateway
 // ================================================================
-Table import_job {                     // NEW JUL 2025
+Table pay_gateway.import_job {         // NEW JUL 2025, schema prefix added 14Apr2026
   id                      uuid        [pk]
   file_name               varchar(255)
   pay_group_code          varchar(50)   [null]
@@ -1244,8 +1258,9 @@ Table import_job {                     // NEW JUL 2025
 
 // ================================================================
 //  GENERATED FILE  – quản lý file đầu ra (payslip, bank, tax…)
+//  changed 14Apr2026 (Change 53): Thêm schema prefix pay_gateway
 // ================================================================
-Table generated_file {                 // NEW JUL 2025
+Table pay_gateway.generated_file {     // NEW JUL 2025, schema prefix added 14Apr2026
   id                      uuid        [pk]
   type                    varchar(20)   // PAYMENT | TAX_REPORT | PAYSLIP
   //payroll_run_id          uuid         [ref: > pay_run.batch.id]           // changed 27Mar2026: DEPRECATED — FK cũ sang pay_run.batch
@@ -1255,13 +1270,14 @@ Table generated_file {                 // NEW JUL 2025
   file_path               varchar(512)
   generated_at            timestamp
   expires_at              timestamp    [null]
-  status                  varchar(35)        
+  status                  varchar(35)
 }
 
 // ================================================================
 //  BANK TEMPLATE  – mẫu file ngân hàng (nếu muốn cấu hình động)
+//  changed 14Apr2026 (Change 53): Thêm schema prefix pay_bank
 // ================================================================
-Table bank_template {                  // NEW JUL 2025
+Table pay_bank.bank_template {         // NEW JUL 2025, schema prefix added 14Apr2026
   code                    varchar(20)  [pk]      // VCB, VIETIN, CITI...
   name                    varchar(100)
   format                  varchar(10)            // CSV | TXT
@@ -1274,8 +1290,9 @@ Table bank_template {                  // NEW JUL 2025
 
 // ================================================================
 //  TAX REPORT TEMPLATE  – mẫu báo cáo thuế (tuỳ chọn)
+//  changed 14Apr2026 (Change 53): Thêm schema prefix pay_gateway
 // ================================================================
-Table tax_report_template {            // NEW JUL 2025
+Table pay_gateway.tax_report_template { // NEW JUL 2025, schema prefix added 14Apr2026
   code                    varchar(20)  [pk]      // 05QTT_TNCN, 02KK...
   country_code            varchar(3)
   format                  varchar(10)            // PDF | XML
@@ -1343,6 +1360,7 @@ Table tax_report_template {            // NEW JUL 2025
 // changed 27Mar2026: NEW — Explicit pay period records
 // Thay thế calendar_json implicit periods bằng explicit records
 // để track period lifecycle (FUTURE → OPEN → PROCESSING → CLOSED)
+// changed 14Apr2026 (Change 56): Thêm ta_period_id — link tường minh với TA period để đồng bộ lifecycle
 Table pay_mgmt.pay_period {
   id              uuid        [pk, default: `gen_random_uuid()`]
   calendar_id     uuid        [ref: > pay_master.pay_calendar.id, not null]
@@ -1355,6 +1373,17 @@ Table pay_mgmt.pay_period {
   status_code     varchar(20) [not null, default: 'FUTURE']  // FUTURE | OPEN | PROCESSING | CLOSED | ADJUSTED
   closed_at       timestamp   [null]
   closed_by       uuid        [ref: > employment.employee.id, null]
+
+  // NEW 14Apr2026 (Change 56): Link tường minh với TA period
+  // Cross-module dependency: TA phải LOCK period TRƯỚC khi PR chuyển sang PROCESSING.
+  // Enforcement: app-layer (engine INPUT_COLLECTION step kiểm tra ta_period.status_code = 'LOCKED').
+  // Lifecycle rule:
+  //   ta.period.status_code = 'LOCKED'  →  pay_mgmt.pay_period có thể chuyển sang PROCESSING
+  //   ta.period.status_code = 'OPEN'    →  block payroll run (dữ liệu timesheet chưa finalized)
+  // null = không dùng TA integration cho period này (e.g., manual payroll)
+  // See: TODO-cross-module-changes.md → TA-TODO-001 (TA module chưa có FK về phía TA)
+  ta_period_id    uuid        [ref: > ta.period.id, null]    // NEW 14Apr2026 — link TA period tương ứng
+
   metadata        jsonb       [null]
   created_at      timestamp   [default: `now()`]
   updated_at      timestamp   [null]
@@ -1364,6 +1393,7 @@ Table pay_mgmt.pay_period {
     (calendar_id, status_code)
     (period_start, period_end)
     (status_code)
+    (ta_period_id) [where: "ta_period_id IS NOT NULL"]  // NEW 14Apr2026 — lookup by TA period
   }
 
   Note: '''
@@ -1371,6 +1401,11 @@ Table pay_mgmt.pay_period {
     Thay thế calendar_json implicit period bằng materialized records.
     Allows tracking period lifecycle (FUTURE → OPEN → PROCESSING → CLOSED).
     ADJUSTED = period đã close nhưng có supplemental/retro run.
+    changed 14Apr2026 (Change 56): ta_period_id tạo explicit link với ta.period.
+    Synchronization rule: TA period phải LOCKED trước khi Payroll bắt đầu INPUT_COLLECTION.
+    Engine validation (pre-flight check): IF ta_period_id IS NOT NULL
+      THEN SELECT status_code FROM ta.period WHERE id = ta_period_id AND status_code = 'LOCKED'
+      ELSE block run với message "TA period chưa LOCKED — không thể bắt đầu payroll calculation".
   '''
 }
 
@@ -1393,7 +1428,13 @@ Table pay_mgmt.batch {
   status_code     varchar(20) [not null, default: 'DRAFT']
 
   // NEW 27Mar2026: Engine interface
-  engine_request_id uuid     [ref: > pay_engine.run_request.id, null]        // NEW 27Mar2026 — FK to engine request
+  // NULLABLE - see circular reference note on run_employee above (Change 49)
+  // batch.engine_request_id → run_request: nullable vì circular creation order
+  //   Step 1: CREATE batch (engine_request_id = NULL, status = DRAFT)
+  //   Step 2: batch → SUBMITTED → CREATE run_request (batch_id = this batch)
+  //   Step 3: UPDATE batch SET engine_request_id = new_run_request.id
+  // App constraint: khi batch.status = ENGINE_PROCESSING, engine_request_id MUST NOT NULL
+  engine_request_id uuid     [ref: > pay_engine.run_request.id, null]        // NEW 27Mar2026 — FK to engine request (nullable, see circular ref note)
 
   // Retro / Reversal (giữ nguyên từ V3, chuyển FK)
   original_run_id         uuid        [ref: > pay_mgmt.batch.id, null]       // dùng cho retro/reversal
@@ -1436,9 +1477,16 @@ Table pay_mgmt.batch {
 
 // changed 27Mar2026: MIGRATED from pay_run.manual_adjust → pay_mgmt.manual_adjust
 // FK refs updated: pay_run.batch → pay_mgmt.batch
+// changed 14Apr2026 (Change 51): Thêm assignment_id — hỗ trợ multi-assignment payroll
 Table pay_mgmt.manual_adjust {                    // CHANGED JUL 2025, MIGRATED 27Mar2026
   id                 uuid        [pk, default: `gen_random_uuid()`]
   employee_id        uuid        [ref: > employment.employee.id, not null]
+
+  // NEW 14Apr2026 (Change 51): assignment_id cho multi-assignment support
+  // Use case: Employee có 2 assignments (50% Sales + 50% Admin) cần biết adjustment này
+  // áp dụng cho assignment nào để costing đúng cost center.
+  // null = adjustment áp dụng cho primary assignment của employee trong kỳ
+  assignment_id      uuid        [ref: > employment.assignment.id, null]   // NEW 14Apr2026
 
   // Bạn vẫn có thể giữ period_start / period_end để tham chiếu
   period_start       date
@@ -1462,9 +1510,15 @@ Table pay_mgmt.manual_adjust {                    // CHANGED JUL 2025, MIGRATED 
 
   Indexes {
     (employee_id, status_code)
+    (assignment_id) [where: "assignment_id IS NOT NULL"]  // NEW 14Apr2026
   }
 
-  Note: 'changed 27Mar2026: MIGRATED from pay_run.manual_adjust. FK refs updated to pay_mgmt.batch.'
+  Note: '''
+    changed 27Mar2026: MIGRATED from pay_run.manual_adjust. FK refs updated to pay_mgmt.batch.
+    changed 14Apr2026 (Change 51): Thêm assignment_id cho multi-assignment support.
+    assignment_id null = primary assignment; not null = scoped adjustment cho assignment cụ thể.
+    Engine sử dụng assignment_id để attach costing đúng cost_center của từng assignment.
+  '''
 }
 
 // changed 27Mar2026: DEPRECATED — Temporal Workflow Migration
@@ -1592,10 +1646,30 @@ Table pay_engine.run_step {
 
 // changed 27Mar2026: MIGRATED from pay_run.employee → pay_engine.run_employee
 // Enhanced: +request_id, +assignment_id, +pay_group_id, +comparison fields, +error_message
+// changed 14Apr2026 (Change 49): Document bidirectional reference / circular FK pattern
+// CIRCULAR REFERENCE EXPLANATION:
+//   pay_mgmt.batch.engine_request_id → pay_engine.run_request.id  (batch biết request nào đang chạy)
+//   pay_engine.run_request.batch_id  → pay_mgmt.batch.id          (request biết thuộc batch nào)
+//   pay_engine.run_employee.batch_id và .request_id cùng tồn tại → INTENTIONAL DENORMALIZATION
+//
+// Tại sao denormalize batch_id vào run_employee?
+//   1. Query performance: SELECT * FROM run_employee WHERE batch_id = X không cần JOIN qua run_request
+//   2. Backward compatibility: V3 code đọc batch_id trực tiếp, tránh breaking change
+//   3. Redundancy risk được chấp nhận: app-layer phải đảm bảo run_employee.batch_id
+//      LUÔN LUÔN bằng run_request.batch_id của cùng request_id
+//
+// Tại sao batch.engine_request_id là nullable?
+//   1. Circular reference: DBML không cho phép tạo cả 2 FK cùng lúc với NOT NULL
+//      (batch tạo trước → cần tạo run_request → rồi mới cập nhật batch.engine_request_id)
+//   2. Có thể null tạm thời: batch ở trạng thái DRAFT/SELECTING chưa có request
+//   3. Integrity được enforce bởi app-layer: khi batch → SUBMITTED, engine_request_id phải được set
+//
+// App-layer constraint (phải enforce trong service layer):
+//   run_employee.batch_id MUST EQUAL run_request.batch_id WHERE run_request.id = run_employee.request_id
 Table pay_engine.run_employee {
   id              uuid        [pk, default: `gen_random_uuid()`]
   request_id      uuid        [ref: > pay_engine.run_request.id, null]       // NEW 27Mar2026 — link tới engine request
-  batch_id        uuid        [ref: > pay_mgmt.batch.id, not null]           // giữ từ V3 (FK updated: pay_run.batch → pay_mgmt.batch)
+  batch_id        uuid        [ref: > pay_mgmt.batch.id, not null]           // giữ từ V3; DENORMALIZED từ request_id → run_request.batch_id (xem note circular ref ở trên)
   employee_id     uuid        [ref: > employment.employee.id, not null]
   assignment_id   uuid        [ref: > employment.assignment.id, null]         // NEW 27Mar2026 — multi-assignment payroll support
   pay_group_id    uuid        [ref: > pay_master.pay_group.id, null]          // NEW 27Mar2026 — employee thuộc group nào
@@ -1637,6 +1711,7 @@ Table pay_engine.run_employee {
 
 // changed 27Mar2026: MIGRATED from pay_run.input_value → pay_engine.input_value
 // Structure giữ nguyên, FK updated
+// changed 14Apr2026 (Change 48): source_type documented as canonical enum (app-layer enforced)
 Table pay_engine.input_value {
   id            uuid        [pk, default: `gen_random_uuid()`]
   emp_run_id    uuid        [ref: > pay_engine.run_employee.id, not null]    // changed 27Mar2026: FK updated: pay_run.employee → pay_engine.run_employee
@@ -1644,7 +1719,20 @@ Table pay_engine.input_value {
   input_code    varchar(50) [not null]                 // RATE | HOURS | AMOUNT
   input_value   numeric(18,2) [not null]
   source_ref    varchar(50) [null]          // TA_123, MAN_ADJ_9
-  source_type   varchar(30) [not null]     // TimeAttendance, Absence…
+
+  // changed 14Apr2026 (Change 48): source_type is a CANONICAL ENUM — always use exact values below.
+  // Cross-reference: pay_engine.input_source_config.source_module (must match).
+  // Enforcement: app-layer. DB does NOT have CHECK constraint to allow future extension.
+  // Canonical values:
+  //   TIME_ATTENDANCE   — hourly/daily attendance data (TIMESHEET, OT_HOURS, NIGHT_HOURS)
+  //   ABSENCE           — leave/absence deductions (LEAVE_DEDUCTION, TERMINATION_LEAVE_BALANCE)
+  //   COMPENSATION      — salary basis changes (COMP_BASIS_CHANGE, COMP_BASIS_INITIAL)
+  //   BENEFITS          — benefit premium deductions (BENEFIT_PREMIUM)
+  //   MANUAL            — manual adjustments by HR (MANUAL_ADJUST)
+  //   PRODUCTION        — piece-rate quantities from production system (PIECE_QTY)
+  // Do NOT use: "TA", "TimeAttendance", "ta", "time_attendance" — use canonical form only.
+  source_type   varchar(30) [not null]
+
   unit          varchar(10) [null]
   metadata      jsonb       [null]
 
@@ -1653,26 +1741,52 @@ Table pay_engine.input_value {
     (source_type)
   }
 
-  Note: 'changed 27Mar2026: MIGRATED from pay_run.input_value. Structure giữ nguyên, FK updated to pay_engine.run_employee.'
+  Note: '''
+    changed 27Mar2026: MIGRATED from pay_run.input_value. Structure giữ nguyên, FK updated to pay_engine.run_employee.
+    changed 14Apr2026 (Change 48): source_type is a canonical enum (app-layer enforced, not DB CHECK).
+    Valid values: TIME_ATTENDANCE | ABSENCE | COMPENSATION | BENEFITS | MANUAL | PRODUCTION.
+    Must exactly match input_source_config.source_module for traceability.
+  '''
 }
 
 // changed 27Mar2026: MIGRATED from pay_run.result → pay_engine.result
 // Structure giữ nguyên, FK updated
+// changed 14Apr2026 (Change 52): Thêm proration tracking fields — bắt buộc cho payslip display và retro audit
 Table pay_engine.result {
   id            uuid        [pk, default: `gen_random_uuid()`]
   emp_run_id    uuid        [ref: > pay_engine.run_employee.id, not null]    // changed 27Mar2026: FK updated
   element_id    uuid        [ref: > pay_master.pay_element.id, not null]
   result_amount decimal(18,2) [not null]
   currency_code char(3)     [not null]
-  classification varchar(20) [not null]
+  classification varchar(20) [not null]   // EARNING | DEDUCTION | TAX | EMPLOYER_COST
+
+  // NEW 14Apr2026 (Change 52): Proration tracking — critical cho payslip display và retro
+  // Ví dụ payslip: "Lương cơ bản 15,000,000 × 22/30 ngày = 11,000,000"
+  full_period_amount decimal(18,2) [null]   // Số tiền đầy đủ TRƯỚC khi proration (null = không prorate)
+  proration_factor   decimal(7,5) [null]    // VD: 0.73333 = 22/30 ngày; null = không prorate
+  proration_method   varchar(20) [null]     // CALENDAR_DAYS | WORK_DAYS | NONE; from pay_profile.proration_method
+  // Công thức: result_amount = full_period_amount × proration_factor
+  // Nếu proration_factor IS NULL → full period, result_amount = full_period_amount
+
   metadata      jsonb       [null]
 
   Indexes {
     (emp_run_id, element_id)
     (classification)
+    (proration_factor) [where: "proration_factor IS NOT NULL"]  // NEW 14Apr2026 — tìm các kết quả có proration
   }
 
-  Note: 'changed 27Mar2026: MIGRATED from pay_run.result. Structure giữ nguyên, FK updated.'
+  Note: '''
+    changed 27Mar2026: MIGRATED from pay_run.result. Structure giữ nguyên, FK updated.
+    changed 14Apr2026 (Change 52): Thêm proration tracking fields.
+    full_period_amount: số tiền nếu làm việc đủ kỳ (trước proration).
+    proration_factor: tỷ lệ thực tế = ngày_làm / tổng_ngày_kỳ (5 decimal places cho độ chính xác).
+    proration_method: inherit từ pay_profile tại thời điểm tính; frozen vào đây để audit.
+    Bộ 3 fields này cần thiết:
+      1. Payslip: hiển thị "X × factor = Y" thay vì chỉ hiện Y
+      2. Retro: biết factor cũ để recalculate đúng khi thay đổi ngày back-dated
+      3. Compliance audit: chứng minh cách tính proration cho labor inspector
+  '''
 }
 
 // changed 27Mar2026: MIGRATED from pay_run.balance → pay_engine.balance
@@ -1804,12 +1918,72 @@ Table pay_engine.element_dependency {
 
 // changed 27Mar2026: NEW — Input Source Configuration
 // Config automated input collection từ các module khác
+// changed 14Apr2026 (Change 54): Document mapping_json schema cho từng source type
+// changed 14Apr2026 (Change 57): Thêm seed record cho ABSENCE.TERMINATION_LEAVE_BALANCE
 Table pay_engine.input_source_config {
   id              uuid        [pk, default: `gen_random_uuid()`]
   source_module   varchar(30) [not null]                  // TIME_ATTENDANCE | ABSENCE | COMPENSATION | BENEFITS | MANUAL
-  source_type     varchar(50) [not null]                  // TIMESHEET | LEAVE_DEDUCTION | COMP_BASIS_CHANGE | BENEFIT_PREMIUM …
+  source_type     varchar(50) [not null]                  // TIMESHEET | LEAVE_DEDUCTION | COMP_BASIS_CHANGE | BENEFIT_PREMIUM | TERMINATION_LEAVE_BALANCE
   target_element_id uuid     [ref: > pay_master.pay_element.id, not null]  // element nhận giá trị
-  mapping_json    jsonb       [null]                      // mapping rules (source field → input_code)
+
+  // changed 14Apr2026 (Change 54): mapping_json - DEFINED SCHEMA per source_type
+  // Dưới đây là JSON schema cácư chấp thuận cho từng source_type:
+  //
+  // [1] source_module=TIME_ATTENDANCE, source_type=TIMESHEET
+  // {
+  //   "source_table": "ta.timesheet_line",       -- bảng TA cần đọc
+  //   "group_by": "time_type",                   -- tổng hợp theo cột nào
+  //   "filter": {"time_type": "WORK"},           -- chỉ lấy các dòng này
+  //   "value_field": "actual_hours",             -- giá trị cần lấy
+  //   "input_code": "HOURS"                      -- ánh xạ sang input_value.input_code
+  // }
+  //
+  // [2] source_module=TIME_ATTENDANCE, source_type=OT_HOURS
+  // {
+  //   "source_table": "ta.payroll_export_package", -- có sẾ tổng hợp sẵn
+  //   "value_field": "total_overtime_hours",
+  //   "input_code": "OT_HOURS",
+  //   "require_status": "DISPATCHED"              -- chỉ xử lý khi TA đã dispatch
+  // }
+  //
+  // [3] source_module=COMPENSATION, source_type=COMP_BASIS_CHANGE
+  // {
+  //   "source_table": "compensation.basis",
+  //   "filter": {"is_current_flag": true},       -- chỉ lấy record hiện tại
+  //   "value_field": "basis_amount",
+  //   "input_code": "AMOUNT",
+  //   "proration": true,                         -- cho phép prorate nếu có change mid-period
+  //   "effective_date_field": "effective_start_date"  -- dùng để tính proration point
+  // }
+  //
+  // [4] source_module=ABSENCE, source_type=LEAVE_DEDUCTION
+  // {
+  //   "source_table": "absence.leave_request",
+  //   "filter": {"status": "APPROVED"},
+  //   "value_field": "total_leave_days",
+  //   "input_code": "LEAVE_DAYS",
+  //   "component_type": "DEDUCTION"              -- giảm vào lương
+  // }
+  //
+  // [5] source_module=ABSENCE, source_type=TERMINATION_LEAVE_BALANCE  [NEW 14Apr2026 - Change 57]
+  // {
+  //   "source_table": "absence.termination_balance_record",
+  //   "filter": {"employment_id": ":assignment_employment_id"},  -- bind từ run context
+  //   "value_field": "payroll_deduction_amount",  -- số tiền thanh toán phép năm
+  //   "input_code": "AMOUNT",
+  //   "component_type": "EARNING",               -- cộng vào lương (chi trả phép)
+  //   "batch_type_filter": ["TERMINATION"]        -- chỉ chạy khi batch_type = TERMINATION
+  // }
+  //
+  // [6] source_module=BENEFITS, source_type=BENEFIT_PREMIUM
+  // {
+  //   "source_table": "total_rewards.employee_reward_summary",
+  //   "value_field": "premium_amount",
+  //   "input_code": "AMOUNT",
+  //   "direction_filter": "ADDS_DEDUCTION"       -- chỉ lấy benefits có direction = ADDS_DEDUCTION
+  // }
+  mapping_json    jsonb       [null]                      // mapping rules — see schema above (Change 54)
+
   is_active       boolean     [default: true]
   priority        smallint    [default: 0]                // nếu có nhiều source cho cùng element
   description     text        [null]
@@ -1826,10 +2000,19 @@ Table pay_engine.input_source_config {
   Note: '''
     NEW 27Mar2026: Configuration cho automated input collection.
     Engine đọc bảng này để biết collect input từ đâu cho mỗi element.
-    Ví dụ: TIME_ATTENDANCE.TIMESHEET → OT_HOURS element
-            ABSENCE.LEAVE_DEDUCTION → UNPAID_LEAVE element
-            COMPENSATION.COMP_BASIS_CHANGE → BASE_SALARY element
-    mapping_json chứa rules map source data → input_code/input_value.
+    changed 14Apr2026 (Change 54): mapping_json schema được document rõ cho từng source_type.
+    changed 14Apr2026 (Change 57): Thêm source_type TERMINATION_LEAVE_BALANCE cho absence.termination_balance_record.
+
+    Seed records cần thiết (app seed data, không phải DB migration):
+      1. TIME_ATTENDANCE + TIMESHEET → REGULAR_WORK element
+      2. TIME_ATTENDANCE + OT_HOURS  → OT_WEEKDAY / OT_WEEKEND / OT_HOLIDAY element
+      3. COMPENSATION  + COMP_BASIS_CHANGE → BASIC_SALARY element
+      4. ABSENCE       + LEAVE_DEDUCTION   → UNPAID_LEAVE element
+      5. ABSENCE       + TERMINATION_LEAVE → LEAVE_PAYOUT element  [NEW - Change 57]
+      6. BENEFITS      + BENEFIT_PREMIUM   → HEALTH_INSURANCE_DEDUCTION element
+
+    Pipeline: engine reads config → pulls data per mapping_json → creates input_value records.
+    Idempotency: cùng (source_module, source_type, target_element_id) chỉ tạo 1 input_value/employee.
   '''
 }
 
@@ -1842,4 +2025,30 @@ Table pay_engine.input_source_config {
 //      cumulative_balance, element_dependency, input_source_config
 //    - pay_bank.payment_batch, generated_file: FK updated pay_run.batch → pay_mgmt.batch
 //    - Tổng: 8 new tables, 9 migrated tables, 2 FK updates
+//
+// =============================================================
+//  CROSS-MODULE FK GAPS — documented (14Apr2026, Change 55)
+//
+//  GAP-PR-001: comp_core.salary_basis_component_map → pay_master.pay_element
+//    Giải thích:
+//      TR module có salary_basis_component_map (salary_basis_id, component_id) liên kết
+//      comp_core.pay_component_def với salary_basis (e.g. MẸAL_ALLOWANCE, TRANSPORT).
+//      Payroll engine cần biết: với từng pay_component_def, element nào trong Payroll nhận giá trị.
+//    Hiện trạng:
+//      compensation.basis_line.pay_component_def_id → comp_core.pay_component_def.id  (✔ Change 32)
+//      comp_core.pay_component_def ←→ pay_master.pay_element  (❌ không có FK)
+//    Rủi ro:
+//      Engine không biết basis_line này map sang element nào → phải dùng các quy ước ẩn (naming convention)
+//    Giải pháp tạm thời:
+//      input_source_config mapping_json có thể map: pay_component_def_id X → target_element_id Y
+//    Giải pháp tương lai (cần update cả TR + PR):
+//      Option A: Thêm comp_core.pay_component_def.payroll_element_id FK → pay_master.pay_element.id
+//      Option B: Tạo bảng mapping riêng pay_master.component_element_map
+//    ACTION: Xem TODO → TODO-cross-module-changes.md § GA P-PR-001
+//
+//  GAP-PR-002: ta.payroll_export_package.payroll_system_ref (varchar, soft)
+//    Hiện trạng: trường payroll_system_ref chỉ là varchar — không có FK cứng
+//    Giải pháp: Thêm ta.payroll_export_package.payroll_run_request_id FK → pay_engine.run_request.id
+//    ACTION: Xem TODO → TODO-cross-module-changes.md § TA-TODO-002
+//
 // =============================================================

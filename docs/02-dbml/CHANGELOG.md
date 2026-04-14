@@ -1,7 +1,165 @@
 # xTalent Database Design – Changelog
 
 
+## [14Apr2026] – v4.3 PR: Architectural Audit Implementation (Changes 48–57)
+
+> **Context:** Sau khi thực hiện architectural audit toàn diện trên Payroll V4 (cross-ref Core, TA, TR), phát hiện 10 gaps cần xử lý:
+> - 3 gaps về data quality / type safety (source_type enum, proration tracking, circular FK doc)
+> - 3 gaps về schema enrichment (element_id on costing_rule, assignment_id on manual_adjust, proration fields on result)
+> - 2 gaps về cross-module integration (ta_period_id link, input_source_config mapping_json schema)
+> - 1 gap về orphan tables thiếu schema prefix
+> - 1 gap về cross-module FK thiếu (documented as TODO cross-module)
+>
+> **Nguyên tắc:** Các thay đổi liên quan đến module khác (TA, TR) được note thành TODO
+> thay vì implement trực tiếp, trừ khi thay đổi nằm hoàn toàn trong Payroll schema.
+
+### 5.Payroll.V4.dbml
+
+**Change 48 — `pay_engine.input_value.source_type`: CANONICAL ENUM DOCUMENTED**
+
+| Action | Field | Detail |
+|--------|-------|--------|
+| DOCUMENT | `source_type varchar(30)` | Canonical enum values documented in DBML comment. Enforcement: app-layer (không DB CHECK để dễ extend). |
+| ADD comment | Canonical values | `TIME_ATTENDANCE \| ABSENCE \| COMPENSATION \| BENEFITS \| MANUAL \| PRODUCTION` |
+| ADD Note | Table Note | Document cross-reference với `input_source_config.source_module` — must match |
+| WARNING | Anti-pattern | Cấm dùng: `"TA"`, `"TimeAttendance"`, `"ta"`, `"time_attendance"` — phải dùng canonical form |
+
+> **Rationale:** Free-text source_type dẫn đến inconsistency và mất traceability cross-module.
+> App-layer enforcement (thay vì DB CHECK) cho phép thêm canonical values mà không cần migration.
+
+**Change 49 — Circular FK Pattern: DOCUMENTED (pay_mgmt.batch ↔ pay_engine.run_request ↔ pay_engine.run_employee)**
+
+| Action | Location | Detail |
+|--------|----------|--------|
+| DOCUMENT | `run_employee` header | Giải thích tại sao `run_employee.batch_id` là intentional denormalization |
+| DOCUMENT | `batch.engine_request_id` | Giải thích tại sao nullable (circular creation order) |
+| ADD app-layer constraint | Comment | `run_employee.batch_id MUST EQUAL run_request.batch_id WHERE run_request.id = run_employee.request_id` |
+
+> **Circular reference pattern:**
+> ```
+> pay_mgmt.batch.engine_request_id → pay_engine.run_request.id  (batch tracks which request is running)
+> pay_engine.run_request.batch_id  → pay_mgmt.batch.id          (request knows which batch it belongs to)
+> pay_engine.run_employee.batch_id + .request_id  → INTENTIONAL DENORMALIZATION
+> ```
+> **Creation order:** batch (DRAFT) → run_request created → batch.engine_request_id patched.
+> Không thể NOT NULL đồng thời cả 2 chiều → chấp nhận nullable + app-layer enforcement.
+
+**Change 50 — `pay_master.costing_rule`: ADD `element_id` FK**
+
+| Action | Field | Detail |
+|--------|-------|--------|
+| ADD | `element_id uuid [ref: > pay_master.pay_element.id, null]` | null = default costing cho tất cả elements; not null = override cho element cụ thể |
+| ADD index | `(element_id) WHERE IS NOT NULL` | Fast element-scoped lookup |
+| UPDATE Note | Resolution priority | Element-scoped rule (NOT NULL) override default rule (NULL) cho cùng employee |
+
+> **Use case:** BASIC_SALARY → 60% Department + 40% Project; BHXH_ER → 100% Department.
+> 2 costing_rule records khác nhau, engine chọn đúng theo element_id.
+
+**Change 51 — `pay_mgmt.manual_adjust`: ADD `assignment_id` FK**
+
+| Action | Field | Detail |
+|--------|-------|--------|
+| ADD | `assignment_id uuid [ref: > employment.assignment.id, null]` | null = primary assignment; not null = adjustment scoped cho assignment cụ thể |
+| ADD index | `(assignment_id) WHERE IS NOT NULL` | Fast lookup |
+| UPDATE Note | Multi-assignment rationale | Employee 50% Sales + 50% Admin: adjustment cần biết target assignment cho costing đúng |
+
+**Change 52 — `pay_engine.result`: ADD Proration Tracking Fields**
+
+| Action | Field | Detail |
+|--------|-------|--------|
+| ADD | `full_period_amount decimal(18,2) [null]` | Số tiền đầy đủ TRƯỚC proration (null = không prorate) |
+| ADD | `proration_factor decimal(7,5) [null]` | Tỷ lệ thực tế = ngày_làm / tổng_ngày_kỳ (VD: 0.73333 = 22/30) |
+| ADD | `proration_method varchar(20) [null]` | `CALENDAR_DAYS \| WORK_DAYS \| NONE` — frozen từ pay_profile tại thời điểm tính |
+| UPDATE | classification comment | `EARNING \| DEDUCTION \| TAX \| EMPLOYER_COST` — explicit enum values |
+| ADD index | `(proration_factor) WHERE NOT NULL` | Query các records có proration |
+
+> **Công thức:** `result_amount = full_period_amount × proration_factor`
+> **Cần thiết cho:** (1) Payslip "Lương ×22/30=X"; (2) Retro recalc; (3) Compliance audit.
+
+**Change 53 — Orphan Tables: ADD Schema Prefix**
+
+| Table | Old | New Schema |
+|-------|-----|------------|
+| `import_job` | No schema | `pay_gateway.import_job` |
+| `generated_file` | No schema | `pay_gateway.generated_file` |
+| `bank_template` | No schema | `pay_bank.bank_template` |
+| `tax_report_template` | No schema | `pay_gateway.tax_report_template` |
+
+> **Rationale:** Align với toàn bộ schema organization (pay_master, pay_mgmt, pay_engine, pay_bank, pay_gateway, pay_audit).
+> Không có logic thay đổi, chỉ thêm schema prefix.
+
+**Change 54 — `pay_engine.input_source_config.mapping_json`: SCHEMA DOCUMENTED**
+
+| Source Module | Source Type | mapping_json Schema |
+|---------------|-------------|---------------------|
+| TIME_ATTENDANCE | TIMESHEET | `source_table, group_by, filter, value_field, input_code` |
+| TIME_ATTENDANCE | OT_HOURS | `source_table, value_field, input_code, require_status` |
+| COMPENSATION | COMP_BASIS_CHANGE | `source_table, filter, value_field, input_code, proration, effective_date_field` |
+| ABSENCE | LEAVE_DEDUCTION | `source_table, filter, value_field, input_code, component_type` |
+| ABSENCE | TERMINATION_LEAVE_BALANCE | `source_table, filter, value_field, input_code, component_type, batch_type_filter` |
+| BENEFITS | BENEFIT_PREMIUM | `source_table, value_field, input_code, direction_filter` |
+
+> **Tầm quan trọng:** mapping_json schema là data contract giữa các modules. Nếu không document,
+> engineer không biết phải build gì khi implement INPUT_COLLECTION step.
+
+**Change 55 — Cross-Module FK Gaps: DOCUMENTED AS COMMENTS**
+
+| Gap | Location | Detail |
+|-----|----------|--------|
+| GAP-PR-001 | `comp_core.pay_component_def ↔ pay_master.pay_element` | Không có FK → engine dùng naming convention tạm. Options: add `payroll_element_id` vào TR, hoặc tạo `pay_master.component_element_map` |
+| GAP-PR-002 | `ta.payroll_export_package.payroll_system_ref` | varchar soft-ref → cần FK cứng `payroll_run_request_id → pay_engine.run_request.id` |
+
+> **Xem chi tiết:** `08-todo-cross-module-changes.md`
+
+**Change 56 — `pay_mgmt.pay_period`: ADD `ta_period_id` FK**
+
+| Action | Field | Detail |
+|--------|-------|--------|
+| ADD | `ta_period_id uuid [ref: > ta.period.id, null]` | null = không dùng TA integration cho period này |
+| ADD index | `(ta_period_id) WHERE NOT NULL` | Fast lookup |
+| ADD Note | Synchronization rule | TA period phải LOCKED trước khi PR bắt đầu INPUT_COLLECTION |
+| ADD Note | Pre-flight check | Engine validate ta_period.status_code = 'LOCKED' trước khi start calculating |
+
+> **Business rule:** `ta.period.status_code = 'LOCKED' → pay_mgmt.pay_period có thể PROCESSING`
+> Engine block run nếu ta_period_id IS NOT NULL nhưng ta.period chưa LOCKED.
+
+**Change 57 — `pay_engine.input_source_config`: TERMINATION_LEAVE_BALANCE Seed Record**
+
+| Action | Detail |
+|--------|--------|
+| ADD source_type | `TERMINATION_LEAVE_BALANCE` — new canonical source_type for absence module |
+| ADD mapping_json schema | Source: `absence.termination_balance_record.payroll_deduction_amount`; direction: EARNING; batch_type_filter: `[TERMINATION]` |
+| ADD to seed list | `ABSENCE + TERMINATION_LEAVE → LEAVE_PAYOUT element` |
+
+> **Data flow:** HR marks termination → TA calculates leave balance → `termination_balance_record.payroll_deduction_amount`
+> = số ngày phép còn lại × daily_rate. Engine đọc qua input_source_config và add vào payroll result.
+
+### New Documents Created
+
+| Document | Path | Purpose |
+|----------|------|---------|
+| Integration Blueprint | `PR/07-integration-blueprint.md` | End-to-end payroll data flow documentation |
+| Cross-Module TODO | `PR/08-todo-cross-module-changes.md` | Pending changes requiring TA/TR module updates |
+
+### Summary
+
+| Change | Table/Area | Type | Impact |
+|--------|-----------|------|--------|
+| 48 | `pay_engine.input_value.source_type` | DOCUMENTED | Data quality, traceability |
+| 49 | `batch.engine_request_id` + `run_employee.batch_id` | DOCUMENTED | Developer clarity, no schema change |
+| 50 | `pay_master.costing_rule` | ENRICHED | +`element_id FK [null]` |
+| 51 | `pay_mgmt.manual_adjust` | ENRICHED | +`assignment_id FK [null]` |
+| 52 | `pay_engine.result` | ENRICHED | +`full_period_amount`, +`proration_factor`, +`proration_method` |
+| 53 | 4 orphan tables | REORGANIZED | Schema prefixes added (pay_gateway, pay_bank) |
+| 54 | `pay_engine.input_source_config.mapping_json` | DOCUMENTED | 6 source type schemas defined |
+| 55 | Cross-module FK gaps | DOCUMENTED | GAP-PR-001, GAP-PR-002 as TODO |
+| 56 | `pay_mgmt.pay_period` | ENRICHED | +`ta_period_id FK [null, ref: ta.period]` |
+| 57 | `input_source_config` | ENRICHED | +TERMINATION_LEAVE_BALANCE source type + seed |
+
+---
+
 ## [13Apr2026] – v4.2 PR: pay_master Doc-DBML Gap Resolution (Changes 42–47)
+
 
 > **Context:** Sau khi review cross-check toàn bộ 22 entity documents (02.1 → 02.22) với `5.Payroll.V4.dbml`,
 > phát hiện 7 bảng có GAP giữa thiết kế tài liệu và schema thực tế. Phân tích kết luận:
