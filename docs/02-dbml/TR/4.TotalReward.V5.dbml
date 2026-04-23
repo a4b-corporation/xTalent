@@ -176,7 +176,8 @@ Table comp_core.salary_basis {
       3. HR selects salary_basis + enters amounts → creates compensation.basis.
     
     Auto-expiry: compensation.basis expires when employee loses eligibility due to
-    work record lifecycle change (contract close / scope transfer). See compensation.basis Note.
+    work record lifecycle change (contract close / scope transfer).
+    Design doc: compensation-basis-design.md §2 (Scoping vs Eligibility), §6 (Auto-Expiry)
   '''
 }
 
@@ -234,6 +235,9 @@ Table comp_core.pay_component_def {
 Table comp_core.salary_basis_component_map {
   salary_basis_id uuid [ref: > comp_core.salary_basis.id]
   component_id    uuid [ref: > comp_core.pay_component_def.id]
+  // changed 23Apr2026: mandatory_flag = true → system auto-creates basis_line when HR sets up compensation.basis
+  // with this salary_basis. HR MUST fill amount before status_code → PENDING_APPROVAL / ACTIVE.
+  // See: compensation-basis-design.md §8 (Mandatory Component Enforcement)
   mandatory_flag  boolean [default:false]
   default_proration boolean [default:false]  // KEPT 25Nov2025: legacy field
   sort_order      int [default:0]           // ADDED 21Nov2025: display ordering
@@ -708,6 +712,12 @@ Table comp_incentive.bonus_allocation {
   // REM 21Nov2025: decision_date   date [null]
   decision_date   timestamp [null]      // CHANGED 21Nov2025: timestamp for precision
   decision_note   text [null]           // ADDED 21Nov2025: approver notes
+
+  // changed 23Apr2026: Link to performance review for performance-based bonus
+  // null     = bonus không dựa vào performance (retention, spot, project bonus)
+  // not null = performance-based bonus; amount chịu ảnh hưởng của employee_review.performance_tier
+  performance_review_id uuid [null, ref: > performance.employee_review.id]
+
   metadata        jsonb [null]
   created_date    timestamp [default:`now()`]  // ADDED 21Nov2025: audit trail
   created_by      uuid                          // ADDED 21Nov2025: audit trail
@@ -716,9 +726,11 @@ Table comp_incentive.bonus_allocation {
     (pool_id),
     (employee_id),
     (status),
-    (approver_emp_id)
+    (approver_emp_id),
+    (performance_review_id)  // changed 23Apr2026: performance-based bonus lookup
   }
 }
+
 
 
 /* ---- Equity Grant life-cycle ---- */
@@ -1729,25 +1741,24 @@ Table compensation.basis {                     // mức lương hiệu lực (he
   guaranteed_minimum      decimal(15,2) [null]                          // lương tối thiểu đảm bảo khi output-based < minimum
   
   // Classification
-  basis_type_code         varchar(30) [not null, default: 'OPERATIONAL_BASE']  // LEGAL_BASE, OPERATIONAL_BASE, MARKET_ADJUSTED
-  source_code             varchar(30) [not null, default: 'CONTRACT']         // CONTRACT, MANUAL_ADJUST, PROMOTION, COMP_CYCLE
-  reason_code             varchar(30) [null]                                  // HIRE, PROBATION_END, ANNUAL_REVIEW, PROMOTION
+  basis_type_code         varchar(30) [not null, default: 'OPERATIONAL_BASE']  // LEGAL_BASE | OPERATIONAL_BASE | MARKET_ADJUSTED
+  // changed 23Apr2026: source_code = WHO/WHAT triggered creation (TRIGGER)
+  source_code             varchar(30) [not null, default: 'CONTRACT']  // CONTRACT | MANUAL_ADJUST | COMP_CYCLE | SYSTEM_AUTO
+  // changed 23Apr2026: reason_code = WHY salary changed (business reason)
+  reason_code             varchar(30) [null]                           // HIRE | PROBATION_END | ANNUAL_REVIEW | PROMOTION | TRANSFER | MARKET_ADJUST | CORRECTION
   
   // Adjustment Tracking
   adjustment_amount       decimal(15,2) [null]                          // delta từ record trước
   adjustment_percentage   decimal(5,2) [null]                           // % thay đổi
   previous_basis_id       uuid        [ref: > compensation.basis.id, null]  // SCD chain (self-ref)
+  change_event_id         uuid        [null]  // changed 23Apr2026: link to comp cycle event (for batch changes via COMP_CYCLE)
   
   // References
-  contract_id             uuid        [ref: > employment.contract.id, null]  // source contract (for LEGAL_BASE)
-  // changed 03Apr2026: Added FK ref to comp_core.salary_basis.id.
-  // VALIDATION (app-layer): salary_basis_id chosen here should be one where employee is an
-  // active eligibility_member (eligibility.eligibility_member.end_date IS NULL).
-  // Kept nullable: (a) backward compat with records pre-eligibility, (b) edge-case manual salary.
-  // AUTO-EXPIRY: Khi employee chuyển scope (country/LE) → work_relationship mới → assignment mới
-  //   → compensation.basis cũ được expire tự động (is_current_flag=false, effective_end_date = change date).
-  //   Flow: Workflow close hợp đồng cũ → trigger expiry. Nếu workflow thiếu → scheduler tự expire.
-  salary_basis_id         uuid        [null, ref: > comp_core.salary_basis.id]  // changed 03Apr2026: FK to comp_core.salary_basis config
+  contract_id             uuid        [ref: > employment.contract.id, null]  // source contract; MUST NOT NULL when basis_type_code = LEGAL_BASE (app-layer)
+  // changed 03Apr2026: salary_basis_id links to approved template for this employee.
+  // Nullable for legacy records only. New records from UI must have salary_basis_id populated.
+  // See: compensation-basis-design.md §3 (Onboard Flow), §6 (Auto-Expiry)
+  salary_basis_id         uuid        [null, ref: > comp_core.salary_basis.id]  // changed 03Apr2026
   
   // Approval Workflow
   approval_status         varchar(20) [null]                            // PENDING, APPROVED, REJECTED
@@ -1759,11 +1770,11 @@ Table compensation.basis {                     // mức lương hiệu lực (he
   social_insurance_basis  decimal(15,2) [null]                          // mức đóng BHXH (nếu khác basis_amount)
   regional_min_wage_zone  varchar(10) [null]                            // ZONE_I, ZONE_II, ZONE_III, ZONE_IV
   
-  // Flexible Component Lines (aggregated)
-  has_component_lines     boolean     [default: false]                  // có detail lines không?
-  total_allowance_amount  decimal(15,2) [default: 0]                    // tổng phụ cấp cố định (SUM of lines)
-  total_gross_amount      decimal(15,2) [null]                          // basis_amount + total_allowance_amount
-  component_line_count    int         [default: 0]                      // số dòng phụ cấp
+  // Flexible Component Lines (aggregated — synced by app-layer transaction)
+  // changed 23Apr2026: removed has_component_lines (redundant with component_line_count > 0)
+  // changed 23Apr2026: removed total_gross_amount (computed at app layer: basis_amount + total_allowance_amount)
+  total_allowance_amount  decimal(15,2) [default: 0]  // SUM(basis_line.amount) WHERE is_current_flag = true
+  component_line_count    int         [default: 0]    // COUNT(basis_line) WHERE is_current_flag = true
   
   // Notes & Status
   notes                   text        [null]
@@ -1776,41 +1787,25 @@ Table compensation.basis {                     // mức lương hiệu lực (he
   updated_by              uuid        [ref: > person.worker.id, null]
   
   Indexes {
-    (work_relationship_id, effective_start_date) [unique]               // unique per relationship + date
-    (work_relationship_id, is_current_flag) [name: 'idx_basis_current', note: 'WHERE is_current_flag = true']
+    // changed 23Apr2026: LEGAL_BASE và OPERATIONAL_BASE có thể đồng thời active trên cùng employee
+    // → unique constraint phải bao gồm basis_type_code để allow 2 concurrent active basis
+    (work_relationship_id, basis_type_code, effective_start_date) [unique]
+    (work_relationship_id, basis_type_code, is_current_flag) [name: 'idx_basis_current', note: 'WHERE is_current_flag = true']
     (status_code, is_current_flag)
-    (previous_basis_id)                                                 // SCD chain lookup
+    (previous_basis_id)  // SCD chain lookup
+    (change_event_id)    // changed 23Apr2026: batch comp cycle lookup
   }
   
   Note: '''
-    changed 06feb2026: NEW - CompensationBasis entity from ontology.
-    Header table for operational salary. Supports SCD Type-2 (date-effective with previousBasisId chain).
-    Flexible allowances stored in compensation.basis_line (detail lines).
-    Aggregated fields: total_allowance_amount, total_gross_amount, component_line_count.
+    changed 06feb2026: NEW — CompensationBasis, SCD Type-2 header.
+    changed 26Mar2026: G1 — assignment_id (multi-assignment support).
+    changed 26Mar2026: G2 — piece-rate fields (output_unit_code, unit_rate_amount, guaranteed_minimum).
+    changed 03Apr2026: salary_basis_id FK + eligibility integration.
+    changed 23Apr2026: concurrent basis support (LEGAL_BASE + OPERATIONAL_BASE), removed redundant fields,
+      clarified source_code/reason_code semantics, added change_event_id.
     
-    changed 26Mar2026: G1 - Added assignment_id (nullable FK) to support multi-assignment per employee within same LE.
-    changed 26Mar2026: G2 - Added piece-rate/output-based pay fields:
-      - frequency_code extended with PER_UNIT value
-      - output_unit_code: unit of output (PIECE, ARTICLE, TEACHING_HOUR, GARMENT)
-      - unit_rate_amount: rate per unit of output
-      - guaranteed_minimum: minimum guaranteed pay when output-based < threshold
-      Use case: Lương khoán sản phẩm, lương theo bài giảng, etc.
-    
-    changed 03Apr2026: Fixed salary_basis_id FK (now ref: > comp_core.salary_basis.id).
-    AUTO-EXPIRY RULE:
-    - Trigger: employee chuyển scope (country/LE transfer) → đóng hợp đồng cũ → work_relationship mới
-      → assignment mới.
-    - Effect: compensation.basis hiện tại được expire:
-        is_current_flag = false
-        effective_end_date = ngày bắt đầu work_relationship mới
-    - Mechanism Priority:
-        1. Workflow lifecycle (contract close workflow) — triggers expiry explicitly.
-        2. Scheduler fallback — nếu workflow thiếu, scheduler phát hiện và expire.
-    - After expiry: HR được notify → tạo compensation.basis mới với salary_basis phù hợp
-      (chọn từ danh sách eligible theo eligibility_member của salary_basis_id mới).
-    - Note: pay_component_def KHÔNG có eligibility riêng — eligibility chỉ ở salary_basis level.
-      Employee eligible cho salary_basis → tự động eligible cho tất cả components trong basis đó
-      (qua salary_basis_component_map).
+    Design doc: compensation-basis-design.md
+    (Onboard flow, salary change flow, auto-expiry, concurrent basis types, aggregation sync, mandatory components)
   '''
 }
 
@@ -1879,25 +1874,10 @@ Table compensation.basis_line {                // chi tiết phụ cấp cố đ
 
   Note: '''
     changed 03Apr2026: Structural fix — Mandatory pay_component_def_id.
-    
-    BEFORE: basis_line dùng component_type_code (enum) + component_name (free-text).
-    AFTER:  basis_line dùng pay_component_def_id (FK NOT NULL) + component_type_code (còn giữ để filter/display).
-    
-    Lý do bắt buộc pay_component_def_id NOT NULL:
-    - pay_component_def chứa tax_treatment, is_subject_to_si, calculation_method, proration_method.
-    - Payroll engine đọc từ đây để tính thuế/BHXH/proration cho từng phụ cấp.
-    - Nếu basis_line không link về pay_component_def → engine không biết cách tính → line bị bỏ qua.
-    - "Other" type bị xóa: mọi phụ cấp mới phải được phê duyệt qua pay_component_def trước.
-    
-    Constraint validation (app-layer):
-    - pay_component_def_id phải nằm trong salary_basis_component_map
-      cho salary_basis_id của parent compensation.basis.
-    - Tức là: chỉ được dùng component đã được phép trong salary basis template.
-    
-    Quy trình khi cần phụ cấp mới:
-      1. Admin tạo pay_component_def mới (e.g., SPECIAL_DUTY_ALLOWANCE)
-      2. Admin thêm vào salary_basis_component_map cho salary_basis liên quan
-      3. HR mới được phép thêm basis_line với component đó
+    basis_line.pay_component_def_id MUST exist in salary_basis_component_map
+    for the salary_basis_id of the parent compensation.basis.
+    Enforcement: CompensationBasisService.addLine() + payroll pre-run validation.
+    See: compensation-basis-design.md §9 (basis_line Constraint), §8 (Mandatory Component Enforcement)
   '''
 }
 
@@ -1969,3 +1949,433 @@ Note comp_core_relationships {
        - Change reason
   '''
 }
+
+
+//***************************************************
+// * 12. PERFORMANCE MANAGEMENT
+//        ADDED 23Apr2026: Performance sub-module
+//
+//        Scope:
+//          - KPI Definition (master, SCD2)
+//          - Rating Scale + Level (master config)
+//          - Review Cycle (transaction — một kỳ đánh giá)
+//          - KPI Assignment (giao KPI cho nhân viên trong cycle)
+//          - KPI Result (kết quả thực tế)
+//          - Employee Review (tổng kết overall rating)
+//
+//        Domain Boundary:
+//          - performance.* owns: KPI definition, target setting, result tracking, overall rating
+//          - comp_incentive.* owns: bonus allocation (đọc performance result làm INPUT)
+//          - TA / Absence: attendance data là input cho KPI — không owned ở đây
+//
+//        SCD2 decision:
+//          - kpi_def_v    : CÓ SCD2 — KPI definition thay đổi theo năm
+//          - rating_scale : KHÔNG SCD2 — tạo scale mới khi đổi, không version
+//          - review_cycle : KHÔNG SCD2 — sự kiện có thời gian xác định
+//          - kpi_assignment / kpi_result / employee_review: KHÔNG SCD2 — transaction records
+// ***************************************************/
+
+
+// ─────────────────────────────────────────────────
+// 12.1  KPI Definition  (Master Data – CÓ SCD2)
+//
+//       Tại sao SCD2:
+//         KPI có thể thay đổi unit_of_measure, calculation_method, hoặc category
+//         qua các năm. Lịch sử cần được giữ để đối chiếu kết quả cũ với đúng
+//         definition tại thời điểm đó (VD: Revenue KPI năm 2024 tính theo VND,
+//         năm 2025 đổi sang USD — cần version riêng biệt).
+// ─────────────────────────────────────────────────
+
+Table performance.kpi_def_v {
+  id                  uuid          [pk]
+  kpi_code            varchar(50)   [not null]
+  // Stable identifier across versions: REVENUE_GROWTH, CSAT_SCORE, HEADCOUNT_RATIO
+  name                varchar(255)  [not null]
+  description         text          [null]
+
+  // Phân loại KPI theo Balanced Scorecard framework
+  kpi_category        varchar(30)   [not null]
+  // FINANCIAL     = doanh thu, lợi nhuận, chi phí, ROI
+  // CUSTOMER      = NPS, CSAT, churn rate, retention
+  // OPERATIONAL   = năng suất, chất lượng quy trình, SLA
+  // LEARNING      = đào tạo, phát triển năng lực, certification
+  // PEOPLE        = turnover, engagement score, headcount
+  // STRATEGIC     = OKR-level, initiative completion rate
+
+  kpi_type            varchar(20)   [not null]
+  // QUANTITATIVE  = đo bằng số tuyệt đối (doanh thu, số ticket)
+  // QUALITATIVE   = đánh giá bằng thang điểm (peer review score)
+  // BINARY        = hoàn thành / không hoàn thành (project delivery)
+
+  unit_of_measure     varchar(50)   [null]
+  // VND, USD, %, SCORE, COUNT, DAYS, NPS_POINT, TICKET
+
+  calculation_method  varchar(30)   [null]
+  // SUM_PERIOD    = cộng dồn cả kỳ (doanh thu tháng, số tickets giải quyết)
+  // AVERAGE       = trung bình kỳ (CSAT trung bình, avg response time)
+  // LATEST        = giá trị tại thời điểm cuối kỳ (headcount ngày 31)
+  // RATE          = tỷ lệ so với target (actual / target × 100)
+
+  aggregation_scope   varchar(20)   [null]
+  // INDIVIDUAL    = KPI đo riêng cho từng cá nhân
+  // TEAM          = KPI đo cho team, phân bổ xuống thành viên
+  // DEPARTMENT    = KPI đo cho phòng ban
+  // COMPANY       = KPI toàn công ty (cascade xuống mọi level)
+
+  // SCD-2 versioning
+  effective_start     date          [not null]
+  effective_end       date          [null]             // null = version đang hiệu lực
+  version_number      int           [default: 1]
+  previous_version_id uuid          [ref: > performance.kpi_def_v.id, null]
+  is_current_version  boolean       [default: true]
+
+  is_active           boolean       [default: true]
+
+  Indexes {
+    (kpi_code, effective_start)
+    (kpi_code) [unique, where: "is_current_version = true"]
+    (kpi_category)
+    (kpi_type)
+    (is_current_version) [where: "is_current_version = true"]
+    (effective_start, effective_end)
+  }
+
+  Note: '''
+    ADDED 23Apr2026: KPI Definition với SCD-2.
+    kpi_code là stable identifier — không đổi qua các version.
+    previous_version_id tạo version chain để traceability.
+    Khi tạo version mới:
+      1. Set is_current_version = false, effective_end = today trên record cũ
+      2. Tạo record mới với version_number + 1, previous_version_id = id cũ
+      3. kpi_assignment.kpi_def_id trỏ về version hiệu lực tại assign-time (frozen)
+  '''
+}
+
+
+// ─────────────────────────────────────────────────
+// 12.2  Rating Scale  (Master Data – KHÔNG SCD2)
+//
+//       Thang điểm dùng để đánh giá KPI và overall performance.
+//       Không SCD2: nếu thay đổi thang điểm → tạo scale mới (code mới).
+// ─────────────────────────────────────────────────
+
+Table performance.rating_scale {
+  id                  uuid          [pk]
+  code                varchar(50)   [unique, not null]  // SCALE_1_5, SCALE_ABCD, SCALE_3PT
+  name                varchar(200)  [not null]
+
+  scale_type          varchar(20)   [not null]
+  // NUMERIC       = thang số nguyên hoặc thập phân (1.0 – 5.0)
+  // LETTER        = thang chữ cái (A, B, C, D)
+  // LABEL         = thang nhãn (Exceeds Expectations, Meets, Below)
+
+  effective_start     date          [not null]
+  effective_end       date          [null]
+  is_active           boolean       [default: true]
+
+  Indexes {
+    (code)
+    (is_active) [where: "is_active = true"]
+  }
+}
+
+
+// Chi tiết từng mức trong thang điểm
+Table performance.rating_scale_level {
+  id                  uuid          [pk]
+  scale_id            uuid          [ref: > performance.rating_scale.id, not null]
+  level_order         int           [not null]    // thứ tự (1 = thấp nhất)
+  level_code          varchar(20)   [not null]    // 1/2/3/4/5 hoặc A/B/C/D
+  level_name          varchar(100)  [not null]    // Outstanding, Exceeds Expectations, Meets...
+  numeric_value       decimal(4,2)  [null]        // giá trị số để tính trung bình có trọng số
+  description         text          [null]        // tiêu chí mô tả mức điểm này
+
+  Indexes {
+    (scale_id, level_order) [unique]
+    (scale_id, level_code)  [unique]
+  }
+
+  Note: '''
+    ADDED 23Apr2026.
+    numeric_value dùng để tính weighted_kpi_score trong employee_review:
+      weighted_kpi_score = Σ(level.numeric_value × assignment.weight_pct) / 100
+    Ví dụ thang 1-5:
+      level_code=1, level_name=Unsatisfactory,       numeric_value=1.0
+      level_code=3, level_name=Meets Expectations,   numeric_value=3.0
+      level_code=5, level_name=Outstanding,          numeric_value=5.0
+  '''
+}
+
+
+// ─────────────────────────────────────────────────
+// 12.3  Review Cycle  (Transaction – KHÔNG SCD2)
+//
+//       Một kỳ đánh giá cụ thể: Annual 2025, Q1 2026, Mid-Year 2026...
+//       Là "container" cho toàn bộ hoạt động review trong một giai đoạn.
+// ─────────────────────────────────────────────────
+
+Table performance.review_cycle {
+  id                  uuid          [pk]
+  code                varchar(50)   [unique, not null]  // ANNUAL_2025, Q1_2026, MID_YEAR_2026
+  name                varchar(255)  [not null]
+
+  cycle_type          varchar(20)   [not null]
+  // ANNUAL        = đánh giá năm
+  // SEMI_ANNUAL   = đánh giá 6 tháng (mid-year + year-end)
+  // QUARTERLY     = đánh giá quý
+  // PROJECT_BASED = đánh giá theo dự án/milestone
+
+  period_start        date          [not null]    // ngày bắt đầu kỳ KPI được đo
+  period_end          date          [not null]    // ngày kết thúc kỳ KPI được đo
+
+  // Mốc thời gian quy trình review
+  target_setting_deadline  date     [null]        // hạn chót giao KPI target
+  self_review_deadline     date     [null]        // hạn chót nhân viên tự đánh giá
+  manager_review_deadline  date     [null]        // hạn chót manager đánh giá
+  calibration_deadline     date     [null]        // hạn chót calibration session
+
+  status              varchar(20)   [not null, default: 'DRAFT']
+  // DRAFT → OPEN → IN_PROGRESS → CALIBRATION → COMPLETED → CLOSED
+
+  // Scoping — ai tham gia cycle này
+  legal_entity_id          uuid     [null]        // null = toàn công ty
+  eligibility_profile_id   uuid     [null, ref: > eligibility.eligibility_profile.id]
+  // null = tất cả employee; not null = chỉ employee trong profile
+
+  rating_scale_id     uuid          [ref: > performance.rating_scale.id, null]
+
+  Indexes {
+    (code)
+    (cycle_type, period_start)
+    (status)
+    (period_start, period_end)
+    (legal_entity_id)
+    (eligibility_profile_id)
+  }
+
+  Note: '''
+    ADDED 23Apr2026: Review Cycle — khung tổ chức cho một đợt đánh giá.
+    Không SCD2: cycle là sự kiện có thời gian xác định.
+    Sau khi status = IN_PROGRESS → không được thay đổi period_start/period_end.
+    eligibility_profile_id: consistent với pattern toàn hệ thống
+      (comp_plan, bonus_plan, schedule_assignment).
+  '''
+}
+
+
+// ─────────────────────────────────────────────────
+// 12.4  KPI Assignment  (Transaction – KHÔNG SCD2)
+//
+//       Giao một KPI cụ thể cho nhân viên trong một review cycle.
+//       Là "hợp đồng" KPI: ai phải đạt gì, đo bằng gì, trọng số bao nhiêu.
+//       LOCKED khi cycle chuyển IN_PROGRESS — không được sửa target sau đó.
+// ─────────────────────────────────────────────────
+
+Table performance.kpi_assignment {
+  id                  uuid          [pk]
+  cycle_id            uuid          [ref: > performance.review_cycle.id, not null]
+  employee_id         uuid          [ref: > employment.employee.id, not null]
+  kpi_def_id          uuid          [ref: > performance.kpi_def_v.id, not null]
+  // Trỏ về version hiệu lực tại thời điểm giao KPI — FROZEN tại assign-time
+
+  // Target
+  target_value        decimal(18,4) [not null]    // mục tiêu cần đạt
+  target_currency     char(3)       [null]        // chỉ điền nếu unit_of_measure là tiền tệ
+  weight_pct          decimal(5,2)  [null]
+  // % trọng số — tổng tất cả KPI của 1 employee trong 1 cycle = 100%
+
+  stretch_target_value decimal(18,4) [null]       // target thêm cho high-performer
+
+  assigned_by_id      uuid          [ref: > employment.employee.id, null]
+
+  assignment_status   varchar(20)   [not null, default: 'DRAFT']
+  // DRAFT → PENDING_CONFIRM → CONFIRMED → LOCKED
+
+  // Cascade — BSC model: COMPANY → DEPARTMENT → TEAM → INDIVIDUAL
+  parent_assignment_id uuid         [ref: > performance.kpi_assignment.id, null]
+  // null = KPI độc lập; not null = cascade từ team/dept assignment
+
+  Indexes {
+    (cycle_id, employee_id)
+    (cycle_id, employee_id, kpi_def_id) [unique]
+    (employee_id)
+    (kpi_def_id)
+    (assignment_status)
+    (parent_assignment_id)
+    (cycle_id, assignment_status)
+  }
+
+  Note: '''
+    ADDED 23Apr2026: KPI Assignment — contract KPI giữa manager và nhân viên.
+    Không SCD2: update trực tiếp nếu target thay đổi trước khi LOCKED.
+    Sau khi cycle.status = IN_PROGRESS → assignment_status = LOCKED.
+    App-layer: Σ(weight_pct) cho tất cả assignments của 1 employee trong 1 cycle = 100%.
+    Cascade: DEPARTMENT KPI (parent) → INDIVIDUAL assignments (children).
+  '''
+}
+
+
+// ─────────────────────────────────────────────────
+// 12.5  KPI Result  (Transaction – KHÔNG SCD2)
+//
+//       Kết quả thực tế của một KPI assignment.
+//       CHECK_IN: cập nhật tiến độ giữa kỳ (nhiều records).
+//       FINAL: kết quả chính thức cuối kỳ (unique per assignment).
+// ─────────────────────────────────────────────────
+
+Table performance.kpi_result {
+  id                  uuid          [pk]
+  assignment_id       uuid          [ref: > performance.kpi_assignment.id, not null]
+
+  result_type         varchar(20)   [not null]
+  // CHECK_IN      = cập nhật tiến độ giữa kỳ (không ảnh hưởng final rating)
+  // FINAL         = kết quả cuối kỳ chính thức
+
+  measurement_date    date          [not null]
+  actual_value        decimal(18,4) [not null]    // giá trị thực tế
+  actual_currency     char(3)       [null]
+
+  achievement_rate    decimal(7,4)  [null]
+  // = (actual_value / target_value) × 100
+  // Lưu sẵn để aggregate nhanh — không tính on-the-fly
+
+  kpi_rating_code     varchar(20)   [null]        // level_code từ rating_scale_level
+  kpi_rating_numeric  decimal(4,2)  [null]        // numeric_value tương ứng
+
+  note                text          [null]
+  submitted_by_id     uuid          [ref: > employment.employee.id, null]
+
+  Indexes {
+    (assignment_id, result_type)
+    (assignment_id) [unique, where: "result_type = 'FINAL'"]
+    (measurement_date)
+    (result_type)
+  }
+
+  Note: '''
+    ADDED 23Apr2026: KPI Result — fact record kết quả thực tế.
+    Không SCD2: fact record, không thay đổi.
+    CHECK_IN: nhiều records per assignment. FINAL: unique constraint.
+    achievement_rate được store (không tính on-the-fly) để tổng hợp nhanh.
+  '''
+}
+
+
+// ─────────────────────────────────────────────────
+// 12.6  Employee Review  (Transaction – KHÔNG SCD2)
+//
+//       Tổng kết đánh giá tổng thể của nhân viên trong một review cycle.
+//       Aggregate từ tất cả KPI results + judgment của manager + calibration.
+//       Overall rating là OUTPUT quan trọng nhất — ảnh hưởng trực tiếp đến
+//       bonus allocation, merit increase, và succession planning.
+// ─────────────────────────────────────────────────
+
+Table performance.employee_review {
+  id                  uuid          [pk]
+  cycle_id            uuid          [ref: > performance.review_cycle.id, not null]
+  employee_id         uuid          [ref: > employment.employee.id, not null]
+
+  // KPI Score tổng hợp — tính từ kpi_result
+  weighted_kpi_score  decimal(5,2)  [null]
+  // = Σ(kpi_result.kpi_rating_numeric × kpi_assignment.weight_pct) / 100
+
+  // Overall Rating — do manager quyết định (có thể khác weighted_kpi_score)
+  overall_rating_code     varchar(20) [null]
+  overall_rating_numeric  decimal(4,2) [null]
+  rating_scale_id         uuid         [ref: > performance.rating_scale.id, null]
+
+  // Kết quả sau calibration (HR/leadership adjust)
+  calibrated_rating_code     varchar(20) [null]
+  calibrated_rating_numeric  decimal(4,2) [null]
+  calibration_note           text        [null]
+
+  // Review Status Lifecycle
+  review_status       varchar(20)   [not null, default: 'PENDING_SELF']
+  // PENDING_SELF    → nhân viên chưa tự đánh giá
+  // SELF_DONE       → nhân viên đã submit self-assessment
+  // PENDING_MANAGER → chờ manager complete review
+  // MANAGER_DONE    → manager đã submit rating + feedback
+  // CALIBRATION     → HR đang calibrate kết quả
+  // FINAL_APPROVED  → kết quả đã được phê duyệt chính thức
+  // ACKNOWLEDGED    → nhân viên đã xác nhận biết kết quả
+
+  // Self-review
+  self_rating_code    varchar(20)   [null]
+  self_assessment     text          [null]
+
+  // Manager review
+  manager_id          uuid          [ref: > employment.employee.id, null]
+  manager_feedback    text          [null]
+
+  approved_by_id      uuid          [ref: > employment.employee.id, null]
+  approved_date       date          [null]
+
+  // Performance Tier — segment nhân viên để dùng trong compensation planning
+  performance_tier    varchar(20)   [null]
+  // HIGH_PERFORMER    = top ~20%, eligible cho high bonus multiplier
+  // SOLID_PERFORMER   = standard, standard bonus
+  // NEEDS_IMPROVEMENT = đang cải thiện, bonus giảm hoặc không có
+  // UNDERPERFORMER    = cần PIP, không eligible cho bonus
+  // Derived từ calibrated_rating (hoặc overall_rating nếu không có calibration)
+  // Denormalized để query nhanh trong compensation planning
+
+  Indexes {
+    (cycle_id, employee_id) [unique]
+    (employee_id)
+    (review_status)
+    (cycle_id, review_status)
+    (overall_rating_code)
+    (performance_tier)
+    (manager_id)
+    (cycle_id, performance_tier)
+  }
+
+  Note: '''
+    ADDED 23Apr2026: Employee Review — tổng kết đánh giá tổng thể.
+    Không SCD2: transaction record cho cycle cụ thể.
+
+    overall_rating vs calibrated_rating:
+      overall_rating   : manager đặt trực tiếp sau khi xem KPI scores
+      calibrated_rating: HR điều chỉnh sau calibration session (có thể giữ nguyên)
+
+    weighted_kpi_score vs overall_rating:
+      weighted_kpi_score: tính toán thuần túy từ số liệu KPI
+      overall_rating    : judgment call của manager (context, behavior, contribution)
+      Hai giá trị này CÓ THỂ KHÁC NHAU — đây là design intent.
+
+    performance_tier: denormalized từ calibrated/overall rating.
+    Dùng để query nhanh trong TR domain:
+      "Danh sách HIGH_PERFORMER trong cycle để tính bonus multiplier"
+
+    CROSS-MODULE LINK (TR → Performance):
+      comp_incentive.bonus_allocation.performance_review_id → performance.employee_review.id
+      bonus_plan.formula_json reference performance_tier để tính multiplier:
+        {
+          "HIGH_PERFORMER":     { "multiplier": 1.5 },
+          "SOLID_PERFORMER":    { "multiplier": 1.0 },
+          "NEEDS_IMPROVEMENT":  { "multiplier": 0.5 },
+          "UNDERPERFORMER":     { "multiplier": 0.0 }
+        }
+  '''
+}
+
+
+// ─────────────────────────────────────────────────
+// 12.7  Cross-Module Link: bonus_allocation ↔ employee_review
+//
+//       Field performance_review_id được ADD vào comp_incentive.bonus_allocation.
+//       Documented ở đây để cross-reference rõ ràng.
+//
+//       Semantics:
+//         null     = bonus không dựa vào performance (retention, spot, project bonus)
+//         not null = performance-based bonus; amount phụ thuộc vào performance_tier
+//
+//       Lookup pattern cho compensation planning:
+//         SELECT ba.employee_id, ba.proposed_amount,
+//                er.performance_tier, er.calibrated_rating_numeric
+//         FROM comp_incentive.bonus_allocation ba
+//         JOIN performance.employee_review er
+//           ON er.id = ba.performance_review_id
+//         WHERE ba.pool_id = :pool_id
+//           AND er.performance_tier = 'HIGH_PERFORMER'
+// ─────────────────────────────────────────────────

@@ -1,6 +1,218 @@
 # xTalent Database Design – Changelog
 
 
+## [23Apr2026] – v5.11 TR: compensation.basis Design Review & Refinements (Change 59)
+
+> **Context:** Sau khi review kiến trúc `compensation.basis`, phát hiện một số vấn đề cần điều chỉnh:
+> unique constraint không support concurrent LEGAL_BASE + OPERATIONAL_BASE, aggregation fields có derived
+> field không cần thiết, source_code và reason_code overlap semantic, thiếu `change_event_id` cho
+> batch comp cycle. Đồng thời, notes dài trong DBML được chuyển sang external design doc để giảm noise.
+
+### 4.TotalReward.V5.dbml
+
+**Change 59 — MODIFIED `compensation.basis` + `salary_basis_component_map` + `compensation.basis_line`**
+
+#### 59a — MODIFIED `compensation.basis`: Concurrent basis type support
+
+| Action | Detail |
+|--------|--------|
+| FIX unique index | `(work_relationship_id, effective_start_date)` → `(work_relationship_id, basis_type_code, effective_start_date)` — cho phép LEGAL_BASE và OPERATIONAL_BASE tồn tại đồng thời trên cùng employee |
+| FIX `is_current_flag` index | `(work_relationship_id, is_current_flag)` → `(work_relationship_id, basis_type_code, is_current_flag)` — consistent với unique constraint |
+| Rationale | VN use case: lương hợp đồng (BHXH) ≠ lương thực chi. 2 basis_type cùng `is_current_flag = true` đồng thời, mỗi type là 1 SCD2 chain độc lập |
+
+#### 59b — MODIFIED `compensation.basis`: Xóa redundant/derived fields
+
+| Action | Field | Lý do |
+|--------|-------|-------|
+| REMOVE | `has_component_lines boolean` | Redundant: `component_line_count > 0` cho kết quả tương đương |
+| REMOVE | `total_gross_amount decimal` | Derived field: app layer tính `basis_amount + total_allowance_amount` → không cần store |
+| KEEP | `total_allowance_amount decimal` | Aggregate hợp lệ: SUM(basis_line.amount), synced by app-layer transaction |
+| KEEP | `component_line_count int` | Aggregate hợp lệ: COUNT(basis_line), synced by app-layer transaction |
+
+#### 59c — MODIFIED `compensation.basis`: Làm rõ semantic fields
+
+| Action | Field | Thay đổi |
+|--------|-------|----------|
+| CLARIFY | `source_code` | Comment rõ: **TRIGGER** — WHO/WHAT tạo record. Values: `CONTRACT \| MANUAL_ADJUST \| COMP_CYCLE \| SYSTEM_AUTO` |
+| CLARIFY | `reason_code` | Comment rõ: **WHY** — business reason. Values: `HIRE \| PROBATION_END \| ANNUAL_REVIEW \| PROMOTION \| TRANSFER \| MARKET_ADJUST \| CORRECTION` |
+| CLARIFY | `contract_id` | Comment: MUST NOT NULL khi `basis_type_code = LEGAL_BASE` (app-layer) |
+
+> Tách biệt: `source_code = COMP_CYCLE` + `reason_code = PROMOTION` = nhân viên được promote thông qua comp cycle.
+
+#### 59d — MODIFIED `compensation.basis`: Thêm `change_event_id`
+
+| Action | Field | Detail |
+|--------|-------|--------|
+| ADD | `change_event_id uuid [null]` | Link to comp cycle event cho batch salary changes. Cho phép query "tất cả basis records thuộc COMP_CYCLE_2025 event". Null = individual change. |
+| ADD index | `(change_event_id)` | Batch lookup per comp cycle event |
+
+#### 59e — MODIFIED `comp_core.salary_basis_component_map`: Làm rõ `mandatory_flag`
+
+| Action | Detail |
+|--------|--------|
+| ADD comment | `mandatory_flag = true` → system auto-creates `basis_line` khi HR thiết lập `compensation.basis`. HR MUST fill amount trước khi status chuyển ACTIVE |
+| Ref | `compensation-basis-design.md §8` |
+
+#### 59f — MODIFIED `compensation.basis_line`: Trim Note, ref design doc
+
+| Action | Detail |
+|--------|--------|
+| TRIM Note | Giữ lại nguyên tắc cốt lõi (pay_component_def_id NOT NULL mandatory), xóa detail dư thừa |
+| ADD ref | `compensation-basis-design.md §9` cho enforcement mechanism chi tiết |
+
+#### 59g — MODIFIED `comp_core.salary_basis`: Trim Note, ref design doc
+
+| Action | Detail |
+|--------|--------|
+| TRIM Note | Xóa detail auto-expiry dài, thêm ref sang design doc |
+| ADD ref | `compensation-basis-design.md §2, §6` |
+
+### NEW compensation-basis-design.md
+
+**Tạo mới: `/product/xTalent/docs/02-dbml/TR/compensation-basis-design.md`**
+
+Document kiến trúc đầy đủ cho `compensation.basis`:
+
+| Section | Nội dung |
+|---------|----------|
+| §1 | Tổng quan chain: eligibility → salary_basis → basis → basis_line |
+| §2 | Scoping vs Eligibility — separation of concerns |
+| §3 | Luồng Onboard — thiết lập compensation.basis lần đầu |
+| §4 | Concurrent basis types — LEGAL_BASE + OPERATIONAL_BASE đồng thời |
+| §5 | Luồng Salary Change — SCD2 + copy lines |
+| §6 | Auto-Expiry khi employee chuyển scope |
+| §7 | Aggregation fields sync mechanism |
+| §8 | Mandatory component enforcement flow |
+| §9 | basis_line constraint validation |
+| §10 | source_code vs reason_code semantic |
+
+### Summary
+
+| Change | Entity | Type | Impact |
+|--------|--------|------|--------|
+| 59a | `compensation.basis` | MODIFIED | Fix unique + is_current_flag index — support concurrent basis types |
+| 59b | `compensation.basis` | MODIFIED | Remove `has_component_lines`, `total_gross_amount` |
+| 59c | `compensation.basis` | MODIFIED | Clarify source_code/reason_code comments + contract_id constraint |
+| 59d | `compensation.basis` | MODIFIED | Add `change_event_id` field + index |
+| 59e | `salary_basis_component_map` | MODIFIED | Clarify mandatory_flag comment |
+| 59f | `compensation.basis_line` | MODIFIED | Trim Note, ref design doc |
+| 59g | `comp_core.salary_basis` | MODIFIED | Trim Note, ref design doc |
+| NEW | `compensation-basis-design.md` | NEW DOC | Architecture document — flows, mechanisms, constraints |
+
+---
+
+## [23Apr2026] – v5.10 TR: Performance Management Sub-Module (Change 58)
+
+> **Context:** DBML `4.TotalReward.V5.dbml` chưa có bất kỳ design nào cho sub-module Performance.
+> Field `performance_review_id` trên `comp_incentive.bonus_allocation` chưa tồn tại, không có traceability
+> giữa bonus và kết quả đánh giá hiệu suất. Cần thiết kế schema cho toàn bộ vòng đời Performance:
+> KPI definition → target setting → result tracking → overall review → bonus link.
+>
+> **Design Principles applied:**
+> - Focus vào nghiệp vụ chính: mỗi table chỉ chứa fields cốt lõi, không có control fields thừa.
+> - SCD2 chỉ cho master data cần timeline thực sự: `kpi_def_v` (KPI definition thay đổi per năm).
+> - Transaction tables (kpi_assignment, kpi_result, employee_review): KHÔNG SCD2.
+> - Không thêm audit/log table riêng — đã có `tr_audit.audit_log` toàn hệ thống.
+> - Consistent với pattern eligibility_profile_id đã dùng toàn hệ thống.
+
+### 4.TotalReward.V5.dbml
+
+**Change 58 — NEW Section 12: Performance Management (7 tables/entities)**
+
+#### 58a — NEW `performance.kpi_def_v` (Master Data – **CÓ SCD2**)
+
+| Action | Detail |
+|--------|--------|
+| NEW TABLE | `performance.kpi_def_v` — KPI Definition với SCD-2 |
+| SCD2 rationale | KPI có thể thay đổi `unit_of_measure`, `calculation_method`, `kpi_category` theo năm. Lịch sử cần giữ để đối chiếu kết quả cũ với đúng definition tại thời điểm đó. |
+| Key fields | `kpi_code` (stable identifier), `kpi_category` (FINANCIAL/CUSTOMER/OPERATIONAL/LEARNING/PEOPLE/STRATEGIC), `kpi_type` (QUANTITATIVE/QUALITATIVE/BINARY), `calculation_method` (SUM_PERIOD/AVERAGE/LATEST/RATE), `aggregation_scope` (INDIVIDUAL/TEAM/DEPARTMENT/COMPANY) |
+| SCD2 fields | `effective_start/end`, `version_number`, `previous_version_id`, `is_current_version` |
+| Partial index | `(kpi_code) WHERE is_current_version = true` — đảm bảo unique current version |
+
+> **SCD2 freeze rule:** `kpi_assignment.kpi_def_id` trỏ về version hiệu lực tại assign-time. Nếu có version mới sau khi giao KPI → assignment vẫn dùng version cũ. Consistent với `grade_v` và `calculation_rule_def` trong cùng file.
+
+#### 58b — NEW `performance.rating_scale` + `performance.rating_scale_level` (Master – **KHÔNG SCD2**)
+
+| Action | Detail |
+|--------|--------|
+| NEW TABLE | `performance.rating_scale` — Thang điểm (SCALE_1_5, SCALE_ABCD, SCALE_3PT) |
+| NEW TABLE | `performance.rating_scale_level` — Chi tiết từng mức (level_code, level_name, numeric_value) |
+| Không SCD2 | Nếu thang điểm thay đổi → tạo scale mới (code mới), không version chồng |
+| `numeric_value` | Dùng để tính `weighted_kpi_score = Σ(level.numeric_value × weight_pct) / 100` |
+| Unique indexes | `(scale_id, level_order)` và `(scale_id, level_code)` — đảm bảo không duplicate |
+
+#### 58c — NEW `performance.review_cycle` (Transaction – **KHÔNG SCD2**)
+
+| Action | Detail |
+|--------|--------|
+| NEW TABLE | `performance.review_cycle` — Một kỳ đánh giá cụ thể (ANNUAL_2025, Q1_2026...) |
+| `cycle_type` | `ANNUAL / SEMI_ANNUAL / QUARTERLY / PROJECT_BASED` |
+| Process milestones | `target_setting_deadline`, `self_review_deadline`, `manager_review_deadline`, `calibration_deadline` |
+| Status lifecycle | `DRAFT → OPEN → IN_PROGRESS → CALIBRATION → COMPLETED → CLOSED` |
+| Scoping | `legal_entity_id [null]` + `eligibility_profile_id [null]` — consistent với `comp_plan`, `bonus_plan`, `schedule_assignment` |
+| Rating scale link | `rating_scale_id` — thang điểm áp dụng cho toàn cycle |
+
+#### 58d — NEW `performance.kpi_assignment` (Transaction – **KHÔNG SCD2**)
+
+| Action | Detail |
+|--------|--------|
+| NEW TABLE | `performance.kpi_assignment` — Contract KPI giữa manager và nhân viên |
+| Key fields | `target_value`, `weight_pct` (tổng = 100%), `stretch_target_value`, `assignment_status` |
+| Status lifecycle | `DRAFT → PENDING_CONFIRM → CONFIRMED → LOCKED` |
+| Lock rule | Sau khi `review_cycle.status = IN_PROGRESS` → `assignment_status = LOCKED` — không được sửa target |
+| Cascade | `parent_assignment_id` — BSC model: COMPANY → DEPARTMENT → TEAM → INDIVIDUAL |
+| Unique index | `(cycle_id, employee_id, kpi_def_id)` — 1 KPI chỉ được giao 1 lần per employee per cycle |
+| App constraint | `Σ(weight_pct)` cho tất cả assignments của 1 employee trong 1 cycle = 100% |
+
+#### 58e — NEW `performance.kpi_result` (Transaction – **KHÔNG SCD2**)
+
+| Action | Detail |
+|--------|--------|
+| NEW TABLE | `performance.kpi_result` — Kết quả thực tế của một KPI |
+| `result_type` | `CHECK_IN` (giữa kỳ, nhiều records) / `FINAL` (cuối kỳ, unique per assignment) |
+| `achievement_rate` | `= (actual_value / target_value) × 100` — stored (không tính on-the-fly) để aggregate nhanh |
+| `kpi_rating_code/numeric` | Rating cho KPI cụ thể này, lấy từ `rating_scale_level` |
+| Partial unique index | `(assignment_id) WHERE result_type = 'FINAL'` — chỉ 1 kết quả cuối kỳ per KPI |
+
+#### 58f — NEW `performance.employee_review` (Transaction – **KHÔNG SCD2**)
+
+| Action | Detail |
+|--------|--------|
+| NEW TABLE | `performance.employee_review` — Tổng kết đánh giá tổng thể |
+| `weighted_kpi_score` | `= Σ(kpi_rating_numeric × weight_pct) / 100` — app tính khi đủ FINAL results |
+| `overall_rating` | Do manager quyết định — **CÓ THỂ KHÁC** `weighted_kpi_score` (design intent) |
+| `calibrated_rating` | Sau calibration session — HR có thể adjust |
+| Review status | `PENDING_SELF → SELF_DONE → PENDING_MANAGER → MANAGER_DONE → CALIBRATION → FINAL_APPROVED → ACKNOWLEDGED` |
+| `performance_tier` | Denormalized từ calibrated/overall rating: `HIGH_PERFORMER / SOLID_PERFORMER / NEEDS_IMPROVEMENT / UNDERPERFORMER` |
+| Denormalization rationale | `performance_tier` stored để query nhanh trong compensation planning ("Danh sách HIGH_PERFORMER để tính bonus multiplier") |
+| Unique index | `(cycle_id, employee_id)` — 1 review per employee per cycle |
+
+#### 58g — MODIFIED `comp_incentive.bonus_allocation`: ADD `performance_review_id`
+
+| Action | Field | Detail |
+|--------|-------|--------|
+| ADD | `performance_review_id uuid [null, ref: > performance.employee_review.id]` | null = bonus không dựa vào performance; not null = performance-based bonus |
+| ADD index | `(performance_review_id)` | Lookup bonus records theo performance result |
+
+> **Cross-module integration:**
+> `bonus_plan.formula_json` có thể reference `performance_tier` từ `employee_review` để tính multiplier:
+> `HIGH_PERFORMER → 1.5×, SOLID_PERFORMER → 1.0×, NEEDS_IMPROVEMENT → 0.5×, UNDERPERFORMER → 0.0×`
+
+### Summary
+
+| Change | Table | Type | SCD2? | Core Business Fields |
+|--------|-------|------|:-----:|----------------------|
+| 58a | `performance.kpi_def_v` | NEW | ✅ | kpi_code, kpi_category, kpi_type, unit_of_measure, calculation_method, aggregation_scope |
+| 58b | `performance.rating_scale` | NEW | ❌ | code, scale_type, effective_start/end |
+| 58b | `performance.rating_scale_level` | NEW | ❌ | level_code, level_name, numeric_value, level_order |
+| 58c | `performance.review_cycle` | NEW | ❌ | cycle_type, period_start/end, milestones, status, eligibility_profile_id |
+| 58d | `performance.kpi_assignment` | NEW | ❌ | target_value, weight_pct, assignment_status, parent_assignment_id (cascade) |
+| 58e | `performance.kpi_result` | NEW | ❌ | result_type, actual_value, achievement_rate, kpi_rating_code/numeric |
+| 58f | `performance.employee_review` | NEW | ❌ | weighted_kpi_score, overall/calibrated_rating, review_status, performance_tier |
+| 58g | `comp_incentive.bonus_allocation` | MODIFIED | — | +`performance_review_id FK [null]` |
+
+---
+
 ## [14Apr2026] – v4.3 PR: Architectural Audit Implementation (Changes 48–57)
 
 > **Context:** Sau khi thực hiện architectural audit toàn diện trên Payroll V4 (cross-ref Core, TA, TR), phát hiện 10 gaps cần xử lý:
